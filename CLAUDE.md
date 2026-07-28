@@ -47,7 +47,8 @@ Plan of record: `~/.claude/plans/i-want-to-build-functional-pinwheel.md`
 | v2.2.0 installed (Release), Phase 0 baseline | 1.93% | 1.90% | 3.00% | 27 MB |
 | Phase 0.5 patched (Debug), steady | 0.40% | 0.20% | 8.40% | 58 MB |
 | Phase 1 stripped (Debug), steady | 0.00% | 0.00% | 0.00% | 27 MB |
-| **Phase 2 + dictation (Debug), steady** | **0.04%** | **0.00%** | 1.00% | 43 MB |
+| Phase 2 + dictation (Debug), steady | 0.04% | 0.00% | 1.00% | 43 MB |
+| **Phase 3 + launcher (Debug), steady** | **0.18%** | **0.00%** | 3.40% | 31 MB |
 
 Idle CPU is now unmeasurable by `ps` (below 0.005%) across 90 samples, down
 from 1.93%, and RSS is back to the Release baseline despite this being a
@@ -93,6 +94,30 @@ Hold **Cmd+Shift+D**, speak, release → transcript pastes into the focused app.
 - Requires **Microphone** and **Accessibility** grants. Without Accessibility, `CGEvent.post` is silently dropped and nothing pastes.
 - Injection synthesizes ⌘V rather than setting the AX value, because the AX route silently fails in Electron apps, terminals, and custom text views. Prior clipboard contents are restored 250 ms later.
 - Nothing runs while idle — the audio engine only exists between key-down and key-up.
+
+## Launcher (Phase 3)
+
+**Option+Space** opens a Spotlight-style search panel.
+
+| File | Role |
+|---|---|
+| `managers/Launcher/FuzzyMatcher.swift` | DP best-alignment scoring + acronym bonus |
+| `managers/Launcher/AppIndex.swift` | Directory scan, ranking, launching |
+| `managers/Launcher/AppIconCache.swift` | Memory + on-disk icon cache |
+| `managers/Launcher/LaunchHistory.swift` | Frecency, 10-day half-life |
+| `components/Launcher/LauncherPanel.swift` | Non-activating `NSPanel` |
+| `components/Launcher/LauncherView.swift` | Search field + results |
+
+- **Safari lives in a cryptex.** `/Applications/Safari.app` is a symlink and
+  `contentsOfDirectory` does not return it, so `/System/Cryptexes/App/System/Applications`
+  is scanned explicitly. Any future "app is missing" report starts here.
+- **Matching is a DP, not greedy.** Greedy took the first valid alignment, so
+  `ss` matched *SyStem* and lost to *CheSS*. The acronym bonus (+45 when every
+  matched char is a word start) is what makes initials work.
+- `NSWorkspace.icon(forFile:)` hits disk every call — never call it per row per
+  keystroke. Icons are rendered once at 64pt and cached by path+mtime.
+- Directory scan, deliberately not `NSMetadataQuery`: a live Spotlight query
+  wakes the app on every index change. Scan is 13 ms for 109 apps; search 0.4 ms.
 
 ## Speech API — verified working (Phase 0 spike)
 
