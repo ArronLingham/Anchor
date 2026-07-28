@@ -45,13 +45,13 @@ Plan of record: `~/.claude/plans/i-want-to-build-functional-pinwheel.md`
 | Build | mean | median | max | RSS mean |
 |---|---|---|---|---|
 | v2.2.0 installed (Release), Phase 0 baseline | 1.93% | 1.90% | 3.00% | 27 MB |
-| Phase 0.5 patched (Debug), steady state | **0.40%** | **0.20%** | 8.40% | 58 MB |
+| Phase 0.5 patched (Debug), steady | 0.40% | 0.20% | 8.40% | 58 MB |
+| **Phase 1 stripped (Debug), steady** | **0.00%** | **0.00%** | **0.00%** | **27 MB** |
 
-Median idle CPU is down ~90%. Caveats worth remembering: the baseline is a
-Release build and the patched figure is Debug, so RSS is not comparable and
-the patched CPU would likely be a little lower again in Release. Always let
-the app settle for a few minutes before sampling — launch transients spike
-to ~28% and wreck the mean.
+Idle CPU is now unmeasurable by `ps` (below 0.005%) across 90 samples, down
+from 1.93%, and RSS is back to the Release baseline despite this being a
+Debug build. Always let the app settle for a few minutes before sampling —
+launch transients spike to ~28% and wreck the mean.
 
 ```bash
 /private/tmp/claude-501/-Users-arronlingham-Anchor/afa47fe6-293c-4cd3-aa73-51fa1a67c979/scratchpad/measure.sh Atoll 180 "<label>"
@@ -97,6 +97,23 @@ Two gotchas:
 - **`.transcription` emits only finalized results**, one per utterance. Use this for the text you actually paste.
 
 Spike source: `/private/tmp/claude-501/-Users-arronlingham-Anchor/afa47fe6-293c-4cd3-aa73-51fa1a67c979/scratchpad/speechspike/`
+
+## What was removed (Phase 1)
+
+Shelf/LocalSend, ScreenAssistant, Stats, LLM usage tracking, Webcam/Camera,
+ColorPicker, and the whole Extensions system (AtollExtensionKit, XPC host,
+JSON-RPC server). **321 files / 100,148 LOC → 227 files / 75,098 LOC.**
+
+Kept: notch core, media/music, lock-screen widgets, Calendar, Clipboard,
+Notes + Apple Notes sync, Timer, Terminal, Battery, Bluetooth, HUD/OSD,
+Downloads, Shortcuts, Lunar/BetterDisplay.
+
+Cutting Extensions also closed a local security hole — the JSON-RPC server
+on `localhost:9020` auto-authorised any local process. Verified nothing
+listens on that port now.
+
+Known upstream bug, not yet fixed: `ContentView` renders `NotchNotesView`
+for the `.clipboard` case.
 
 ## CPU offenders — status
 
