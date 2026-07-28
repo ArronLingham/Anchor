@@ -32,7 +32,7 @@ final class LauncherPanel: NSPanel {
 
     init(contentView: NSView) {
         super.init(
-            contentRect: NSRect(x: 0, y: 0, width: 720, height: 420),
+            contentRect: NSRect(x: 0, y: 0, width: 860, height: 560),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false

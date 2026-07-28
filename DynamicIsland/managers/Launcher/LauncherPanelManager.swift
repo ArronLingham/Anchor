@@ -52,7 +52,7 @@ final class LauncherPanelManager: ObservableObject {
                 },
                 onDismiss: { [weak self] in self?.hide() }
             ))
-        hosting.frame = NSRect(x: 0, y: 0, width: 720, height: 420)
+        hosting.frame = NSRect(x: 0, y: 0, width: 860, height: 560)
 
         let panel = LauncherPanel(contentView: hosting)
         panel.onResignKey = { [weak self] in self?.hide() }

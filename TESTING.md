@@ -60,20 +60,57 @@ ls ~/Library/Logs/DiagnosticReports/ | grep -i atoll
 **2.6 — Click-away dismisses.** Open the panel, click any other window.
 ✅ Panel closes on its own.
 
-**2.7 — Empty query shows your most-used.** Open the panel and don't type.
-✅ A list appears. After you've launched a few apps, the ones you use most should drift to the top.
+**2.7 — Empty query shows everything, most-used first.** Open the panel and don't type.
+✅ The grid appears (see 2.12). After you've launched a few apps, the ones you use most drift to the front of the first page.
 
 **2.8 — Frecency learns.** Launch **System Settings** through the launcher once. Reopen and type `ss`.
 ✅ System Settings should now rank above Screen Sharing. *Both are valid "ss" acronyms — a cold index ranks Screen Sharing first, and one launch is designed to flip it.*
 
-**2.9 — Icons load.** Scroll the list.
-✅ Every row shows the real app icon. First open may be briefly blank while icons render; the second open should be instant (they're cached to disk).
+**2.9 — Icons load.** Look over the grid, then search and look at the list.
+✅ Every app shows its real icon in both views. The first open may show blank tiles briefly while icons render; the second open should be instant, since they're cached to disk.
 
 **2.10 — Newly installed apps appear.** Install or copy any `.app` into `/Applications`, then reopen the panel.
 ✅ It's searchable without restarting Atoll.
 
 **2.11 — It's fast.** Type and delete quickly in the search field.
 ✅ No lag or beachball. Search measures 0.4 ms across 109 apps, so any stutter is a UI bug, not the matcher.
+
+### Grid view (the Launchpad replacement)
+
+**2.12 — Grid appears when the field is empty.** Press ⌥Space and don't type.
+✅ A grid of app icons, 7 across and 4 down, with page dots underneath.
+
+**2.13 — Paging works.** Two-finger swipe left/right on the grid, or press → repeatedly past the last icon in a row.
+✅ It snaps cleanly to the next page — no half-scrolled state. The dots track the current page.
+
+**2.14 — Arrow keys move in two dimensions.** With the grid showing, press ↓.
+✅ Selection moves down a whole row, not one icon. ← and → move one icon.
+
+**2.15 — Grid stops at the ends.** Hold ↓ past the last row, then ↑ past the first.
+✅ Selection stops rather than wrapping around. *(The list, when you're searching, deliberately does wrap — different behaviour on purpose.)*
+
+**2.16 — Launch from the grid.** Click any icon, or select with arrows and press ↩.
+✅ App launches, panel closes.
+
+**2.17 — Typing switches to the list.** From the grid, type one letter.
+✅ It becomes a filtered list. Delete the letter → back to the grid.
+
+### Calculator
+
+**2.18 — Basic maths.** Press ⌥Space and type `18*7.5`.
+✅ A large `135` replaces the results, with "Press ↩ to copy" underneath.
+
+**2.19 — Copying the answer.** With a result showing, press ↩.
+✅ "Copied" flashes in the search bar. Paste somewhere — you get the number.
+
+**2.20 — Decimals and precedence.** Try `100/3` → `33.333333`, and `(2+3)*4` → `20`.
+✅ Both correct. *`100/3` returning a flat `33` would mean integer division crept back in.*
+
+**2.21 — It doesn't hijack normal searches.** Type `Safari`, then `Final Cut Pro`, then `x-code`.
+✅ All three still search apps normally — no calculator result. *This is the failure mode that would make the launcher unusable.*
+
+**2.22 — Incomplete input.** Type `2+` and stop.
+✅ No result shown until the expression is complete.
 
 ---
 
