@@ -46,7 +46,8 @@ Plan of record: `~/.claude/plans/i-want-to-build-functional-pinwheel.md`
 |---|---|---|---|---|
 | v2.2.0 installed (Release), Phase 0 baseline | 1.93% | 1.90% | 3.00% | 27 MB |
 | Phase 0.5 patched (Debug), steady | 0.40% | 0.20% | 8.40% | 58 MB |
-| **Phase 1 stripped (Debug), steady** | **0.00%** | **0.00%** | **0.00%** | **27 MB** |
+| Phase 1 stripped (Debug), steady | 0.00% | 0.00% | 0.00% | 27 MB |
+| **Phase 2 + dictation (Debug), steady** | **0.04%** | **0.00%** | 1.00% | 43 MB |
 
 Idle CPU is now unmeasurable by `ps` (below 0.005%) across 90 samples, down
 from 1.93%, and RSS is back to the Release baseline despite this being a
@@ -75,6 +76,23 @@ xcodebuild -project DynamicIsland.xcodeproj -scheme DynamicIsland \
 Repo is **`ArronLingham/Anchor`** — standalone (not a fork), so commits count on the contribution calendar. Local branch `anchor-main` → remote `main`. Upstream Atoll fork is remote `upstream`.
 
 Git LFS is **disabled here on purpose** — upstream's LFS budget is exhausted and all 9 media objects are unreachable. Do not re-enable it; `git lfs install` re-adds a pre-push hook that blocks pushes.
+
+## Dictation (Phase 2)
+
+Hold **Cmd+Shift+D**, speak, release → transcript pastes into the focused app.
+
+| File | Role |
+|---|---|
+| `managers/Dictation/SpeechTranscribing.swift` | Backend protocol — swap engines here |
+| `managers/Dictation/AppleSpeechTranscriber.swift` | macOS 26 `SpeechAnalyzer` impl |
+| `managers/Dictation/DictationManager.swift` | `AVAudioEngine` capture, state machine |
+| `managers/Dictation/TextInjector.swift` | Pasteboard + synthesized ⌘V |
+| `components/Live activities/DictationLiveActivity.swift` | Notch UI |
+
+- **Deployment target is now macOS 26.0** (was 14.6) — `SpeechAnalyzer` requires it.
+- Requires **Microphone** and **Accessibility** grants. Without Accessibility, `CGEvent.post` is silently dropped and nothing pastes.
+- Injection synthesizes ⌘V rather than setting the AX value, because the AX route silently fails in Electron apps, terminals, and custom text views. Prior clipboard contents are restored 250 ms later.
+- Nothing runs while idle — the audio engine only exists between key-down and key-up.
 
 ## Speech API — verified working (Phase 0 spike)
 
