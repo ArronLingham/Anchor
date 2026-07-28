@@ -47,6 +47,7 @@ struct ContentView: View {
     @ObservedObject var doNotDisturbManager = DoNotDisturbManager.shared
     @ObservedObject var lockScreenManager = LockScreenManager.shared
     @ObservedObject var capsLockManager = CapsLockManager.shared
+    @ObservedObject var dictationManager = DictationManager.shared
     @State private var downloadManager = DownloadManager.shared
     
     @Default(.enableStatsFeature) var enableStatsFeature
@@ -56,6 +57,7 @@ struct ContentView: View {
     @Default(.showNetworkGraph) var showNetworkGraph
     @Default(.showDiskGraph) var showDiskGraph
     @Default(.enableReminderLiveActivity) var enableReminderLiveActivity
+    @Default(.showDictationLiveActivity) var showDictationLiveActivity
     @Default(.enableTimerFeature) var enableTimerFeature
     @Default(.timerDisplayMode) var timerDisplayMode
     @Default(.enableHorizontalMusicGestures) var enableHorizontalMusicGestures
@@ -876,6 +878,10 @@ struct ContentView: View {
                                       ? AnyTransition.move(edge: .trailing).combined(with: .opacity)
                                       : AnyTransition.opacity
                               )
+                      } else if vm.notchState == .closed && dictationManager.state.isActive && showDictationLiveActivity && !vm.hideOnClosed {
+                          DictationLiveActivity()
+                              .id("dictation-live-activity")
+                              .transition(closedLiveActivitySwapTransition)
                       } else if vm.notchState == .closed && capsLockManager.isCapsLockActive && Defaults[.enableCapsLockIndicator] && !vm.hideOnClosed && !lockScreenManager.isLocked {
                           InlineHUD(type: .constant(.capsLock), value: .constant(1.0), icon: .constant(""), hoverAnimation: $isHovering, gestureProgress: $gestureProgress)
                               .transition(AnyTransition.move(edge: .trailing).combined(with: .opacity))

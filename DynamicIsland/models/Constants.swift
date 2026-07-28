@@ -1157,6 +1157,12 @@ extension Defaults.Keys {
     
     // MARK: Clipboard Feature
     static let enableClipboardManager = Key<Bool>("enableClipboardManager", default: true)
+
+    // MARK: - Dictation
+    /// Push-to-talk dictation using Apple's on-device SpeechAnalyzer.
+    static let enableDictation = Key<Bool>("enableDictation", default: true)
+    /// Show the live transcript in the notch while dictating.
+    static let showDictationLiveActivity = Key<Bool>("showDictationLiveActivity", default: true)
     static let clipboardHistorySize = Key<Int>("clipboardHistorySize", default: 3)
     static let showClipboardIcon = Key<Bool>("showClipboardIcon", default: true)
     static let clipboardDisplayMode = Key<ClipboardDisplayMode>("clipboardDisplayMode", default: .panel)

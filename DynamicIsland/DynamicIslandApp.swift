@@ -812,6 +812,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             self, selector: #selector(onScreenUnlocked(_:)),
             name: NSNotification.Name(rawValue: "com.apple.screenIsUnlocked"), object: nil)
 
+        // Push-to-talk dictation: hold to record, release to transcribe and paste.
+        KeyboardShortcuts.onKeyDown(for: .pushToTalkDictation) {
+            guard Defaults[.enableShortcuts], Defaults[.enableDictation] else { return }
+            DictationManager.shared.beginDictation()
+        }
+        KeyboardShortcuts.onKeyUp(for: .pushToTalkDictation) {
+            guard Defaults[.enableShortcuts], Defaults[.enableDictation] else { return }
+            DictationManager.shared.endDictation()
+        }
+
         KeyboardShortcuts.onKeyDown(for: .toggleSneakPeek) { [weak self] in
             guard let self = self else { return }
             guard Defaults[.enableShortcuts] else { return }
@@ -1243,7 +1253,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private func updateFeatureShortcutAvailability() {
         updateShortcut(.startDemoTimer, isEnabled: Defaults[.enableShortcuts] && Defaults[.enableTimerFeature])
         updateShortcut(.clipboardHistoryPanel, isEnabled: Defaults[.enableShortcuts] && Defaults[.enableClipboardManager])
-        updateShortcut(.colorPickerPanel, isEnabled: Defaults[.enableShortcuts] && Defaults[.enableColorPickerFeature])
         updateShortcut(.toggleTerminalTab, isEnabled: Defaults[.enableShortcuts] && Defaults[.enableTerminalFeature])
     }
 
