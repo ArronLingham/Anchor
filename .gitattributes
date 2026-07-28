@@ -1,0 +1,4 @@
+# Anchor uses no Git LFS. The upstream BluetoothHUDAnimations/*.mov and the
+# sample .gif were LFS pointers whose objects are unreachable (upstream LFS
+# budget exhausted); they are committed here as-is to keep Xcode resource
+# references intact. Replace them with your own assets.
