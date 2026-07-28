@@ -43,6 +43,10 @@ class SystemOSDManager {
     }
     private static let suppressionState = OSAllocatedUnfairLock(initialState: SuppressionState())
 
+    /// Serialises process-exit sources and their timeouts.
+    private static let watcherQueue = DispatchQueue(
+        label: "com.atoll.osd-suppression-watcher", qos: .utility)
+
     /// Call once at startup to register sleep/wake observers.
     /// Safe to call multiple times — observers are registered only once.
     private static let sleepWakeSetupOnce: Void = {
@@ -372,11 +376,23 @@ class SystemOSDManager {
                 let currentPID = osduiHelperPID()
                 let lastPID = suppressionState.withLock { $0.lastSuspendedPID }
 
-                if let pid = currentPID, pid != lastPID {
-                    suspendOSDUIHelper()
-                    suppressionState.withLock { $0.lastSuspendedPID = pid }
+                if let pid = currentPID {
+                    if pid != lastPID {
+                        suspendOSDUIHelper()
+                        suppressionState.withLock { $0.lastSuspendedPID = pid }
+                    }
+                    // Helper is present and suspended. Block on its exit instead
+                    // of re-scanning: zero cost until launchd or jetsam reaps it,
+                    // at which point we wake immediately and catch the respawn.
+                    await awaitExit(of: pid, timeoutSeconds: 60)
+                } else {
+                    // No helper right now. One appears on the next media-key press,
+                    // and suppressNativeOSDNow() already handles that fast path
+                    // from the key event, so this is only a backstop. Slow it right
+                    // down when nobody can see the screen anyway.
+                    let parked = SystemActivityGate.shared.shouldSuspendBackgroundWork
+                    try? await Task.sleep(nanoseconds: parked ? 10_000_000_000 : 1_000_000_000)
                 }
-                try? await Task.sleep(nanoseconds: 150_000_000) // 150ms
             }
         }
 
@@ -402,76 +418,98 @@ class SystemOSDManager {
         return previous
     }
 
+    private static let osdHelperProcessName = "OSDUIHelper"
+
+    /// All PIDs whose executable name matches `name`, newest (highest PID) last.
+    ///
+    /// Uses libproc directly rather than fork/exec'ing pgrep. The watcher runs
+    /// this on every tick, and a subprocess spawn per tick dominated Atoll's
+    /// idle CPU cost; an in-process scan is ~0.4ms and allocates no process.
+    private static func pids(named name: String) -> [pid_t] {
+        var capacity = proc_listallpids(nil, 0)
+        guard capacity > 0 else { return [] }
+        // Pad — the process table can grow between the sizing and filling calls.
+        capacity += 64
+        var buffer = [pid_t](repeating: 0, count: Int(capacity))
+        let byteCount = Int32(buffer.count * MemoryLayout<pid_t>.size)
+        let found = proc_listallpids(&buffer, byteCount)
+        guard found > 0 else { return [] }
+
+        var matches: [pid_t] = []
+        var nameBuffer = [CChar](repeating: 0, count: 2 * Int(MAXCOMLEN) + 1)
+        for index in 0..<Int(found) {
+            let pid = buffer[index]
+            guard pid > 0 else { continue }
+            // proc_name fails for processes owned by another user; OSDUIHelper
+            // runs in our own GUI session, so those failures are not ours.
+            guard proc_name(pid, &nameBuffer, UInt32(nameBuffer.count)) > 0 else { continue }
+            if String(cString: nameBuffer) == name { matches.append(pid) }
+        }
+        return matches.sorted()
+    }
+
     /// Returns the newest OSDUIHelper PID, or nil if none.
     private static func osduiHelperPID() -> Int32? {
-        let task = Process()
-        task.executableURL = URL(fileURLWithPath: "/usr/bin/pgrep")
-        task.arguments = ["-n", "OSDUIHelper"]
-        let pipe = Pipe()
-        task.standardOutput = pipe
-        task.standardError = Pipe() // silence "No matching processes..." stderr
-        do {
-            try task.run()
-            task.waitUntilExit()
-            // pgrep exits 1 when no process found — check status to avoid
-            // parsing an empty string as a valid PID.
-            guard task.terminationStatus == 0 else { return nil }
-            let data = pipe.fileHandleForReading.readDataToEndOfFile()
-            let trimmed = String(data: data, encoding: .utf8)?
-                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            return Int32(trimmed)
-        } catch {
-            return nil
+        pids(named: osdHelperProcessName).last
+    }
+
+    /// Sends `signal` to every OSDUIHelper process. Idempotent.
+    /// In-process `kill(2)` rather than fork/exec'ing killall.
+    private static func signalOSDUIHelper(_ signal: Int32) {
+        for pid in pids(named: osdHelperProcessName) {
+            // ESRCH just means it exited between the scan and the signal.
+            if kill(pid, signal) != 0 && errno != ESRCH {
+                NSLog("SystemOSDManager: kill(\(pid), \(signal)) failed: \(String(cString: strerror(errno)))")
+            }
         }
     }
 
-    /// Sends SIGSTOP to all OSDUIHelper processes. Idempotent.
-    private static func suspendOSDUIHelper() {
-        let stop = Process()
-        stop.executableURL = URL(fileURLWithPath: "/usr/bin/killall")
-        stop.arguments = ["-STOP", "OSDUIHelper"]
-        stop.standardError = Pipe() // silence "no such process" stderr
-        do {
-            try stop.run()
-            stop.waitUntilExit()
-        } catch {
-            NSLog("Suppression watcher: failed to SIGSTOP OSDUIHelper: \(error)")
-        }
-    }
+    private static func suspendOSDUIHelper() { signalOSDUIHelper(SIGSTOP) }
 
-    private static func resumeOSDUIHelperProcess() {
-        let resume = Process()
-        resume.executableURL = URL(fileURLWithPath: "/usr/bin/killall")
-        resume.arguments = ["-CONT", "OSDUIHelper"]
-        resume.standardError = Pipe()
-        do {
-            try resume.run()
-            resume.waitUntilExit()
-        } catch {
-            NSLog("Failed to resume OSDUIHelper after stale suppression: \(error)")
-        }
-    }
+    private static func resumeOSDUIHelperProcess() { signalOSDUIHelper(SIGCONT) }
 
     /// Check if OSDUIHelper is currently running
     public static func isOSDUIHelperRunning() -> Bool {
-        let task = Process()
-        task.executableURL = URL(fileURLWithPath: "/usr/bin/pgrep")
-        task.arguments = ["OSDUIHelper"]
-        
-        let pipe = Pipe()
-        task.standardOutput = pipe
-        task.standardError = Pipe() // silence "No matching processes..." stderr
-        
-        do {
-            try task.run()
-            task.waitUntilExit()
-            
-            guard task.terminationStatus == 0 else { return false }
-            let data = pipe.fileHandleForReading.readDataToEndOfFile()
-            let output = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            return !output.isEmpty
-        } catch {
-            return false
+        !pids(named: osdHelperProcessName).isEmpty
+    }
+
+    /// Suspends the caller until `pid` exits, or `timeoutSeconds` elapses.
+    ///
+    /// Backed by a GCD process source, so a live (and SIGSTOP'd) helper costs
+    /// nothing while we wait — this is what replaces the 150ms poll. The
+    /// timeout is a safety net so a missed event cannot wedge the watcher.
+    private static func awaitExit(of pid: pid_t, timeoutSeconds: Int) async {
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            let hasResumed = OSAllocatedUnfairLock(initialState: false)
+            func finishOnce() {
+                let shouldResume = hasResumed.withLock { resumed -> Bool in
+                    if resumed { return false }
+                    resumed = true
+                    return true
+                }
+                if shouldResume { continuation.resume() }
+            }
+
+            let source = DispatchSource.makeProcessSource(
+                identifier: pid, eventMask: .exit, queue: watcherQueue)
+            source.setEventHandler {
+                source.cancel()
+                finishOnce()
+            }
+            source.resume()
+
+            // The process may already have exited before the source was armed,
+            // in which case .exit never fires.
+            if kill(pid, 0) != 0 && errno == ESRCH {
+                source.cancel()
+                finishOnce()
+                return
+            }
+
+            watcherQueue.asyncAfter(deadline: .now() + .seconds(timeoutSeconds)) {
+                source.cancel()
+                finishOnce()
+            }
         }
     }
     

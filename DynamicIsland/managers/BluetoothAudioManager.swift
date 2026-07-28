@@ -205,13 +205,55 @@ class BluetoothAudioManager: ObservableObject {
             .store(in: &cancellables)
     }
     
+    // This poll is only a fallback — DistributedNotificationCenter observers are
+    // the primary path. Poll at the responsive rate while an audio device is
+    // actually connected, and back right off otherwise (Bluetooth off, or
+    // nothing paired and connected), which is the common idle case.
+    private static let connectedPollInterval: TimeInterval = 3.0
+    private static let idlePollInterval: TimeInterval = 15.0
+
     /// Starts polling for device connection changes (fallback mechanism)
     private func startPollingForChanges() {
-        print("🎧 [BluetoothAudioManager] Starting polling timer (3s interval)...")
-        
-        pollingTimer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: true) { [weak self] _ in
-            self?.checkForDeviceChanges()
+        SystemActivityGate.shared.$shouldSuspendBackgroundWork
+            .removeDuplicates()
+            .sink { [weak self] suspend in
+                guard let self else { return }
+                if suspend {
+                    self.pollingTimer?.invalidate()
+                    self.pollingTimer = nil
+                } else if self.pollingTimer == nil {
+                    // Re-sync immediately — devices may have changed while parked.
+                    self.checkForDeviceChanges()
+                    self.adjustPollingCadence()
+                    if self.pollingTimer == nil {
+                        self.schedulePollingTimer(interval: Self.idlePollInterval)
+                    }
+                }
+            }
+            .store(in: &cancellables)
+
+        schedulePollingTimer(interval: Self.idlePollInterval)
+    }
+
+    private func schedulePollingTimer(interval: TimeInterval) {
+        pollingTimer?.invalidate()
+        let timer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
+            guard let self else { return }
+            self.checkForDeviceChanges()
+            self.adjustPollingCadence()
         }
+        // Allow macOS to coalesce this with other timers rather than waking
+        // the CPU on its own schedule.
+        timer.tolerance = interval * 0.5
+        pollingTimer = timer
+    }
+
+    private func adjustPollingCadence() {
+        let wanted = isBluetoothAudioConnected
+            ? Self.connectedPollInterval
+            : Self.idlePollInterval
+        guard let current = pollingTimer?.timeInterval, abs(current - wanted) > 0.01 else { return }
+        schedulePollingTimer(interval: wanted)
     }
     
     /// Checks for device connection/disconnection changes

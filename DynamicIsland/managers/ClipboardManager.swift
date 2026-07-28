@@ -213,12 +213,63 @@ class ClipboardManager: ObservableObject {
     
     // MARK: - Public Methods
     
+    // AppKit exposes no pasteboard-change notification, so changeCount must be
+    // polled. Poll briskly just after a copy (when another is likely), and back
+    // off while the clipboard is idle — which is almost all of the time.
+    private static let activePollInterval: TimeInterval = 0.5
+    private static let idlePollInterval: TimeInterval = 2.0
+    private static let idleThreshold: TimeInterval = 30.0
+    private var lastClipboardChange = Date.distantPast
+    private var activityGateCancellable: AnyCancellable?
+
     func startMonitoring() {
         guard !isMonitoring else { return }
-        
+
         isMonitoring = true
-        timer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
-            self?.checkClipboard()
+        observeActivityGate()
+        scheduleClipboardTimer(interval: Self.activePollInterval)
+    }
+
+    /// Nothing can reach the pasteboard while the screen is locked or asleep,
+    /// so stop polling entirely rather than sampling a clipboard that cannot change.
+    private func observeActivityGate() {
+        guard activityGateCancellable == nil else { return }
+        activityGateCancellable = SystemActivityGate.shared.$shouldSuspendBackgroundWork
+            .removeDuplicates()
+            .sink { [weak self] suspend in
+                guard let self, self.isMonitoring else { return }
+                if suspend {
+                    self.timer?.invalidate()
+                    self.timer = nil
+                } else if self.timer == nil {
+                    self.lastChangeCount = NSPasteboard.general.changeCount
+                    self.scheduleClipboardTimer(interval: Self.activePollInterval)
+                }
+            }
+    }
+
+    private func scheduleClipboardTimer(interval: TimeInterval) {
+        timer?.invalidate()
+        let timer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
+            self?.pollClipboard()
+        }
+        // Lets macOS coalesce this wakeup with other timers instead of waking
+        // the CPU on its own schedule.
+        timer.tolerance = interval * 0.5
+        self.timer = timer
+    }
+
+    private func pollClipboard() {
+        let previousChangeCount = lastChangeCount
+        checkClipboard()
+        if lastChangeCount != previousChangeCount {
+            lastClipboardChange = Date()
+        }
+
+        let idle = Date().timeIntervalSince(lastClipboardChange) > Self.idleThreshold
+        let wanted = idle ? Self.idlePollInterval : Self.activePollInterval
+        if let current = timer?.timeInterval, abs(current - wanted) > 0.01 {
+            scheduleClipboardTimer(interval: wanted)
         }
     }
     

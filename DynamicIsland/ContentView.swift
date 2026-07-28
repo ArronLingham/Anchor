@@ -751,7 +751,7 @@ struct ContentView: View {
                     clearMusicControlVisibilityDeadline()
                 }
                 enqueueMusicControlWindowSync(forceRefresh: true)
-                startHiddenEdgeHoverPolling()
+                syncHiddenEdgeHoverPolling()
                 // Deterministic teardown for borderless panels (`.onDisappear` is
                 // unreliable); the window-cleanup path calls this before closing.
                 vm.onViewTeardown = { performViewTeardown() }
@@ -1949,16 +1949,30 @@ struct ContentView: View {
         isHoveringClosedMusicWaveformControl = false
     }
 
+    /// Starts or stops the hidden-edge hover poll to match current settings.
+    ///
+    /// The poll only means anything in hide-until-hover mode, but it used to be
+    /// started unconditionally and then no-op every tick — a 20Hz main-actor
+    /// wakeup that did nothing for the default configuration. Drive it from the
+    /// gate instead, and re-evaluate whenever the gate changes.
+    private func syncHiddenEdgeHoverPolling() {
+        if shouldUseHiddenEdgeHoverPolling {
+            startHiddenEdgeHoverPolling()
+        } else {
+            stopHiddenEdgeHoverPolling()
+        }
+    }
+
     private func startHiddenEdgeHoverPolling() {
         guard hiddenEdgeHoverPollingTask == nil else { return }
 
         hiddenEdgeHoverPollingTask = Task { @MainActor in
             while !Task.isCancelled {
-                if self.shouldUseHiddenEdgeHoverPolling {
-                    let hovering = self.hiddenHoverActivationContainsMouse()
-                    if hovering != self.isHovering {
-                        self.handleHover(hovering)
-                    }
+                guard self.shouldUseHiddenEdgeHoverPolling else { break }
+
+                let hovering = self.hiddenHoverActivationContainsMouse()
+                if hovering != self.isHovering {
+                    self.handleHover(hovering)
                 }
 
                 try? await Task.sleep(for: .milliseconds(50))

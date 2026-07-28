@@ -1086,7 +1086,9 @@ extension Defaults.Keys {
     static let showBluetoothBatteryPercentageText = Key<Bool>("showBluetoothBatteryPercentageText", default: false)
     static let showBluetoothDeviceNameMarquee = Key<Bool>("showBluetoothDeviceNameMarquee", default: false)
     static let useBluetoothHUD3DIcon = Key<Bool>("useBluetoothHUD3DIcon", default: true)
-    static let showAirPodsListeningModeChanges = Key<Bool>("showAirPodsListeningModeChanges", default: true)
+    // Default off: same reason as mirrorSystemTimer — detecting listening-mode
+    // changes requires a persistent `/usr/bin/log stream` child process.
+    static let showAirPodsListeningModeChanges = Key<Bool>("showAirPodsListeningModeChanges", default: false)
     
     // MARK: Stats Feature
     static let enableStatsFeature = Key<Bool>("enableStatsFeature", default: false)
@@ -1132,7 +1134,10 @@ extension Defaults.Keys {
     static let timerShowsLabel = Key<Bool>("timerShowsLabel", default: false)
     static let timerShowsProgress = Key<Bool>("timerShowsProgress", default: true)
     static let timerProgressStyle = Key<TimerProgressStyle>("timerProgressStyle", default: .bar)
-    static let mirrorSystemTimer = Key<Bool>("mirrorSystemTimer", default: true)
+    // Default off: mirroring the system timer runs a persistent
+    // `/usr/bin/log stream` child process, which keeps logd filtering the
+    // unified log for as long as Atoll is running. Opt in from Settings.
+    static let mirrorSystemTimer = Key<Bool>("mirrorSystemTimer", default: false)
     static let timerInputStyle = Key<TimerInputStyle>("timerInputStyle", default: .manual)
     
     
