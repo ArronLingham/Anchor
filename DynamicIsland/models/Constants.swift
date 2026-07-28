@@ -1163,6 +1163,13 @@ extension Defaults.Keys {
     static let enableDictation = Key<Bool>("enableDictation", default: true)
     /// Show the live transcript in the notch while dictating.
     static let showDictationLiveActivity = Key<Bool>("showDictationLiveActivity", default: true)
+
+    // MARK: - Launcher
+    /// Spotlight-style application launcher panel.
+    static let enableLauncher = Key<Bool>("enableLauncher", default: true)
+    /// Frecency bookkeeping, keyed by app bundle path.
+    static let launcherFrecencyScores = Key<[String: Double]>("launcherFrecencyScores", default: [:])
+    static let launcherLastLaunched = Key<[String: Date]>("launcherLastLaunched", default: [:])
     static let clipboardHistorySize = Key<Int>("clipboardHistorySize", default: 3)
     static let showClipboardIcon = Key<Bool>("showClipboardIcon", default: true)
     static let clipboardDisplayMode = Key<ClipboardDisplayMode>("clipboardDisplayMode", default: .panel)

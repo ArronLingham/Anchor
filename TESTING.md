@@ -1,168 +1,218 @@
 # Anchor — manual test checklist
 
-## Context
+Each item says **what** you're checking, **how** to do it, and **what correct looks like**. Work top-down; §1–§3 are where real bugs would be.
 
-Three phases have shipped since the last build was known-good end-to-end:
+Current build: `/private/tmp/claude-501/-Users-arronlingham-Anchor/afa47fe6-293c-4cd3-aa73-51fa1a67c979/scratchpad/dd/Build/Products/Debug/Atoll.app`
 
-- **Phase 0.5** rewrote the always-on pollers (OSD suppression, hover, clipboard, Bluetooth), added `SystemActivityGate`, and flipped two defaults off.
-- **Phase 1** deleted seven subsystems — ~25k LOC, 108 files — and with them a set of enum cases, settings tabs, and a sizing helper that other code referenced.
-- **Phase 2** added native dictation and raised the deployment target to macOS 26.
-
-Idle CPU went 1.93% → ~0.00%, but **almost none of this has been exercised by a human**. Automated checks cover transcription and the build; everything involving the window server, TCC permissions, real audio hardware, or the notch UI is unverified. This enumerates every surviving feature and how to check it.
-
-Build under test: `/private/tmp/claude-501/-Users-arronlingham-Anchor/afa47fe6-293c-4cd3-aa73-51fa1a67c979/scratchpad/dd/Build/Products/Debug/Atoll.app`
+**Before you start** — a fresh profile hides most tabs. `Notes` and `Terminal` default to off and clipboard opens as a panel, so you'll only see **Home + Timer** until you enable the rest in Settings.
 
 ---
 
-## 0. Known broken — skip these, they're already logged
+## 0. Already known broken — don't report these
 
 | Thing | Why |
 |---|---|
 | Clipboard tab shows the **Notes** view | Upstream bug, `ContentView.swift:993` |
-| Settings → **Enable Camera Detection** does nothing | `CameraMonitor` removed in Phase 1; `cameraActive` is never set. Mic half still works. |
-| **Bluetooth HUD animations** don't render | The 8 `.mov` files are unreachable LFS stubs |
-| **⌘F1 / ⌘F2 backlight shortcuts** do nothing | Defined in `ShortcutConstants.swift` but no handler is registered anywhere — pre-existing |
-| Dead Settings toggles | Stats, Color Picker, Mirror, Screen Assistant, Shelf, Extensions — features are gone, switches remain |
-
-## Defaults to know before testing
-
-`enableNotes` = **false**, `enableTerminalFeature` = **false**, `clipboardDisplayMode` = **panel**. So a fresh profile shows only **Home + Timer** tabs. Enable the others in Settings before testing them.
+| Settings → "Enable Camera Detection" does nothing | `CameraMonitor` was removed; nothing sets camera state. Mic half works. |
+| Bluetooth HUD animations don't render | The 8 `.mov` files are unreachable LFS stubs |
+| **⌘F1 / ⌘F2** backlight shortcuts do nothing | Declared but no handler registered — pre-existing |
+| Dead Settings toggles | Stats, Color Picker, Mirror, Screen Assistant, Shelf, Extensions |
 
 ---
 
-## 1. Smoke (2 min — do this first)
+## 1. Smoke — 2 minutes, do this first
 
-1. Launch. Notch appears; menu bar icon present.
-2. `pgrep -P $(pgrep -x Atoll)` → **empty** (no child processes).
-3. `lsof -nP -iTCP:9020` → **empty** (extension RPC server is gone).
-4. No crash logs in `~/Library/Logs/DiagnosticReports/`.
-5. Open Settings; all 14 tabs render without a blank pane.
+**1.1 — App is running clean.** Paste into Terminal:
+```bash
+pgrep -lx Atoll && pgrep -P $(pgrep -x Atoll) | wc -l && lsof -nP -iTCP:9020
+```
+✅ Prints a PID, then `0`, then nothing. The `0` means no child processes; empty port means the old extension server is gone.
 
-## 2. Notch core
+**1.2 — No crashes.**
+```bash
+ls ~/Library/Logs/DiagnosticReports/ | grep -i atoll
+```
+✅ Nothing.
 
-6. Hover to open, move away to close.
-7. Click to open when `openNotchOnHover` is off.
-8. **⌘⇧I** toggles the notch open/closed.
-9. Scroll/swipe gestures on the closed notch (`enableGestures`).
-10. Haptics fire on open (`enableHaptics`, needs a trackpad).
-11. **Minimalistic UI** on → notch collapses to the compact music player; tabs hide.
-12. **Multi-display**: plug in an external monitor. Notch follows `selectedScreen`; try switching it in Settings. Unplug while the notch is open.
-13. **Full-screen app** — notch should still draw above it (this is the private SkyLight/`CGSSpace` path, most likely to break on an OS update).
-14. Notch geometry per tab: open Home, Timer, Notes, Terminal in turn and confirm each sizes correctly. *Terminal is the risky one* — it computes a screen-height fraction, and the sizing helper next to it had a real bug fixed in Phase 1.
-
-## 3. Media & music
-
-15. Play in **Apple Music** — title, artist, artwork, elapsed time.
-16. Repeat for **Spotify**, **YouTube Music**, **Amazon Music**, and a **browser tab** (NowPlaying fallback).
-17. Play/pause/next/previous from the notch.
-18. Scrub the progress bar; drag and release.
-19. Shuffle / repeat toggles (`showShuffleAndRepeat`).
-20. Media output/device switcher (`showMediaOutputControl`).
-21. **Waveform visualiser** animates during playback and stops when paused.
-22. Album-art colour tinting; animated artwork if the track has it.
-23. **Full-screen artwork** window.
-24. **Media keys** (F7/F8/F9) — `MediaKeyInterceptor` should route them.
-25. Idle animation appears when nothing is playing (`showNotHumanFace`).
-
-## 4. Live activities (closed notch)
-
-Each of these is a separate branch in `ContentView`; they're mutually exclusive and prioritised, so also check that a higher-priority one preempts a lower one.
-
-26. **Music** — playing track shows in the closed notch.
-27. **Timer** — start a timer, watch it count down.
-28. **Reminder** — a Reminders alert fires.
-29. **Screen recording** — start a QuickTime/system recording.
-30. **Download** — download a file in Safari and in a Chromium browser.
-31. **Do Not Disturb / Focus** — toggle a Focus mode.
-32. **Lock screen** — lock the Mac.
-33. **Privacy indicator** — start a mic-using app (camera half is dead, see §0).
-34. **Caps Lock** — press Caps Lock.
-35. **Battery** — plug/unplug power; low-battery and full-battery HUDs.
-36. **Bluetooth** — connect/disconnect AirPods.
-37. **Dictation** — see §6.
-38. **Preemption**: start a timer while music plays; the higher-priority activity should win and restore cleanly.
-
-## 5. HUD / OSD — highest regression risk
-
-The OSD suppression watcher was rewritten from a 150 ms `pgrep` loop to an event-driven process source. This is the change most likely to have broken something.
-
-39. **Volume keys** → Atoll's HUD, never macOS's.
-40. **Brightness keys** → same.
-41. **Keyboard backlight keys** → same.
-42. Verify suppression is live: `ps -o state= -p $(pgrep -x OSDUIHelper)` prints **`T`** (SIGSTOP'd).
-43. **Quit Atoll → the system OSD must come back.** If `OSDUIHelper` is left frozen, your volume keys show no HUD at all until reboot. This is the single worst possible failure; test it deliberately.
-44. Toggle `enableSystemHUD` off and on in Settings — native OSD returns, then is suppressed again.
-45. **Inline HUD** vs standard HUD styles.
-46. Optional variants: `enableCustomOSD`, `enableVerticalHUD`, `enableCircularHUD` (all default off).
-47. **Sleep the display, wake it** — suppression resumes.
-48. **Lock, unlock** — same.
-49. **Low Power Mode on/off** — `SystemActivityGate` should park and resume pollers.
-50. Mash volume keys rapidly for ~10 s — no stuck HUD, no runaway CPU.
-
-## 6. Dictation (Phase 2 — newest)
-
-Transcription is proven by harness; **everything around it is unverified.**
-
-51. First hold of **⌘⇧D** → **Microphone prompt** appears. No prompt at all = bug.
-52. Confirm Atoll is listed and enabled under **Privacy & Security → Accessibility**. Without it the paste is silently dropped.
-53. First run may pause while the speech model downloads.
-54. Dictate into **TextEdit**, a **browser field**, and **Terminal** — three different injection paths.
-55. **The bug I fixed** would appear as: text pasted wrong/unformatted in the browser, or nothing at all — a still-held ⇧ turning ⌘V into ⌘⇧V.
-56. **Clipboard preservation**: copy something distinctive, dictate, then ⌘V manually — you should get your original back.
-57. **Clipboard race**: dictate, then copy something else within ~250 ms. Your new copy must survive.
-58. **Notch UI**: mic icon → level meter responding to your voice → live transcript → "Transcribing…".
-59. Speak loud then quiet — the meter must track it, not sit flat.
-60. Edge cases: tap without speaking; release during startup; re-trigger while transcribing; dictate silence; connect AirPods mid-dictation; dictate into a field that can't take text; revoke Accessibility then dictate (expect a visible error, not silence).
-
-## 7. Notch tabs
-
-61. **Home** — music + calendar.
-62. **Timer** — presets, start/pause/reset; **⌘⇧T** starts the demo timer.
-63. **Notes** (enable first) — create, edit, delete; Apple Notes sync.
-64. **Clipboard** — expect the Notes view (§0); check history still records.
-65. **Terminal** (enable first) — **⌃`** toggles it; run a command; resize. Note this is the SwiftTerm/Metal path.
-66. Switch rapidly between all tabs — no crash, no stuck sizing.
-
-## 8. Other features
-
-67. **Calendar** — events show; click through to Calendar.app; multi-day; all-day events.
-68. **Clipboard panel** — **⌘⇧C** opens it; pick an item; history limit respected.
-69. **Downloads** — progress, completion, Safari + Chromium.
-70. **Battery** — percentage, charging state, low/full HUDs.
-71. **Bluetooth** — connect/disconnect, battery percentage text, name marquee.
-72. **Lock screen widgets** — media, weather, focus, reminder, timer (all default on).
-73. **Lunar / BetterDisplay** integration (only if you run those apps).
-74. **Sneak peek** — **⌘⇧H**.
-
-## 9. Settings
-
-75. Open all 14 tabs; no blank panes, no empty sidebar groups.
-76. **Search** — results must not reference Stats, Shelf, Color Picker, Screen Assistant, or Extensions.
-77. Search-highlight jumps to and highlights the right row.
-78. Rebind each of the 6 live shortcuts; confirm the new binding works.
-79. Toggle each live feature flag off and on; confirm the UI responds.
-
-## 10. Performance
-
-80. Settle **5+ minutes**, then:
-    ```bash
-    /private/tmp/claude-501/-Users-arronlingham-Anchor/afa47fe6-293c-4cd3-aa73-51fa1a67c979/scratchpad/measure.sh Atoll 180 "manual-check"
-    ```
-    Expect **~0.00–0.05% mean CPU, ~40 MB RSS**. Sampling before it settles gives a meaningless number — launch transients hit ~28%.
-81. Re-measure during music playback (waveform is the expensive path).
-82. Activity Monitor → **Energy Impact** over an hour of normal use.
-
-## 11. Stability
-
-83. Run a **full day**; check for `Atoll*` crash logs.
-84. Sleep/wake the Mac several times.
-85. Restart; confirm launch-at-login.
-86. Leave music playing an hour — watch RSS for a leak.
+**1.3 — Settings opens.** Menu bar icon → Settings. Click every tab down the sidebar.
+✅ All 14 render. ❌ A blank pane means I broke a tab when deleting features.
 
 ---
 
-## Verification
+## 2. Launcher — brand new, never run by a human
 
-The suite passes when: §1 smoke is clean, §5 items 42–43 behave (OSD suppressed while running, restored on quit), §6 dictation completes a round trip in all three app types with the clipboard intact, and §10 idle CPU stays at or below **0.05% mean**.
+**2.1 — It opens.** Press **⌥Space** (Option+Space).
+✅ A search panel appears centred, slightly above middle, frosted background.
+❌ Nothing happens → check Settings → Shortcuts → Launcher, in case ⌥Space is taken by Spotlight or Alfred.
 
-Report failures as: step number, expected, actual. For dictation, name the target app — the injection path differs between native, Electron, and terminal apps.
+**2.2 — You can type immediately.** With the panel open, just start typing.
+✅ Characters appear in the field without clicking it first. *This is the classic failure mode for this kind of panel — if you have to click first, the focus handling is wrong.*
+
+**2.3 — Search finds things.** Type `term`.
+✅ **Terminal** is first. Matched letters are bold.
+
+**2.4 — Arrow keys and Enter.** Type `saf`, press ↓ then ↑, press **Enter**.
+✅ Selection moves and wraps at the ends; Enter launches Safari and the panel closes.
+
+**2.5 — Escape returns you where you were.** Click into TextEdit, press ⌥Space, then **Esc**.
+✅ Panel closes and **TextEdit is focused again** — you can type into it straight away without clicking.
+
+**2.6 — Click-away dismisses.** Open the panel, click any other window.
+✅ Panel closes on its own.
+
+**2.7 — Empty query shows your most-used.** Open the panel and don't type.
+✅ A list appears. After you've launched a few apps, the ones you use most should drift to the top.
+
+**2.8 — Frecency learns.** Launch **System Settings** through the launcher once. Reopen and type `ss`.
+✅ System Settings should now rank above Screen Sharing. *Both are valid "ss" acronyms — a cold index ranks Screen Sharing first, and one launch is designed to flip it.*
+
+**2.9 — Icons load.** Scroll the list.
+✅ Every row shows the real app icon. First open may be briefly blank while icons render; the second open should be instant (they're cached to disk).
+
+**2.10 — Newly installed apps appear.** Install or copy any `.app` into `/Applications`, then reopen the panel.
+✅ It's searchable without restarting Atoll.
+
+**2.11 — It's fast.** Type and delete quickly in the search field.
+✅ No lag or beachball. Search measures 0.4 ms across 109 apps, so any stutter is a UI bug, not the matcher.
+
+---
+
+## 3. Dictation — new, transcription proven but nothing around it
+
+**3.1 — Microphone permission.** Hold **⌘⇧D** for ~2 seconds.
+✅ macOS asks for microphone access. Grant it. ❌ No prompt at all is a bug.
+
+**3.2 — Accessibility permission.** System Settings → Privacy & Security → **Accessibility**.
+✅ Atoll is listed and switched **on**. Without this the transcript is silently dropped — nothing will paste and there'll be no error.
+
+**3.3 — The core loop.** Click into **TextEdit**, hold **⌘⇧D**, say *"testing one two three"*, release.
+✅ The text appears at your cursor within about a second.
+
+**3.4 — Repeat in a browser text field**, then **in Terminal**.
+✅ Same result in all three. *These take different injection paths — a bug I fixed showed up as text pasting unformatted or not at all in the browser specifically, so this is worth doing properly.*
+
+**3.5 — Your clipboard survives.** Copy the word `KEEPME`. Dictate something. Now press ⌘V manually.
+✅ You get `KEEPME` back, not the transcript.
+
+**3.6 — Clipboard race.** Dictate, then *immediately* (within a second) copy something else. Press ⌘V.
+✅ Your new copy is intact. ❌ Getting the old clipboard back means restore is clobbering your data.
+
+**3.7 — Notch shows progress.** Hold ⌘⇧D and watch the notch.
+✅ Mic icon → a level meter that moves with your voice → live transcript text → "Transcribing…".
+
+**3.8 — Meter responds.** Speak loudly, then softly.
+✅ The bars change height. ❌ A flat meter means the audio format handling is wrong.
+
+**3.9 — Edge cases.** Try each: tap ⌘⇧D without speaking; tap and release instantly several times; press it again while it's still transcribing; hold it in silence; connect AirPods mid-dictation.
+✅ Always returns to idle. ❌ Getting stuck showing "Transcribing…" forever is the failure to watch for.
+
+---
+
+## 4. HUD / OSD — highest regression risk
+
+I rewrote the OSD suppression from a 150 ms polling loop to an event-driven watcher. This is the most likely thing to be broken.
+
+**4.1 — Atoll's HUD replaces the system one.** Press volume up/down, then brightness, then keyboard backlight.
+✅ You see Atoll's notch HUD. ❌ Seeing macOS's grey square means suppression isn't working.
+
+**4.2 — Confirm suppression is active.**
+```bash
+ps -o state= -p $(pgrep -x OSDUIHelper)
+```
+✅ Prints `T` (stopped). That's Atoll holding the system HUD frozen.
+
+**4.3 — ⚠️ The important one: quit Atoll, then press volume keys.**
+✅ macOS's own HUD comes back. ❌ **No HUD at all** means Atoll left `OSDUIHelper` frozen on exit — you'd have no volume feedback until you reboot. Test this deliberately.
+
+**4.4 — Toggle it off and on.** Settings → Controls → turn off the system HUD replacement, press volume, turn it back on, press volume.
+✅ Native HUD returns, then Atoll's takes over again.
+
+**4.5 — Survives sleep.** Sleep the display (⌃⇧⏻), wake it, press volume.
+✅ Atoll's HUD still appears.
+
+**4.6 — Survives lock.** Lock (⌃⌘Q), unlock, press volume.
+✅ Same.
+
+**4.7 — Rapid input.** Mash volume up/down for ten seconds.
+✅ No stuck HUD, no fan spin-up.
+
+---
+
+## 5. Notch core
+
+**5.1** Hover the notch → opens. Move away → closes.
+**5.2** Press **⌘⇧I** → toggles open/closed.
+**5.3** Scroll/swipe on the closed notch → gestures respond.
+**5.4** Settings → turn on Minimalistic UI → notch becomes the compact player, tabs hide.
+**5.5** Plug in an external monitor → notch appears on the screen chosen in Settings. Switch screens there. Unplug while the notch is open. ✅ No crash, notch relocates.
+**5.6** Open any app full-screen. ✅ The notch still draws over it. *This uses private macOS APIs and is the most fragile part of the app.*
+**5.7** Open Home, Timer, Notes, Terminal in turn. ✅ Each sizes correctly. *Terminal is the one to watch — a sizing bug was fixed next to it in Phase 1.*
+
+---
+
+## 6. Media
+
+**6.1** Play something in **Apple Music** → title, artist, artwork, elapsed time all show.
+**6.2** Repeat for **Spotify**, **YouTube Music**, **Amazon Music**, and a **browser video**.
+**6.3** Play/pause/next/previous from the notch.
+**6.4** Drag the progress scrubber and release. ✅ Playback jumps to that point.
+**6.5** Shuffle and repeat buttons toggle.
+**6.6** Waveform visualiser animates while playing, stops when paused.
+**6.7** Press the media keys (F7/F8/F9). ✅ Atoll handles them.
+**6.8** Stop all playback. ✅ Idle animation appears.
+
+---
+
+## 7. Live activities
+
+Start each of these and confirm it appears in the closed notch:
+
+**7.1** Timer running · **7.2** Reminder fires · **7.3** Screen recording · **7.4** Download in Safari, then Chrome · **7.5** Focus mode on · **7.6** Mac locked · **7.7** Mic in use by another app · **7.8** Caps Lock on · **7.9** Power plugged/unplugged · **7.10** AirPods connect/disconnect
+
+**7.11 — Priority.** Start a timer while music is playing.
+✅ One takes over cleanly and the other returns afterwards — no flicker or overlap.
+
+---
+
+## 8. Everything else
+
+**8.1** **Calendar** — events show on Home; click through to Calendar.app.
+**8.2** **Clipboard** — press **⌘⇧C**, pick an item, confirm it pastes.
+**8.3** **Timer** — **⌘⇧T** starts the demo timer; presets and pause/reset work.
+**8.4** **Notes** (enable first) — create, edit, delete; check Apple Notes sync.
+**8.5** **Terminal** (enable first) — **⌃`** toggles it; run `ls`; resize it.
+**8.6** **Battery** — percentage and charging state correct.
+**8.7** **Bluetooth** — device name and battery percentage on connect.
+**8.8** **Lock screen widgets** — lock the Mac; media, weather, focus, reminder, timer widgets appear.
+**8.9** **Sneak peek** — **⌘⇧H**.
+**8.10** **Settings search** — search "shelf" or "stats". ✅ No results (those features are gone).
+**8.11** **Rebind a shortcut** in Settings and confirm the new key works.
+
+---
+
+## 9. Performance
+
+**9.1 — Idle CPU.** Leave the app alone **5+ minutes**, then:
+```bash
+/private/tmp/claude-501/-Users-arronlingham-Anchor/afa47fe6-293c-4cd3-aa73-51fa1a67c979/scratchpad/measure.sh Atoll 180 "manual-check"
+```
+✅ Mean **0.00–0.05%**, RSS around **40 MB**. *Don't measure right after launch — startup spikes to ~28% and ruins the average.*
+
+**9.2 — During playback.** Repeat while music plays. ✅ Should stay low; the waveform is the expensive path.
+
+**9.3 — Energy.** Activity Monitor → Energy tab, after an hour of normal use.
+
+---
+
+## 10. Stability
+
+**10.1** Leave it running a full day, then check for crash logs (see 1.2).
+**10.2** Sleep and wake the Mac several times.
+**10.3** Restart; confirm Atoll launches at login.
+**10.4** Leave music playing an hour; watch RSS in Activity Monitor for steady growth (a leak).
+
+---
+
+## Reporting back
+
+Give me the item number, what you expected, and what happened. For dictation, say which app you were pasting into — native apps, Electron apps, and terminals each take a different path.

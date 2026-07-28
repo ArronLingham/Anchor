@@ -6166,6 +6166,29 @@ struct Shortcuts: View {
                 Section {
                     HStack {
                         VStack(alignment: .leading) {
+                            KeyboardShortcuts.Recorder("Open launcher:", name: .toggleLauncher)
+                                .disabled(!enableShortcuts || !Defaults[.enableLauncher])
+                            if !Defaults[.enableLauncher] {
+                                Text("Launcher is disabled")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .padding(.top, 2)
+                            }
+                        }
+                        Spacer()
+                    }
+                } header: {
+                    Text("Launcher")
+                } footer: {
+                    Text("Opens a search panel for launching applications. Default is Option+Space.")
+                        .multilineTextAlignment(.trailing)
+                        .foregroundStyle(.secondary)
+                        .font(.caption)
+                }
+
+                Section {
+                    HStack {
+                        VStack(alignment: .leading) {
                             KeyboardShortcuts.Recorder("Push-to-talk dictation:", name: .pushToTalkDictation)
                                 .disabled(!enableShortcuts || !Defaults[.enableDictation])
                             if !Defaults[.enableDictation] {

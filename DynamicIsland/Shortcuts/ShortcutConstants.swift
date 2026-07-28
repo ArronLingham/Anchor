@@ -25,6 +25,8 @@ import SwiftUI
 
 extension KeyboardShortcuts.Name {
     static let clipboardHistoryPanel = Self("clipboardHistoryPanel", default: .init(.c, modifiers: [.shift, .command]))
+    /// Opens the application launcher panel.
+    static let toggleLauncher = Self("toggleLauncher", default: .init(.space, modifiers: [.option]))
     /// Push-to-talk: hold to dictate, release to paste the transcript.
     static let pushToTalkDictation = Self("pushToTalkDictation", default: .init(.d, modifiers: [.shift, .command]))
     static let decreaseBacklight = Self("decreaseBacklight", default: .init(.f1, modifiers: [.command]))

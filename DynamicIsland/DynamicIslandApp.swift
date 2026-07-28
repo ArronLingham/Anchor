@@ -812,6 +812,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             self, selector: #selector(onScreenUnlocked(_:)),
             name: NSNotification.Name(rawValue: "com.apple.screenIsUnlocked"), object: nil)
 
+        KeyboardShortcuts.onKeyDown(for: .toggleLauncher) {
+            guard Defaults[.enableShortcuts], Defaults[.enableLauncher] else { return }
+            LauncherPanelManager.shared.toggle()
+        }
+
         // Push-to-talk dictation: hold to record, release to transcribe and paste.
         KeyboardShortcuts.onKeyDown(for: .pushToTalkDictation) {
             guard Defaults[.enableShortcuts], Defaults[.enableDictation] else { return }
