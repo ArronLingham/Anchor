@@ -18,6 +18,7 @@
 
 import AVFoundation
 import Foundation
+import os
 import Speech
 
 /// On-device transcription via macOS 26's `SpeechAnalyzer` / `SpeechTranscriber`.
@@ -36,8 +37,12 @@ final class AppleSpeechTranscriber: SpeechTranscribing {
     private var transcriber: SpeechTranscriber?
     private var analyzer: SpeechAnalyzer?
     private var inputStream: AsyncStream<AnalyzerInput>?
-    private var inputContinuation: AsyncStream<AnalyzerInput>.Continuation?
     private var resultsTask: Task<Void, Never>?
+
+    /// Written on the main actor, read from the real-time audio thread, so it
+    /// needs a lock rather than plain property access.
+    private let continuationLock = OSAllocatedUnfairLock<AsyncStream<AnalyzerInput>.Continuation?>(
+        initialState: nil)
 
     private let state = TranscriptState()
 
@@ -90,7 +95,7 @@ final class AppleSpeechTranscriber: SpeechTranscribing {
 
         let (stream, continuation) = AsyncStream<AnalyzerInput>.makeStream()
         inputStream = stream
-        inputContinuation = continuation
+        continuationLock.withLock { $0 = continuation }
 
         let analyzer = SpeechAnalyzer(modules: [transcriber])
         self.analyzer = analyzer
@@ -112,13 +117,14 @@ final class AppleSpeechTranscriber: SpeechTranscribing {
         try await analyzer.start(inputSequence: stream)
     }
 
-    func append(_ buffer: AVAudioPCMBuffer) async {
-        inputContinuation?.yield(AnalyzerInput(buffer: buffer))
+    /// Safe to call from the audio thread: `yield` is thread-safe and preserves
+    /// call order, so buffers reach the analyzer in the order they were captured.
+    func append(_ buffer: AVAudioPCMBuffer) {
+        continuationLock.withLock { $0?.yield(AnalyzerInput(buffer: buffer)) }
     }
 
     func finish() async throws -> String {
-        inputContinuation?.finish()
-        inputContinuation = nil
+        finishInput()
 
         try await analyzer?.finalizeAndFinishThroughEndOfInput()
         // Let the results task drain whatever finalization produced.
@@ -130,11 +136,18 @@ final class AppleSpeechTranscriber: SpeechTranscribing {
     }
 
     func cancel() async {
-        inputContinuation?.finish()
-        inputContinuation = nil
+        finishInput()
         await analyzer?.cancelAndFinishNow()
         resultsTask?.cancel()
         teardown()
+    }
+
+    /// Closes the audio stream, so no further `append` can enqueue into it.
+    private func finishInput() {
+        continuationLock.withLock { continuation in
+            continuation?.finish()
+            continuation = nil
+        }
     }
 
     private func teardown() {

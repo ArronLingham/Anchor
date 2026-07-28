@@ -96,7 +96,7 @@ final class DictationManager: ObservableObject {
             guard let self else { return }
             do {
                 let transcript = try await self.backend.finish()
-                self.deliver(transcript)
+                await self.deliver(transcript)
             } catch {
                 self.fail(error.localizedDescription)
             }
@@ -141,14 +141,25 @@ final class DictationManager: ObservableObject {
             converter = nil
         }
 
+        // Captured by value so the audio thread never reads main-actor state.
+        let backend = self.backend
+        let capturedConverter = converter
+        let capturedTarget = targetFormat
+
         input.removeTap(onBus: 0)
         input.installTap(onBus: 0, bufferSize: 4096, format: inputFormat) { [weak self] buffer, _ in
-            guard let self else { return }
             let level = Self.peakLevel(of: buffer)
-            Task { @MainActor in self.updateLevel(level) }
+            Task { @MainActor [weak self] in self?.updateLevel(level) }
 
-            guard let converted = self.convert(buffer) else { return }
-            Task { await self.backend.append(converted) }
+            // Hand the analyzer a buffer we own. AVAudioEngine reuses the buffer it
+            // gives the tap once this closure returns, and the analyzer consumes it
+            // asynchronously — passing the original through would be a use-after-free.
+            guard
+                let owned = Self.convertedCopy(
+                    of: buffer, using: capturedConverter, targetFormat: capturedTarget)
+            else { return }
+            // Synchronous, so buffers stay in capture order.
+            backend.append(owned)
         }
 
         engine.prepare()
@@ -162,9 +173,17 @@ final class DictationManager: ObservableObject {
         inputLevel = 0
     }
 
-    /// Resamples the microphone buffer into the format the backend asked for.
-    private func convert(_ buffer: AVAudioPCMBuffer) -> AVAudioPCMBuffer? {
-        guard let converter, let targetFormat else { return buffer }
+    /// Resamples the microphone buffer into the format the backend asked for,
+    /// always returning a buffer this app owns.
+    ///
+    /// Static, and takes the converter explicitly, so the audio thread never
+    /// touches main-actor state. The tap closure captures both at install time.
+    private nonisolated static func convertedCopy(
+        of buffer: AVAudioPCMBuffer,
+        using converter: AVAudioConverter?,
+        targetFormat: AVAudioFormat?
+    ) -> AVAudioPCMBuffer? {
+        guard let converter, let targetFormat else { return copy(of: buffer) }
 
         let ratio = targetFormat.sampleRate / buffer.format.sampleRate
         let capacity = AVAudioFrameCount(Double(buffer.frameLength) * ratio) + 1024
@@ -191,9 +210,37 @@ final class DictationManager: ObservableObject {
         return output.frameLength > 0 ? output : nil
     }
 
+    /// Deep-copies a tap buffer so it outlives the tap callback.
+    private nonisolated static func copy(of buffer: AVAudioPCMBuffer) -> AVAudioPCMBuffer? {
+        guard
+            let copy = AVAudioPCMBuffer(
+                pcmFormat: buffer.format, frameCapacity: buffer.frameLength)
+        else { return nil }
+        copy.frameLength = buffer.frameLength
+
+        let channels = Int(buffer.format.channelCount)
+        let frames = Int(buffer.frameLength)
+        if let src = buffer.floatChannelData, let dst = copy.floatChannelData {
+            for channel in 0..<channels {
+                dst[channel].update(from: src[channel], count: frames)
+            }
+        } else if let src = buffer.int16ChannelData, let dst = copy.int16ChannelData {
+            for channel in 0..<channels {
+                dst[channel].update(from: src[channel], count: frames)
+            }
+        } else if let src = buffer.int32ChannelData, let dst = copy.int32ChannelData {
+            for channel in 0..<channels {
+                dst[channel].update(from: src[channel], count: frames)
+            }
+        } else {
+            return nil
+        }
+        return copy
+    }
+
     // MARK: - Delivery
 
-    private func deliver(_ transcript: String) {
+    private func deliver(_ transcript: String) async {
         let trimmed = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
             reset()
@@ -201,7 +248,7 @@ final class DictationManager: ObservableObject {
         }
 
         do {
-            try TextInjector.insert(trimmed)
+            try await TextInjector.insert(trimmed)
             reset()
         } catch {
             fail(error.localizedDescription)
@@ -235,14 +282,21 @@ final class DictationManager: ObservableObject {
         inputLevel += (peak - inputLevel) * smoothing
     }
 
+    /// Handles float and Int16 mic formats; reading only `floatChannelData` would
+    /// silently report a flat zero level on hardware that reports integer samples.
     private nonisolated static func peakLevel(of buffer: AVAudioPCMBuffer) -> Float {
-        guard let channel = buffer.floatChannelData?[0] else { return 0 }
         let count = Int(buffer.frameLength)
         guard count > 0 else { return 0 }
 
         var peak: Float = 0
-        for index in 0..<count {
-            peak = max(peak, abs(channel[index]))
+        if let channel = buffer.floatChannelData?[0] {
+            for index in 0..<count { peak = max(peak, abs(channel[index])) }
+        } else if let channel = buffer.int16ChannelData?[0] {
+            for index in 0..<count {
+                peak = max(peak, abs(Float(channel[index])) / Float(Int16.max))
+            }
+        } else {
+            return 0
         }
         // Perceptual curve — raw peak amplitude looks far too flat on a meter.
         return min(1, sqrt(peak))

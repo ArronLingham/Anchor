@@ -38,7 +38,11 @@ protocol SpeechTranscribing: AnyObject {
     func start(onUpdate: @escaping @Sendable (TranscriptUpdate) -> Void) async throws
 
     /// Feeds captured microphone audio into the session.
-    func append(_ buffer: AVAudioPCMBuffer) async
+    ///
+    /// Deliberately synchronous and safe to call from the real-time audio thread:
+    /// hopping through a `Task` would give no ordering guarantee between buffers,
+    /// which scrambles the transcript. Implementations must not block.
+    func append(_ buffer: AVAudioPCMBuffer)
 
     /// Ends the session and returns the complete transcript.
     func finish() async throws -> String

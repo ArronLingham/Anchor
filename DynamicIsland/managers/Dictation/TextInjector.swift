@@ -59,16 +59,24 @@ enum TextInjector {
     }
 
     /// Pastes `text` into the focused app, restoring the prior pasteboard afterwards.
-    static func insert(_ text: String) throws {
+    ///
+    /// Suspends for up to `modifierClearTimeout` waiting for the user's
+    /// push-to-talk chord to be released — see `waitForModifiersToClear`.
+    static func insert(_ text: String) async throws {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         guard hasAccessibilityPermission else { throw InjectionError.accessibilityNotTrusted }
+
+        // Wait before touching the pasteboard, so a slow release does not leave
+        // the transcript sitting on the user's clipboard any longer than needed.
+        await waitForModifiersToClear()
 
         let pasteboard = NSPasteboard.general
         let saved = snapshot(of: pasteboard)
 
         pasteboard.clearContents()
         pasteboard.setString(trimmed, forType: .string)
+        let ourChangeCount = pasteboard.changeCount
 
         do {
             try postPasteKeystroke()
@@ -79,17 +87,54 @@ enum TextInjector {
 
         // The paste is asynchronous from our point of view; give the target app a
         // moment to read the pasteboard before putting the old contents back.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-            restore(saved, to: pasteboard)
-        }
+        try? await Task.sleep(for: .milliseconds(250))
+
+        // Only restore if nothing else has written to the pasteboard since. If the
+        // user copied something in that window, theirs wins — silently reverting it
+        // would be data loss.
+        guard pasteboard.changeCount == ourChangeCount else { return }
+        restore(saved, to: pasteboard)
     }
 
     // MARK: - Keystroke
 
+    /// Modifiers that would turn ⌘V into a different command if still held.
+    private static let pollutingModifiers: CGEventFlags = [.maskShift, .maskAlternate, .maskControl]
+    private static let modifierClearTimeout: Duration = .milliseconds(600)
+    private static let modifierPollInterval: Duration = .milliseconds(10)
+
+    /// Waits for the user to finish releasing their push-to-talk chord.
+    ///
+    /// Setting `flags` on a synthesized event does not override the *physical*
+    /// modifier state — the window server merges what the keyboard is actually
+    /// reporting. With a chord like ⌘⇧D, the D key is usually released a beat
+    /// before ⌘ and ⇧, so a paste fired immediately on key-up arrives as ⌘⇧V.
+    /// That is "paste as plain text" in Chrome and VS Code, and something else
+    /// again elsewhere — the transcript lands wrong, or not at all.
+    ///
+    /// Returns whether the modifiers actually cleared; the caller pastes either
+    /// way, since a mangled paste still beats silently dropping the transcript.
+    @discardableResult
+    private static func waitForModifiersToClear() async -> Bool {
+        var waited: Duration = .zero
+        while waited < modifierClearTimeout {
+            let flags = CGEventSource.flagsState(.combinedSessionState)
+            if flags.intersection(pollutingModifiers).isEmpty { return true }
+            try? await Task.sleep(for: modifierPollInterval)
+            waited += modifierPollInterval
+        }
+        NSLog("TextInjector: modifiers still held after \(modifierClearTimeout); pasting anyway")
+        return false
+    }
+
     private static func postPasteKeystroke() throws {
+        // A private-state source does not inherit the physical keyboard's
+        // modifier flags, so ⌘ is the only modifier these events carry even if
+        // the user is somehow still holding the chord.
         guard
-            let keyDown = CGEvent(keyboardEventSource: nil, virtualKey: virtualKeyV, keyDown: true),
-            let keyUp = CGEvent(keyboardEventSource: nil, virtualKey: virtualKeyV, keyDown: false)
+            let source = CGEventSource(stateID: .privateState),
+            let keyDown = CGEvent(keyboardEventSource: source, virtualKey: virtualKeyV, keyDown: true),
+            let keyUp = CGEvent(keyboardEventSource: source, virtualKey: virtualKeyV, keyDown: false)
         else {
             throw InjectionError.eventCreationFailed
         }
