@@ -33,7 +33,6 @@ Plan of record: `~/.claude/plans/i-want-to-build-functional-pinwheel.md`
 
 ## Atoll gotchas
 
-- `git-lfs` is required (`*.gif`/`*.mov`/`*.mp4`). Without it, plain `git status`/`checkout` error out. Workaround: `git -c filter.lfs.smudge= -c filter.lfs.process= -c filter.lfs.required=false <cmd>`.
 - ~93 `static let shared` singletons; no central store.
 - ~350 `Defaults` keys in `models/Constants.swift:833+` — the de-facto feature-flag registry. Flip switches before deleting code.
 - `ContentView.swift` (2,979 lines) observes 17 `ObservableObject`s and 40 `@Default` keys — any `@Published` change re-renders the whole notch. Split it before adding to it.
@@ -41,22 +40,22 @@ Plan of record: `~/.claude/plans/i-want-to-build-functional-pinwheel.md`
 - `StatsManager.swift:514-548` is the one good throttling pattern in the repo. Copy it.
 - Five SPM packages are pinned to `main`, not a version — builds can break with no local change.
 
-## Baseline (Phase 0, 2026-07-27)
+## CPU measurements
 
-Installed Atoll **v2.2.0**, idle, 60 samples over 120 s:
+| Build | mean | median | max | RSS mean |
+|---|---|---|---|---|
+| v2.2.0 installed (Release), Phase 0 baseline | 1.93% | 1.90% | 3.00% | 27 MB |
+| Phase 0.5 patched (Debug), steady state | **0.40%** | **0.20%** | 8.40% | 58 MB |
 
-```
-CPU%  mean=1.93  median=1.90  min=1.20  max=3.00
-RSS   mean=27 MB  max=34 MB
-```
-
-**This is the number to beat.** A well-behaved menu-bar app idles near 0.0–0.3%, so ~1.9% is roughly 6–10× where it should be. Re-run after every perf change:
+Median idle CPU is down ~90%. Caveats worth remembering: the baseline is a
+Release build and the patched figure is Debug, so RSS is not comparable and
+the patched CPU would likely be a little lower again in Release. Always let
+the app settle for a few minutes before sampling — launch transients spike
+to ~28% and wreck the mean.
 
 ```bash
-/private/tmp/claude-501/-Users-arronlingham-Anchor/afa47fe6-293c-4cd3-aa73-51fa1a67c979/scratchpad/measure.sh Atoll 120 "<label>"
+/private/tmp/claude-501/-Users-arronlingham-Anchor/afa47fe6-293c-4cd3-aa73-51fa1a67c979/scratchpad/measure.sh Atoll 180 "<label>"
 ```
-
-Confirmed live: `OSDUIHelper` is absent from the process list, meaning the suppression watcher is active and the 150 ms `pgrep` loop is running right now.
 
 ## Build
 
@@ -99,6 +98,22 @@ Two gotchas:
 
 Spike source: `/private/tmp/claude-501/-Users-arronlingham-Anchor/afa47fe6-293c-4cd3-aa73-51fa1a67c979/scratchpad/speechspike/`
 
-## Known CPU offenders
+## CPU offenders — status
 
-Documented with line numbers in the plan (§4). Highest-value target: `SystemOSDManager.swift:379` fork/execs `/usr/bin/pgrep` every 150 ms, and it *is* on by default via `enableSystemHUD` → `startSystemObserver()` → `disableSystemHUD()`.
+Fixed in Phase 0.5 (commit `30e872e`): the `SystemOSDManager` 150 ms `pgrep`
+loop, the unconditional 20 Hz hover poll, the flat 0.5 s clipboard poll, the
+ungated 3 s Bluetooth poll, and both `/usr/bin/log stream` children. New
+`SystemActivityGate` parks pollers on display sleep / screen lock / Low Power.
+
+Still outstanding:
+- `ContentView.swift` re-renders the whole notch on any manager `@Published`
+  change (17 `ObservableObject` + 40 `@Default` in one 2,979-line view).
+- `DoNotDisturbManager` 2 s assertions poll — already mtime-gated and given
+  250 ms leeway, so low priority.
+- `RealTimeWaveformScrubberView.swift:44` drives a 60 Hz SwiftUI transaction,
+  but only while hovering.
+
+**Watch out:** `focusMonitoringMode` has two modes. `useDevTools` spawns a
+persistent `log stream` on `duetexpertd`; onboarding picks it. `withoutDevTools`
+(the code default) uses cheap mtime-gated polling instead. The dev build's
+domain is `com.Ebullioscopic.Atoll.dev`, *not* `com.ebullioscopic.Atoll`.
