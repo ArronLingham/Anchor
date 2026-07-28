@@ -684,10 +684,8 @@ struct MusicControlsView: View {
 
 struct NotchHomeView: View {
     @EnvironmentObject var vm: DynamicIslandViewModel
-    @ObservedObject var webcamManager = WebcamManager.shared
     @ObservedObject var batteryModel = BatteryStatusViewModel.shared
     @ObservedObject var coordinator = DynamicIslandViewCoordinator.shared
-    @ObservedObject private var extensionNotchExperienceManager = ExtensionNotchExperienceManager.shared
     @ObservedObject private var musicManager = MusicManager.shared
     @Default(.showStandardMediaControls) private var showStandardMediaControls
     @Default(.autoHideInactiveNotchMediaPlayer) private var autoHideInactiveNotchMediaPlayer
@@ -710,16 +708,9 @@ struct NotchHomeView: View {
     private var mainContent: some View {
         HStack(alignment: .top, spacing: 20) {
             if Defaults[.enableMinimalisticUI] {
-                if let overridePayload = minimalisticOverridePayload {
-                    ExtensionMinimalisticExperienceView(
-                        payload: overridePayload,
-                        albumArtNamespace: albumArtNamespace
-                    )
-                } else {
-                    MinimalisticMusicPlayerView(albumArtNamespace: albumArtNamespace)
-                }
+                MinimalisticMusicPlayerView(albumArtNamespace: albumArtNamespace)
             } else {
-                // Normal mode: Show full music player with optional calendar and webcam
+                // Normal mode: Show full music player with optional calendar
                 if shouldShowMusicPlayer {
                     MusicPlayerView(albumArtNamespace: albumArtNamespace)
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -740,14 +731,6 @@ struct NotchHomeView: View {
                     .environmentObject(vm)
                 }
                 
-                if Defaults[.showMirror],
-                   webcamManager.cameraAvailable,
-                   vm.notchState == .open {
-                    CameraPreviewView(webcamManager: webcamManager)
-                        .scaledToFit()
-                        .opacity(vm.notchState == .closed ? 0 : 1)
-                        .blur(radius: vm.notchState == .closed ? 20 : 0)
-                }
             }
         }
         .transition(.opacity.animation(.smooth.speed(0.9))
@@ -757,9 +740,6 @@ struct NotchHomeView: View {
         .padding(Defaults[.enableMinimalisticUI] ? 0 : 8) //Putting the main padding for home view here for consistency
     }
 
-    private var minimalisticOverridePayload: ExtensionNotchExperiencePayload? {
-        extensionNotchExperienceManager.minimalisticReplacementPayload()
-    }
 }
 
 struct MusicSliderView: View {

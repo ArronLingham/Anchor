@@ -52,17 +52,12 @@ private enum SettingsTab: String, CaseIterable, Identifiable {
     case lockScreen
     case media
     case devices
-    case extensions
     case timer
     case calendar
     case hudAndOSD
     case battery
-    case stats
     case clipboard
-    case screenAssistant
-    case colorPicker
     case downloads
-    case shelf
     case shortcuts
     case notes
     case terminal
@@ -77,10 +72,8 @@ private enum SettingsTab: String, CaseIterable, Identifiable {
         case .media, .liveActivities, .lockScreen, .devices:                 return .mediaAndDisplay
         case .hudAndOSD, .battery:                                           return .system
         case .timer, .calendar, .notes:                                      return .productivity
-        case .clipboard, .screenAssistant, .colorPicker, .shelf,
-             .downloads, .shortcuts:                                         return .utilities
-        case .stats, .terminal:                                              return .developer
-        case .extensions:                                                    return .integrations
+        case .clipboard, .downloads, .shortcuts:                             return .utilities
+        case .terminal:                                                      return .developer
         case .about:                                                         return .info
         }
     }
@@ -93,17 +86,12 @@ private enum SettingsTab: String, CaseIterable, Identifiable {
         case .lockScreen: return String(localized: "Lock Screen")
         case .media: return String(localized: "Media")
         case .devices: return String(localized: "Devices")
-        case .extensions: return String(localized: "Extensions")
         case .timer: return String(localized: "Timer")
         case .calendar: return String(localized: "Calendar")
         case .hudAndOSD: return String(localized: "Controls")
         case .battery: return String(localized: "Battery")
-        case .stats: return String(localized: "Stats")
         case .clipboard: return String(localized: "Clipboard")
-        case .screenAssistant: return String(localized: "Screen Assistant")
-        case .colorPicker: return String(localized: "Color Picker")
         case .downloads: return String(localized: "Downloads")
-        case .shelf: return String(localized: "Shelf")
         case .shortcuts: return String(localized: "Shortcuts")
         case .notes: return String(localized: "Notes")
         case .terminal: return String(localized: "Terminal")
@@ -119,17 +107,12 @@ private enum SettingsTab: String, CaseIterable, Identifiable {
         case .lockScreen: return "lock.laptopcomputer"
         case .media: return "play.laptopcomputer"
         case .devices: return "headphones"
-        case .extensions: return "puzzlepiece.extension"
         case .timer: return "timer"
         case .calendar: return "calendar"
         case .hudAndOSD: return "dial.medium.fill"
         case .battery: return "battery.100.bolt"
-        case .stats: return "chart.xyaxis.line"
         case .clipboard: return "clipboard"
-        case .screenAssistant: return "brain.head.profile"
-        case .colorPicker: return "eyedropper"
         case .downloads: return "square.and.arrow.down"
-        case .shelf: return "books.vertical"
         case .shortcuts: return "keyboard"
         case .notes: return "note.text"
         case .terminal: return "apple.terminal"
@@ -145,17 +128,12 @@ private enum SettingsTab: String, CaseIterable, Identifiable {
         case .lockScreen: return .orange
         case .media: return .green
         case .devices: return Color(red: 0.1, green: 0.11, blue: 0.12)
-        case .extensions: return Color(red: 0.557, green: 0.353, blue: 0.957)
         case .timer: return .red
         case .calendar: return .cyan
         case .hudAndOSD: return .indigo
         case .battery: return Color(red: 0.202, green: 0.783, blue: 0.348, opacity: 1.000)
-        case .stats: return .teal
         case .clipboard: return .mint
-        case .screenAssistant: return .pink
-        case .colorPicker: return .accentColor
         case .downloads: return .gray
-        case .shelf: return .brown
         case .shortcuts: return .orange
         case .notes: return Color(red: 0.979, green: 0.716, blue: 0.153, opacity: 1.000)
         case .terminal: return Color(red: 0.2, green: 0.8, blue: 0.4)
@@ -462,7 +440,7 @@ struct SettingsView: View {
                         Capsule()
                             .fill(Color.blue)
                     )
-            } else if tab == .extensions {
+            } else if false {
                 Spacer()
                 Text("BETA")
                     .font(.system(size: 9, weight: .bold))
@@ -499,16 +477,11 @@ struct SettingsView: View {
             .notes,
             // Utilities
             .clipboard,
-            .screenAssistant,
-            .colorPicker,
-            .shelf,
             .downloads,
             .shortcuts,
             // Developer
-            .stats,
             .terminal,
             // Integrations
-            .extensions,
             // Info
             .about
         ]
@@ -806,13 +779,6 @@ struct SettingsView: View {
             SettingsSearchEntry(tab: .calendar, title: "Auto-scroll to next event", keywords: ["calendar", "scroll"], highlightID: SettingsTab.calendar.highlightID(for: "Auto-scroll to next event")),
 
             // Shelf
-            SettingsSearchEntry(tab: .shelf, title: "Enable shelf", keywords: ["shelf", "dock"], highlightID: SettingsTab.shelf.highlightID(for: "Enable shelf")),
-            SettingsSearchEntry(tab: .shelf, title: "Open shelf tab by default if items added", keywords: ["auto open", "shelf tab"], highlightID: SettingsTab.shelf.highlightID(for: "Open shelf tab by default if items added")),
-            SettingsSearchEntry(tab: .shelf, title: "Expanded drag detection area", keywords: ["shelf", "drag"], highlightID: SettingsTab.shelf.highlightID(for: "Expanded drag detection area")),
-            SettingsSearchEntry(tab: .shelf, title: "Copy items on drag", keywords: ["shelf", "drag", "copy"], highlightID: SettingsTab.shelf.highlightID(for: "Copy items on drag")),
-            SettingsSearchEntry(tab: .shelf, title: "Remove from shelf after dragging", keywords: ["shelf", "drag", "remove"], highlightID: SettingsTab.shelf.highlightID(for: "Remove from shelf after dragging")),
-            SettingsSearchEntry(tab: .shelf, title: "Quick Share Service", keywords: ["shelf", "share", "airdrop", "localsend"], highlightID: SettingsTab.shelf.highlightID(for: "Quick Share Service")),
-            SettingsSearchEntry(tab: .shelf, title: "LocalSend Device Picker Style", keywords: ["localsend", "glass", "picker", "material"], highlightID: SettingsTab.shelf.highlightID(for: "Device Picker Style")),
 
             // Appearance
             SettingsSearchEntry(tab: .appearance, title: "Main screen style", keywords: ["dynamic island", "pill", "non-notch", "display style", "notch style"], highlightID: SettingsTab.appearance.highlightID(for: "Main screen style")),
@@ -862,11 +828,6 @@ struct SettingsView: View {
             SettingsSearchEntry(tab: .lockScreen, title: "Reminder vertical offset", keywords: ["reminder", "offset", "position"], highlightID: SettingsTab.lockScreen.highlightID(for: "Reminder vertical offset")),
 
             // Extensions
-            SettingsSearchEntry(tab: .extensions, title: "Enable third-party extensions", keywords: ["extensions", "authorization", "third party"], highlightID: SettingsTab.extensions.highlightID(for: "Enable third-party extensions")),
-            SettingsSearchEntry(tab: .extensions, title: "Allow extension live activities", keywords: ["extensions", "live activities", "permissions"], highlightID: SettingsTab.extensions.highlightID(for: "Allow extension live activities")),
-            SettingsSearchEntry(tab: .extensions, title: "Allow extension lock screen widgets", keywords: ["extensions", "lock screen", "widgets"], highlightID: SettingsTab.extensions.highlightID(for: "Allow extension lock screen widgets")),
-            SettingsSearchEntry(tab: .extensions, title: "Enable extension diagnostics logging", keywords: ["extensions", "diagnostics", "logging"], highlightID: SettingsTab.extensions.highlightID(for: "Enable extension diagnostics logging")),
-            SettingsSearchEntry(tab: .extensions, title: "Manage app permissions", keywords: ["extensions", "permissions", "apps"], highlightID: SettingsTab.extensions.highlightID(for: "App permissions list")),
 
             // Shortcuts
             SettingsSearchEntry(tab: .shortcuts, title: "Enable global keyboard shortcuts", keywords: ["keyboard", "shortcut"], highlightID: SettingsTab.shortcuts.highlightID(for: "Enable global keyboard shortcuts")),
@@ -885,18 +846,6 @@ struct SettingsView: View {
             SettingsSearchEntry(tab: .timer, title: "Accent colour", keywords: ["accent", "timer"], highlightID: SettingsTab.timer.highlightID(for: "Accent colour")),
 
             // Stats
-            SettingsSearchEntry(tab: .stats, title: "Enable system stats monitoring", keywords: ["stats", "monitoring"], highlightID: SettingsTab.stats.highlightID(for: "Enable system stats monitoring")),
-            SettingsSearchEntry(tab: .stats, title: "Enable LLM Usage Monitor", keywords: ["llm", "usage", "ai", "monitor"], highlightID: SettingsTab.stats.highlightID(for: "Enable LLM Usage Monitor")),
-            SettingsSearchEntry(tab: .stats, title: "Claude Provider", keywords: ["llm", "claude", "provider", "toggle"], highlightID: SettingsTab.stats.highlightID(for: "Claude Provider")),
-            SettingsSearchEntry(tab: .stats, title: "Codex Provider", keywords: ["llm", "codex", "provider", "toggle"], highlightID: SettingsTab.stats.highlightID(for: "Codex Provider")),
-            SettingsSearchEntry(tab: .stats, title: "Cursor Provider", keywords: ["llm", "cursor", "provider", "toggle"], highlightID: SettingsTab.stats.highlightID(for: "Cursor Provider")),
-            SettingsSearchEntry(tab: .stats, title: "Stop monitoring after closing the notch", keywords: ["stats", "auto stop"], highlightID: SettingsTab.stats.highlightID(for: "Stop monitoring after closing the notch")),
-            SettingsSearchEntry(tab: .stats, title: "CPU Usage", keywords: ["cpu", "graph"], highlightID: SettingsTab.stats.highlightID(for: "CPU Usage")),
-            SettingsSearchEntry(tab: .stats, title: "Temperature unit", keywords: ["cpu", "temperature", "celsius", "fahrenheit"], highlightID: SettingsTab.stats.highlightID(for: "Temperature unit")),
-            SettingsSearchEntry(tab: .stats, title: "Memory Usage", keywords: ["memory", "ram"], highlightID: SettingsTab.stats.highlightID(for: "Memory Usage")),
-            SettingsSearchEntry(tab: .stats, title: "GPU Usage", keywords: ["gpu", "graphics"], highlightID: SettingsTab.stats.highlightID(for: "GPU Usage")),
-            SettingsSearchEntry(tab: .stats, title: "Network Activity", keywords: ["network", "graph"], highlightID: SettingsTab.stats.highlightID(for: "Network Activity")),
-            SettingsSearchEntry(tab: .stats, title: "Disk I/O", keywords: ["disk", "io"], highlightID: SettingsTab.stats.highlightID(for: "Disk I/O")),
 
             // Clipboard
             SettingsSearchEntry(tab: .clipboard, title: "Enable Clipboard Manager", keywords: ["clipboard", "manager"], highlightID: SettingsTab.clipboard.highlightID(for: "Enable Clipboard Manager")),
@@ -905,15 +854,8 @@ struct SettingsView: View {
             SettingsSearchEntry(tab: .clipboard, title: "History Size", keywords: ["history", "clipboard"], highlightID: SettingsTab.clipboard.highlightID(for: "History Size")),
 
             // Screen Assistant
-            SettingsSearchEntry(tab: .screenAssistant, title: "Enable Screen Assistant", keywords: ["screen assistant", "ai"], highlightID: SettingsTab.screenAssistant.highlightID(for: "Enable Screen Assistant")),
-            SettingsSearchEntry(tab: .screenAssistant, title: "Display Mode", keywords: ["screen assistant", "mode"], highlightID: SettingsTab.screenAssistant.highlightID(for: "Display Mode")),
 
             // Color Picker
-            SettingsSearchEntry(tab: .colorPicker, title: "Enable Color Picker", keywords: ["color picker", "eyedropper"], highlightID: SettingsTab.colorPicker.highlightID(for: "Enable Color Picker")),
-            SettingsSearchEntry(tab: .colorPicker, title: "Show Color Picker Icon", keywords: ["color icon", "toolbar"], highlightID: SettingsTab.colorPicker.highlightID(for: "Show Color Picker Icon")),
-            SettingsSearchEntry(tab: .colorPicker, title: "Display Mode", keywords: ["color", "list"], highlightID: SettingsTab.colorPicker.highlightID(for: "Display Mode")),
-            SettingsSearchEntry(tab: .colorPicker, title: "History Size", keywords: ["color history"], highlightID: SettingsTab.colorPicker.highlightID(for: "History Size")),
-            SettingsSearchEntry(tab: .colorPicker, title: "Show All Color Formats", keywords: ["hex", "hsl", "color formats"], highlightID: SettingsTab.colorPicker.highlightID(for: "Show All Color Formats")),
 
             // Terminal
             SettingsSearchEntry(tab: .terminal, title: "Enable terminal", keywords: ["terminal", "guake", "shell"], highlightID: SettingsTab.terminal.highlightID(for: "Enable terminal")),
@@ -934,7 +876,7 @@ struct SettingsView: View {
 
     private func isTabVisible(_ tab: SettingsTab) -> Bool {
         switch tab {
-        case .timer, .stats, .clipboard, .screenAssistant, .colorPicker, .shelf, .notes, .terminal:
+        case .timer, .clipboard, .notes, .terminal:
             return !enableMinimalisticUI
         default:
             return true
@@ -968,10 +910,6 @@ struct SettingsView: View {
             SettingsForm(tab: .devices) {
                 DevicesSettingsView()
             }
-        case .extensions:
-            SettingsForm(tab: .extensions) {
-                ExtensionsSettingsView()
-            }
         case .timer:
             SettingsForm(tab: .timer) {
                 TimerSettings()
@@ -988,29 +926,13 @@ struct SettingsView: View {
             SettingsForm(tab: .battery) {
                 Charge()
             }
-        case .stats:
-            SettingsForm(tab: .stats) {
-                StatsSettings()
-            }
         case .clipboard:
             SettingsForm(tab: .clipboard) {
                 ClipboardSettings()
             }
-        case .screenAssistant:
-            SettingsForm(tab: .screenAssistant) {
-                ScreenAssistantSettings()
-            }
-        case .colorPicker:
-            SettingsForm(tab: .colorPicker) {
-                ColorPickerSettings()
-            }
         case .downloads:
             SettingsForm(tab: .downloads) {
                 Downloads()
-            }
-        case .shelf:
-            SettingsForm(tab: .shelf) {
-                Shelf()
             }
         case .shortcuts:
             SettingsForm(tab: .shortcuts) {
@@ -3853,150 +3775,6 @@ private final class SettingsLoopingPlayerController {
     }
 }
 
-struct Shelf: View {
-    @Default(.quickShareProvider) var quickShareProvider
-    @Default(.expandedDragDetection) var expandedDragDetection
-    @Default(.copyOnDrag) var copyOnDrag
-    @Default(.autoRemoveShelfItems) var autoRemoveShelfItems
-    @StateObject private var quickShareService = QuickShareService.shared
-    @ObservedObject private var fullDiskAccessPermission = FullDiskAccessPermissionStore.shared
-    @ObservedObject private var shelfFolderAccessPermission = ShelfFolderAccessPermissionStore.shared
-
-    private var hasDocumentsAndDownloadsAccess: Bool {
-        shelfFolderAccessPermission.hasDocumentsAndDownloadsAccess
-    }
-
-    private var canEnableShelf: Bool {
-        fullDiskAccessPermission.isAuthorized || hasDocumentsAndDownloadsAccess
-    }
-
-    private var selectedProvider: QuickShareProvider? {
-        quickShareService.availableProviders.first(where: { $0.id == quickShareProvider })
-    }
-
-    init() {
-        QuickShareService.shared.ensureDiscovered()
-    }
-
-    private func highlightID(_ title: String) -> String {
-        SettingsTab.shelf.highlightID(for: title)
-    }
-
-    var body: some View {
-        Form {
-            if !canEnableShelf || !fullDiskAccessPermission.isAuthorized {
-                Section {
-                    if !canEnableShelf {
-                        SettingsPermissionCallout(
-                            title: "Additional folder access required",
-                            message: "Enable Full Disk Access, or grant access to both Documents and Downloads folders to use Shelf.",
-                            icon: "folder.badge.questionmark",
-                            iconColor: .orange,
-                            requestButtonTitle: "Request Folder Access",
-                            openSettingsButtonTitle: "Open Privacy & Security",
-                            requestAction: { shelfFolderAccessPermission.requestAccessPrompt() },
-                            openSettingsAction: { shelfFolderAccessPermission.openSystemSettings() }
-                        )
-                    }
-
-                    if !fullDiskAccessPermission.isAuthorized {
-                        SettingsPermissionCallout(
-                            title: "Full Disk Access for global mode",
-                            message: "Without Full Disk Access, Shelf can only read files from Documents and Downloads. Grant Full Disk Access to make Shelf work globally.",
-                            icon: "externaldrive.fill",
-                            iconColor: .purple,
-                            requestButtonTitle: "Request Full Disk Access",
-                            openSettingsButtonTitle: "Open Privacy & Security",
-                            requestAction: { fullDiskAccessPermission.requestAccessPrompt() },
-                            openSettingsAction: { fullDiskAccessPermission.openSystemSettings() }
-                        )
-                    }
-                } header: {
-                    Text("Permissions")
-                }
-            }
-
-            Section {
-                Defaults.Toggle(key: .dynamicShelf) {
-                    Text("Enable shelf")
-                }
-                .disabled(!canEnableShelf)
-                .settingsHighlight(id: highlightID("Enable shelf"))
-
-                Defaults.Toggle(key: .openShelfByDefault) {
-                    Text("Open shelf tab by default if items added")
-                }
-                .settingsHighlight(id: highlightID("Open shelf tab by default if items added"))
-
-                Defaults.Toggle(key: .expandedDragDetection) {
-                    Text("Expanded drag detection area")
-                }
-                .settingsHighlight(id: highlightID("Expanded drag detection area"))
-
-                Defaults.Toggle(key: .copyOnDrag) {
-                    Text("Copy items on drag")
-                }
-                .settingsHighlight(id: highlightID("Copy items on drag"))
-
-                Defaults.Toggle(key: .autoRemoveShelfItems) {
-                    Text("Remove from shelf after dragging")
-                }
-                .settingsHighlight(id: highlightID("Remove from shelf after dragging"))
-            } header: {
-                HStack {
-                    Text("General")
-                }
-            }
-
-            Section {
-                Picker("Quick Share Service", selection: $quickShareProvider) {
-                    ForEach(quickShareService.availableProviders, id: \.id) { provider in
-                        HStack {
-                            QuickShareProviderIconImage(provider: provider, size: 16)
-                            Text(provider.id)
-                        }
-                        .tag(provider.id)
-                    }
-                }
-                .pickerStyle(.menu)
-                .settingsHighlight(id: highlightID("Quick Share Service"))
-
-                if let selectedProvider {
-                    HStack {
-                        QuickShareProviderIconImage(provider: selectedProvider, size: 16)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Currently selected: \(selectedProvider.id)")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                            Text("Files dropped on the shelf will be shared via this service")
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                    .padding(.vertical, 4)
-                }
-            } header: {
-                HStack {
-                    Text("Quick Share")
-                }
-            } footer: {
-                Text("Choose which service to use when sharing files from the shelf. Drag files onto the shelf or click the shelf button to pick files.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            
-            if quickShareProvider == "LocalSend" {
-                LocalSendSettingsSection(highlightID: highlightID)
-            }
-        }
-        .accentColor(.effectiveAccent)
-        .navigationTitle("Shelf")
-        .onAppear {
-            fullDiskAccessPermission.refreshStatus()
-            shelfFolderAccessPermission.refreshStatus()
-        }
-    }
-}
 
 // MARK: - LocalSend Settings Section
 
@@ -4266,9 +4044,7 @@ struct LiveActivitiesSettings: View {
 
 struct Appearance: View {
     @ObservedObject var coordinator = DynamicIslandViewCoordinator.shared
-    @ObservedObject var webcamManager = WebcamManager.shared
     @Default(.mirrorShape) var mirrorShape
-    @Default(.selectedCameraID) var selectedCameraID
     @Default(.sliderColor) var sliderColor
     @Default(.useMusicVisualizer) var useMusicVisualizer
     @Default(.customVisualizers) var customVisualizers
@@ -4665,34 +4441,6 @@ struct Appearance: View {
             }
 
             Section {
-                Defaults.Toggle(key: .showMirror) {
-                    Text("Enable Dynamic mirror")
-                }
-                .disabled(!checkVideoInput())
-                .settingsHighlight(id: highlightID("Enable Dynamic mirror"))
-                Picker("Mirror shape", selection: $mirrorShape) {
-                    Text("Circle")
-                        .tag(MirrorShapeEnum.circle)
-                    Text("Square")
-                        .tag(MirrorShapeEnum.rectangle)
-                }
-                .settingsHighlight(id: highlightID("Mirror shape"))
-                
-                if webcamManager.cameraAvailable {
-                    Picker("Mirror Camera", selection: $selectedCameraID) {
-                        ForEach(webcamManager.availableCameras, id: \.uniqueID) { device in
-                            Text(device.localizedName)
-                                .tag(device.uniqueID)
-                        }
-                    }
-                    .onChange(of: selectedCameraID) { _, _ in
-                        if Defaults[.showMirror] {
-                            webcamManager.stopSession()
-                            webcamManager.startSession()
-                        }
-                    }
-                    .settingsHighlight(id: highlightID("Mirror Camera"))
-                }
                 Defaults.Toggle(key: .showNotHumanFace) {
                     Text("Idle Animation")
                 }
@@ -7177,298 +6925,6 @@ private struct TimerPresetComponentControl: View {
     }
 }
 
-struct StatsSettings: View {
-    @ObservedObject var statsManager = StatsManager.shared
-    @Default(.enableStatsFeature) var enableStatsFeature
-    @Default(.enableLLMUsageFeature) var enableLLMUsageFeature
-    @Default(.statsStopWhenNotchCloses) var statsStopWhenNotchCloses
-    @Default(.statsUpdateInterval) var statsUpdateInterval
-    @Default(.showCpuGraph) var showCpuGraph
-    @Default(.showMemoryGraph) var showMemoryGraph
-    @Default(.showGpuGraph) var showGpuGraph
-    @Default(.showNetworkGraph) var showNetworkGraph
-    @Default(.showDiskGraph) var showDiskGraph
-    @Default(.cpuTemperatureUnit) var cpuTemperatureUnit
-
-    private func highlightID(_ title: String) -> String {
-        SettingsTab.stats.highlightID(for: title)
-    }
-
-    var enabledGraphsCount: Int {
-        [showCpuGraph, showMemoryGraph, showGpuGraph, showNetworkGraph, showDiskGraph].filter { $0 }.count
-    }
-
-    private var formattedUpdateInterval: String {
-        let seconds = Int(statsUpdateInterval.rounded())
-        if seconds >= 60 {
-            return "60 s (1 min)"
-        } else if seconds == 1 {
-            return "1 s"
-        } else {
-            return "\(seconds) s"
-        }
-    }
-
-    private var shouldShowStatsBatteryWarning: Bool {
-        !statsStopWhenNotchCloses && statsUpdateInterval <= 5
-    }
-
-    var body: some View {
-        Form {
-            Section {
-                Defaults.Toggle(key: .enableStatsFeature) {
-                    Text("Enable system stats monitoring")
-                }
-                .settingsHighlight(id: highlightID("Enable system stats monitoring"))
-                .onChange(of: enableStatsFeature) { _, newValue in
-                    if !newValue {
-                        statsManager.stopMonitoring()
-                    }
-                    // Note: Smart monitoring will handle starting when switching to stats tab
-                }
-
-                Defaults.Toggle(key: .enableLLMUsageFeature) {
-                    Text("Enable LLM Usage Monitor")
-                }
-                .settingsHighlight(id: highlightID("Enable LLM Usage Monitor"))
-
-            } header: {
-                Text("General")
-            } footer: {
-                Text("When enabled, the Stats tab will display real-time system performance graphs. This feature requires system permissions and may use additional battery. Enabling LLM Usage Monitor adds a Usage tab that tracks token usage and spend across your configured AI providers.")
-                    .multilineTextAlignment(.trailing)
-                    .foregroundStyle(.secondary)
-                    .font(.caption)
-            }
-
-            if enableLLMUsageFeature {
-                Section {
-                    Defaults.Toggle(key: .enableClaudeProvider) {
-                        Text("Claude")
-                    }
-                    .settingsHighlight(id: highlightID("Claude Provider"))
-
-                    Defaults.Toggle(key: .enableCodexProvider) {
-                        Text("Codex")
-                    }
-                    .settingsHighlight(id: highlightID("Codex Provider"))
-
-                    Defaults.Toggle(key: .enableCursorProvider) {
-                        Text("Cursor")
-                    }
-                    .settingsHighlight(id: highlightID("Cursor Provider"))
-                } header: {
-                    Text("LLM Providers")
-                } footer: {
-                    Text("Choose which AI providers appear in the Usage tab.")
-                        .multilineTextAlignment(.trailing)
-                        .foregroundStyle(.secondary)
-                        .font(.caption)
-                }
-            }
-
-            if enableStatsFeature {
-                Section {
-                    Defaults.Toggle(key: .statsStopWhenNotchCloses) {
-                        Text("Stop monitoring after closing the notch")
-                    }
-                    .settingsHighlight(id: highlightID("Stop monitoring after closing the notch"))
-                    .help("When enabled, stats monitoring stops a few seconds after the notch closes.")
-
-                    VStack(alignment: .leading, spacing: 8) {
-                        HStack {
-                            Text("Update interval")
-                            Spacer()
-                            Text(formattedUpdateInterval)
-                                .foregroundStyle(.secondary)
-                        }
-
-                        Slider(value: $statsUpdateInterval, in: 1...60, step: 1)
-                            .accessibilityLabel("Stats update interval")
-
-                        Text("Controls how often system metrics refresh while monitoring is active.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-
-                    if shouldShowStatsBatteryWarning {
-                        Label {
-                            Text("High-frequency updates without a timeout can increase battery usage.")
-                        } icon: {
-                            Image(systemName: "exclamationmark.triangle.fill")
-                        }
-                        .font(.caption)
-                        .foregroundStyle(.orange)
-                        .padding(.top, 4)
-                    }
-                } header: {
-                    Text("Monitoring Behavior")
-                } footer: {
-                    Text("Sampling can continue while the notch is closed when the timeout is disabled.")
-                        .multilineTextAlignment(.trailing)
-                        .foregroundStyle(.secondary)
-                        .font(.caption)
-                }
-
-                Section {
-                    Defaults.Toggle(key: .showCpuGraph) {
-                        Text("CPU Usage")
-                    }
-                    .settingsHighlight(id: highlightID("CPU Usage"))
-
-                    if showCpuGraph {
-                        Picker("Temperature unit", selection: $cpuTemperatureUnit) {
-                            ForEach(LockScreenWeatherTemperatureUnit.allCases) { unit in
-                                Text(unit.localizedName).tag(unit)
-                            }
-                        }
-                        .pickerStyle(.segmented)
-                        .settingsHighlight(id: highlightID("Temperature unit"))
-                    }
-                    Defaults.Toggle(key: .showMemoryGraph) {
-                        Text("Memory Usage")
-                    }
-                    .settingsHighlight(id: highlightID("Memory Usage"))
-                    Defaults.Toggle(key: .showGpuGraph) {
-                        Text("GPU Usage")
-                    }
-                    .settingsHighlight(id: highlightID("GPU Usage"))
-                    Defaults.Toggle(key: .showNetworkGraph) {
-                        Text("Network Activity")
-                    }
-                    .settingsHighlight(id: highlightID("Network Activity"))
-                    Defaults.Toggle(key: .showDiskGraph) {
-                        Text("Disk I/O")
-                    }
-                    .settingsHighlight(id: highlightID("Disk I/O"))
-                } header: {
-                    Text("Graph Visibility")
-                } footer: {
-                    if enabledGraphsCount >= 4 {
-                        Text("With \(enabledGraphsCount) graphs enabled, the Dynamic Island will expand horizontally to accommodate all graphs in a single row.")
-                            .multilineTextAlignment(.trailing)
-                            .foregroundStyle(.secondary)
-                            .font(.caption)
-                    } else {
-                        Text("Each graph can be individually enabled or disabled. Network activity shows download/upload speeds, and disk I/O shows read/write speeds.")
-                            .multilineTextAlignment(.trailing)
-                            .foregroundStyle(.secondary)
-                            .font(.caption)
-                    }
-                }
-
-                Section {
-                    HStack {
-                        Text("Monitoring Status")
-                        Spacer()
-                        HStack(spacing: 4) {
-                            Circle()
-                                .fill(statsManager.isMonitoring ? .green : .red)
-                                .frame(width: 8, height: 8)
-                            Text(statsManager.isMonitoring ? "Active" : "Stopped")
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-
-                    if statsManager.isMonitoring {
-                        if showCpuGraph {
-                            HStack {
-                                Text("CPU Usage")
-                                Spacer()
-                                Text(statsManager.cpuUsageString)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-
-                        if showMemoryGraph {
-                            HStack {
-                                Text("Memory Usage")
-                                Spacer()
-                                Text(statsManager.memoryUsageString)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-
-                        if showGpuGraph {
-                            HStack {
-                                Text("GPU Usage")
-                                Spacer()
-                                Text(statsManager.gpuUsageString)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-
-                        if showNetworkGraph {
-                            HStack {
-                                Text("Network Download")
-                                Spacer()
-                                Text(String(format: "%.1f MB/s", statsManager.networkDownload))
-                                    .foregroundStyle(.secondary)
-                            }
-
-                            HStack {
-                                Text("Network Upload")
-                                Spacer()
-                                Text(String(format: "%.1f MB/s", statsManager.networkUpload))
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-
-                        if showDiskGraph {
-                            HStack {
-                                Text("Disk Read")
-                                Spacer()
-                                Text(String(format: "%.1f MB/s", statsManager.diskRead))
-                                    .foregroundStyle(.secondary)
-                            }
-
-                            HStack {
-                                Text("Disk Write")
-                                Spacer()
-                                Text(String(format: "%.1f MB/s", statsManager.diskWrite))
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-
-                        HStack {
-                            Text("Last Updated")
-                            Spacer()
-                            Text(statsManager.lastUpdated, style: .relative)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                } header: {
-                    Text("Live Performance Data")
-                }
-
-                Section {
-                    HStack {
-                        Button(statsManager.isMonitoring ? "Stop Monitoring" : "Start Monitoring") {
-                            if statsManager.isMonitoring {
-                                statsManager.stopMonitoring()
-                            } else {
-                                statsManager.startMonitoring()
-                            }
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .foregroundColor(statsManager.isMonitoring ? .red : .blue)
-
-                        Spacer()
-
-                        Button("Clear Data") {
-                            statsManager.clearHistory()
-                        }
-                        .buttonStyle(.bordered)
-                        .disabled(statsManager.isMonitoring)
-                    }
-                } header: {
-                    Text("Controls")
-                }
-            }
-        }
-        .navigationTitle("Stats")
-    }
-}
 
 struct ClipboardSettings: View {
     @ObservedObject var clipboardManager = ClipboardManager.shared
@@ -7642,305 +7098,7 @@ struct ClipboardSettings: View {
     }
 }
 
-struct ScreenAssistantSettings: View {
-    @ObservedObject var screenAssistantManager = ScreenAssistantManager.shared
-    @Default(.enableScreenAssistant) var enableScreenAssistant
-    @Default(.screenAssistantDisplayMode) var screenAssistantDisplayMode
-    @Default(.geminiApiKey) var geminiApiKey
-    @State private var apiKeyText = ""
-    @State private var showingApiKey = false
 
-    private func highlightID(_ title: String) -> String {
-        SettingsTab.screenAssistant.highlightID(for: title)
-    }
-
-    var body: some View {
-        Form {
-            Section {
-                Defaults.Toggle(key: .enableScreenAssistant) {
-                    Text("Enable Screen Assistant")
-                }
-                .settingsHighlight(id: highlightID("Enable Screen Assistant"))
-            } header: {
-                Text("AI Assistant")
-            } footer: {
-                Text("AI-powered assistant that can analyze files, images, and provide conversational help. Use Cmd+Shift+A to quickly access the assistant.")
-            }
-
-            if enableScreenAssistant {
-                Section {
-                    HStack {
-                        Text("Gemini API Key")
-                        Spacer()
-                        if geminiApiKey.isEmpty {
-                            Text("Not Set")
-                                .foregroundColor(.red)
-                        } else {
-                            Text("••••••••")
-                                .foregroundColor(.green)
-                        }
-
-                        Button(showingApiKey ? "Hide" : (geminiApiKey.isEmpty ? "Set" : "Change")) {
-                            if showingApiKey {
-                                showingApiKey = false
-                                if !apiKeyText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                                    Defaults[.geminiApiKey] = apiKeyText
-                                }
-                                apiKeyText = ""
-                            } else {
-                                showingApiKey = true
-                                apiKeyText = geminiApiKey
-                            }
-                        }
-                    }
-
-                    if showingApiKey {
-                        VStack(alignment: .leading, spacing: 8) {
-                            SecureField("Enter your Gemini API Key", text: $apiKeyText)
-                                .textFieldStyle(.roundedBorder)
-
-                            Text("Get your free API key from Google AI Studio")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-
-                            HStack {
-                                Button("Open Google AI Studio") {
-                                    NSWorkspace.shared.open(URL(string: "https://aistudio.google.com/app/apikey")!)
-                                }
-                                .buttonStyle(.link)
-
-                                Spacer()
-
-                                Button("Save") {
-                                    Defaults[.geminiApiKey] = apiKeyText
-                                    showingApiKey = false
-                                    apiKeyText = ""
-                                }
-                                .disabled(apiKeyText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                            }
-                        }
-                    }
-
-                    HStack {
-                        Text("Display Mode")
-                        Spacer()
-                        Picker("", selection: $screenAssistantDisplayMode) {
-                            ForEach(ScreenAssistantDisplayMode.allCases, id: \.self) { mode in
-                                Text(mode.displayName).tag(mode)
-                            }
-                        }
-                        .pickerStyle(.menu)
-                        .frame(minWidth: 100)
-                    }
-                    .settingsHighlight(id: highlightID("Display Mode"))
-
-                    HStack {
-                        Text("Attached Files")
-                        Spacer()
-                        Text("\(screenAssistantManager.attachedFiles.count)")
-                            .foregroundColor(.secondary)
-                    }
-
-                    HStack {
-                        Text("Recording Status")
-                        Spacer()
-                        Text(screenAssistantManager.isRecording ? "Recording" : "Ready")
-                            .foregroundColor(screenAssistantManager.isRecording ? .red : .secondary)
-                    }
-                } header: {
-                    Text("Configuration")
-                } footer: {
-                    switch screenAssistantDisplayMode {
-                    case .popover:
-                        Text("Popover mode shows the assistant as a dropdown attached to the AI button. Panel mode shows the assistant in a floating window near the notch.")
-                    case .panel:
-                        Text("Panel mode shows the assistant in a floating window near the notch. Popover mode shows the assistant as a dropdown attached to the AI button.")
-                    }
-                }
-
-                Section {
-                    Button("Clear All Files") {
-                        screenAssistantManager.clearAllFiles()
-                    }
-                    .foregroundColor(.red)
-                    .disabled(screenAssistantManager.attachedFiles.isEmpty)
-                } header: {
-                    Text("Actions")
-                } footer: {
-                    Text("Clear all files removes all attached files and audio recordings. This action is permanent.")
-                }
-
-                if !screenAssistantManager.attachedFiles.isEmpty {
-                    Section {
-                        ForEach(screenAssistantManager.attachedFiles) { file in
-                            VStack(alignment: .leading, spacing: 4) {
-                                HStack {
-                                    Image(systemName: file.type.iconName)
-                                        .foregroundColor(.blue)
-                                        .frame(width: 16)
-                                    Text(file.type.displayName)
-                                        .font(.caption)
-                                        .foregroundColor(.secondary)
-                                    Spacer()
-                                    Text(timeAgoString(from: file.timestamp))
-                                        .font(.caption2)
-                                        .foregroundColor(.secondary)
-                                }
-                                Text(file.name)
-                                    .font(.system(.body, design: .monospaced))
-                                    .lineLimit(2)
-                            }
-                            .padding(.vertical, 2)
-                        }
-                    } header: {
-                        Text("Attached Files")
-                    }
-                }
-            }
-        }
-        .formStyle(.grouped)
-        .navigationTitle("Screen Assistant")
-    }
-
-    private func timeAgoString(from date: Date) -> String {
-        let interval = Date().timeIntervalSince(date)
-
-        if interval < 60 {
-            return "Just now"
-        } else if interval < 3600 {
-            let minutes = Int(interval / 60)
-            return "\(minutes)m ago"
-        } else if interval < 86400 {
-            let hours = Int(interval / 3600)
-            return "\(hours)h ago"
-        } else {
-            let days = Int(interval / 86400)
-            return "\(days)d ago"
-        }
-    }
-}
-
-struct ColorPickerSettings: View {
-    @ObservedObject var colorPickerManager = ColorPickerManager.shared
-    @Default(.enableColorPickerFeature) var enableColorPickerFeature
-    @Default(.showColorFormats) var showColorFormats
-    @Default(.colorPickerDisplayMode) var colorPickerDisplayMode
-    @Default(.colorHistorySize) var colorHistorySize
-    @Default(.showColorPickerIcon) var showColorPickerIcon
-
-    private func highlightID(_ title: String) -> String {
-        SettingsTab.colorPicker.highlightID(for: title)
-    }
-
-    var body: some View {
-        Form {
-            Section {
-                Defaults.Toggle(key: .enableColorPickerFeature) {
-                    Text("Enable Color Picker")
-                }
-                .settingsHighlight(id: highlightID("Enable Color Picker"))
-            } header: {
-                Text("Color Picker")
-            } footer: {
-                Text("Enable screen color picking functionality. Use Cmd+Shift+P to quickly access the color picker.")
-            }
-
-            if enableColorPickerFeature {
-                Section {
-                    Defaults.Toggle(key: .showColorPickerIcon) {
-                        Text("Show Color Picker Icon")
-                    }
-                    .settingsHighlight(id: highlightID("Show Color Picker Icon"))
-
-                    HStack {
-                        Text("Display Mode")
-                        Spacer()
-                        Picker("", selection: $colorPickerDisplayMode) {
-                            ForEach(ColorPickerDisplayMode.allCases, id: \.self) { mode in
-                                Text(mode.displayName).tag(mode)
-                            }
-                        }
-                        .pickerStyle(.menu)
-                        .frame(minWidth: 100)
-                    }
-                    .settingsHighlight(id: highlightID("Display Mode"))
-
-                    HStack {
-                        Text("History Size")
-                        Spacer()
-                        Picker("", selection: $colorHistorySize) {
-                            Text("5 colors").tag(5)
-                            Text("10 colors").tag(10)
-                            Text("15 colors").tag(15)
-                            Text("20 colors").tag(20)
-                        }
-                        .pickerStyle(.menu)
-                        .frame(minWidth: 100)
-                    }
-                    .settingsHighlight(id: highlightID("History Size"))
-
-                    Defaults.Toggle(key: .showColorFormats) {
-                        Text("Show All Color Formats")
-                    }
-                    .settingsHighlight(id: highlightID("Show All Color Formats"))
-
-                } header: {
-                    Text("Settings")
-                } footer: {
-                    switch colorPickerDisplayMode {
-                    case .popover:
-                        Text("Popover mode shows color picker as a dropdown attached to the color picker button. Panel mode shows color picker in a floating window.")
-                    case .panel:
-                        Text("Panel mode shows color picker in a floating window. Popover mode shows color picker as a dropdown attached to the color picker button.")
-                    }
-                }
-
-                Section {
-                    HStack {
-                        Text("Color History")
-                        Spacer()
-                        Text("\(colorPickerManager.colorHistory.count)")
-                            .foregroundColor(.secondary)
-                    }
-
-                    HStack {
-                        Text("Picking Status")
-                        Spacer()
-                        Text(colorPickerManager.isPickingColor ? "Active" : "Ready")
-                            .foregroundColor(colorPickerManager.isPickingColor ? .green : .secondary)
-                    }
-
-                    Button("Show Color Picker Panel") {
-                        ColorPickerPanelManager.shared.showColorPickerPanel()
-                    }
-                    .disabled(!enableColorPickerFeature)
-
-                } header: {
-                    Text("Status & Actions")
-                }
-
-                Section {
-                    Button("Clear Color History") {
-                        colorPickerManager.clearHistory()
-                    }
-                    .foregroundColor(.red)
-                    .disabled(colorPickerManager.colorHistory.isEmpty)
-
-                    Button("Start Color Picking") {
-                        colorPickerManager.startColorPicking()
-                    }
-                    .disabled(!enableColorPickerFeature || colorPickerManager.isPickingColor)
-
-                } header: {
-                    Text("Quick Actions")
-                } footer: {
-                    Text("Clear color history removes all picked colors. Start color picking begins screen color capture mode.")
-                }
-            }
-        }
-        .navigationTitle("Color Picker")
-    }
-}
 
 struct CustomOSDSettings: View {
     @Default(.enableCustomOSD) var enableCustomOSD
@@ -8637,58 +7795,4 @@ struct AppIconImage: View {
     }
 }
 
-private struct QuickShareProviderIconImage: View {
-    let provider: QuickShareProvider
-    var size: CGFloat = 16
 
-    var body: some View {
-        Group {
-            if let imgData = provider.imageData, let nsImg = NSImage(data: imgData) {
-                Image(nsImage: nsImg)
-                    .resizable()
-                    .scaledToFit()
-                    .clipShape(RoundedRectangle(cornerRadius: size * 0.2))
-            } else {
-                AppIconImage(
-                    bundleIdentifiers: provider.bundleIdentifiersFallback,
-                    assetFallback: provider.assetFallbackName,
-                    symbolFallback: provider.symbolFallbackName,
-                    symbolColor: .accentColor,
-                    size: size
-                )
-            }
-        }
-        .frame(width: size, height: size)
-    }
-}
-
-private extension QuickShareProvider {
-    var bundleIdentifiersFallback: [String] {
-        switch id {
-        case "LocalSend":
-            return ["org.localsend.localsend_app", "org.localsend.localsend"]
-        case "AirDrop":
-            return ["com.apple.finder"]
-        case "Mail":
-            return ["com.apple.mail"]
-        case "Messages":
-            return ["com.apple.MobileSMS", "com.apple.iChat"]
-        case "Notes":
-            return ["com.apple.Notes"]
-        case "Reminders":
-            return ["com.apple.reminders"]
-        case "Add to Safari Reading List":
-            return ["com.apple.Safari"]
-        default:
-            return []
-        }
-    }
-
-    var assetFallbackName: String? {
-        id == "LocalSend" ? "LocalSend" : nil
-    }
-
-    var symbolFallbackName: String {
-        id == "System Share Menu" ? "square.and.arrow.up.on.square" : "square.and.arrow.up"
-    }
-}

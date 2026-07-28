@@ -109,7 +109,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var whatsNewWindow: NSWindow?
     var timer: Timer?
     let calendarManager = CalendarManager.shared
-    let webcamManager = WebcamManager.shared
     let dndManager = DoNotDisturbManager.shared  // NEW: DND detection
     let bluetoothAudioManager = BluetoothAudioManager.shared  // NEW: Bluetooth audio detection
     let idleAnimationManager = IdleAnimationManager.shared  // NEW: Custom idle animations
@@ -117,8 +116,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     let lockScreenPanelManager = LockScreenPanelManager.shared  // NEW: Lock screen music panel
     let mediaControlsStateCoordinator = MediaControlsStateCoordinator.shared
     let systemTimerBridge = SystemTimerBridge.shared
-    let extensionXPCServiceHost = ExtensionXPCServiceHost.shared
-    let extensionRPCServer = ExtensionRPCServer.shared
     var closeNotchWorkItem: DispatchWorkItem?
     private var previousScreens: [NSScreen]?
     private var onboardingWindowController: NSWindowController?
@@ -131,8 +128,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     // Debouncing mechanism for window size updates
     private var windowSizeUpdateWorkItem: DispatchWorkItem?
 //    let calendarManager = CalendarManager.shared
-//    let webcamManager = WebcamManager.shared
-//    var closeNotchWorkItem: DispatchWorkItem?
+////    var closeNotchWorkItem: DispatchWorkItem?
 //    private var previousScreens: [NSScreen]?
 //    private var onboardingWindowController: NSWindowController?
 //    private var cancellables = Set<AnyCancellable>()
@@ -173,14 +169,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private func handleIncomingShelfURLs(_ urls: [URL]) -> Bool {
         let fileURLs = urls.filter(\.isFileURL)
         guard !fileURLs.isEmpty else { return false }
-
-        Task { @MainActor [weak self] in
-            let items = await ShelfDropService.items(from: fileURLs)
-            guard !items.isEmpty else { return }
-
-            ShelfStateViewModel.shared.add(items)
-            self?.coordinator.currentView = .shelf
-        }
 
         return true
     }
@@ -240,16 +228,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
     
     func applicationWillTerminate(_ notification: Notification) {
-        let userInfo: [String: Any] = [
-            AtollDistributedNotifications.UserInfoKey.sourcePID: NSNumber(value: ProcessInfo.processInfo.processIdentifier)
-        ]
-        DistributedNotificationCenter.default().postNotificationName(
-            AtollDistributedNotifications.didBecomeIdle,
-            object: nil,
-            userInfo: userInfo,
-            deliverImmediately: true
-        )
-
         // Guarantee the native OSD is usable after we exit: if we were
         // suppressing it, OSDUIHelper is SIGSTOP-frozen and the async restore in
         // enableSystemHUD() would not finish before the process dies. Resume it
@@ -259,8 +237,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // Cancel any pending window size updates
         windowSizeUpdateWorkItem?.cancel()
         NotificationCenter.default.removeObserver(self)
-        extensionXPCServiceHost.stop()
-        extensionRPCServer.stop()
         
         // Stop AudioTap capture
         AudioTap.shared.stopCapture()
@@ -377,7 +353,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         window.contentView = FirstMouseHostingView(
             rootView: ContentView()
                 .environmentObject(viewModel)
-                .environmentObject(webcamManager)
                 //.moveToSky()
         )
         
@@ -506,13 +481,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             baseSize.height = min(screenHeight * maxFraction, max(300, screenHeight * maxFraction))
         }
         
-        let adjustedContentSize = statsAdjustedNotchSize(
-            from: baseSize,
-            isStatsTabActive: coordinator.currentView == .stats,
-            secondRowProgress: coordinator.statsSecondRowExpansion
-        )
         var result = addShadowPadding(
-            to: adjustedContentSize,
+            to: baseSize,
             isMinimalistic: Defaults[.enableMinimalisticUI]
         )
 
@@ -577,20 +547,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
     
     func applicationDidFinishLaunching(_ notification: Notification) {
-        let userInfo: [String: Any] = [
-            AtollDistributedNotifications.UserInfoKey.sourcePID: NSNumber(value: ProcessInfo.processInfo.processIdentifier)
-        ]
-        DistributedNotificationCenter.default().postNotificationName(
-            AtollDistributedNotifications.didBecomeActive,
-            object: nil,
-            userInfo: userInfo,
-            deliverImmediately: true
-        )
-
         LockScreenLiveActivityWindowManager.shared.configure(viewModel: vm)
         LockScreenManager.shared.configure(viewModel: vm)
-        extensionXPCServiceHost.start()
-        extensionRPCServer.start()
         
         // Migrate legacy progress bar settings
         Defaults.Keys.migrateProgressBarStyle()
@@ -761,12 +719,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }.store(in: &cancellables)
 
         Defaults.publisher(.enableColorPickerFeature, options: []).sink { [weak self] _ in
-            Task { @MainActor [weak self] in
-                self?.updateFeatureShortcutAvailability()
-            }
-        }.store(in: &cancellables)
-
-        Defaults.publisher(.enableScreenAssistant, options: []).sink { [weak self] _ in
             Task { @MainActor [weak self] in
                 self?.updateFeatureShortcutAvailability()
             }
@@ -1257,11 +1209,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
 
-        KeyboardShortcuts.onKeyDown(for: .colorPickerPanel) {
-            guard Defaults[.enableShortcuts], Defaults[.enableColorPickerFeature] else { return }
-            ColorPickerPanelManager.shared.toggleColorPickerPanel()
-        }
-
         KeyboardShortcuts.onKeyDown(for: .toggleTerminalTab) { [weak self] in
             guard let self else { return }
             guard Defaults[.enableShortcuts], Defaults[.enableTerminalFeature] else { return }
@@ -1290,24 +1237,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
 
-        KeyboardShortcuts.onKeyDown(for: .screenAssistantPanel) { [weak self] in
-            guard let self else { return }
-            guard Defaults[.enableShortcuts], Defaults[.enableScreenAssistant] else { return }
-
-            switch Defaults[.screenAssistantDisplayMode] {
-            case .panel:
-                ScreenAssistantPanelManager.shared.toggleScreenAssistantPanel()
-            case .popover:
-                if vm.notchState == .closed {
-                    vm.open()
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                        NotificationCenter.default.post(name: NSNotification.Name("ToggleScreenAssistantPopover"), object: nil)
-                    }
-                } else {
-                    NotificationCenter.default.post(name: NSNotification.Name("ToggleScreenAssistantPopover"), object: nil)
-                }
-            }
-        }
     }
 
     @MainActor
@@ -1315,7 +1244,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         updateShortcut(.startDemoTimer, isEnabled: Defaults[.enableShortcuts] && Defaults[.enableTimerFeature])
         updateShortcut(.clipboardHistoryPanel, isEnabled: Defaults[.enableShortcuts] && Defaults[.enableClipboardManager])
         updateShortcut(.colorPickerPanel, isEnabled: Defaults[.enableShortcuts] && Defaults[.enableColorPickerFeature])
-        updateShortcut(.screenAssistantPanel, isEnabled: Defaults[.enableShortcuts] && Defaults[.enableScreenAssistant])
         updateShortcut(.toggleTerminalTab, isEnabled: Defaults[.enableShortcuts] && Defaults[.enableTerminalFeature])
     }
 

@@ -104,9 +104,6 @@ class DynamicIslandViewModel: NSObject, ObservableObject {
         }
     }
     
-    let webcamManager = WebcamManager.shared
-    @Published var isCameraExpanded: Bool = false
-    @Published var isRequestingAuthorization: Bool = false
 
     @Published var screen: String?
 
@@ -367,11 +364,7 @@ class DynamicIslandViewModel: NSObject, ObservableObject {
             return adjustedSize
         }
 
-        return statsAdjustedNotchSize(
-            from: adjustedSize,
-            isStatsTabActive: coordinator.currentView == .stats,
-            secondRowProgress: coordinator.statsSecondRowExpansion
-        )
+        return adjustedSize
     }
 
     func close() {
@@ -382,11 +375,7 @@ class DynamicIslandViewModel: NSObject, ObservableObject {
         resetScrollGestureSuppression()
         resetAutoCloseSuppression()
 
-        // Set the current view to shelf if it contains files and the user enables openShelfByDefault
-        // Otherwise, if the user has not enabled openLastShelfByDefault, set the view to home
-        if !ShelfStateViewModel.shared.isEmpty && Defaults[.openShelfByDefault] && !Defaults[.enableMinimalisticUI] {
-            coordinator.currentView = .shelf
-        } else if !coordinator.openLastTabByDefault {
+        if !coordinator.openLastTabByDefault {
             coordinator.currentView = .home
         }
     }
@@ -416,45 +405,4 @@ class DynamicIslandViewModel: NSObject, ObservableObject {
         }
     }
     
-    func toggleCameraPreview() {
-        if isRequestingAuthorization {
-            return
-        }
-
-        switch webcamManager.authorizationStatus {
-        case .authorized:
-            if webcamManager.isSessionRunning {
-                webcamManager.stopSession()
-                isCameraExpanded = false
-            } else if webcamManager.cameraAvailable {
-                webcamManager.startSession()
-                isCameraExpanded = true
-            }
-
-        case .denied, .restricted:
-            DispatchQueue.main.async {
-                NSApp.setActivationPolicy(.regular)
-                NSApp.activate(ignoringOtherApps: true)
-
-                let alert = NSAlert()
-                alert.messageText = "Camera Access Required"
-                alert.informativeText = "Please allow camera access in System Settings."
-                alert.addButton(withTitle: "OK")
-                alert.runModal()
-
-                NSApp.setActivationPolicy(.accessory)
-                NSApp.deactivate()
-            }
-
-        case .notDetermined:
-            isRequestingAuthorization = true
-            webcamManager.checkAndRequestVideoAuthorization()
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
-                self.isRequestingAuthorization = false
-            }
-
-        default:
-            break
-        }
-    }
 }

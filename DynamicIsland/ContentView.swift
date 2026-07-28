@@ -27,7 +27,6 @@ import Foundation
 import KeyboardShortcuts
 import SwiftUI
 import SwiftUIIntrospect
-import AtollExtensionKit
 #if canImport(AppKit)
 import AppKit
 #elseif canImport(UIKit)
@@ -37,24 +36,18 @@ import UIKit
 @MainActor
 struct ContentView: View {
     @EnvironmentObject var vm: DynamicIslandViewModel
-    @EnvironmentObject var webcamManager: WebcamManager
 
     @ObservedObject var coordinator = DynamicIslandViewCoordinator.shared
     @ObservedObject var musicManager = MusicManager.shared
     @ObservedObject var timerManager = TimerManager.shared
     @ObservedObject var reminderManager = ReminderLiveActivityManager.shared
     @ObservedObject var batteryModel = BatteryStatusViewModel.shared
-    @ObservedObject var statsManager = StatsManager.shared
     @ObservedObject var recordingManager = ScreenRecordingManager.shared
     @ObservedObject var privacyManager = PrivacyIndicatorManager.shared
     @ObservedObject var doNotDisturbManager = DoNotDisturbManager.shared
     @ObservedObject var lockScreenManager = LockScreenManager.shared
     @ObservedObject var capsLockManager = CapsLockManager.shared
-    @ObservedObject var extensionLiveActivityManager = ExtensionLiveActivityManager.shared
-    @ObservedObject var extensionNotchExperienceManager = ExtensionNotchExperienceManager.shared
-    @ObservedObject var localSendService = LocalSendService.shared
     @State private var downloadManager = DownloadManager.shared
-    @ObservedObject var shelfState = ShelfStateViewModel.shared
     
     @Default(.enableStatsFeature) var enableStatsFeature
     @Default(.showCpuGraph) var showCpuGraph
@@ -79,7 +72,6 @@ struct ContentView: View {
     @Default(.showDoNotDisturbIndicator) var showDoNotDisturbIndicator
     @Default(.enableScreenRecordingDetection) var enableScreenRecordingDetection
     @Default(.enableCapsLockIndicator) var enableCapsLockIndicator
-    @Default(.enableExtensionLiveActivities) var enableExtensionLiveActivities
     @Default(.showStandardMediaControls) var showStandardMediaControls
     @Default(.externalDisplayStyle) var externalDisplayStyle
     @Default(.hideNonNotchUntilHover) var hideNonNotchUntilHover
@@ -175,22 +167,7 @@ struct ContentView: View {
             return CGSize(width: baseSize.width, height: terminalHeight)
         }
 
-        if coordinator.currentView == .extensionExperience {
-            if let preferredHeight = extensionTabPreferredHeight(baseSize: baseSize) {
-                return CGSize(width: baseSize.width, height: preferredHeight)
-            }
-            return baseSize
-        }
-
-        if enableMinimalisticUI,
-           coordinator.currentView == .home,
-           let preferredHeight = extensionMinimalisticPreferredHeight(baseSize: baseSize) {
-            return CGSize(width: baseSize.width, height: preferredHeight)
-        }
-        
-        guard coordinator.currentView == .stats else {
-            return baseSize
-        }
+        return baseSize
         
         let rows = statsRowCount()
         if rows <= 1 {
@@ -412,19 +389,6 @@ struct ContentView: View {
         shouldHideUntilHover && !lockScreenManager.isLocked
     }
     
-    /// Whether the LocalSend live activity should be shown
-    private var localSendLiveActivityActive: Bool {
-        localSendService.isSending || 
-        localSendService.transferState == .completed ||
-        isLocalSendFailedOrRejected
-    }
-    
-    private var isLocalSendFailedOrRejected: Bool {
-        if case .failed = localSendService.transferState { return true }
-        if case .rejected = localSendService.transferState { return true }
-        return false
-    }
-
     /// Pill shape for Dynamic Island mode with animated corner radius transitions.
     private var currentPillShape: DynamicIslandPillShape {
         let radius: CGFloat
@@ -617,15 +581,6 @@ struct ContentView: View {
                 }
             })
             .onChange(of: vm.notchState) { _, newState in
-                // Update smart monitoring based on notch state
-                if enableStatsFeature {
-                    let currentViewString = coordinator.currentView == .stats ? "stats" : "other"
-                    statsManager.updateMonitoringState(
-                        notchIsOpen: newState == .open,
-                        currentView: currentViewString
-                    )
-                }
-
                 // Reset hover state when notch state changes
                 if newState == .closed && isHovering {
                     withAnimation {
@@ -689,13 +644,6 @@ struct ContentView: View {
                 }
             }
             .onChange(of: coordinator.currentView) { _, newValue in
-                if enableStatsFeature {
-                    let currentViewString = newValue == .stats ? "stats" : "other"
-                    statsManager.updateMonitoringState(
-                        notchIsOpen: vm.notchState == .open,
-                        currentView: currentViewString
-                    )
-                }
                 syncStickyTerminalOutsideClickMonitor()
             }
             .sensoryFeedback(.alignment, trigger: haptics)
@@ -729,7 +677,6 @@ struct ContentView: View {
         .environmentObject(privacyManager)
         .background(dragDetector)
         .environmentObject(vm)
-        .environmentObject(webcamManager)
     }
 
     private func installRootLifecycleHandlers<Content: View>(on view: Content) -> some View {
@@ -883,8 +830,6 @@ struct ContentView: View {
                       }()
                       let musicPairingEligible = closedMusicPairingEligible(hasActiveMusicSnapshot: hasActiveMusicSnapshot)
                       let musicSecondary = resolveMusicSecondaryLiveActivity(isMusicPairingEligible: musicPairingEligible)
-                      let extensionSecondaryPayloadID = extensionSecondaryPayloadID(for: musicSecondary)
-                      let extensionStandalonePayload = resolvedExtensionStandalonePayload(excluding: extensionSecondaryPayloadID)
                       let activeSneakPeekStyle = resolvedSneakPeekStyle()
                       let expansionMatchesSecondary: Bool = {
                           guard let musicSecondary else { return false }
@@ -898,10 +843,6 @@ struct ContentView: View {
                           case .focus:
                               return currentScreenExpansionType == .doNotDisturb
                           case .capsLock:
-                              return false
-                          case .extensionPayload:
-                              return false
-                          case .shelf:
                               return false
                           }
                       }()
@@ -951,9 +892,6 @@ struct ContentView: View {
                       } else if (!isCurrentScreenExpansionVisible || currentScreenExpansionType == .download) && vm.notchState == .closed && downloadManager.isDownloading && Defaults[.enableDownloadListener] && !vm.hideOnClosed {
                           DownloadLiveActivity()
                               .transition(.blurReplace.animation(.interactiveSpring(dampingFraction: 1.2)))
-                      } else if !isCurrentScreenExpansionVisible && vm.notchState == .closed && localSendLiveActivityActive && !vm.hideOnClosed {
-                          LocalSendLiveActivity()
-                              .transition(.blurReplace.animation(.interactiveSpring(dampingFraction: 1.2)))
                       } else if (!isCurrentScreenExpansionVisible || currentScreenExpansionType == .doNotDisturb) && vm.notchState == .closed && Defaults[.enableDoNotDisturbDetection] && Defaults[.showDoNotDisturbIndicator] && (doNotDisturbManager.isDoNotDisturbActive || doNotDisturbManager.isFocusToastDismissing) && !vm.hideOnClosed && !lockScreenManager.isLocked {
                           DoNotDisturbLiveActivity()
                     } else if (!isCurrentScreenExpansionVisible || currentScreenExpansionType == .lockScreen) && vm.notchState == .closed && (lockScreenManager.isLocked || !lockScreenManager.isLockIdle) && Defaults[.enableLockScreenLiveActivity] && !vm.hideOnClosed {
@@ -962,20 +900,7 @@ struct ContentView: View {
                             .transition(closedLiveActivitySwapTransition)
                     } else if (!isCurrentScreenExpansionVisible || currentScreenExpansionType == .privacy) && vm.notchState == .closed && privacyManager.hasAnyIndicator && (Defaults[.enableCameraDetection] || Defaults[.enableMicrophoneDetection]) && !vm.hideOnClosed {
                         PrivacyLiveActivity()
-                      } else if let extensionPayload = extensionStandalonePayload {
-                          let layout = extensionStandaloneLayout(
-                              for: extensionPayload,
-                              notchHeight: vm.effectiveClosedNotchHeight,
-                              isHovering: isHovering
-                          )
-                          ExtensionLiveActivityStandaloneView(
-                              payload: extensionPayload,
-                              layout: layout,
-                              isHovering: isHovering
-                          )
-                      } else if !coordinator.expandingView.show && vm.notchState == .closed && !shelfState.isEmpty && !vm.hideOnClosed && !lockScreenManager.isLocked && !enableMinimalisticUI {
-                          ShelfInlineLiveActivity()
-                              .transition(.opacity.animation(.smooth(duration: 0.25)))
+                      } else if false {
                       } else if !coordinator.expandingView.show && vm.notchState == .closed && (!musicManager.isPlaying && musicManager.isPlayerIdle) && Defaults[.showNotHumanFace] && !vm.hideOnClosed  {
                       } else if !isCurrentScreenExpansionVisible && vm.notchState == .closed && (!musicManager.isPlaying && musicManager.isPlayerIdle) && Defaults[.showNotHumanFace] && !vm.hideOnClosed  {
                           DynamicIslandFaceAnimation().animation(.interactiveSpring, value: musicManager.isPlayerIdle)
@@ -1040,35 +965,6 @@ struct ContentView: View {
                                   .padding(.bottom, 10)
                               }
                           }
-                          // Extension live activity sneak peek
-                          else if case let .extensionLiveActivity(bundleID, activityID) = coordinator.sneakPeek.type {
-                              if !vm.hideOnClosed && activeSneakPeekStyle == .standard {
-                                  let payload = extensionLiveActivityManager.payload(bundleIdentifier: bundleID, activityID: activityID)
-                                  let descriptor = payload?.descriptor
-                                  let accent = (descriptor?.accentColor.swiftUIColor ?? coordinator.sneakPeek.accentColor ?? .gray)
-                                      .ensureMinimumBrightness(factor: 0.7)
-                                  GeometryReader { geo in
-                                      HStack(spacing: 6) {
-                                          RoundedRectangle(cornerRadius: 2)
-                                              .fill(accent)
-                                              .frame(width: 8, height: 12)
-                                          MarqueeText(
-                                              .constant(
-                                                  extensionSneakPeekText(
-                                                      preferredTitle: coordinator.sneakPeek.title,
-                                                      preferredSubtitle: coordinator.sneakPeek.subtitle,
-                                                      descriptor: descriptor
-                                                  )
-                                              ),
-                                              textColor: accent,
-                                              minDuration: 1,
-                                              frameWidth: max(0, geo.size.width - 14)
-                                          )
-                                      }
-                                  }
-                                  .padding(.bottom, 10)
-                              }
-                          }
                       }
                   }
               }
@@ -1084,28 +980,14 @@ struct ContentView: View {
                           switch coordinator.currentView {
                               case .home:
                                   NotchHomeView(albumArtNamespace: albumArtNamespace)
-                              case .shelf:
-                                  NotchShelfView()
                               case .timer:
                                   NotchTimerView()
-                              case .stats:
-                                  NotchStatsView()
-                              case .llmUsage:
-                                  NotchLLMUsageView()
-                              case .colorPicker:
-                                  NotchColorPickerView()
                             case .notes:
                                 NotchNotesView()
                             case .clipboard:
                                 NotchNotesView()
                             case .terminal:
                                 NotchTerminalView()
-                            case .extensionExperience:
-                                if let payload = currentExtensionTabPayload() {
-                                    ExtensionNotchExperienceTabView(payload: payload)
-                                } else {
-                                    NotchHomeView(albumArtNamespace: albumArtNamespace)
-                                }
                           }
                       }
                       .id(coordinator.currentView)
@@ -1148,18 +1030,6 @@ struct ContentView: View {
         }
     }
 
-    private func extensionSneakPeekText(preferredTitle: String, preferredSubtitle: String?, descriptor: AtollLiveActivityDescriptor?) -> String {
-        let trimmedPreferredTitle = preferredTitle.trimmingCharacters(in: .whitespacesAndNewlines)
-        let descriptorTitle = descriptor?.title.trimmingCharacters(in: .whitespacesAndNewlines) ?? "Extension"
-        let title = trimmedPreferredTitle.isEmpty ? descriptorTitle : trimmedPreferredTitle
-
-        let trimmedPreferredSubtitle = preferredSubtitle?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        let descriptorSubtitle = descriptor?.subtitle?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        let subtitle = !trimmedPreferredSubtitle.isEmpty ? trimmedPreferredSubtitle : descriptorSubtitle
-
-        guard !subtitle.isEmpty else { return title }
-        return "\(title) • \(subtitle)"
-    }
 
     private let reminderTimeFormatter: DateFormatter = {
         let formatter = DateFormatter()
@@ -1326,15 +1196,6 @@ struct ContentView: View {
             return .capsLock(showLabel: showCapsLockLabel)
         }
 
-        if isMusicPairingEligible, let extensionPayload = resolvedExtensionMusicPayload() {
-            return .extensionPayload(extensionPayload)
-        }
-
-        // Shelf: show file count as lowest-priority secondary
-        if !shelfState.isEmpty && !lockScreenManager.isLocked && !enableMinimalisticUI {
-            return .shelf(count: shelfState.items.count)
-        }
-
         return nil
     }
 
@@ -1352,11 +1213,6 @@ struct ContentView: View {
             return focusRightWingWidth(baseWidth: baseWidth)
         case .recording:
             return recordingRightWingWidth(baseWidth: baseWidth)
-        case .extensionPayload(let payload):
-            let maxWidth = baseWidth + centerBaseWidth * 0.6
-            return ExtensionLayoutMetrics.trailingWidth(for: payload, baseWidth: baseWidth, maxWidth: maxWidth)
-        case .shelf:
-            return baseWidth
         }
     }
 
@@ -1453,16 +1309,6 @@ struct ContentView: View {
                     Image(systemName: "capslock.fill")
                         .font(.system(size: badgeSize * 0.5, weight: .semibold))
                         .foregroundStyle(capsLockTintMode.color)
-                case .extensionPayload(let payload):
-                    ExtensionBadgeIconView(
-                        descriptor: payload.descriptor.leadingIcon,
-                        accent: payload.descriptor.accentColor.swiftUIColor,
-                        size: badgeSize
-                    )
-                case .shelf:
-                    Image(systemName: "tray.and.arrow.down.fill")
-                        .font(.system(size: badgeSize * 0.50, weight: .semibold))
-                        .foregroundStyle(.white)
                 }
             }
             .frame(width: badgeSize, height: badgeSize)
@@ -1519,16 +1365,6 @@ struct ContentView: View {
             spectrumView(forceSpectrum: true)
         case .recording:
             spectrumView(forceSpectrum: true, trailingInset: 6)
-        case .extensionPayload(let payload):
-            ExtensionMusicWingView(payload: payload, notchHeight: notchHeight, trailingWidth: trailingWidth)
-        case .shelf(let count):
-            // File count badge: bold white number, like a minimal pill
-            Text("\(count)")
-                .font(.system(.callout, design: .rounded, weight: .bold))
-                .foregroundStyle(.white)
-                .contentTransition(.numericText(countsDown: false))
-                .animation(.smooth(duration: 0.3), value: count)
-                .frame(alignment: .center)
         case .none:
             spectrumView(
                 forceSpectrum: false,
@@ -1614,239 +1450,11 @@ struct ContentView: View {
         return remaining > 0 && remaining <= window
     }
 
-    private func extensionSecondaryPayloadID(for secondary: MusicSecondaryLiveActivity?) -> String? {
-        guard case let .extensionPayload(payload) = secondary else { return nil }
-        return payload.id
-    }
 
-    private func resolvedExtensionMusicPayload() -> ExtensionLiveActivityPayload? {
-        let candidates = extensionLiveActivityManager.sortedActivities(for: true)
-        guard let payload = candidates.first else {
-            ExtensionRoutingDiagnostics.shared.logSuppression(
-                .music,
-                reason: "no eligible coexistence payloads",
-                pendingCount: candidates.count
-            )
-            ExtensionRoutingDiagnostics.shared.reset(.music)
-            return nil
-        }
 
-        guard enableExtensionLiveActivities else {
-            ExtensionRoutingDiagnostics.shared.logSuppression(
-                .music,
-                reason: "feature toggle disabled",
-                pendingCount: candidates.count
-            )
-            return nil
-        }
 
-        guard closedMusicContentEnabled else {
-            ExtensionRoutingDiagnostics.shared.logSuppression(
-                .music,
-                reason: "music content disabled",
-                pendingCount: candidates.count
-            )
-            return nil
-        }
-
-        guard vm.notchState == .closed else {
-            ExtensionRoutingDiagnostics.shared.logSuppression(
-                .music,
-                reason: "notch is \(vm.notchState)",
-                pendingCount: candidates.count
-            )
-            return nil
-        }
-
-        guard !vm.hideOnClosed else {
-            ExtensionRoutingDiagnostics.shared.logSuppression(
-                .music,
-                reason: "hideOnClosed engaged (fullscreen)",
-                pendingCount: candidates.count
-            )
-            return nil
-        }
-
-        guard !lockScreenManager.isLocked else {
-            ExtensionRoutingDiagnostics.shared.logSuppression(
-                .music,
-                reason: "lock screen currently active",
-                pendingCount: candidates.count
-            )
-            return nil
-        }
-
-        guard !isMusicHUDDeferredAfterUnlock else {
-            ExtensionRoutingDiagnostics.shared.logSuppression(
-                .music,
-                reason: "waiting for lock screen unlock animation to finish",
-                pendingCount: candidates.count
-            )
-            return nil
-        }
-
-        guard coordinator.musicLiveActivityEnabled else {
-            ExtensionRoutingDiagnostics.shared.logSuppression(
-                .music,
-                reason: "music live activity disabled in settings",
-                pendingCount: candidates.count
-            )
-            return nil
-        }
-
-        ExtensionRoutingDiagnostics.shared.logDisplay(.music, payload: payload)
-        return payload
-    }
-
-    private func resolvedExtensionStandalonePayload(excluding musicPayloadID: String?) -> ExtensionLiveActivityPayload? {
-        let baseCandidates = extensionLiveActivityManager.sortedActivities()
-        guard !baseCandidates.isEmpty else {
-            ExtensionRoutingDiagnostics.shared.logSuppression(
-                .standalone,
-                reason: "no active extension payloads",
-                pendingCount: 0
-            )
-            ExtensionRoutingDiagnostics.shared.reset(.standalone)
-            return nil
-        }
-
-        let candidates = baseCandidates.filter { $0.id != musicPayloadID }
-        guard let payload = candidates.first else {
-            if let musicPayloadID {
-                ExtensionRoutingDiagnostics.shared.logSuppression(
-                    .standalone,
-                    reason: "all pending payloads are paired with music (\(musicPayloadID))",
-                    pendingCount: baseCandidates.count
-                )
-            } else {
-                ExtensionRoutingDiagnostics.shared.logSuppression(
-                    .standalone,
-                    reason: "no standalone payloads after filtering",
-                    pendingCount: baseCandidates.count
-                )
-                ExtensionRoutingDiagnostics.shared.reset(.standalone)
-            }
-            return nil
-        }
-
-        guard enableExtensionLiveActivities else {
-            ExtensionRoutingDiagnostics.shared.logSuppression(
-                .standalone,
-                reason: "feature toggle disabled",
-                pendingCount: candidates.count
-            )
-            return nil
-        }
-
-        guard vm.notchState == .closed else {
-            ExtensionRoutingDiagnostics.shared.logSuppression(
-                .standalone,
-                reason: "notch is \(vm.notchState)",
-                pendingCount: candidates.count
-            )
-            return nil
-        }
-
-        guard !vm.hideOnClosed else {
-            ExtensionRoutingDiagnostics.shared.logSuppression(
-                .standalone,
-                reason: "hideOnClosed engaged (fullscreen)",
-                pendingCount: candidates.count
-            )
-            return nil
-        }
-
-        guard !lockScreenManager.isLocked else {
-            ExtensionRoutingDiagnostics.shared.logSuppression(
-                .standalone,
-                reason: "lock screen currently active",
-                pendingCount: candidates.count
-            )
-            return nil
-        }
-
-        guard vm.effectiveClosedNotchHeight > 0 else {
-            ExtensionRoutingDiagnostics.shared.logSuppression(
-                .standalone,
-                reason: "effective notch height is \(vm.effectiveClosedNotchHeight)",
-                pendingCount: candidates.count
-            )
-            return nil
-        }
-
-        guard !isCurrentScreenExpansionVisible else {
-            ExtensionRoutingDiagnostics.shared.logSuppression(
-                .standalone,
-                reason: "expanding view \(String(describing: currentScreenExpansionType ?? coordinator.expandingView.type)) visible",
-                pendingCount: candidates.count
-            )
-            return nil
-        }
-
-        ExtensionRoutingDiagnostics.shared.logDisplay(.standalone, payload: payload)
-        return payload
-    }
-
-    private func extensionStandaloneLayout(for payload: ExtensionLiveActivityPayload, notchHeight: CGFloat, isHovering: Bool) -> ExtensionStandaloneLayout {
-        let outerHeight = notchHeight
-        let contentHeight = max(0, notchHeight - (isHovering ? 0 : 12))
-        let leadingWidth = max(contentHeight, 44)
-        let centerWidth: CGFloat = max(vm.closedNotchSize.width + (isHovering ? 8 : 0), 96)
-        let trailingWidth = ExtensionLayoutMetrics.trailingWidth(
-            for: payload,
-            baseWidth: leadingWidth,
-            maxWidth: leadingWidth + centerWidth * 0.6
-        )
-        let totalWidth = leadingWidth + centerWidth + trailingWidth
-        return ExtensionStandaloneLayout(
-            totalWidth: totalWidth,
-            outerHeight: outerHeight,
-            contentHeight: contentHeight,
-            leadingWidth: leadingWidth,
-            centerWidth: centerWidth,
-            trailingWidth: trailingWidth
-        )
-    }
 
     @MainActor
-    private final class ExtensionRoutingDiagnostics {
-        static let shared = ExtensionRoutingDiagnostics()
-
-        enum Channel: Hashable {
-            case music
-            case standalone
-
-            var label: String {
-                switch self {
-                case .music:
-                    return "music pairing"
-                case .standalone:
-                    return "standalone notch"
-                }
-            }
-        }
-
-        private var lastMessages: [Channel: String] = [:]
-
-        func logSuppression(_ channel: Channel, reason: String, pendingCount: Int) {
-            log("Extension \(channel.label) suppressed: \(reason) (pending: \(pendingCount))", channel: channel)
-        }
-
-        func logDisplay(_ channel: Channel, payload: ExtensionLiveActivityPayload) {
-            log("Extension \(channel.label) showing \(payload.descriptor.id) from \(payload.bundleIdentifier)", channel: channel)
-        }
-
-        func reset(_ channel: Channel) {
-            lastMessages.removeValue(forKey: channel)
-        }
-
-        private func log(_ message: String, channel: Channel) {
-            guard Defaults[.extensionDiagnosticsLoggingEnabled] else { return }
-            guard lastMessages[channel] != message else { return }
-            lastMessages[channel] = message
-            Logger.log(message, category: .extensions)
-        }
-    }
     
     @ViewBuilder
     var dragDetector: some View {
@@ -1858,10 +1466,7 @@ struct ContentView: View {
                 .contentShape(Rectangle())
                 .onDrop(of: [.data], isTargeted: $vm.dragDetectorTargeting) { _ in true }
                 .onChange(of: vm.anyDropZoneTargeting) { _, isTargeted in
-                    if isTargeted, vm.notchState == .closed {
-                        coordinator.currentView = .shelf
-                        openNotch()
-                    } else if !isTargeted {
+                    if !isTargeted {
                         if vm.dropEvent {
                             vm.dropEvent = false
                             return
@@ -2202,71 +1807,9 @@ struct ContentView: View {
         return count <= 3 ? 1 : 2
     }
 
-    private func currentExtensionTabPayload() -> ExtensionNotchExperiencePayload? {
-        guard Defaults[.enableThirdPartyExtensions],
-              Defaults[.enableExtensionNotchExperiences],
-              Defaults[.enableExtensionNotchTabs] else {
-            return nil
-        }
-        if let selectedID = coordinator.selectedExtensionExperienceID,
-           let payload = extensionNotchExperienceManager.payload(experienceID: selectedID) {
-            return payload
-        }
-        return extensionNotchExperienceManager.highestPriorityTabPayload()
-    }
 
-    private func extensionTabPreferredHeight(baseSize: CGSize) -> CGFloat? {
-        guard let preferred = currentExtensionTabPayload()?.descriptor.tab?.preferredHeight else {
-            return nil
-        }
-        let minHeight = baseSize.height
-        let maxHeight = baseSize.height + statsAdditionalRowHeight
-        return min(max(preferred, minHeight), maxHeight)
-    }
 
     // Estimate the height required for minimalistic overrides (notably web content) and clamp it to the notch bounds.
-    private func extensionMinimalisticPreferredHeight(baseSize: CGSize) -> CGFloat? {
-        guard let configuration = extensionNotchExperienceManager.minimalisticReplacementPayload()?.descriptor.minimalistic else {
-            return nil
-        }
-
-        let minHeight = baseSize.height
-        let maxHeight = baseSize.height + statsAdditionalRowHeight
-
-        var contentHeight: CGFloat = 0
-        var blockCount = 0
-
-        if configuration.headline != nil {
-            contentHeight += 24
-            blockCount += 1
-        }
-
-        if configuration.subtitle != nil {
-            contentHeight += 20
-            blockCount += 1
-        }
-
-        if !configuration.sections.isEmpty {
-            let sectionEstimate: CGFloat = 98
-            contentHeight += CGFloat(configuration.sections.count) * sectionEstimate
-            blockCount += configuration.sections.count
-        }
-
-        if let webDescriptor = configuration.webContent {
-            contentHeight += webDescriptor.preferredHeight
-            blockCount += 1
-        }
-
-        guard blockCount > 0 else { return nil }
-
-        let spacingAllowance = CGFloat(max(blockCount - 1, 0)) * 16
-        let topPadding: CGFloat = 10
-        let bottomPadding: CGFloat = configuration.webContent == nil ? 10 : 0
-        let estimatedHeight = contentHeight + spacingAllowance + topPadding + bottomPadding
-
-        let clampedHeight = min(max(estimatedHeight, minHeight), maxHeight)
-        return clampedHeight > minHeight ? clampedHeight : nil
-    }
     
     // MARK: - Gesture Handling
     
@@ -2651,11 +2194,6 @@ struct ContentView: View {
         guard isSneakPeekVisibleOnCurrentScreen else { return false }
         let style = resolvedSneakPeekStyle()
         
-        // Check for extension sneak peek
-        if case .extensionLiveActivity = coordinator.sneakPeek.type {
-            return vm.notchState == .closed && style == .standard
-        }
-        
         // Original logic for other types
         let isMusicSneak = coordinator.sneakPeek.type == .music && vm.notchState == .closed && !vm.hideOnClosed && style == .standard
         let isTimerSneak = coordinator.sneakPeek.type == .timer && !vm.hideOnClosed && style == .standard
@@ -2666,9 +2204,6 @@ struct ContentView: View {
     }
 
     private func resolvedSneakPeekStyle() -> SneakPeekStyle {
-        if case .extensionLiveActivity = coordinator.sneakPeek.type {
-            return .standard
-        }
         return coordinator.sneakPeek.styleOverride ?? Defaults[.sneakPeekStyles]
     }
 }
@@ -2679,8 +2214,6 @@ private enum MusicSecondaryLiveActivity: Equatable {
     case recording
     case focus(FocusModeType)
     case capsLock(showLabel: Bool)
-    case extensionPayload(ExtensionLiveActivityPayload)
-    case shelf(count: Int)
 
     var id: String {
         switch self {
@@ -2694,10 +2227,6 @@ private enum MusicSecondaryLiveActivity: Equatable {
             return "focus-\(mode.rawValue)"
         case .capsLock(let showLabel):
             return showLabel ? "caps-lock-label" : "caps-lock-icon"
-        case .extensionPayload(let payload):
-            return "extension-\(payload.id)"
-        case .shelf(let count):
-            return "shelf-\(count)"
         }
     }
 }

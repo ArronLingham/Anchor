@@ -72,15 +72,10 @@ public enum NotchState {
 
 public enum NotchViews {
     case home
-    case shelf
     case timer
-    case stats
-    case llmUsage
-    case colorPicker
     case notes
     case clipboard
     case terminal
-    case extensionExperience
 }
 
 enum NotesLayoutState: Equatable {
@@ -107,8 +102,6 @@ enum SettingsEnum {
     case download
     case mediaPlayback
     case hud
-    case shelf
-    case extensions
 }
 
 enum DownloadIndicatorStyle: String, Defaults.Serializable {

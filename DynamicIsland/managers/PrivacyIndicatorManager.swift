@@ -88,7 +88,6 @@ class PrivacyIndicatorManager: ObservableObject {
     @Published var isMonitoring: Bool = false
     
     // MARK: - Child Monitors
-    private let cameraMonitor = CameraMonitor()
     private let microphoneMonitor = MicrophoneMonitor()
     private var screenRecordingManager: ScreenRecordingManager?
     
@@ -142,21 +141,6 @@ class PrivacyIndicatorManager: ObservableObject {
     
     /// Setup bindings to child monitors
     private func setupBindings() {
-        // Bind camera monitor
-        cameraMonitor.$isCameraActive
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] isActive in
-                guard let self = self else { return }
-                if self.cameraActive != isActive {
-                    print("PrivacyIndicatorManager: 📷 Camera state: \(isActive)")
-                    withAnimation(.smooth) {
-                        self.cameraActive = isActive
-                    }
-                    self.logLayoutChange()
-                }
-            }
-            .store(in: &cancellables)
-        
         // Bind microphone monitor
         microphoneMonitor.$isMicActive
             .receive(on: DispatchQueue.main)
@@ -205,13 +189,6 @@ class PrivacyIndicatorManager: ObservableObject {
         
         isMonitoring = true
         
-        // Start camera monitoring
-        if cameraMonitor.isMonitoringAvailable {
-            cameraMonitor.startMonitoring()
-        } else {
-            print("PrivacyIndicatorManager: ⚠️ Camera monitoring not available")
-        }
-        
         // Start microphone monitoring
         if microphoneMonitor.isMonitoringAvailable {
             microphoneMonitor.startMonitoring()
@@ -229,7 +206,6 @@ class PrivacyIndicatorManager: ObservableObject {
         
         isMonitoring = false
         
-        cameraMonitor.stopMonitoring()
         microphoneMonitor.stopMonitoring()
         
         print("PrivacyIndicatorManager: ✅ All monitors stopped")
@@ -237,7 +213,7 @@ class PrivacyIndicatorManager: ObservableObject {
     
     /// Toggle monitoring state
     func toggleMonitoring() {
-        if cameraMonitor.isMonitoring || microphoneMonitor.isMonitoring {
+        if microphoneMonitor.isMonitoring {
             stopMonitoring()
         } else {
             startMonitoring()
@@ -258,11 +234,6 @@ class PrivacyIndicatorManager: ObservableObject {
 // MARK: - Extensions
 
 extension PrivacyIndicatorManager {
-    /// Get camera monitor instance
-    var camera: CameraMonitor {
-        return cameraMonitor
-    }
-    
     /// Get microphone monitor instance
     var microphone: MicrophoneMonitor {
         return microphoneMonitor

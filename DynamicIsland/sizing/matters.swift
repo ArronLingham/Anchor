@@ -203,37 +203,6 @@ func notchTerminalBottomCornerRadii(
     return (outerBottom, max(0, outerBottom - p))
 }
 
-func statsAdjustedNotchSize(
-    from baseSize: CGSize,
-    isStatsTabActive: Bool,
-    secondRowProgress: CGFloat
-) -> CGSize {
-    guard isStatsTabActive, Defaults[.enableStatsFeature] else {
-        return baseSize
-    }
-
-    let enabledGraphsCount = [
-        Defaults[.showCpuGraph],
-        Defaults[.showMemoryGraph],
-        Defaults[.showGpuGraph],
-        Defaults[.showNetworkGraph],
-        Defaults[.showDiskGraph]
-    ].filter { $0 }.count
-
-    guard enabledGraphsCount >= 4 else {
-        return baseSize
-    }
-
-    let clampedProgress = max(0, min(secondRowProgress, 1))
-    guard clampedProgress > 0 else {
-        return baseSize
-    }
-
-    var adjustedSize = baseSize
-    let extraHeight = (statsSecondRowContentHeight + statsGridSpacingHeight) * clampedProgress
-    adjustedSize.height += extraHeight
-    return adjustedSize
-}
 
 func notchShadowPaddingValue(isMinimalistic: Bool) -> CGFloat {
     isMinimalistic ? notchShadowPaddingMinimalistic : notchShadowPaddingStandard

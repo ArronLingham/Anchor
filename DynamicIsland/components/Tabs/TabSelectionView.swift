@@ -45,19 +45,12 @@ struct TabModel: Identifiable {
 
 struct TabSelectionView: View {
     @ObservedObject var coordinator = DynamicIslandViewCoordinator.shared
-    @ObservedObject private var extensionNotchExperienceManager = ExtensionNotchExperienceManager.shared
-    @StateObject private var quickShareService = QuickShareService.shared
-    @Default(.quickShareProvider) private var quickShareProvider
-    @State private var showQuickSharePopover = false
     @Default(.enableTimerFeature) var enableTimerFeature
-    @Default(.enableStatsFeature) var enableStatsFeature
-    @Default(.enableColorPickerFeature) var enableColorPickerFeature
     @Default(.timerDisplayMode) var timerDisplayMode
     @Default(.enableThirdPartyExtensions) private var enableThirdPartyExtensions
     @Default(.enableExtensionNotchExperiences) private var enableExtensionNotchExperiences
     @Default(.enableExtensionNotchTabs) private var enableExtensionNotchTabs
     @Default(.showCalendar) private var showCalendar
-    @Default(.showMirror) private var showMirror
     @Default(.showStandardMediaControls) private var showStandardMediaControls
     @Default(.enableMinimalisticUI) private var enableMinimalisticUI
     @Namespace var animation
@@ -69,22 +62,8 @@ struct TabSelectionView: View {
             tabsArray.append(TabModel(label: "Home", icon: "house.fill", view: .home))
         }
 
-        if Defaults[.dynamicShelf] {
-            tabsArray.append(TabModel(label: "Shelf", icon: "tray.fill", view: .shelf))
-        }
-        
         if enableTimerFeature && timerDisplayMode == .tab {
             tabsArray.append(TabModel(label: "Timer", icon: "timer", view: .timer))
-        }
-
-        // Stats tab only shown when stats feature is enabled
-        if Defaults[.enableStatsFeature] {
-            tabsArray.append(TabModel(label: "Stats", icon: "chart.xyaxis.line", view: .stats))
-        }
-
-        // Usage tab only shown when LLM usage feature is enabled
-        if Defaults[.enableLLMUsageFeature] {
-            tabsArray.append(TabModel(label: "Usage", icon: "chart.bar.doc.horizontal", view: .llmUsage))
         }
 
         if Defaults[.enableNotes] || (Defaults[.enableClipboardManager] && Defaults[.clipboardDisplayMode] == .separateTab) {
@@ -94,22 +73,6 @@ struct TabSelectionView: View {
         }
         if Defaults[.enableTerminalFeature] {
             tabsArray.append(TabModel(label: "Terminal", icon: "apple.terminal", view: .terminal))
-        }
-        if extensionTabsEnabled {
-            for payload in extensionTabPayloads {
-                guard let tab = payload.descriptor.tab else { continue }
-                let accent = payload.descriptor.accentColor.swiftUIColor
-                let iconName = tab.iconSymbolName ?? "puzzlepiece.extension"
-                tabsArray.append(
-                    TabModel(
-                        label: tab.title,
-                        icon: iconName,
-                        view: .extensionExperience,
-                        experienceID: payload.descriptor.id,
-                        accentColor: accent
-                    )
-                )
-            }
         }
         return tabsArray
     }
@@ -121,9 +84,6 @@ struct TabSelectionView: View {
 
                 // Render the tab button
                 TabButton(label: tab.label, icon: tab.icon, selected: isSelected) {
-                    if tab.view == .extensionExperience {
-                        coordinator.selectedExtensionExperienceID = tab.experienceID
-                    }
                     coordinator.currentView = tab.view
                 }
                 .frame(height: 26)
@@ -151,27 +111,17 @@ struct TabSelectionView: View {
         }
     }
 
-    private var extensionTabsEnabled: Bool {
-        enableThirdPartyExtensions && enableExtensionNotchExperiences && enableExtensionNotchTabs
-    }
 
-    private var extensionTabPayloads: [ExtensionNotchExperiencePayload] {
-        extensionNotchExperienceManager.activeExperiences.filter { $0.descriptor.tab != nil }
-    }
 
     private var homeTabVisible: Bool {
         if enableMinimalisticUI {
             return true
         }
-        return showStandardMediaControls || showCalendar || showMirror
+        return showStandardMediaControls || showCalendar
     }
 
     private func isSelected(_ tab: TabModel) -> Bool {
-        if tab.view == .extensionExperience {
-            return coordinator.currentView == .extensionExperience
-                && coordinator.selectedExtensionExperienceID == tab.experienceID
-        }
-        return coordinator.currentView == tab.view
+        coordinator.currentView == tab.view
     }
 
     private func ensureValidSelection(with tabs: [TabModel]) {
@@ -180,11 +130,7 @@ struct TabSelectionView: View {
             return
         }
         guard let first = tabs.first else { return }
-        if first.view == .extensionExperience {
-            coordinator.selectedExtensionExperienceID = first.experienceID
-        } else {
-            coordinator.selectedExtensionExperienceID = nil
-        }
+        coordinator.selectedExtensionExperienceID = nil
         coordinator.currentView = first.view
     }
 }
