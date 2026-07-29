@@ -82,7 +82,6 @@ class PrivacyIndicatorManager: ObservableObject {
     static let shared = PrivacyIndicatorManager()
     
     // MARK: - Published Properties
-    @Published var cameraActive: Bool = false
     @Published var microphoneActive: Bool = false
     @Published var screenRecordingActive: Bool = false
     @Published var isMonitoring: Bool = false
@@ -99,7 +98,7 @@ class PrivacyIndicatorManager: ObservableObject {
     /// Current indicator layout based on active states
     var indicatorLayout: IndicatorLayout {
         // Respect user settings
-        let camera = cameraActive && Defaults[.enableCameraDetection]
+        let camera = false
         let mic = microphoneActive && Defaults[.enableMicrophoneDetection]
         let recording = screenRecordingActive
         
@@ -126,7 +125,7 @@ class PrivacyIndicatorManager: ObservableObject {
     
     /// Check if any indicator is active (respecting user settings)
     var hasAnyIndicator: Bool {
-        let showCamera = cameraActive && Defaults[.enableCameraDetection]
+        let showCamera = false
         let showMic = microphoneActive && Defaults[.enableMicrophoneDetection]
         return showCamera || showMic || screenRecordingActive
     }
@@ -178,7 +177,7 @@ class PrivacyIndicatorManager: ObservableObject {
     /// Log layout changes for debugging
     private func logLayoutChange() {
         print("PrivacyIndicatorManager: 🔄 Layout changed to: \(indicatorLayout.description)")
-        print("PrivacyIndicatorManager: 📊 States - Camera: \(cameraActive), Mic: \(microphoneActive), Recording: \(screenRecordingActive)")
+        print("PrivacyIndicatorManager: 📊 States - Mic: \(microphoneActive), Recording: \(screenRecordingActive)")
     }
     
     // MARK: - Public Methods
@@ -223,7 +222,6 @@ class PrivacyIndicatorManager: ObservableObject {
     /// Get detailed status string for debugging
     func getStatusString() -> String {
         var status = "Privacy Indicators:\n"
-        status += "  Camera: \(cameraActive ? "🟢 Active" : "⚪ Inactive")\n"
         status += "  Microphone: \(microphoneActive ? "🟢 Active" : "⚪ Inactive")\n"
         status += "  Screen Recording: \(screenRecordingActive ? "🟢 Active" : "⚪ Inactive")\n"
         status += "  Layout: \(indicatorLayout.description)"

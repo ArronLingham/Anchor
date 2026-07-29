@@ -108,14 +108,23 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     @ObservedObject var coordinator = DynamicIslandViewCoordinator.shared
     var whatsNewWindow: NSWindow?
     var timer: Timer?
-    let calendarManager = CalendarManager.shared
-    let dndManager = DoNotDisturbManager.shared  // NEW: DND detection
-    let bluetoothAudioManager = BluetoothAudioManager.shared  // NEW: Bluetooth audio detection
-    let idleAnimationManager = IdleAnimationManager.shared  // NEW: Custom idle animations
-    let downloadManager = DownloadManager.shared  // NEW: Chromium downloads detection
-    let lockScreenPanelManager = LockScreenPanelManager.shared  // NEW: Lock screen music panel
-    let mediaControlsStateCoordinator = MediaControlsStateCoordinator.shared
-    let systemTimerBridge = SystemTimerBridge.shared
+    // These MUST be lazy.
+    //
+    // SwiftUI builds the delegate during App.main(), on the main thread and
+    // *before* the run loop starts. Several of these singletons block in their
+    // initialiser — IOBluetooth waits on a semaphore only the main queue can
+    // signal, DownloadManager reads ~/Downloads and blocks on a TCC prompt — so
+    // constructing them as stored properties deadlocks the whole app at launch
+    // and applicationDidFinishLaunching is never called. Lazy defers each one to
+    // first use, which happens after the run loop is up.
+    lazy var calendarManager = CalendarManager.shared
+    lazy var dndManager = DoNotDisturbManager.shared
+    lazy var bluetoothAudioManager = BluetoothAudioManager.shared
+    lazy var idleAnimationManager = IdleAnimationManager.shared
+    lazy var downloadManager = DownloadManager.shared
+    lazy var lockScreenPanelManager = LockScreenPanelManager.shared
+    lazy var mediaControlsStateCoordinator = MediaControlsStateCoordinator.shared
+    lazy var systemTimerBridge = SystemTimerBridge.shared
     var closeNotchWorkItem: DispatchWorkItem?
     private var previousScreens: [NSScreen]?
     private var onboardingWindowController: NSWindowController?

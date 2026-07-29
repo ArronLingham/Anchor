@@ -29,8 +29,6 @@ extension KeyboardShortcuts.Name {
     static let toggleLauncher = Self("toggleLauncher", default: .init(.space, modifiers: [.option]))
     /// Push-to-talk: hold to dictate, release to paste the transcript.
     static let pushToTalkDictation = Self("pushToTalkDictation", default: .init(.d, modifiers: [.shift, .command]))
-    static let decreaseBacklight = Self("decreaseBacklight", default: .init(.f1, modifiers: [.command]))
-    static let increaseBacklight = Self("increaseBacklight", default: .init(.f2, modifiers: [.command]))
     static let toggleSneakPeek = Self("toggleSneakPeek", default: .init(.h, modifiers: [.command, .shift]))
     static let toggleNotchOpen = Self("toggleNotchOpen", default: .init(.i, modifiers: [.command, .shift]))
     static let toggleTerminalTab = Self("toggleTerminalTab", default: .init(.backtick, modifiers: [.control]))

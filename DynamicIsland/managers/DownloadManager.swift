@@ -43,8 +43,12 @@ class DownloadManager {
     }
     
     init() {
-        requestDownloadsPermissionIfNeeded()
-        startMonitoringIfNeeded()
+        // Deferred: reading ~/Downloads can block on a TCC prompt, which cannot
+        // be answered if this runs on the main thread before the run loop.
+        DispatchQueue.main.async { [weak self] in
+            self?.requestDownloadsPermissionIfNeeded()
+            self?.startMonitoringIfNeeded()
+        }
         
         Defaults.publisher(.enableDownloadListener)
             .sink { [weak self] _ in

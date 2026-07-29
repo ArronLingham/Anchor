@@ -693,7 +693,6 @@ struct SettingsView: View {
             SettingsSearchEntry(tab: .liveActivities, title: "Enable Focus Detection", keywords: ["focus", "do not disturb", "dnd"], highlightID: SettingsTab.liveActivities.highlightID(for: "Enable Focus Detection")),
             SettingsSearchEntry(tab: .liveActivities, title: "Show Focus Indicator", keywords: ["focus icon", "moon"], highlightID: SettingsTab.liveActivities.highlightID(for: "Show Focus Indicator")),
             SettingsSearchEntry(tab: .liveActivities, title: "Show Focus Label", keywords: ["focus label", "text"], highlightID: SettingsTab.liveActivities.highlightID(for: "Show Focus Label")),
-            SettingsSearchEntry(tab: .liveActivities, title: "Enable Camera Detection", keywords: ["camera", "privacy indicator"], highlightID: SettingsTab.liveActivities.highlightID(for: "Enable Camera Detection")),
             SettingsSearchEntry(tab: .liveActivities, title: "Enable Microphone Detection", keywords: ["microphone", "privacy"], highlightID: SettingsTab.liveActivities.highlightID(for: "Enable Microphone Detection")),
             SettingsSearchEntry(tab: .liveActivities, title: "Enable music live activity", keywords: ["music", "now playing"], highlightID: SettingsTab.liveActivities.highlightID(for: "Enable music live activity")),
             SettingsSearchEntry(tab: .liveActivities, title: "Enable reminder live activity", keywords: ["reminder", "live activity"], highlightID: SettingsTab.liveActivities.highlightID(for: "Enable reminder live activity")),
@@ -960,7 +959,6 @@ struct GeneralSettings: View {
     @State private var screens: [String] = NSScreen.screens.compactMap { $0.localizedName }
     @EnvironmentObject var vm: DynamicIslandViewModel
     @ObservedObject var coordinator = DynamicIslandViewCoordinator.shared
-    @Default(.mirrorShape) var mirrorShape
     @Default(.showEmojis) var showEmojis
     @Default(.gestureSensitivity) var gestureSensitivity
     @Default(.minimumHoverDuration) var minimumHoverDuration
@@ -3774,38 +3772,6 @@ private final class SettingsLoopingPlayerController {
 
 // MARK: - LocalSend Settings Section
 
-private struct LocalSendSettingsSection: View {
-    let highlightID: (String) -> String
-    
-    @Default(.localSendDevicePickerGlassMode) private var glassMode
-    @Default(.localSendDevicePickerLiquidGlassVariant) private var liquidGlassVariant
-    
-    var body: some View {
-        Section {
-            Picker("Device Picker Style", selection: $glassMode) {
-                ForEach(LockScreenGlassCustomizationMode.allCases) { mode in
-                    Text(mode.localizedName).tag(mode)
-                }
-            }
-            .pickerStyle(.menu)
-            
-            if glassMode == .customLiquid {
-                Picker("Liquid Glass Variant", selection: $liquidGlassVariant) {
-                    ForEach(LiquidGlassVariant.allCases) { variant in
-                        Text("Variant \(variant.rawValue)").tag(variant)
-                    }
-                }
-                .pickerStyle(.menu)
-            }
-        } header: {
-            Text("LocalSend Device Picker")
-        } footer: {
-            Text("Customize the appearance of the LocalSend device selection popup that appears when you drop files.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
-    }
-}
 
 struct LiveActivitiesSettings: View {
     @ObservedObject var coordinator = DynamicIslandViewCoordinator.shared
@@ -3958,32 +3924,12 @@ struct LiveActivitiesSettings: View {
             }
 
             Section {
-                Defaults.Toggle(key: .enableCameraDetection) {
-                    Text("Enable Camera Detection")
-                }
-                .settingsHighlight(id: highlightID("Enable Camera Detection"))
                 Defaults.Toggle(key: .enableMicrophoneDetection) {
                     Text("Enable Microphone Detection")
                 }
                 .settingsHighlight(id: highlightID("Enable Microphone Detection"))
 
                 if privacyManager.isMonitoring {
-                    HStack {
-                        Text("Camera Status")
-                        Spacer()
-                        if privacyManager.cameraActive {
-                            HStack(spacing: 4) {
-                                Circle()
-                                    .fill(Color.green)
-                                    .frame(width: 8, height: 8)
-                                Text("Camera Active")
-                                    .foregroundColor(.green)
-                            }
-                        } else {
-                            Text("Inactive")
-                                .foregroundColor(.secondary)
-                        }
-                    }
 
                     HStack {
                         Text("Microphone Status")
@@ -4040,7 +3986,6 @@ struct LiveActivitiesSettings: View {
 
 struct Appearance: View {
     @ObservedObject var coordinator = DynamicIslandViewCoordinator.shared
-    @Default(.mirrorShape) var mirrorShape
     @Default(.sliderColor) var sliderColor
     @Default(.useMusicVisualizer) var useMusicVisualizer
     @Default(.customVisualizers) var customVisualizers
@@ -6069,8 +6014,6 @@ struct Shortcuts: View {
     @Default(.enableTimerFeature) var enableTimerFeature
     @Default(.enableClipboardManager) var enableClipboardManager
     @Default(.enableShortcuts) var enableShortcuts
-    @Default(.enableStatsFeature) var enableStatsFeature
-    @Default(.enableColorPickerFeature) var enableColorPickerFeature
 
     private func highlightID(_ title: String) -> String {
         SettingsTab.shortcuts.highlightID(for: title)

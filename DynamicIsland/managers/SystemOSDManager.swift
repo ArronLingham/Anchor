@@ -20,6 +20,7 @@ import Foundation
 import AppKit
 import os
 
+
 class SystemOSDManager {
     private init() {}
 
@@ -199,16 +200,10 @@ class SystemOSDManager {
             _ = drained.wait(timeout: .now() + 1.0)
         }
 
-        let resume = Process()
-        resume.executableURL = URL(fileURLWithPath: "/usr/bin/killall")
-        resume.arguments = ["-CONT", "OSDUIHelper"]
-        resume.standardError = Pipe() // silence "no such process" stderr
-        do {
-            try resume.run()
-            resume.waitUntilExit()
-        } catch {
-            NSLog("Failed to SIGCONT OSDUIHelper on termination: \(error)")
-        }
+        // In-process kill(2) rather than spawning killall: this runs on the main
+        // thread inside applicationWillTerminate, where a subprocess round-trip
+        // is both slow and one more thing that can fail as the app tears down.
+        signalOSDUIHelper(SIGCONT)
     }
 
     /// Disables the system HUD by stopping OSDUIHelper, and starts a
@@ -478,38 +473,69 @@ class SystemOSDManager {
     /// Backed by a GCD process source, so a live (and SIGSTOP'd) helper costs
     /// nothing while we wait — this is what replaces the 150ms poll. The
     /// timeout is a safety net so a missed event cannot wedge the watcher.
-    private static func awaitExit(of pid: pid_t, timeoutSeconds: Int) async {
-        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-            let hasResumed = OSAllocatedUnfairLock(initialState: false)
-            func finishOnce() {
-                let shouldResume = hasResumed.withLock { resumed -> Bool in
-                    if resumed { return false }
-                    resumed = true
-                    return true
-                }
-                if shouldResume { continuation.resume() }
-            }
+    /// Resumes its continuation exactly once, from whichever of the process
+    /// source, the timeout, or task cancellation gets there first.
+    private final class ExitWaiter: @unchecked Sendable {
+        private let lock = NSLock()
+        private var continuation: CheckedContinuation<Void, Never>?
+        private var source: DispatchSourceProcess?
+        private var finished = false
 
-            let source = DispatchSource.makeProcessSource(
-                identifier: pid, eventMask: .exit, queue: watcherQueue)
-            source.setEventHandler {
-                source.cancel()
-                finishOnce()
-            }
-            source.resume()
-
-            // The process may already have exited before the source was armed,
-            // in which case .exit never fires.
-            if kill(pid, 0) != 0 && errno == ESRCH {
-                source.cancel()
-                finishOnce()
+        func arm(_ continuation: CheckedContinuation<Void, Never>, source: DispatchSourceProcess) {
+            lock.lock()
+            if finished {
+                // Cancelled before we got here; hand the continuation straight back.
+                lock.unlock()
+                continuation.resume()
                 return
             }
+            self.continuation = continuation
+            self.source = source
+            lock.unlock()
+        }
 
-            watcherQueue.asyncAfter(deadline: .now() + .seconds(timeoutSeconds)) {
-                source.cancel()
-                finishOnce()
+        func finish() {
+            lock.lock()
+            guard !finished else { return lock.unlock() }
+            finished = true
+            let pending = continuation
+            let pendingSource = source
+            continuation = nil
+            source = nil
+            lock.unlock()
+
+            pendingSource?.cancel()
+            pending?.resume()
+        }
+    }
+
+    private static func awaitExit(of pid: pid_t, timeoutSeconds: Int) async {
+        // Cancellation-aware on purpose: a plain withCheckedContinuation ignores
+        // Task.cancel(), so the watcher would stay parked here until the timeout
+        // and stall app termination while the quit handler waits on it.
+        let waiter = ExitWaiter()
+
+        await withTaskCancellationHandler {
+            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                let source = DispatchSource.makeProcessSource(
+                    identifier: pid, eventMask: .exit, queue: watcherQueue)
+                source.setEventHandler { waiter.finish() }
+                waiter.arm(continuation, source: source)
+                source.resume()
+
+                // The process may have exited before the source was armed, in
+                // which case .exit never fires.
+                if kill(pid, 0) != 0 && errno == ESRCH {
+                    waiter.finish()
+                    return
+                }
+
+                watcherQueue.asyncAfter(deadline: .now() + .seconds(timeoutSeconds)) {
+                    waiter.finish()
+                }
             }
+        } onCancel: {
+            waiter.finish()
         }
     }
     

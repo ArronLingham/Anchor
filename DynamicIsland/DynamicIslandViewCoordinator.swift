@@ -63,12 +63,6 @@ extension SneakContentType {
     }
 }
 
-extension SneakContentType {
-    /// Retained so call sites reading sneak-peek types stay explicit about the
-    /// distinction; always false now that third-party extensions are gone.
-    var isExtensionPayload: Bool { false }
-}
-
 struct sneakPeek {
     var show: Bool = false
     var type: SneakContentType = .music
@@ -119,7 +113,6 @@ class DynamicIslandViewCoordinator: ObservableObject {
     
     @Published var statsSecondRowExpansion: CGFloat = 1
     @Published var notesLayoutState: NotesLayoutState = .list
-    @Published var selectedExtensionExperienceID: String?
     
     
     @AppStorage("firstLaunch") var firstLaunch: Bool = true
@@ -183,36 +176,15 @@ class DynamicIslandViewCoordinator: ObservableObject {
             }
             .store(in: &cancellables)
 
-        Defaults.publisher(.enableThirdPartyExtensions)
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in
-                self?.handleExtensionFeatureToggle()
-            }
-            .store(in: &cancellables)
 
-        Defaults.publisher(.enableExtensionNotchExperiences)
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in
-                self?.handleExtensionFeatureToggle()
-            }
-            .store(in: &cancellables)
 
-        Defaults.publisher(.enableExtensionNotchTabs)
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in
-                self?.handleExtensionFeatureToggle()
-            }
-            .store(in: &cancellables)
 
         // Observe all tab-affecting settings to enforce minimum notch width
         Publishers.MergeMany(
             Defaults.publisher(.showStandardMediaControls).map { _ in () }.eraseToAnyPublisher(),
             Defaults.publisher(.showCalendar).map { _ in () }.eraseToAnyPublisher(),
-            Defaults.publisher(.showMirror).map { _ in () }.eraseToAnyPublisher(),
-            Defaults.publisher(.dynamicShelf).map { _ in () }.eraseToAnyPublisher(),
             Defaults.publisher(.enableTimerFeature).map { _ in () }.eraseToAnyPublisher(),
             Defaults.publisher(.timerDisplayMode).map { _ in () }.eraseToAnyPublisher(),
-            Defaults.publisher(.enableStatsFeature).map { _ in () }.eraseToAnyPublisher(),
             Defaults.publisher(.enableNotes).map { _ in () }.eraseToAnyPublisher(),
             Defaults.publisher(.enableClipboardManager).map { _ in () }.eraseToAnyPublisher(),
             Defaults.publisher(.clipboardDisplayMode).map { _ in () }.eraseToAnyPublisher(),
@@ -261,16 +233,8 @@ class DynamicIslandViewCoordinator: ObservableObject {
         }
     }
 
-    private func handleExtensionFeatureToggle() {
-        selectedExtensionExperienceID = nil
-    }
 
 
-    private var extensionTabsAllowed: Bool {
-        Defaults[.enableThirdPartyExtensions]
-        && Defaults[.enableExtensionNotchExperiences]
-        && Defaults[.enableExtensionNotchTabs]
-    }
     
     func toggleSneakPeek(
         status: Bool,
@@ -296,9 +260,8 @@ class DynamicIslandViewCoordinator: ObservableObject {
         sneakPeekDuration = resolvedDuration
         let bypassedTypes: [SneakContentType] = [.music, .timer, .reminder, .bluetoothAudio]
         
-        let isExtensionType = false
         
-        if !isExtensionType && !bypassedTypes.contains(type) && !Defaults[.enableSystemHUD] {
+        if !bypassedTypes.contains(type) && !Defaults[.enableSystemHUD] {
             return
         }
         DispatchQueue.main.async {

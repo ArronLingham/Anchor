@@ -95,14 +95,6 @@ enum NotesLayoutState: Equatable {
     }
 }
 
-enum SettingsEnum {
-    case general
-    case about
-    case charge
-    case download
-    case mediaPlayback
-    case hud
-}
 
 enum DownloadIndicatorStyle: String, Defaults.Serializable {
     case progress = "Progress"
@@ -127,10 +119,6 @@ enum DownloadIconStyle: String, Defaults.Serializable {
     case iconAndAppIcon = "Icon and app icon"
 }
 
-enum MirrorShapeEnum: String, Defaults.Serializable {
-    case rectangle = "Rectangular"
-    case circle = "Circular"
-}
 
 enum WindowHeightMode: String, Defaults.Serializable {
     case matchMenuBar = "Match menubar height"

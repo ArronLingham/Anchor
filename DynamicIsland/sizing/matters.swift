@@ -63,22 +63,12 @@ func enabledStandardTabCount() -> Int {
     var count = 0
 
     // Home tab
-    if Defaults[.showStandardMediaControls] || Defaults[.showCalendar] || Defaults[.showMirror] {
-        count += 1
-    }
-
-    // Shelf tab
-    if Defaults[.dynamicShelf] {
+    if Defaults[.showStandardMediaControls] || Defaults[.showCalendar] {
         count += 1
     }
 
     // Timer tab (only in .tab display mode)
     if Defaults[.enableTimerFeature] && Defaults[.timerDisplayMode] == .tab {
-        count += 1
-    }
-
-    // Stats tab
-    if Defaults[.enableStatsFeature] {
         count += 1
     }
 

@@ -106,8 +106,24 @@ class BluetoothAudioManager: ObservableObject {
         setupBluetoothObservers()
         setupAirPodsListeningModeObservers()
         setupAirPodsListeningModeLogObserver()
-        checkInitialDevices()
-        startPollingForChanges()
+
+        // IOBluetooth must NOT be touched from here.
+        //
+        // `IOBluetoothHostController.default()` builds
+        // IOBluetoothCoreBluetoothCoordinator, whose initialiser blocks on a
+        // semaphore that is only signalled by work dispatched to the main queue.
+        // This singleton is reached from AppDelegate's stored properties, i.e. on
+        // the main thread *before* the run loop is running — so that semaphore
+        // can never be signalled and the whole app deadlocks at launch, with
+        // applicationDidFinishLaunching never called.
+        //
+        // Deferring to the main queue lets the run loop start first, at which
+        // point the coordinator initialises normally.
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.checkInitialDevices()
+            self.startPollingForChanges()
+        }
     }
     
     deinit {

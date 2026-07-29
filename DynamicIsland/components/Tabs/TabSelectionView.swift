@@ -30,15 +30,13 @@ struct TabModel: Identifiable {
     let label: String
     let icon: String
     let view: NotchViews
-    let experienceID: String?
     let accentColor: Color?
 
-    init(label: String, icon: String, view: NotchViews, experienceID: String? = nil, accentColor: Color? = nil) {
-        self.id = experienceID.map { "extension-\($0)" } ?? "system-\(view)-\(label)"
+    init(label: String, icon: String, view: NotchViews, accentColor: Color? = nil) {
+        self.id = "system-\(view)-\(label)"
         self.label = label
         self.icon = icon
         self.view = view
-        self.experienceID = experienceID
         self.accentColor = accentColor
     }
 }
@@ -47,9 +45,6 @@ struct TabSelectionView: View {
     @ObservedObject var coordinator = DynamicIslandViewCoordinator.shared
     @Default(.enableTimerFeature) var enableTimerFeature
     @Default(.timerDisplayMode) var timerDisplayMode
-    @Default(.enableThirdPartyExtensions) private var enableThirdPartyExtensions
-    @Default(.enableExtensionNotchExperiences) private var enableExtensionNotchExperiences
-    @Default(.enableExtensionNotchTabs) private var enableExtensionNotchTabs
     @Default(.showCalendar) private var showCalendar
     @Default(.showStandardMediaControls) private var showStandardMediaControls
     @Default(.enableMinimalisticUI) private var enableMinimalisticUI
@@ -130,7 +125,6 @@ struct TabSelectionView: View {
             return
         }
         guard let first = tabs.first else { return }
-        coordinator.selectedExtensionExperienceID = nil
         coordinator.currentView = first.view
     }
 }

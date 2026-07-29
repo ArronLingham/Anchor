@@ -169,87 +169,7 @@ enum ExtensionAuthorizationStatus: String, CaseIterable, Codable, Defaults.Seria
     }
 }
 
-struct ExtensionAuthorizationEntry: Codable, Defaults.Serializable, Identifiable, Hashable {
-    let bundleIdentifier: String
-    var appName: String
-    var status: ExtensionAuthorizationStatus
-    var allowedScopes: Set<ExtensionPermissionScope>
-    var requestedAt: Date
-    var grantedAt: Date?
-    var lastActivityAt: Date?
-    var lastDeniedReason: String?
-    var notes: String?
 
-    var id: String { bundleIdentifier }
-
-    init(
-        bundleIdentifier: String,
-        appName: String,
-        status: ExtensionAuthorizationStatus,
-        allowedScopes: Set<ExtensionPermissionScope> = Set(ExtensionPermissionScope.allCases),
-        requestedAt: Date = .now,
-        grantedAt: Date? = nil,
-        lastActivityAt: Date? = nil,
-        lastDeniedReason: String? = nil,
-        notes: String? = nil
-    ) {
-        self.bundleIdentifier = bundleIdentifier
-        self.appName = appName
-        self.status = status
-        self.allowedScopes = allowedScopes
-        self.requestedAt = requestedAt
-        self.grantedAt = grantedAt
-        self.lastActivityAt = lastActivityAt
-        self.lastDeniedReason = lastDeniedReason
-        self.notes = notes
-    }
-
-    var isAuthorized: Bool { status.isActive }
-}
-
-struct ExtensionRateLimitRecord: Codable, Defaults.Serializable, Hashable, Identifiable {
-    let bundleIdentifier: String
-    var activityTimestamps: [Date]
-    var widgetTimestamps: [Date]
-    var notchExperienceTimestamps: [Date]
-
-    var id: String { bundleIdentifier }
-
-    init(
-        bundleIdentifier: String,
-        activityTimestamps: [Date] = [],
-        widgetTimestamps: [Date] = [],
-        notchExperienceTimestamps: [Date] = []
-    ) {
-        self.bundleIdentifier = bundleIdentifier
-        self.activityTimestamps = activityTimestamps
-        self.widgetTimestamps = widgetTimestamps
-        self.notchExperienceTimestamps = notchExperienceTimestamps
-    }
-
-    private enum CodingKeys: String, CodingKey {
-        case bundleIdentifier
-        case activityTimestamps
-        case widgetTimestamps
-        case notchExperienceTimestamps
-    }
-
-    init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        bundleIdentifier = try container.decode(String.self, forKey: .bundleIdentifier)
-        activityTimestamps = try container.decodeIfPresent([Date].self, forKey: .activityTimestamps) ?? []
-        widgetTimestamps = try container.decodeIfPresent([Date].self, forKey: .widgetTimestamps) ?? []
-        notchExperienceTimestamps = try container.decodeIfPresent([Date].self, forKey: .notchExperienceTimestamps) ?? []
-    }
-
-    func encode(to encoder: Encoder) throws {
-        var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(bundleIdentifier, forKey: .bundleIdentifier)
-        try container.encode(activityTimestamps, forKey: .activityTimestamps)
-        try container.encode(widgetTimestamps, forKey: .widgetTimestamps)
-        try container.encode(notchExperienceTimestamps, forKey: .notchExperienceTimestamps)
-    }
-}
 
 enum CalendarSelectionState: Codable, Defaults.Serializable {
     case all
@@ -326,43 +246,7 @@ enum ClipboardDisplayMode: String, CaseIterable, Codable, Defaults.Serializable 
     }
 }
 
-enum ScreenAssistantDisplayMode: String, CaseIterable, Codable, Defaults.Serializable {
-    case popover = "popover"     // Traditional popover attached to button
-    case panel = "panel"         // Floating panel near notch
-    
-    var displayName: String {
-        switch self {
-        case .popover: return String(localized: "Popover")
-        case .panel: return String(localized: "Panel")
-        }
-    }
-    
-    var description: String {
-        switch self {
-        case .popover: return String(localized: "Shows screen assistant as a dropdown attached to the AI button")
-        case .panel: return String(localized: "Shows screen assistant in a floating panel near the notch")
-        }
-    }
-}
 
-enum ColorPickerDisplayMode: String, CaseIterable, Codable, Defaults.Serializable {
-    case popover = "popover"     // Traditional popover attached to button
-    case panel = "panel"         // Floating panel near notch
-    
-    var displayName: String {
-        switch self {
-        case .popover: return "Popover"
-        case .panel: return "Panel"
-        }
-    }
-    
-    var description: String {
-        switch self {
-        case .popover: return "Shows color picker as a dropdown attached to the color picker button"
-        case .panel: return "Shows color picker in a floating panel near the notch"
-        }
-    }
-}
 
 enum ThirdPartyDDCProvider: String, CaseIterable, Codable, Defaults.Serializable, Identifiable {
     case betterDisplay
@@ -646,76 +530,6 @@ enum ReminderPresentationStyle: String, CaseIterable, Identifiable, Defaults.Ser
 }
 
 // AI Model types for screen assistant
-enum AIModelProvider: String, CaseIterable, Identifiable, Defaults.Serializable {
-    case gemini = "Gemini"
-    case openai = "OpenAI GPT"
-    case claude = "Claude"
-    case local = "Local Model"
-    case groq = "Groq"
-    
-    var id: String { self.rawValue }
-    
-    var displayName: String {
-        return self.rawValue
-    }
-    
-    var description: String {
-        switch self {
-        case .gemini: return "Google's Gemini AI with multimodal capabilities"
-        case .openai: return "OpenAI's GPT models with advanced reasoning"
-        case .claude: return "Anthropic's Claude with strong analytical skills"
-        case .local: return "Local AI model (Ollama or similar)"
-        case .groq: return "Groq's fast inference for OpenAI-compatible models"
-        }
-    }
-    
-    var supportedModels: [AIModel] {
-        switch self {
-        case .gemini:
-            return [
-                // Gemini 2.5 Models (Latest)
-                AIModel(id: "gemini-2.5-pro", name: "Gemini 2.5 Pro", supportsThinking: true),
-                AIModel(id: "gemini-2.5-flash", name: "Gemini 2.5 Flash", supportsThinking: true),
-                AIModel(id: "gemini-2.5-flash-lite", name: "Gemini 2.5 Flash-Lite", supportsThinking: false),
-                AIModel(id: "gemini-2.5-flash-live", name: "Gemini 2.5 Flash Live", supportsThinking: false),
-                AIModel(id: "gemini-2.5-flash-native-audio", name: "Gemini 2.5 Flash Native Audio", supportsThinking: true),
-                
-                // Gemini 2.0 Models
-                AIModel(id: "gemini-2.0-flash", name: "Gemini 2.0 Flash", supportsThinking: false),
-                AIModel(id: "gemini-2.0-flash-lite", name: "Gemini 2.0 Flash-Lite", supportsThinking: false),
-                AIModel(id: "gemini-2.0-flash-live", name: "Gemini 2.0 Flash Live", supportsThinking: false),
-                
-                // Legacy 1.5 Models (for compatibility)
-                AIModel(id: "gemini-1.5-pro", name: "Gemini 1.5 Pro", supportsThinking: false),
-                AIModel(id: "gemini-1.5-flash", name: "Gemini 1.5 Flash", supportsThinking: false)
-            ]
-        case .openai:
-            return [
-                AIModel(id: "gpt-4o", name: "GPT-4o", supportsThinking: false),
-                AIModel(id: "gpt-4o-mini", name: "GPT-4o Mini", supportsThinking: false),
-                AIModel(id: "o1-preview", name: "o1 Preview", supportsThinking: true),
-                AIModel(id: "o1-mini", name: "o1 Mini", supportsThinking: true)
-            ]
-        case .claude:
-            return [
-                AIModel(id: "claude-3-5-sonnet", name: "Claude 3.5 Sonnet", supportsThinking: false),
-                AIModel(id: "claude-3-haiku", name: "Claude 3 Haiku", supportsThinking: false)
-            ]
-        case .local:
-            return [
-                AIModel(id: "llama3.2", name: "Llama 3.2", supportsThinking: false),
-                AIModel(id: "qwen2.5", name: "Qwen 2.5", supportsThinking: false)
-            ]
-        case .groq:
-            return [
-                AIModel(id: "llama-3.3-70b-versatile", name: "Llama 3.3 70B Versatile", supportsThinking: false),
-                AIModel(id: "llama-3.1-8b-instant", name: "Llama 3.1 8B Instant", supportsThinking: false),
-                AIModel(id: "qwen-qwq-32b", name: "Qwen QWQ 32B", supportsThinking: false),
-                AIModel(id: "mixtral-8x7b-32768", name: "Mixtral 8x7B", supportsThinking: false)
-            ]
-        }
-    }
-}
 
 struct AIModel: Codable, Identifiable, Defaults.Serializable {
     let id: String
@@ -867,10 +681,6 @@ extension Defaults.Keys {
     
         // MARK: Appearance
     static let showEmojis = Key<Bool>("showEmojis", default: false)
-        //static let alwaysShowTabs = Key<Bool>("alwaysShowTabs", default: true)
-    static let showMirror = Key<Bool>("showMirror", default: false)
-    static let mirrorShape = Key<MirrorShapeEnum>("mirrorShape", default: MirrorShapeEnum.rectangle)
-    static let selectedCameraID = Key<String>("selectedCameraID", default: "")
     static let settingsIconInNotch = Key<Bool>("settingsIconInNotch", default: true)
     static let lightingEffect = Key<Bool>("lightingEffect", default: true)
     static let accentColor = Key<Color>("accentColor", default: Color.blue)
@@ -1033,7 +843,6 @@ extension Defaults.Keys {
     
         // MARK: Downloads
     static let enableDownloadListener = Key<Bool>("enableDownloadListener", default: true)
-    static let enableSafariDownloads = Key<Bool>("enableSafariDownloads", default: true)
     static let selectedDownloadIndicatorStyle = Key<DownloadIndicatorStyle>("selectedDownloadIndicatorStyle", default: DownloadIndicatorStyle.progress)
     static let selectedDownloadIconStyle = Key<DownloadIconStyle>("selectedDownloadIconStyle", default: DownloadIconStyle.onlyAppIcon)
     
@@ -1046,29 +855,17 @@ extension Defaults.Keys {
     static let systemEventIndicatorUseAccent = Key<Bool>("systemEventIndicatorUseAccent", default: false)
     static let showProgressPercentages = Key<Bool>("showProgressPercentages", default: true)
     
-        // MARK: Shelf
-    static let dynamicShelf = Key<Bool>("dynamicShelf", default: true)
-    static let openShelfByDefault = Key<Bool>("openShelfByDefault", default: true)
-        static let quickShareProvider = Key<String>("quickShareProvider", default: "AirDrop")
-        static let localSendSelectedDeviceID = Key<String>("localSendSelectedDeviceID", default: "")
         static let localSendDevicePickerGlassMode = Key<LockScreenGlassCustomizationMode>("localSendDevicePickerGlassMode", default: .standard)
         static let localSendDevicePickerLiquidGlassVariant = Key<LiquidGlassVariant>("localSendDevicePickerLiquidGlassVariant", default: .v11)
-        static let copyOnDrag = Key<Bool>("copyOnDrag", default: false)
-        static let autoRemoveShelfItems = Key<Bool>("autoRemoveShelfItems", default: false)
-        static let expandedDragDetection = Key<Bool>("expandedDragDetection", default: true)
     
         // MARK: Calendar
     static let calendarSelectionState = Key<CalendarSelectionState>("calendarSelectionState", default: .all)
         static let showFullEventTitles = Key<Bool>("showFullEventTitles", default: false)
         static let autoScrollToNextEvent = Key<Bool>("autoScrollToNextEvent", default: true)
     
-        // MARK: Fullscreen Media Detection
-    static let alwaysHideInFullscreen = Key<Bool>("alwaysHideInFullscreen", default: false)
     
     static let hideNotchOption = Key<HideNotchOption>("hideNotchOption", default: .nowPlayingOnly)
     
-    // MARK: Wobble Animation
-    static let enableWobbleAnimation = Key<Bool>("enableWobbleAnimation", default: false)
     
     // MARK: Media Controller
     static let mediaController = Key<MediaControllerType>("mediaController", default: defaultMediaController)
@@ -1092,19 +889,11 @@ extension Defaults.Keys {
     
     // MARK: Stats Feature
     static let enableStatsFeature = Key<Bool>("enableStatsFeature", default: false)
-    static let enableLLMUsageFeature = Key<Bool>("enableLLMUsageFeature", default: false)
-    static let enableClaudeProvider = Key<Bool>("enableClaudeProvider", default: true)
-    static let enableCodexProvider = Key<Bool>("enableCodexProvider", default: true)
-    static let enableCursorProvider = Key<Bool>("enableCursorProvider", default: true)
-    static let autoStartStatsMonitoring = Key<Bool>("autoStartStatsMonitoring", default: true)
-    static let statsStopWhenNotchCloses = Key<Bool>("statsStopWhenNotchCloses", default: true)
-    static let statsUpdateInterval = Key<Double>("statsUpdateInterval", default: 1.0)
     static let showCpuGraph = Key<Bool>("showCpuGraph", default: true)
     static let showMemoryGraph = Key<Bool>("showMemoryGraph", default: true)
     static let showGpuGraph = Key<Bool>("showGpuGraph", default: true)
     static let showNetworkGraph = Key<Bool>("showNetworkGraph", default: false)
     static let showDiskGraph = Key<Bool>("showDiskGraph", default: false)
-    static let cpuTemperatureUnit = Key<LockScreenWeatherTemperatureUnit>("cpuTemperatureUnit", default: .celsius)
     
     // MARK: Terminal Feature
     static let enableTerminalFeature = Key<Bool>("enableTerminalFeature", default: false)
@@ -1150,10 +939,6 @@ extension Defaults.Keys {
     
     // MARK: ColorPicker Feature
     static let enableColorPickerFeature = Key<Bool>("enableColorPickerFeature", default: true)
-    static let showColorFormats = Key<Bool>("showColorFormats", default: true)
-    static let colorPickerDisplayMode = Key<ColorPickerDisplayMode>("colorPickerDisplayMode", default: .panel)
-    static let colorHistorySize = Key<Int>("colorHistorySize", default: 10)
-    static let showColorPickerIcon = Key<Bool>("showColorPickerIcon", default: true)
     
     // MARK: Clipboard Feature
     static let enableClipboardManager = Key<Bool>("enableClipboardManager", default: true)
@@ -1174,33 +959,7 @@ extension Defaults.Keys {
     static let showClipboardIcon = Key<Bool>("showClipboardIcon", default: true)
     static let clipboardDisplayMode = Key<ClipboardDisplayMode>("clipboardDisplayMode", default: .panel)
     
-    // MARK: Screen Assistant Feature
-    static let enableScreenAssistant = Key<Bool>("enableScreenAssistant", default: true)
-    static let screenAssistantDisplayMode = Key<ScreenAssistantDisplayMode>("screenAssistantDisplayMode", default: .panel)
-    static let geminiApiKey = Key<String>("geminiApiKey", default: "")
-    static let openaiApiKey = Key<String>("openaiApiKey", default: "")
-    static let claudeApiKey = Key<String>("claudeApiKey", default: "")
-    static let groqApiKey = Key<String>("groqApiKey", default: "")
-    static let selectedAIProvider = Key<AIModelProvider>("selectedAIProvider", default: .gemini)
-    static let selectedAIModel = Key<AIModel?>("selectedAIModel", default: nil)
-    static let enableThinkingMode = Key<Bool>("enableThinkingMode", default: false)
-    static let localModelEndpoint = Key<String>("localModelEndpoint", default: "http://localhost:11434")
 
-    // MARK: Third-Party Extensions
-    static let enableThirdPartyExtensions = Key<Bool>("enableThirdPartyExtensions", default: true)
-    static let enableExtensionLiveActivities = Key<Bool>("enableExtensionLiveActivities", default: true)
-    static let enableExtensionLockScreenWidgets = Key<Bool>("enableExtensionLockScreenWidgets", default: true)
-    static let enableExtensionNotchExperiences = Key<Bool>("enableExtensionNotchExperiences", default: true)
-    static let enableExtensionNotchTabs = Key<Bool>("enableExtensionNotchTabs", default: true)
-    static let enableExtensionNotchMinimalisticOverrides = Key<Bool>("enableExtensionNotchMinimalisticOverrides", default: true)
-    static let enableExtensionNotchInteractiveWebViews = Key<Bool>("enableExtensionNotchInteractiveWebViews", default: true)
-    static let extensionAuthorizationEntries = Key<[ExtensionAuthorizationEntry]>("extensionAuthorizationEntries", default: [])
-    static let extensionRateLimitRecords = Key<[ExtensionRateLimitRecord]>("extensionRateLimitRecords", default: [])
-    static let extensionDiagnosticsLoggingEnabled = Key<Bool>("extensionDiagnosticsLoggingEnabled", default: true)
-    static let extensionLiveActivityCapacity = Key<Int>("extensionLiveActivityCapacity", default: 4)
-    static let extensionLockScreenWidgetCapacity = Key<Int>("extensionLockScreenWidgetCapacity", default: 4)
-    static let extensionNotchExperienceCapacity = Key<Int>("extensionNotchExperienceCapacity", default: 2)
-    static let enableExtensionFileSharing = Key<Bool>("enableExtensionFileSharing", default: true)
     
     // MARK: Keyboard Shortcuts
     static let enableShortcuts = Key<Bool>("enableShortcuts", default: true)
