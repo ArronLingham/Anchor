@@ -50,11 +50,6 @@ struct ContentView: View {
     @ObservedObject var dictationManager = DictationManager.shared
     @State private var downloadManager = DownloadManager.shared
     
-    @Default(.showCpuGraph) var showCpuGraph
-    @Default(.showMemoryGraph) var showMemoryGraph
-    @Default(.showGpuGraph) var showGpuGraph
-    @Default(.showNetworkGraph) var showNetworkGraph
-    @Default(.showDiskGraph) var showDiskGraph
     @Default(.enableReminderLiveActivity) var enableReminderLiveActivity
     @Default(.showDictationLiveActivity) var showDictationLiveActivity
     @Default(.enableTimerFeature) var enableTimerFeature
@@ -169,15 +164,6 @@ struct ContentView: View {
         }
 
         return baseSize
-        
-        let rows = statsRowCount()
-        if rows <= 1 {
-            return baseSize
-        }
-        
-        let additionalRows = max(rows - 1, 0)
-        let extraHeight = CGFloat(additionalRows) * statsAdditionalRowHeight
-        return CGSize(width: baseSize.width, height: baseSize.height + extraHeight)
     }
     
 
@@ -242,7 +228,6 @@ struct ContentView: View {
     }
     
     private let zeroHeightHoverPadding: CGFloat = 10
-    private let statsAdditionalRowHeight: CGFloat = statsSecondRowContentHeight + statsGridSpacingHeight
     private let musicControlPauseGrace: TimeInterval = 5
     private let musicControlResumeDelay: TimeInterval = 0.24
 
@@ -990,7 +975,7 @@ struct ContentView: View {
                             case .notes:
                                 NotchNotesView()
                             case .clipboard:
-                                NotchNotesView()
+                                NotchClipboardList()
                             case .terminal:
                                 NotchTerminalView()
                           }
@@ -1774,23 +1759,6 @@ struct ContentView: View {
         }
     }
     
-    // Helper to check if stats tab has 4+ graphs (needs expanded height)
-    private func enabledStatsGraphCount() -> Int {
-        var enabledCount = 0
-        if showCpuGraph { enabledCount += 1 }
-        if showMemoryGraph { enabledCount += 1 }
-        if showGpuGraph { enabledCount += 1 }
-        if showNetworkGraph { enabledCount += 1 }
-        if showDiskGraph { enabledCount += 1 }
-        return enabledCount
-    }
-
-    private func statsRowCount() -> Int {
-        let count = enabledStatsGraphCount()
-        if count == 0 { return 0 }
-        return count <= 3 ? 1 : 2
-    }
-
 
 
     // Estimate the height required for minimalistic overrides (notably web content) and clamp it to the notch bounds.

@@ -278,6 +278,35 @@ class ClipboardManager: ObservableObject {
         timer?.invalidate()
         timer = nil
     }
+
+    // MARK: - Suppressing Anchor's own pasteboard writes
+
+    /// Change counts produced by Anchor itself rather than by the user.
+    ///
+    /// Dictation parks the transcript on the pasteboard for ~250 ms so it can
+    /// synthesize ⌘V. The poller runs every 500 ms, so without this it has
+    /// roughly an even chance of landing inside that window and filing the
+    /// transcript into clipboard history — and history is persisted to
+    /// `UserDefaults`, so a dictated password would outlive the dictation.
+    ///
+    /// Matching on the exact change count rather than suppressing a time window
+    /// matters: if the user copies something of their own during those 250 ms it
+    /// gets a *different* count and is still recorded normally.
+    private var selfGeneratedChangeCounts: Set<Int> = []
+
+    /// Tells the monitor that `count` came from Anchor and should not be filed.
+    /// Call after each write, passing `NSPasteboard.general.changeCount`.
+    func ignoreChangeCount(_ count: Int) {
+        selfGeneratedChangeCounts.insert(count)
+
+        // A count is normally consumed by the next poll, but a write that is
+        // reverted before the poller ever sees it leaves its entry behind.
+        // Change counts only increase, so the smallest are the stale ones.
+        while selfGeneratedChangeCounts.count > 16 {
+            guard let oldest = selfGeneratedChangeCounts.min() else { break }
+            selfGeneratedChangeCounts.remove(oldest)
+        }
+    }
     
     func copyToClipboard(_ item: ClipboardItem) {
         let pasteboard = NSPasteboard.general
@@ -392,10 +421,13 @@ class ClipboardManager: ObservableObject {
     
     private func checkClipboard() {
         let currentChangeCount = NSPasteboard.general.changeCount
-        
+
         guard currentChangeCount != lastChangeCount else { return }
         lastChangeCount = currentChangeCount
-        
+
+        // A write Anchor made itself. Advance past it without filing it.
+        if selfGeneratedChangeCounts.remove(currentChangeCount) != nil { return }
+
         guard let clipboardItem = getCurrentClipboardItem() else { return }
         
         // Don't add duplicate items

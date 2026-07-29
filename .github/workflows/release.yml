@@ -385,7 +385,7 @@ jobs:
           # signing change that would silently strip the app's entitlements.
           FINAL_ENTITLEMENTS_PATH="$RUNNER_TEMP/${APP_NAME}-final.entitlements"
           codesign -d --entitlements :- "$APP_PATH" > "$FINAL_ENTITLEMENTS_PATH"
-          /usr/libexec/PlistBuddy -c "Print :com.apple.security.device.camera" "$FINAL_ENTITLEMENTS_PATH" | grep -qx "true"
+          /usr/libexec/PlistBuddy -c "Print :com.apple.security.device.audio-input" "$FINAL_ENTITLEMENTS_PATH" | grep -qx "true"
           /usr/libexec/PlistBuddy -c "Print :com.apple.security.automation.apple-events" "$FINAL_ENTITLEMENTS_PATH" | grep -qx "true"
 
       # ─────────────────────────────────────────────────────────────────

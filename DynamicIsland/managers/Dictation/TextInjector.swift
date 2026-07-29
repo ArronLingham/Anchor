@@ -77,11 +77,15 @@ enum TextInjector {
         pasteboard.clearContents()
         pasteboard.setString(trimmed, forType: .string)
         let ourChangeCount = pasteboard.changeCount
+        // The clipboard monitor polls every 500 ms and this transcript is only
+        // on the pasteboard for ~250 ms, so without this it lands in clipboard
+        // history perhaps half the time — and that history is written to disk.
+        await ignoreInClipboardHistory(ourChangeCount)
 
         do {
             try postPasteKeystroke()
         } catch {
-            restore(saved, to: pasteboard)
+            await restore(saved, to: pasteboard)
             throw error
         }
 
@@ -93,7 +97,12 @@ enum TextInjector {
         // user copied something in that window, theirs wins — silently reverting it
         // would be data loss.
         guard pasteboard.changeCount == ourChangeCount else { return }
-        restore(saved, to: pasteboard)
+        await restore(saved, to: pasteboard)
+    }
+
+    /// Marks a pasteboard write as Anchor's own so the clipboard monitor skips it.
+    private static func ignoreInClipboardHistory(_ changeCount: Int) async {
+        await MainActor.run { ClipboardManager.shared.ignoreChangeCount(changeCount) }
     }
 
     // MARK: - Keystroke
@@ -163,14 +172,23 @@ enum TextInjector {
         return PasteboardSnapshot(items: items)
     }
 
-    private static func restore(_ snapshot: PasteboardSnapshot, to pasteboard: NSPasteboard) {
+    /// Putting the user's own clipboard back is also our write, not theirs — the
+    /// content is already at the top of their history, and re-filing it would
+    /// duplicate the entry and reorder the list under them.
+    private static func restore(_ snapshot: PasteboardSnapshot, to pasteboard: NSPasteboard) async {
         pasteboard.clearContents()
-        guard !snapshot.items.isEmpty else { return }
-        let items = snapshot.items.map { stored -> NSPasteboardItem in
-            let item = NSPasteboardItem()
-            for (type, data) in stored { item.setData(data, forType: type) }
-            return item
+
+        if !snapshot.items.isEmpty {
+            let items = snapshot.items.map { stored -> NSPasteboardItem in
+                let item = NSPasteboardItem()
+                for (type, data) in stored { item.setData(data, forType: type) }
+                return item
+            }
+            pasteboard.writeObjects(items)
         }
-        pasteboard.writeObjects(items)
+
+        // Read the count synchronously — deferring this to the async hop would
+        // capture whatever the count had become by then, not what we just wrote.
+        await ignoreInClipboardHistory(pasteboard.changeCount)
     }
 }

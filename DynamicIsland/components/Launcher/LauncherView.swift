@@ -17,6 +17,7 @@
  */
 
 import AppKit
+import Defaults
 import SwiftUI
 
 /// The launcher: a search field over either a filtered result list (while
@@ -32,10 +33,14 @@ struct LauncherView: View {
     @State private var calculation: String?
     @State private var copiedFlash = false
     @FocusState private var queryFocused: Bool
+    @Default(.launcherShowGridWhenEmpty) private var showGridWhenEmpty
+    @Default(.launcherEnableCalculator) private var calculatorEnabled
 
     private static let rowHeight: CGFloat = 44
 
-    private var showingGrid: Bool { query.trimmingCharacters(in: .whitespaces).isEmpty }
+    private var showingGrid: Bool {
+        showGridWhenEmpty && query.trimmingCharacters(in: .whitespaces).isEmpty
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -69,7 +74,7 @@ struct LauncherView: View {
             queryFocused = true
         }
         .onChange(of: query) { _, _ in recompute() }
-        .onChange(of: index.apps) { _, _ in recompute() }
+        .onChange(of: index.apps) { _, _ in recompute(resetSelection: false) }
     }
 
     // MARK: - Pieces
@@ -91,12 +96,8 @@ struct LauncherView: View {
                 .onKeyPress(.rightArrow) { showingGrid ? move(by: 1) : nil; return showingGrid ? .handled : .ignored }
                 .onKeyPress(.escape) { onDismiss(); return .handled }
 
-            if copiedFlash {
-                Text("Copied")
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(.secondary)
-                    .transition(.opacity)
-            }
+            // The copy confirmation lives in the calculator row itself, which is
+            // where the user is looking when they press ↩.
             if index.isIndexing {
                 ProgressView().controlSize(.small)
             }
@@ -106,17 +107,30 @@ struct LauncherView: View {
     }
 
     /// In the grid, ↑/↓ move a whole row; in the list they move one item.
-    private var stride: Int { showingGrid ? LauncherGridView.columns : 1 }
+    private var stride: Int { showingGrid ? Defaults[.launcherGridColumns] : 1 }
 
     private func calculatorRow(_ value: String) -> some View {
-        VStack(spacing: 8) {
+        VStack(spacing: 10) {
+            // Echo the expression above the answer so a mistyped operand is
+            // obvious without looking back up at the field.
+            Text(query.trimmingCharacters(in: .whitespaces))
+                .font(.system(size: 15, weight: .regular, design: .rounded))
+                .foregroundStyle(.secondary)
+
             Text(value)
-                .font(.system(size: 44, weight: .light, design: .rounded))
+                .font(.system(size: 52, weight: .light, design: .rounded))
                 .foregroundStyle(.primary)
                 .textSelection(.enabled)
-            Text("Press ↩ to copy")
-                .font(.system(size: 12))
+                .contentTransition(.numericText())
+                .animation(.easeOut(duration: 0.15), value: value)
+
+            Label(copiedFlash ? "Copied" : "Press ↩ to copy", systemImage: copiedFlash ? "checkmark" : "return")
+                .font(.system(size: 11, weight: .medium))
                 .foregroundStyle(.tertiary)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .background(Capsule().fill(Color.primary.opacity(0.06)))
+                .padding(.top, 4)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -158,16 +172,21 @@ struct LauncherView: View {
 
     // MARK: - Behaviour
 
-    private func recompute() {
-        calculation = CalculatorAction.evaluate(query)
+    /// - Parameter resetSelection: true when the user changed the query, false
+    ///   when the index refreshed underneath a stable query. Editing the query
+    ///   must always drop the cursor back to the best match — carrying it over
+    ///   meant typing a letter while sitting on grid tile 50 selected the *last*
+    ///   of three matches instead of the first.
+    private func recompute(resetSelection: Bool = true) {
+        calculation = calculatorEnabled ? CalculatorAction.evaluate(query) : nil
         // The grid shows everything; the filtered list is capped for speed.
         results = index.search(query, limit: showingGrid ? Int.max : 40)
-        if results.isEmpty {
+
+        if resetSelection || results.isEmpty {
             selection = 0
         } else {
             selection = min(selection, results.count - 1)
         }
-        if showingGrid { selection = min(selection, max(0, results.count - 1)) }
     }
 
     private func move(by delta: Int) {
@@ -202,6 +221,7 @@ private struct LauncherRow: View {
     let result: LauncherResult
     let isSelected: Bool
 
+    @Default(.launcherShowPaths) private var showPaths
     @State private var icon: NSImage?
 
     var body: some View {
@@ -219,10 +239,12 @@ private struct LauncherRow: View {
                 highlightedName
                     .font(.system(size: 14))
                     .lineLimit(1)
-                Text(locationHint)
-                    .font(.system(size: 10))
-                    .foregroundStyle(.tertiary)
-                    .lineLimit(1)
+                if showPaths {
+                    Text(locationHint)
+                        .font(.system(size: 10))
+                        .foregroundStyle(.tertiary)
+                        .lineLimit(1)
+                }
             }
 
             Spacer(minLength: 0)
@@ -243,25 +265,45 @@ private struct LauncherRow: View {
     }
 
     /// Bolds the characters the query actually matched.
+    ///
+    /// Built as one `AttributedString` rather than concatenated `Text` values:
+    /// `Text` + `Text` is deprecated as of macOS 26, and a single attributed
+    /// string also lets the layout engine kern and truncate the name as a whole
+    /// instead of as N independent runs.
     private var highlightedName: Text {
         let matched = Set(result.matchedIndices)
         guard !matched.isEmpty else { return Text(result.app.name) }
 
-        var composed = Text("")
-        for (offset, character) in result.app.name.enumerated() {
-            let piece = Text(String(character))
-            composed =
-                composed
-                + (matched.contains(offset)
-                    ? piece.fontWeight(.bold).foregroundColor(.primary)
-                    : piece.foregroundColor(.secondary))
+        var attributed = AttributedString(result.app.name)
+        attributed.foregroundColor = .secondary
+
+        let characters = attributed.characters
+        let count = characters.count
+        for offset in matched.sorted() where offset >= 0 && offset < count {
+            let start = characters.index(characters.startIndex, offsetBy: offset)
+            let end = characters.index(after: start)
+            attributed[start..<end].foregroundColor = .primary
+            attributed[start..<end].inlinePresentationIntent = .stronglyEmphasized
         }
-        return composed
+
+        return Text(attributed)
     }
 
+    /// A short, readable home for the app rather than a full absolute path.
+    /// Nearly every result lives in one of four places, and printing
+    /// `/System/Cryptexes/App/System/Applications` under Safari is noise.
     private var locationHint: String {
-        result.app.url.deletingLastPathComponent().path
-            .replacingOccurrences(of: NSHomeDirectory(), with: "~")
+        let path = result.app.url.deletingLastPathComponent().path
+
+        if path.hasPrefix(NSHomeDirectory()) { return "User" }
+        if path.hasPrefix("/System/Cryptexes") { return "System" }
+        if path.hasPrefix("/System") { return "System" }
+        if path == "/Applications" { return "Applications" }
+        if path.hasPrefix("/Applications") {
+            // /Applications/Adobe -> "Applications › Adobe"
+            return "Applications › " + (path as NSString).lastPathComponent
+        }
+        return (path as NSString).lastPathComponent
     }
 
     private func loadIcon() {

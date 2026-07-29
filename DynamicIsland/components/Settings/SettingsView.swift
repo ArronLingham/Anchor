@@ -18,7 +18,7 @@ import SwiftUIIntrospect
 import UniformTypeIdentifiers
 
 /// Groups for organizing settings tabs in the sidebar.
-private enum SettingsTabGroup: String, CaseIterable, Identifiable {
+enum SettingsTabGroup: String, CaseIterable, Identifiable {
     case core
     case mediaAndDisplay
     case system
@@ -45,7 +45,7 @@ private enum SettingsTabGroup: String, CaseIterable, Identifiable {
     }
 }
 
-private enum SettingsTab: String, CaseIterable, Identifiable {
+enum SettingsTab: String, CaseIterable, Identifiable {
     case general
     case liveActivities
     case appearance
@@ -56,6 +56,8 @@ private enum SettingsTab: String, CaseIterable, Identifiable {
     case calendar
     case hudAndOSD
     case battery
+    case dictation
+    case launcher
     case clipboard
     case downloads
     case shortcuts
@@ -72,6 +74,7 @@ private enum SettingsTab: String, CaseIterable, Identifiable {
         case .media, .liveActivities, .lockScreen, .devices:                 return .mediaAndDisplay
         case .hudAndOSD, .battery:                                           return .system
         case .timer, .calendar, .notes:                                      return .productivity
+        case .dictation, .launcher:                                          return .integrations
         case .clipboard, .downloads, .shortcuts:                             return .utilities
         case .terminal:                                                      return .developer
         case .about:                                                         return .info
@@ -90,6 +93,8 @@ private enum SettingsTab: String, CaseIterable, Identifiable {
         case .calendar: return String(localized: "Calendar")
         case .hudAndOSD: return String(localized: "Controls")
         case .battery: return String(localized: "Battery")
+        case .dictation: return String(localized: "Dictation")
+        case .launcher: return String(localized: "Launcher")
         case .clipboard: return String(localized: "Clipboard")
         case .downloads: return String(localized: "Downloads")
         case .shortcuts: return String(localized: "Shortcuts")
@@ -111,6 +116,8 @@ private enum SettingsTab: String, CaseIterable, Identifiable {
         case .calendar: return "calendar"
         case .hudAndOSD: return "dial.medium.fill"
         case .battery: return "battery.100.bolt"
+        case .dictation: return "mic.fill"
+        case .launcher: return "square.grid.3x3.fill"
         case .clipboard: return "clipboard"
         case .downloads: return "square.and.arrow.down"
         case .shortcuts: return "keyboard"
@@ -132,6 +139,8 @@ private enum SettingsTab: String, CaseIterable, Identifiable {
         case .calendar: return .cyan
         case .hudAndOSD: return .indigo
         case .battery: return Color(red: 0.202, green: 0.783, blue: 0.348, opacity: 1.000)
+        case .dictation: return .teal
+        case .launcher: return .blue
         case .clipboard: return .mint
         case .downloads: return .gray
         case .shortcuts: return .orange
@@ -482,6 +491,8 @@ struct SettingsView: View {
             // Developer
             .terminal,
             // Integrations
+            .dictation,
+            .launcher,
             // Info
             .about
         ]
@@ -852,6 +863,26 @@ struct SettingsView: View {
             SettingsSearchEntry(tab: .clipboard, title: "Display Mode", keywords: ["list", "grid", "clipboard"], highlightID: SettingsTab.clipboard.highlightID(for: "Display Mode")),
             SettingsSearchEntry(tab: .clipboard, title: "History Size", keywords: ["history", "clipboard"], highlightID: SettingsTab.clipboard.highlightID(for: "History Size")),
 
+            // Dictation
+            SettingsSearchEntry(tab: .dictation, title: "Enable Dictation", keywords: ["dictation", "speech", "voice", "transcribe", "wispr"], highlightID: SettingsTab.dictation.highlightID(for: "Enable Dictation")),
+            SettingsSearchEntry(tab: .dictation, title: "Push-to-talk", keywords: ["shortcut", "hotkey", "dictation", "push to talk"], highlightID: SettingsTab.dictation.highlightID(for: "Push-to-talk")),
+            SettingsSearchEntry(tab: .dictation, title: "Paste into the focused app", keywords: ["paste", "clipboard", "dictation", "accessibility"], highlightID: SettingsTab.dictation.highlightID(for: "Paste into the focused app")),
+            SettingsSearchEntry(tab: .dictation, title: "Tidy spacing", keywords: ["whitespace", "trim", "dictation"], highlightID: SettingsTab.dictation.highlightID(for: "Tidy spacing")),
+            SettingsSearchEntry(tab: .dictation, title: "Play a sound when finished", keywords: ["sound", "feedback", "dictation"], highlightID: SettingsTab.dictation.highlightID(for: "Play a sound when finished")),
+            SettingsSearchEntry(tab: .dictation, title: "Show in the notch while dictating", keywords: ["notch", "live activity", "dictation", "waveform"], highlightID: SettingsTab.dictation.highlightID(for: "Show in the notch while dictating")),
+
+            // Launcher
+            SettingsSearchEntry(tab: .launcher, title: "Enable Launcher", keywords: ["launcher", "launchpad", "spotlight", "apps", "search"], highlightID: SettingsTab.launcher.highlightID(for: "Enable Launcher")),
+            SettingsSearchEntry(tab: .launcher, title: "Open launcher", keywords: ["shortcut", "hotkey", "launcher", "option space"], highlightID: SettingsTab.launcher.highlightID(for: "Open launcher")),
+            SettingsSearchEntry(tab: .launcher, title: "Show all apps when the field is empty", keywords: ["grid", "launchpad", "apps"], highlightID: SettingsTab.launcher.highlightID(for: "Show all apps when the field is empty")),
+            SettingsSearchEntry(tab: .launcher, title: "Columns", keywords: ["grid", "columns", "layout", "launcher"], highlightID: SettingsTab.launcher.highlightID(for: "Columns")),
+            SettingsSearchEntry(tab: .launcher, title: "Rows", keywords: ["grid", "rows", "layout", "launcher"], highlightID: SettingsTab.launcher.highlightID(for: "Rows")),
+            SettingsSearchEntry(tab: .launcher, title: "Evaluate arithmetic", keywords: ["calculator", "maths", "math", "launcher"], highlightID: SettingsTab.launcher.highlightID(for: "Evaluate arithmetic")),
+            SettingsSearchEntry(tab: .launcher, title: "Show file paths in results", keywords: ["path", "folder", "launcher"], highlightID: SettingsTab.launcher.highlightID(for: "Show file paths in results")),
+            SettingsSearchEntry(tab: .launcher, title: "Rebuild index now", keywords: ["index", "rescan", "refresh", "launcher"], highlightID: SettingsTab.launcher.highlightID(for: "Rebuild index now")),
+            SettingsSearchEntry(tab: .launcher, title: "Reset ranking", keywords: ["frecency", "history", "ranking", "launcher"], highlightID: SettingsTab.launcher.highlightID(for: "Reset ranking")),
+            SettingsSearchEntry(tab: .launcher, title: "Clear icon cache", keywords: ["icons", "cache", "launcher"], highlightID: SettingsTab.launcher.highlightID(for: "Clear icon cache")),
+
             // Terminal
             SettingsSearchEntry(tab: .terminal, title: "Enable terminal", keywords: ["terminal", "guake", "shell"], highlightID: SettingsTab.terminal.highlightID(for: "Enable terminal")),
             SettingsSearchEntry(tab: .terminal, title: "Shell path", keywords: ["shell", "zsh", "bash", "terminal"], highlightID: SettingsTab.terminal.highlightID(for: "Shell path")),
@@ -920,6 +951,14 @@ struct SettingsView: View {
         case .battery:
             SettingsForm(tab: .battery) {
                 Charge()
+            }
+        case .dictation:
+            SettingsForm(tab: .dictation) {
+                DictationSettings()
+            }
+        case .launcher:
+            SettingsForm(tab: .launcher) {
+                LauncherSettings()
             }
         case .clipboard:
             SettingsForm(tab: .clipboard) {

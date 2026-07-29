@@ -11,10 +11,18 @@ CI_WORKFLOW = ROOT / ".github" / "workflows" / "ci.yml"
 
 
 class PrivacyConfigurationTests(unittest.TestCase):
-    def test_camera_capture_is_explicitly_entitled(self):
+    def test_microphone_capture_is_explicitly_entitled(self):
+        # Dictation records through AVAudioEngine. Camera was entitled here
+        # until Phase 1 removed the webcam subsystem; audio-input is now the
+        # only capture device the app claims.
         entitlements = plistlib.loads(ENTITLEMENTS.read_bytes())
 
-        self.assertTrue(entitlements.get("com.apple.security.device.camera"))
+        self.assertTrue(entitlements.get("com.apple.security.device.audio-input"))
+
+    def test_camera_entitlement_is_not_reintroduced(self):
+        entitlements = plistlib.loads(ENTITLEMENTS.read_bytes())
+
+        self.assertNotIn("com.apple.security.device.camera", entitlements)
 
     def test_notes_sync_is_authorized_for_apple_events(self):
         project = PROJECT.read_text()
@@ -61,7 +69,7 @@ class PrivacyConfigurationTests(unittest.TestCase):
             workflow,
         )
         self.assertIn(
-            '/usr/libexec/PlistBuddy -c "Print :com.apple.security.device.camera" "$FINAL_ENTITLEMENTS_PATH" | grep -qx "true"',
+            '/usr/libexec/PlistBuddy -c "Print :com.apple.security.device.audio-input" "$FINAL_ENTITLEMENTS_PATH" | grep -qx "true"',
             workflow,
         )
         self.assertIn(

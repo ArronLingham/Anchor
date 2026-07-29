@@ -948,6 +948,13 @@ extension Defaults.Keys {
     static let enableDictation = Key<Bool>("enableDictation", default: true)
     /// Show the live transcript in the notch while dictating.
     static let showDictationLiveActivity = Key<Bool>("showDictationLiveActivity", default: true)
+    /// Paste the transcript into the focused app. When off, it is only copied
+    /// to the clipboard — useful if you would rather not grant Accessibility.
+    static let dictationAutoPaste = Key<Bool>("dictationAutoPaste", default: true)
+    /// Play the system tink when a dictation starts and ends.
+    static let dictationFeedbackSound = Key<Bool>("dictationFeedbackSound", default: false)
+    /// Collapse runs of whitespace and trim the transcript before inserting.
+    static let dictationTidyWhitespace = Key<Bool>("dictationTidyWhitespace", default: true)
 
     // MARK: - Launcher
     /// Spotlight-style application launcher panel.
@@ -955,6 +962,15 @@ extension Defaults.Keys {
     /// Frecency bookkeeping, keyed by app bundle path.
     static let launcherFrecencyScores = Key<[String: Double]>("launcherFrecencyScores", default: [:])
     static let launcherLastLaunched = Key<[String: Date]>("launcherLastLaunched", default: [:])
+    /// Show the Launchpad-style grid when the search field is empty.
+    /// When off, an empty query shows a compact most-used list instead.
+    static let launcherShowGridWhenEmpty = Key<Bool>("launcherShowGridWhenEmpty", default: true)
+    static let launcherGridColumns = Key<Int>("launcherGridColumns", default: 7)
+    static let launcherGridRows = Key<Int>("launcherGridRows", default: 4)
+    /// Evaluate arithmetic typed into the search field.
+    static let launcherEnableCalculator = Key<Bool>("launcherEnableCalculator", default: true)
+    /// Show each result's containing folder under its name.
+    static let launcherShowPaths = Key<Bool>("launcherShowPaths", default: true)
     static let clipboardHistorySize = Key<Int>("clipboardHistorySize", default: 3)
     static let showClipboardIcon = Key<Bool>("showClipboardIcon", default: true)
     static let clipboardDisplayMode = Key<ClipboardDisplayMode>("clipboardDisplayMode", default: .panel)

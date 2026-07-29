@@ -17,6 +17,7 @@
  */
 
 import AVFoundation
+import AppKit
 import Combine
 import Defaults
 import Foundation
@@ -241,18 +242,38 @@ final class DictationManager: ObservableObject {
     // MARK: - Delivery
 
     private func deliver(_ transcript: String) async {
-        let trimmed = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else {
+        var text = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
+        if Defaults[.dictationTidyWhitespace] {
+            text = text.replacingOccurrences(
+                of: "\\s+", with: " ", options: .regularExpression)
+        }
+        guard !text.isEmpty else {
+            reset()
+            return
+        }
+
+        // Clipboard-only mode exists so dictation still works without the
+        // Accessibility grant, which is the one permission people balk at.
+        guard Defaults[.dictationAutoPaste] else {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(text, forType: .string)
+            playFeedback()
             reset()
             return
         }
 
         do {
-            try await TextInjector.insert(trimmed)
+            try await TextInjector.insert(text)
+            playFeedback()
             reset()
         } catch {
             fail(error.localizedDescription)
         }
+    }
+
+    private func playFeedback() {
+        guard Defaults[.dictationFeedbackSound] else { return }
+        NSSound(named: "Tink")?.play()
     }
 
     private func reset() {

@@ -175,8 +175,14 @@ Cutting Extensions also closed a local security hole — the JSON-RPC server
 on `localhost:9020` auto-authorised any local process. Verified nothing
 listens on that port now.
 
-Known upstream bug, not yet fixed: `ContentView` renders `NotchNotesView`
-for the `.clipboard` case.
+Fixed since: `ContentView` rendered `NotchNotesView` for the `.clipboard`
+case. `NotchClipboardList` already existed (the notes/clipboard split view
+uses it) and was simply never wired to the tab. Also deleted the unreachable
+stats-sizing block left behind by the Phase 1 removal — `statsRowCount`,
+`enabledStatsGraphCount`, `statsAdditionalRowHeight`, the two `matters.swift`
+constants, 5 dead `@Default` keys in `ContentView`, and 6 `Defaults.publisher`
+subscriptions in `DynamicIslandApp` that debounce-resized the notch for a tab
+that no longer exists.
 
 ## CPU offenders — status
 

@@ -588,6 +588,10 @@ private extension DoNotDisturbManager {
         let timer = DispatchSource.makeTimerSource(queue: pollingQueue)
         timer.schedule(deadline: .now() + .seconds(1), repeating: .seconds(2), leeway: .milliseconds(250))
         timer.setEventHandler { [weak self] in
+            // Focus state cannot change in any way the user would see while the
+            // display is asleep or the screen is locked, so skip the stat() —
+            // this is the last poller that ran unconditionally.
+            guard !SystemActivityGate.shared.shouldSuspendBackgroundWork else { return }
             self?.pollAssertionsState()
         }
         timer.resume()

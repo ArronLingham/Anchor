@@ -12,7 +12,6 @@ Current build: `/private/tmp/claude-501/-Users-arronlingham-Anchor/afa47fe6-293c
 
 | Thing | Why |
 |---|---|
-| Clipboard tab shows the **Notes** view | Upstream bug, `ContentView.swift:993` |
 | Settings → "Enable Camera Detection" does nothing | `CameraMonitor` was removed; nothing sets camera state. Mic half works. |
 | Bluetooth HUD animations don't render | The 8 `.mov` files are unreachable LFS stubs |
 | **⌘F1 / ⌘F2** backlight shortcuts do nothing | Declared but no handler registered — pre-existing |
@@ -214,7 +213,9 @@ Start each of these and confirm it appears in the closed notch:
 ## 8. Everything else
 
 **8.1** **Calendar** — events show on Home; click through to Calendar.app.
-**8.2** **Clipboard** — press **⌘⇧C**, pick an item, confirm it pastes.
+**8.2** **Clipboard panel** — press **⌘⇧C**, pick an item, confirm it pastes.
+**8.2a** **Clipboard tab** — set `clipboardDisplayMode` to *separate tab* in Settings, open the notch, pick the Clipboard tab.
+✅ You get the clipboard list — header, copy history, trash button. *This used to render the Notes view; it now renders `NotchClipboardList`.*
 **8.3** **Timer** — **⌘⇧T** starts the demo timer; presets and pause/reset work.
 **8.4** **Notes** (enable first) — create, edit, delete; check Apple Notes sync.
 **8.5** **Terminal** (enable first) — **⌃`** toggles it; run `ls`; resize it.

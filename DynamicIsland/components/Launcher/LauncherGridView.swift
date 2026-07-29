@@ -17,6 +17,7 @@
  */
 
 import AppKit
+import Defaults
 import SwiftUI
 
 /// The Launchpad replacement: a paged grid of every installed application,
@@ -32,8 +33,8 @@ struct LauncherGridView: View {
     @Binding var selection: Int
     let onLaunch: (LauncherApp) -> Void
 
-    static let columns = 7
-    static let rows = 4
+    static var columns: Int { max(3, min(12, Defaults[.launcherGridColumns])) }
+    static var rows: Int { max(2, min(8, Defaults[.launcherGridRows])) }
     static var perPage: Int { columns * rows }
 
     private var pages: [[LauncherApp]] {
@@ -93,14 +94,25 @@ struct LauncherGridView: View {
         .padding(.horizontal, 20)
     }
 
+    /// Dots are clickable — jumping five pages with the arrow keys is tedious,
+    /// and a dot that looks like a control but isn't one reads as broken.
     private var pageDots: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: 8) {
             ForEach(0..<pages.count, id: \.self) { index in
                 Circle()
-                    .fill(index == currentPage ? Color.primary.opacity(0.7) : Color.primary.opacity(0.2))
+                    .fill(index == currentPage ? Color.primary.opacity(0.75) : Color.primary.opacity(0.2))
                     .frame(width: 6, height: 6)
+                    // Padded hit area — a 6pt target is too small to click.
+                    .padding(4)
+                    .contentShape(Circle())
+                    .onTapGesture {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            selection = index * Self.perPage
+                        }
+                    }
             }
         }
+        .animation(.easeInOut(duration: 0.2), value: currentPage)
     }
 }
 
@@ -132,9 +144,16 @@ private struct LauncherGridCell: View {
         .frame(maxWidth: .infinity)
         .padding(.vertical, 8)
         .background(
-            RoundedRectangle(cornerRadius: 12)
-                .fill(isSelected ? Color.accentColor.opacity(0.25) : .clear)
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(isSelected ? Color.accentColor.opacity(0.22) : .clear)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .strokeBorder(
+                            isSelected ? Color.accentColor.opacity(0.55) : .clear, lineWidth: 1)
+                )
         )
+        .scaleEffect(isSelected ? 1.04 : 1)
+        .animation(.easeOut(duration: 0.12), value: isSelected)
         .onAppear(perform: loadIcon)
     }
 
