@@ -29,6 +29,7 @@ struct LauncherView: View {
     @ObservedObject private var index = AppIndex.shared
     @State private var query = ""
     @State private var results: [LauncherResult] = []
+    @State private var commands: [LauncherCommand.ScoredCommand] = []
     @State private var selection = 0
     @State private var calculation: String?
     @State private var copiedFlash = false
@@ -55,7 +56,7 @@ struct LauncherView: View {
                     selection: $selection,
                     onLaunch: onLaunch
                 )
-            } else if results.isEmpty {
+            } else if results.isEmpty && commands.isEmpty {
                 emptyState
             } else {
                 resultList
@@ -139,7 +140,18 @@ struct LauncherView: View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(spacing: 0) {
-                    ForEach(Array(results.enumerated()), id: \.element.id) { position, result in
+                    ForEach(Array(commands.enumerated()), id: \.element.id) { position, scored in
+                        LauncherCommandRow(scored: scored, isSelected: position == selection)
+                            .frame(height: Self.rowHeight)
+                            .id(position)
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                selection = position
+                                activateSelection()
+                            }
+                    }
+                    ForEach(Array(results.enumerated()), id: \.element.id) { offset, result in
+                        let position = offset + commands.count
                         LauncherRow(result: result, isSelected: position == selection)
                             .frame(height: Self.rowHeight)
                             .id(position)
@@ -179,25 +191,28 @@ struct LauncherView: View {
     ///   of three matches instead of the first.
     private func recompute(resetSelection: Bool = true) {
         calculation = calculatorEnabled ? CalculatorAction.evaluate(query) : nil
+        commands = showingGrid ? [] : LauncherCommand.search(query)
         // The grid shows everything; the filtered list is capped for speed.
         results = index.search(query, limit: showingGrid ? Int.max : 40)
 
-        if resetSelection || results.isEmpty {
+        if resetSelection || selectableCount == 0 {
             selection = 0
         } else {
-            selection = min(selection, results.count - 1)
+            selection = min(selection, selectableCount - 1)
         }
     }
 
+    private var selectableCount: Int { commands.count + results.count }
+
     private func move(by delta: Int) {
-        guard calculation == nil, !results.isEmpty else { return }
+        guard calculation == nil, selectableCount > 0 else { return }
         let next = selection + delta
         // Clamp in the grid so ↓ on the last row does not wrap to the start;
         // wrap in the list, where it reads as a loop through a short set.
         if showingGrid {
-            selection = max(0, min(results.count - 1, next))
+            selection = max(0, min(selectableCount - 1, next))
         } else {
-            selection = (next + results.count) % results.count
+            selection = (next + selectableCount) % selectableCount
         }
     }
 
@@ -211,8 +226,15 @@ struct LauncherView: View {
             }
             return
         }
-        guard results.indices.contains(selection) else { return }
-        onLaunch(results[selection].app)
+        if commands.indices.contains(selection) {
+            let command = commands[selection].command
+            onDismiss()
+            command.run()
+            return
+        }
+        let appIndex = selection - commands.count
+        guard results.indices.contains(appIndex) else { return }
+        onLaunch(results[appIndex].app)
     }
 }
 
@@ -311,5 +333,58 @@ private struct LauncherRow: View {
         if let cached = AppIconCache.shared.icon(for: result.app, completion: { icon = $0 }) {
             icon = cached
         }
+    }
+}
+
+/// A command result — same shape as an app row so the list reads uniformly.
+private struct LauncherCommandRow: View {
+    let scored: LauncherCommand.ScoredCommand
+    let isSelected: Bool
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: scored.command.symbolName)
+                .font(.system(size: 15, weight: .medium))
+                .foregroundStyle(.secondary)
+                .frame(width: 28, height: 28)
+
+            VStack(alignment: .leading, spacing: 1) {
+                highlightedTitle
+                    .font(.system(size: 14))
+                    .lineLimit(1)
+                Text(scored.command.subtitle)
+                    .font(.system(size: 10))
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(1)
+            }
+
+            Spacer(minLength: 0)
+
+            if isSelected {
+                Image(systemName: "return")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(.horizontal, 16)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(isSelected ? Color.accentColor.opacity(0.22) : .clear)
+                .padding(.horizontal, 10)
+        )
+    }
+
+    private var highlightedTitle: Text {
+        let matched = Set(scored.matchedIndices)
+        guard !matched.isEmpty else { return Text(scored.command.title) }
+        var composed = Text("")
+        for (offset, character) in scored.command.title.enumerated() {
+            let piece = Text(String(character))
+            composed = composed
+                + (matched.contains(offset)
+                    ? piece.fontWeight(.bold).foregroundColor(.primary)
+                    : piece.foregroundColor(.secondary))
+        }
+        return composed
     }
 }
