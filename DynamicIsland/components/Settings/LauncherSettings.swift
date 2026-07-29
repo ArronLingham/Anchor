@@ -61,14 +61,17 @@ struct LauncherSettings: View {
                 .settingsHighlight(id: highlightID("Show all apps when the field is empty"))
 
                 if showGrid {
-                    Stepper(value: $columns, in: 3...12) {
-                        LabeledContent("Columns", value: "\(columns)")
+                    // LabeledContent wrapping the Stepper, rather than the other
+                    // way round, so the value sits on the trailing edge like
+                    // every other value row instead of butting against its label.
+                    LabeledContent("Columns") {
+                        Stepper("\(columns)", value: $columns, in: 3...12)
                     }
                     .disabled(!enableLauncher)
                     .settingsHighlight(id: highlightID("Columns"))
 
-                    Stepper(value: $rows, in: 2...8) {
-                        LabeledContent("Rows", value: "\(rows)")
+                    LabeledContent("Rows") {
+                        Stepper("\(rows)", value: $rows, in: 2...8)
                     }
                     .disabled(!enableLauncher)
                     .settingsHighlight(id: highlightID("Rows"))

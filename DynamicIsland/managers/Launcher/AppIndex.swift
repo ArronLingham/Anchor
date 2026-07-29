@@ -97,6 +97,9 @@ final class AppIndex: ObservableObject {
                 self.lastScan = Date()
                 self.isIndexing = false
                 self.startWatchingIfNeeded()
+                // Rasterising icons is the slow part of showing the grid; do it
+                // now rather than when the user is waiting on it.
+                AppIconCache.shared.warm(found)
             }
         }
     }

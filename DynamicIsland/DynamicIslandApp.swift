@@ -556,6 +556,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
     
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Development aid: render UI to PNGs and quit. No-op unless
+        // ANCHOR_RENDER_UI is set to an output directory.
+        if let snapshotDirectory = UISnapshotHarness.requestedDirectory {
+            UISnapshotHarness.renderAndExit(into: snapshotDirectory)
+            return
+        }
+
         LockScreenLiveActivityWindowManager.shared.configure(viewModel: vm)
         LockScreenManager.shared.configure(viewModel: vm)
         
