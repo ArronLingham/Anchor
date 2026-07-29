@@ -33,6 +33,18 @@ Plan of record: `~/.claude/plans/i-want-to-build-functional-pinwheel.md`
 
 ## Atoll gotchas
 
+- **Never construct a singleton from `AppDelegate`'s stored properties.** SwiftUI
+  builds the delegate on the main thread *before* the run loop starts. Any
+  singleton that blocks in `init` (IOBluetooth waits on a main-queue semaphore;
+  reading `~/Downloads` blocks on a TCC prompt) deadlocks the whole app at launch
+  and `applicationDidFinishLaunching` never runs. They are `lazy var` for this
+  reason — keep them that way, and defer blocking work in any new manager's
+  `init` with `DispatchQueue.main.async`.
+- **A running process is not a working app.** This deadlock survived several
+  rounds of "launches fine, no crashes, 0 children" because all of that was true
+  while the app was hung. Verify a real side effect instead — e.g.
+  `ps -o state= -p $(pgrep -x OSDUIHelper)` should print `T`.
+
 - ~93 `static let shared` singletons; no central store.
 - ~350 `Defaults` keys in `models/Constants.swift:833+` — the de-facto feature-flag registry. Flip switches before deleting code.
 - `ContentView.swift` (2,979 lines) observes 17 `ObservableObject`s and 40 `@Default` keys — any `@Published` change re-renders the whole notch. Split it before adding to it.
@@ -180,6 +192,16 @@ Still outstanding:
   250 ms leeway, so low priority.
 - `RealTimeWaveformScrubberView.swift:44` drives a 60 Hz SwiftUI transaction,
   but only while hovering.
+
+**OSD suppression caveat:** only a graceful quit (menu, ⌘Q) runs
+`applicationWillTerminate` and resumes `OSDUIHelper`. A force-quit or crash
+leaves it SIGSTOP'd, which kills the volume/brightness HUD system-wide until
+the next launch re-suppresses a fresh one. Recovery: `killall -CONT OSDUIHelper`.
+Trapping SIGTERM was tried and reverted — the dispatch handler never fired while
+`SIG_IGN` did, leaving the app unkillable for 11s.
+
+Also note `launchctl kickstart -k com.apple.OSDUIHelper` always fails under SIP
+(`150: Operation not permitted`). Harmless — the SIGSTOP fallback is what works.
 
 **Watch out:** `focusMonitoringMode` has two modes. `useDevTools` spawns a
 persistent `log stream` on `duetexpertd`; onboarding picks it. `withoutDevTools`
