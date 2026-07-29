@@ -77,6 +77,27 @@ Every poller now parks on display sleep / screen lock / Low Power Mode via
 `SystemActivityGate`. `AudioTap` only runs when `enableRealTimeWaveform` is on
 (it defaults off).
 
+## Verifying the UI
+
+Screen-recording and accessibility grants are both denied here, so UI is
+checked by rendering it:
+
+```bash
+ANCHOR_RENDER_UI=/tmp/uishots \
+  <build>/Atoll.app/Contents/MacOS/Atoll
+```
+
+Writes a PNG of the launcher and each new settings pane in light and dark,
+then exits. Inert unless the variable is set. See `helpers/UISnapshotHarness.swift`.
+
+- Do **not** use `ImageRenderer` — it draws AppKit-backed controls as a yellow
+  placeholder (`TextField`) and never materialises lazy containers, so the app
+  grid comes out empty. The harness uses `NSHostingView` in an offscreen window.
+- Appearance must be set on the *window*; `.environment(\.colorScheme)` does not
+  reach AppKit controls inside a hosting view.
+- Settings panes need `.formStyle(.grouped)` and a `SettingsHighlightCoordinator`
+  in the environment, or they render as unstyled floating labels.
+
 ## Build
 
 ```bash
