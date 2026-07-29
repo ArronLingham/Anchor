@@ -54,23 +54,28 @@ Plan of record: `~/.claude/plans/i-want-to-build-functional-pinwheel.md`
 
 ## CPU measurements
 
+**Every figure before the deadlock fix was measured on a hung app and is
+meaningless.** Only these two are real:
+
 | Build | mean | median | max | RSS mean |
 |---|---|---|---|---|
-| v2.2.0 installed (Release), Phase 0 baseline | 1.93% | 1.90% | 3.00% | 27 MB |
-| Phase 0.5 patched (Debug), steady | 0.40% | 0.20% | 8.40% | 58 MB |
-| Phase 1 stripped (Debug), steady | 0.00% | 0.00% | 0.00% | 27 MB |
-| Phase 2 + dictation (Debug), steady | 0.04% | 0.00% | 1.00% | 43 MB |
-| Phase 3 + launcher (Debug), steady | 0.18% | 0.00% | 3.40% | 31 MB |
-| **Phase 4 + grid/calc (Debug), steady** | **0.15%** | **0.00%** | 4.10% | 54 MB |
+| v2.2.0 installed (Release), original baseline | 1.93% | 1.90% | 3.00% | 27 MB |
+| **Current (Debug), steady** | **0.02%** | **0.00%** | 0.80% | 58 MB |
 
-Idle CPU is now unmeasurable by `ps` (below 0.005%) across 90 samples, down
-from 1.93%, and RSS is back to the Release baseline despite this being a
-Debug build. Always let the app settle for a few minutes before sampling —
-launch transients spike to ~28% and wreck the mean.
+Sampling shows every thread parked in a wait state. RSS is higher than the
+27 MB Release baseline mostly because this is a Debug build with the icon
+cache warm; it settles around 24-30 MB before the launcher is first opened.
+
+Let the app run for 5+ minutes before sampling — launch transients hit ~28%
+and destroy the mean.
 
 ```bash
 /private/tmp/claude-501/-Users-arronlingham-Anchor/afa47fe6-293c-4cd3-aa73-51fa1a67c979/scratchpad/measure.sh Atoll 180 "<label>"
 ```
+
+Every poller now parks on display sleep / screen lock / Low Power Mode via
+`SystemActivityGate`. `AudioTap` only runs when `enableRealTimeWaveform` is on
+(it defaults off).
 
 ## Build
 
