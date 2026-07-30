@@ -17,14 +17,14 @@
 	<string>Atoll needs screen recording permission to capture screenshots for the AI assistant feature.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
 	<string>Anchor transcribes your dictation on-device using Apple's speech recognition.</string>
+	<key>SUAutomaticallyUpdate</key>
+	<false/>
+	<key>SUEnableAutomaticChecks</key>
+	<false/>
 	<key>SUEnableDownloaderService</key>
 	<true/>
 	<key>SUEnableInstallerLauncherService</key>
 	<true/>
-	<key>SUFeedURL</key>
-	<string>https://raw.githubusercontent.com/Ebullioscopic/Atoll/main/Updates/appcast.xml</string>
-	<key>SUPublicEDKey</key>
-	<string>q2YQaJ1umGkaIJWMGN9Isj5fx/YlUtxnzHEBqFtfZcg=</string>
 	<key>UTImportedTypeDeclarations</key>
 	<array>
 		<dict/>

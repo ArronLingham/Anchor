@@ -39,8 +39,11 @@ struct DynamicNotchApp: App {
         // Skip Sparkle's launch-time update check during UI testing.
         // The AtollUpdaterDelegate overrides the feed URL at runtime
         // based on the user's selected update channel.
+        // Not started. Anchor has no update feed of its own, and every channel
+        // in UpdateChannel points at upstream Atoll — a running updater would
+        // eventually overwrite this build with upstream's.
         updaterController = SPUStandardUpdaterController(
-            startingUpdater: !AppRuntimeEnvironment.isUITesting,
+            startingUpdater: false,
             updaterDelegate: updaterDelegate, userDriverDelegate: nil)
 
         // Initialize the settings window controller with the updater controller

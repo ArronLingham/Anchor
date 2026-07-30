@@ -19,10 +19,20 @@
 import Defaults
 import Sparkle
 
-/// Custom Sparkle updater delegate that dynamically returns the feed URL
-/// based on the user's selected update channel preference.
+/// Sparkle updater delegate.
+///
+/// Returns no feed. Anchor is a personal fork that is never distributed, so
+/// there is nothing to update *from* — and every channel in `UpdateChannel`
+/// still points at upstream Atoll's appcast. Leaving that wired up means
+/// Sparkle cheerfully replaces Anchor with upstream Atoll on its own schedule,
+/// which is exactly what happened to the copy in /Applications (it self-updated
+/// from v2.2.0 to upstream v2.3.3 mid-development).
 class AtollUpdaterDelegate: NSObject, SPUUpdaterDelegate {
     func feedURLString(for updater: SPUUpdater) -> String? {
-        return Defaults[.updateChannel].feedURL.absoluteString
+        nil
+    }
+
+    func updaterShouldPromptForPermissionToCheck(forUpdates updater: SPUUpdater) -> Bool {
+        false
     }
 }

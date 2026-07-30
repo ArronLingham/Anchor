@@ -8,6 +8,7 @@ ENTITLEMENTS = ROOT / "DynamicIsland" / "DynamicIsland.entitlements"
 PROJECT = ROOT / "DynamicIsland.xcodeproj" / "project.pbxproj"
 RELEASE_WORKFLOW = ROOT / ".github" / "workflows" / "release.yml"
 CI_WORKFLOW = ROOT / ".github" / "workflows" / "ci.yml"
+INFO_PLIST = ROOT / "DynamicIsland" / "Info.plist"
 
 
 class PrivacyConfigurationTests(unittest.TestCase):
@@ -23,6 +24,33 @@ class PrivacyConfigurationTests(unittest.TestCase):
         entitlements = plistlib.loads(ENTITLEMENTS.read_bytes())
 
         self.assertNotIn("com.apple.security.device.camera", entitlements)
+
+    def test_resource_access_build_settings_match_the_entitlements(self):
+        # ENABLE_RESOURCE_ACCESS_* injects entitlements at build time and
+        # silently overrides the .entitlements file. The camera entitlement
+        # survived the webcam removal this way, and audio-input was set to NO
+        # while dictation needed the microphone — both invisible from the
+        # entitlements file alone, which is what the tests above check.
+        project = PROJECT.read_text()
+
+        self.assertIn("ENABLE_RESOURCE_ACCESS_AUDIO_INPUT = YES;", project)
+        self.assertNotIn("ENABLE_RESOURCE_ACCESS_AUDIO_INPUT = NO;", project)
+
+        self.assertIn("ENABLE_RESOURCE_ACCESS_CAMERA = NO;", project)
+        self.assertNotIn("ENABLE_RESOURCE_ACCESS_CAMERA = YES;", project)
+
+    def test_sparkle_cannot_replace_this_build_with_upstream(self):
+        # Every channel in UpdateChannel points at Ebullioscopic/Atoll's
+        # appcast. The copy in /Applications self-updated from v2.2.0 to
+        # upstream v2.3.3 mid-development because of it.
+        info = plistlib.loads(INFO_PLIST.read_bytes())
+        self.assertNotIn("SUFeedURL", info)
+        self.assertFalse(info.get("SUEnableAutomaticChecks", True))
+
+        delegate = (
+            ROOT / "DynamicIsland" / "services" / "AtollUpdaterDelegate.swift"
+        ).read_text()
+        self.assertNotIn("feedURL.absoluteString", delegate)
 
     def test_notes_sync_is_authorized_for_apple_events(self):
         project = PROJECT.read_text()
