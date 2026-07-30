@@ -98,7 +98,29 @@ then exits. Inert unless the variable is set. See `helpers/UISnapshotHarness.swi
 - Settings panes need `.formStyle(.grouped)` and a `SettingsHighlightCoordinator`
   in the environment, or they render as unstyled floating labels.
 
-## Build
+## Install / signing
+
+The daily-driver build is a **signed Release** at `/Applications/Atoll.app`,
+which is also the login item.
+
+```bash
+xcodebuild -project DynamicIsland.xcodeproj -scheme DynamicIsland \
+  -configuration Release -destination 'platform=macOS,arch=arm64' \
+  CODE_SIGN_IDENTITY="Apple Development: arronlingham@icloud.com (Q4FNFX8QSH)" \
+  CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM=KLWHJX56T3 \
+  PROVISIONING_PROFILE_SPECIFIER="" build
+```
+
+- **Sparkle is disabled on purpose.** Every channel in `UpdateChannel` points at
+  *upstream* Atoll's appcast, so a live updater eventually replaces Anchor with
+  upstream — it already did once, v2.2.0 → v2.3.3. The updater is not started,
+  the delegate returns no feed, and `SUFeedURL` is stripped. Don't re-enable it.
+- **`ENABLE_RESOURCE_ACCESS_*` in project.pbxproj overrides the `.entitlements`
+  file.** The file said audio-input and no camera while the built app shipped
+  the reverse. Change entitlements in *both* places, and `tests/` pins them.
+- Upstream's last build is at `~/Desktop/Atoll-upstream-v2.3.3-backup.app`.
+
+## Build (Debug, for iteration)
 
 ```bash
 xcodebuild -project DynamicIsland.xcodeproj -scheme DynamicIsland \
