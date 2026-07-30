@@ -46,7 +46,7 @@ class SystemOSDManager {
 
     /// Serialises process-exit sources and their timeouts.
     private static let watcherQueue = DispatchQueue(
-        label: "com.atoll.osd-suppression-watcher", qos: .utility)
+        label: "com.anchor.osd-suppression-watcher", qos: .utility)
 
     /// Call once at startup to register sleep/wake observers.
     /// Safe to call multiple times — observers are registered only once.

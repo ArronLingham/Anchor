@@ -41,7 +41,7 @@ final class AppIconCache {
     /// entry writes to its own file and NSCache is thread-safe, so there is
     /// nothing to serialise.
     private let io = DispatchQueue(
-        label: "com.atoll.app-icon-cache", qos: .utility, attributes: .concurrent)
+        label: "com.anchor.app-icon-cache", qos: .utility, attributes: .concurrent)
 
     private init() {
         let base = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first

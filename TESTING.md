@@ -23,13 +23,13 @@ Current build: `/private/tmp/claude-501/-Users-arronlingham-Anchor/afa47fe6-293c
 
 **1.1 — App is running clean.** Paste into Terminal:
 ```bash
-pgrep -lx Atoll && pgrep -P $(pgrep -x Atoll) | wc -l && lsof -nP -iTCP:9020
+pgrep -lx Anchor && pgrep -P $(pgrep -x Anchor) | wc -l && lsof -nP -iTCP:9020
 ```
 ✅ Prints a PID, then `0`, then nothing. The `0` means no child processes; empty port means the old extension server is gone.
 
 **1.2 — No crashes.**
 ```bash
-ls ~/Library/Logs/DiagnosticReports/ | grep -i atoll
+ls ~/Library/Logs/DiagnosticReports/ | grep -i anchor
 ```
 ✅ Nothing.
 
@@ -119,7 +119,7 @@ ls ~/Library/Logs/DiagnosticReports/ | grep -i atoll
 ✅ macOS asks for microphone access. Grant it. ❌ No prompt at all is a bug.
 
 **3.2 — Accessibility permission.** System Settings → Privacy & Security → **Accessibility**.
-✅ Atoll is listed and switched **on**. Without this the transcript is silently dropped — nothing will paste and there'll be no error.
+✅ Anchor is listed and switched **on**. Without this the transcript is silently dropped — nothing will paste and there'll be no error.
 
 **3.3 — The core loop.** Click into **TextEdit**, hold **⌘⇧D**, say *"testing one two three"*, release.
 ✅ The text appears at your cursor within about a second.
@@ -157,7 +157,7 @@ ps -o state= -p $(pgrep -x OSDUIHelper)
 ```
 ✅ Prints `T` (stopped). That's Atoll holding the system HUD frozen.
 
-**4.3 — ⚠️ The important one: quit Atoll, then press volume keys.**
+**4.3 — ⚠️ The important one: quit Anchor, then press volume keys.**
 ✅ macOS's own HUD comes back. ❌ **No HUD at all** means Atoll left `OSDUIHelper` frozen on exit — you'd have no volume feedback until you reboot. Test this deliberately.
 
 **4.4 — Toggle it off and on.** Settings → Controls → turn off the system HUD replacement, press volume, turn it back on, press volume.
@@ -232,7 +232,7 @@ Start each of these and confirm it appears in the closed notch:
 
 **9.1 — Idle CPU.** Leave the app alone **5+ minutes**, then:
 ```bash
-/private/tmp/claude-501/-Users-arronlingham-Anchor/afa47fe6-293c-4cd3-aa73-51fa1a67c979/scratchpad/measure.sh Atoll 180 "manual-check"
+/private/tmp/claude-501/-Users-arronlingham-Anchor/afa47fe6-293c-4cd3-aa73-51fa1a67c979/scratchpad/measure.sh Anchor 180 "manual-check"
 ```
 ✅ Mean **0.00–0.05%**, RSS around **40 MB**. *Don't measure right after launch — startup spikes to ~28% and ruins the average.*
 

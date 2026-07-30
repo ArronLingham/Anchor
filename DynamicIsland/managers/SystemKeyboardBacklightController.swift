@@ -27,7 +27,7 @@ final class SystemKeyboardBacklightController {
 
     var onBacklightChange: ((Float) -> Void)?
 
-    private let workerQueue = DispatchQueue(label: "com.atoll.keyboardBacklight", qos: .userInitiated)
+    private let workerQueue = DispatchQueue(label: "com.anchor.keyboardBacklight", qos: .userInitiated)
     private let notificationCenter = NotificationCenter.default
     private var isRunning = false
 

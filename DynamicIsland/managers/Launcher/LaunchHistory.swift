@@ -32,7 +32,7 @@ final class LaunchHistory {
 
     private var counts: [String: Double]
     private var lastLaunched: [String: Date]
-    private let queue = DispatchQueue(label: "com.atoll.launch-history")
+    private let queue = DispatchQueue(label: "com.anchor.launch-history")
 
     private init() {
         counts = Defaults[.launcherFrecencyScores]

@@ -559,6 +559,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
     
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Before anything reads Defaults: the bundle identifier changed with the
+        // rename, which starts UserDefaults from empty unless we carry it over.
+        PreferencesMigration.runIfNeeded()
+
         // Development aid: render UI to PNGs and quit. No-op unless
         // ANCHOR_RENDER_UI is set to an output directory.
         if let snapshotDirectory = UISnapshotHarness.requestedDirectory {
@@ -1126,7 +1130,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                     let logsFile = tempDir.appendingPathComponent("app_logs.txt")
                     let logProcess = Process()
                     logProcess.executableURL = URL(fileURLWithPath: "/usr/bin/log")
-                    logProcess.arguments = ["show", "--predicate", "subsystem == 'com.Ebullioscopic.Atoll' OR subsystem == 'com.Ebullioscopic.Atoll.dev'", "--info", "--debug", "--last", "2d"]
+                    logProcess.arguments = ["show", "--predicate", "subsystem == 'com.arronlingham.Anchor' OR subsystem == 'com.arronlingham.Anchor.dev'", "--info", "--debug", "--last", "2d"]
                     
                     let pipe = Pipe()
                     logProcess.standardOutput = pipe

@@ -413,7 +413,7 @@
 					"@loader_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.atoll.DynamicIslandUITests;
+				PRODUCT_BUNDLE_IDENTIFIER = com.arronlingham.AnchorUITests;
 				PRODUCT_MODULE_NAME = DynamicIslandUITests;
 				PRODUCT_NAME = DynamicIslandUITests;
 				SDKROOT = macosx;
@@ -440,7 +440,7 @@
 					"@loader_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.atoll.DynamicIslandUITests;
+				PRODUCT_BUNDLE_IDENTIFIER = com.arronlingham.AnchorUITests;
 				PRODUCT_MODULE_NAME = DynamicIslandUITests;
 				PRODUCT_NAME = DynamicIslandUITests;
 				SDKROOT = macosx;
@@ -600,7 +600,7 @@
 				);
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = DynamicIsland/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = Atoll;
+				INFOPLIST_KEY_CFBundleDisplayName = Anchor;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
 				INFOPLIST_KEY_LSUIElement = YES;
 				INFOPLIST_KEY_MetalCaptureEnabled = YES;
@@ -623,8 +623,8 @@
 				);
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
 				MARKETING_VERSION = 2.3.3;
-				PRODUCT_BUNDLE_IDENTIFIER = com.Ebullioscopic.Atoll.dev;
-				PRODUCT_NAME = Atoll;
+				PRODUCT_BUNDLE_IDENTIFIER = com.arronlingham.Anchor.dev;
+				PRODUCT_NAME = Anchor;
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				RUNTIME_EXCEPTION_ALLOW_DYLD_ENVIRONMENT_VARIABLES = NO;
 				RUNTIME_EXCEPTION_ALLOW_JIT = NO;
@@ -674,7 +674,7 @@
 				);
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = DynamicIsland/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = Atoll;
+				INFOPLIST_KEY_CFBundleDisplayName = Anchor;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
 				INFOPLIST_KEY_LSUIElement = YES;
 				INFOPLIST_KEY_MetalCaptureEnabled = YES;
@@ -697,8 +697,8 @@
 				);
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
 				MARKETING_VERSION = 2.3.3;
-				PRODUCT_BUNDLE_IDENTIFIER = com.Ebullioscopic.Atoll;
-				PRODUCT_NAME = Atoll;
+				PRODUCT_BUNDLE_IDENTIFIER = com.arronlingham.Anchor;
+				PRODUCT_NAME = Anchor;
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				RUNTIME_EXCEPTION_ALLOW_DYLD_ENVIRONMENT_VARIABLES = NO;
 				RUNTIME_EXCEPTION_ALLOW_JIT = NO;

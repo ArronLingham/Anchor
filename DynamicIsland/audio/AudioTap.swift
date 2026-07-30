@@ -26,7 +26,7 @@ import CoreAudio
 import simd
 import os.log
 
-private let audioTapLog = OSLog(subsystem: "com.atoll.dynamicisland", category: "AudioTap")
+private let audioTapLog = OSLog(subsystem: "com.arronlingham.Anchor", category: "AudioTap")
 
 // Debug: track callback invocations
 private var callbackCount: Int = 0
@@ -115,7 +115,7 @@ class AudioTap: NSObject {
     private var updateTimer: Timer?
     
     // Serial queue to prevent race conditions
-    private let audioQueue = DispatchQueue(label: "com.atoll.audiotap", qos: .userInitiated)
+    private let audioQueue = DispatchQueue(label: "com.anchor.audiotap", qos: .userInitiated)
     
     // Debounce restart requests
     private var pendingRestartWorkItem: DispatchWorkItem?

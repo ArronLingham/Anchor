@@ -70,7 +70,7 @@ Let the app run for 5+ minutes before sampling — launch transients hit ~28%
 and destroy the mean.
 
 ```bash
-/private/tmp/claude-501/-Users-arronlingham-Anchor/afa47fe6-293c-4cd3-aa73-51fa1a67c979/scratchpad/measure.sh Atoll 180 "<label>"
+/private/tmp/claude-501/-Users-arronlingham-Anchor/afa47fe6-293c-4cd3-aa73-51fa1a67c979/scratchpad/measure.sh Anchor 180 "<label>"
 ```
 
 Every poller now parks on display sleep / screen lock / Low Power Mode via
@@ -98,9 +98,26 @@ then exits. Inert unless the variable is set. See `helpers/UISnapshotHarness.swi
 - Settings panes need `.formStyle(.grouped)` and a `SettingsHighlightCoordinator`
   in the environment, or they render as unstyled floating labels.
 
+## Naming
+
+The app is **Anchor** (`/Applications/Anchor.app`, bundle id
+`com.arronlingham.Anchor`, process name `Anchor`). Internals are still named
+after upstream — the Xcode project is `DynamicIsland.xcodeproj`, the source
+directory is `DynamicIsland/`, and types are `DynamicIsland*`. That is
+deliberate: renaming ~671 internal references touches the project file
+extensively for no user-visible gain.
+
+GPL headers still credit Atoll and boring.notch, and must keep doing so.
+`NOTICE` records the fork and rename above upstream's original notice.
+
+Changing the bundle id resets TCC grants (unavoidable — they key on identifier
+plus signature) and would have reset ~300 settings; `PreferencesMigration`
+carries the settings over from `com.Ebullioscopic.Atoll` on first launch.
+Old settings are also exported to `~/Desktop/Atoll-settings-backup.plist`.
+
 ## Install / signing
 
-The daily-driver build is a **signed Release** at `/Applications/Atoll.app`,
+The daily-driver build is a **signed Release** at `/Applications/Anchor.app`,
 which is also the login item.
 
 ```bash
