@@ -47,9 +47,21 @@ Plan of record: `~/.claude/plans/i-want-to-build-functional-pinwheel.md`
 
 - ~93 `static let shared` singletons; no central store.
 - ~350 `Defaults` keys in `models/Constants.swift:833+` — the de-facto feature-flag registry. Flip switches before deleting code.
-- `ContentView.swift` (2,979 lines) observes 17 `ObservableObject`s and 40 `@Default` keys — any `@Published` change re-renders the whole notch. Split it before adding to it.
+- `ContentView.swift` (2,161 lines) observes 12 `ObservableObject`s and 40 `@Default`
+  keys. **`@ObservedObject` has no per-property granularity** — any `objectWillChange`
+  from any of them re-renders the whole view, even for properties this view never
+  reads. Split it before adding to it.
+  - Don't try to move its methods into an `extension ContentView` in another file.
+    The lifecycle handlers alone touch ~30 `private` members; making them all
+    internal to win a line count trades away real encapsulation. The honest fix is
+    to lift state into a model object, not to relocate functions.
 - `SettingsView.swift` is 8,694 lines.
 - `StatsManager.swift:514-548` is the one good throttling pattern in the repo. Copy it.
+- **Keep high-frequency `@Published` values on their own nested observable.**
+  `DictationManager.LiveOutput` is the reference: `state` changes ~4x per dictation
+  and `ContentView` must watch it, but `inputLevel` changes 10-20x a second. On one
+  object, the level meter re-rendered the entire notch for the whole dictation.
+  Only the leaf view observes `LiveOutput`.
 - Five SPM packages are pinned to `main`, not a version — builds can break with no local change.
 
 ## CPU measurements
@@ -257,8 +269,15 @@ ungated 3 s Bluetooth poll, and both `/usr/bin/log stream` children. New
 `SystemActivityGate` parks pollers on display sleep / screen lock / Low Power.
 
 Still outstanding:
-- `ContentView.swift` re-renders the whole notch on any manager `@Published`
-  change (17 `ObservableObject` + 40 `@Default` in one 2,979-line view).
+- `MusicManager` publishes 27 properties from one object, including `elapsedTime`.
+  `ContentView` never reads it but still re-renders on every tick, because
+  `@ObservedObject` invalidates on the object, not the property. The fix is the
+  `LiveOutput` pattern below (or an `@Observable` migration); deferred because
+  `elapsedTime` alone spans 7 files and the media surface is the most-used one.
+  Playback progress itself is already cheap — `TimelineView` interpolates it, and
+  the spectrum visualiser is a plain `NSView` driving CALayer animations.
+- `ContentView.swift` still re-renders the whole notch on any manager `@Published`
+  change (12 `ObservableObject` + 40 `@Default` in one 2,161-line view).
 - `DoNotDisturbManager` 2 s assertions poll — already mtime-gated and given
   250 ms leeway, so low priority.
 - `RealTimeWaveformScrubberView.swift:44` drives a 60 Hz SwiftUI transaction,

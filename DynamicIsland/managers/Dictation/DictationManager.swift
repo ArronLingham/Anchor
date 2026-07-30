@@ -49,10 +49,23 @@ final class DictationManager: ObservableObject {
     }
 
     @Published private(set) var state: State = .idle
-    /// Live transcript shown in the notch while dictating.
-    @Published private(set) var liveTranscript: String = ""
-    /// Smoothed input level, 0...1, for the waveform.
-    @Published private(set) var inputLevel: Float = 0
+
+    /// Values that change many times a second while dictating.
+    ///
+    /// Deliberately a separate observable. `ContentView` has to watch `state`
+    /// to know whether to show the live activity at all, and it is a single
+    /// 2,400-line view — publishing the level meter from the same object made
+    /// the entire notch re-render at meter rate for the whole dictation.
+    /// Only `DictationLiveActivity` observes this.
+    let live = LiveOutput()
+
+    @MainActor
+    final class LiveOutput: ObservableObject {
+        /// Live transcript shown in the notch while dictating.
+        @Published fileprivate(set) var transcript: String = ""
+        /// Smoothed input level, 0...1, for the waveform.
+        @Published fileprivate(set) var inputLevel: Float = 0
+    }
 
     private let engine = AVAudioEngine()
     private var backend: SpeechTranscribing
@@ -73,7 +86,7 @@ final class DictationManager: ObservableObject {
         guard !state.isActive else { return }
 
         errorResetTask?.cancel()
-        liveTranscript = ""
+        live.transcript = ""
         state = .preparing
 
         Task { [weak self] in
@@ -124,7 +137,7 @@ final class DictationManager: ObservableObject {
 
         try await backend.start { [weak self] update in
             Task { @MainActor in
-                self?.liveTranscript = update.combined
+                self?.live.transcript = update.combined
             }
         }
 
@@ -171,7 +184,7 @@ final class DictationManager: ObservableObject {
         guard engine.isRunning else { return }
         engine.inputNode.removeTap(onBus: 0)
         engine.stop()
-        inputLevel = 0
+        live.inputLevel = 0
     }
 
     /// Resamples the microphone buffer into the format the backend asked for,
@@ -278,15 +291,15 @@ final class DictationManager: ObservableObject {
 
     private func reset() {
         state = .idle
-        liveTranscript = ""
-        inputLevel = 0
+        live.transcript = ""
+        live.inputLevel = 0
     }
 
     private func fail(_ message: String) {
         NSLog("DictationManager: \(message)")
         stopEngine()
         state = .failed(message)
-        liveTranscript = ""
+        live.transcript = ""
         errorResetTask = Task { [weak self] in
             try? await Task.sleep(for: .seconds(4))
             guard !Task.isCancelled else { return }
@@ -299,8 +312,8 @@ final class DictationManager: ObservableObject {
     private func updateLevel(_ peak: Float) {
         // Asymmetric smoothing: rise quickly so the waveform feels responsive,
         // fall slowly so it does not flicker between syllables.
-        let smoothing: Float = peak > inputLevel ? 0.5 : 0.15
-        inputLevel += (peak - inputLevel) * smoothing
+        let smoothing: Float = peak > live.inputLevel ? 0.5 : 0.15
+        live.inputLevel += (peak - live.inputLevel) * smoothing
     }
 
     /// Handles float and Int16 mic formats; reading only `floatChannelData` would

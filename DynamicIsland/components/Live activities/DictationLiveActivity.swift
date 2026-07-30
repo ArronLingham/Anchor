@@ -68,17 +68,7 @@ struct DictationLiveActivity: View {
                     .font(.system(size: 11, weight: .medium, design: .rounded))
                     .foregroundStyle(.secondary)
             case .listening:
-                if transcriptPreview.isEmpty {
-                    LevelMeter(level: dictation.inputLevel, tint: tint)
-                        .frame(width: 34, height: 12)
-                } else {
-                    Text(transcriptPreview)
-                        .font(.system(size: 11, weight: .medium, design: .rounded))
-                        .foregroundStyle(.white)
-                        .lineLimit(1)
-                        .truncationMode(.head)
-                        .frame(maxWidth: 160, alignment: .trailing)
-                }
+                ListeningReadout(live: dictation.live, tint: tint)
             case .transcribing:
                 Text("Transcribing…")
                     .font(.system(size: 11, weight: .medium, design: .rounded))
@@ -104,10 +94,6 @@ struct DictationLiveActivity: View {
         max(60, (vm.closedNotchSize.width * 0.6))
     }
 
-    private var transcriptPreview: String {
-        dictation.liveTranscript.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
     private var iconName: String {
         switch dictation.state {
         case .failed: return "exclamationmark.triangle.fill"
@@ -128,11 +114,36 @@ struct DictationLiveActivity: View {
         switch dictation.state {
         case .idle: return ""
         case .preparing: return String(localized: "Starting dictation")
-        case .listening:
-            return transcriptPreview.isEmpty
-                ? String(localized: "Listening") : transcriptPreview
+        case .listening: return String(localized: "Listening")
         case .transcribing: return String(localized: "Transcribing dictation")
         case .failed(let message): return message
+        }
+    }
+}
+
+/// The meter-or-transcript half of the listening state.
+///
+/// Split out so it is the *only* thing observing `DictationManager.LiveOutput`.
+/// Both of those values change many times a second; keeping them out of the
+/// parent stops the whole live activity — and the notch above it — from
+/// re-rendering at meter rate.
+private struct ListeningReadout: View {
+    @ObservedObject var live: DictationManager.LiveOutput
+    let tint: Color
+
+    var body: some View {
+        let preview = live.transcript.trimmingCharacters(in: .whitespacesAndNewlines)
+        if preview.isEmpty {
+            LevelMeter(level: live.inputLevel, tint: tint)
+                .frame(width: 34, height: 12)
+        } else {
+            Text(preview)
+                .font(.system(size: 11, weight: .medium, design: .rounded))
+                .foregroundStyle(.white)
+                .lineLimit(1)
+                .truncationMode(.head)
+                .frame(maxWidth: 160, alignment: .trailing)
+                .accessibilityLabel(preview)
         }
     }
 }
