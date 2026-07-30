@@ -167,3 +167,6 @@ TemporaryAssets/
 # Python test bytecode
 __pycache__/
 *.pyc
+
+# Coverage artifact emitted by instrumented builds.
+default.profraw
