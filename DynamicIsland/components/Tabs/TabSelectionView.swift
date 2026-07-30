@@ -20,7 +20,6 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-import AtollExtensionKit
 import SwiftUI
 import Defaults
 import AppKit
