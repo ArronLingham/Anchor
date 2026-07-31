@@ -369,12 +369,18 @@ class AudioTap: NSObject {
         // Debounce: wait 500ms before actually restarting
         let workItem = DispatchWorkItem { [weak self] in
             self?.audioQueue.async {
-                guard let self, self.captureIsRunning else { return }
+                guard let self else { return }
+                // Gate on consumers, not on `captureIsRunning`. This path fires
+                // when a music app launches, and the common case is that a
+                // visualiser was already on screen while `startCaptureSync()`
+                // had nothing to tap — it bails when no target app is running,
+                // leaving `captureIsRunning` false. Checking it here would mean
+                // the waveform never starts for an app opened after the notch.
+                guard !self.isSuspended, self.consumerCount > 0 else { return }
                 print("🔄 [AudioTap] Restarting capture...")
                 self.stopCaptureSync()
                 // Small delay to let CoreAudio fully release resources
                 Thread.sleep(forTimeInterval: 0.1)
-                guard !self.isSuspended, self.consumerCount > 0 else { return }
                 self.startCaptureSync()
             }
         }
