@@ -67,28 +67,28 @@ Plan of record: `~/.claude/plans/i-want-to-build-functional-pinwheel.md`
 ## CPU measurements
 
 **Every figure before the deadlock fix was measured on a hung app and is
-meaningless.** Only these two are real:
+meaningless.** Everything below was measured after it:
 
 | Build | mean | median | p90 | max | RSS mean |
 |---|---|---|---|---|---|
 | v2.2.0 installed (Release), original baseline | 1.93% | 1.90% | — | 3.00% | 27 MB |
 | Debug, steady (`.dev` domain — waveform off) | 0.02% | 0.00% | — | 0.80% | 58 MB |
 | Release `e88b20b`, before the AudioTap fix | 0.95% | 0.80% | 1.30% | 8.00% | 27 MB |
+| Release, pre-Phase-4, machine in use | 0.72% | 0.70% | — | 1.90% | 13 MB |
+| Release + usage watcher, idle machine | 0.07% | 0.00% | — | 1.70% | 14 MB |
 | **Release, after the AudioTap fix** | **0.08%** | **0.00%** | **0.10%** | 2.70% | **16 MB** |
 
-The last two are a true A/B: same machine, same 120 s settle + 240 s sample,
-120 samples each, pid verified stable throughout both runs. **12x less mean
-CPU and 41% less RSS.**
+The `e88b20b` row and the last row are a true A/B: same machine, same 120 s
+settle + 240 s sample, 120 samples each, pid verified stable throughout both
+runs. **12x less mean CPU and 41% less RSS.**
 
-The 0.02% Debug row is not comparable to either. It was measured against the
-`.dev` defaults domain, where `enableRealTimeWaveform` is off; the production
-domain has it on, which is what the 0.95% row is actually measuring.
-| Release, pre-Phase-4, machine in use | 0.72% | 0.70% | 1.90% | 13 MB |
-| **Release + usage watcher, idle machine** | **0.07%** | **0.00%** | 1.70% | 14 MB |
+The 0.02% Debug row is not comparable to the Release rows. It was measured
+against the `.dev` defaults domain, where `enableRealTimeWaveform` is off; the
+production domain has it on, which is what the 0.95% row is actually measuring.
 
-The last two are not a clean A/B — the first was taken while the machine was
-being worked on. The controlled comparison is the watcher on/off pair in the
-Phase 4 section, which shows no difference.
+The two Phase-4 rows are not a clean A/B either — the first was taken while the
+machine was being worked on. The controlled comparison for the usage watcher is
+the on/off pair in the Phase 4 section, which shows no difference.
 
 Sampling shows every thread parked in a wait state. RSS is higher than the
 27 MB Release baseline mostly because this is a Debug build with the icon
@@ -399,10 +399,13 @@ Still outstanding:
   the spectrum visualiser is a plain `NSView` driving CALayer animations.
 - `ContentView.swift` still re-renders the whole notch on any manager `@Published`
   change (12 `ObservableObject` + 40 `@Default` in one 2,161-line view).
-- `DoNotDisturbManager` 2 s assertions poll — already mtime-gated and given
-  250 ms leeway, so low priority.
-- `RealTimeWaveformScrubberView.swift:44` drives a 60 Hz SwiftUI transaction,
-  but only while hovering.
+- `DoNotDisturbManager` 2 s assertions poll — mtime-gated and now given 1 s of
+  leeway, so it coalesces. Low priority, but it is a poll where an event-driven
+  API exists: the assertions plist could be watched with FSEvents, the way
+  `ClaudeTranscriptWatcher` watches `~/.claude/projects`.
+- `RealTimeWaveformScrubberView` drives a SwiftUI transaction per frame, now at
+  30 Hz rather than 60. It starts on `onAppear`, **not** on hover — the older
+  note here claiming "only while hovering" was wrong.
 
 **OSD suppression caveat:** only a graceful quit (menu, ⌘Q) runs
 `applicationWillTerminate` and resumes `OSDUIHelper`. A force-quit or crash
