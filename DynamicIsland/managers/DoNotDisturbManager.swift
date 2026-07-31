@@ -586,7 +586,11 @@ private extension DoNotDisturbManager {
         lastAssertionsModificationDate = nil
 
         let timer = DispatchSource.makeTimerSource(queue: pollingQueue)
-        timer.schedule(deadline: .now() + .seconds(1), repeating: .seconds(2), leeway: .milliseconds(250))
+        // 1 s of leeway (was 250 ms) so this coalesces with other wakeups instead
+        // of forcing its own. Focus state arriving up to a second later is not
+        // perceptible — the notification path handles anything the user just did,
+        // and this poll only exists to catch changes that arrive without one.
+        timer.schedule(deadline: .now() + .seconds(1), repeating: .seconds(2), leeway: .seconds(1))
         timer.setEventHandler { [weak self] in
             // Focus state cannot change in any way the user would see while the
             // display is asleep or the screen is locked, so skip the stat() —

@@ -40,8 +40,12 @@ struct RealTimeWaveformScrubberView: View {
     }
     
     private func startTimer() {
-        timer?.invalidate()
-        let newTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 60.0, repeats: true) { _ in
+        guard timer == nil else { return }
+        // Starts the CoreAudio process tap if this is the only consumer on screen.
+        AudioTap.shared.acquire()
+        // 30 Hz, not 60: each tick runs a full SwiftUI transaction over an
+        // animatable vector, and a waveform at 30 fps is indistinguishable.
+        let newTimer = Timer.scheduledTimer(withTimeInterval: Self.frameInterval, repeats: true) { _ in
             let tapMagnitudes = AudioTap.shared.getSmoothedMagnitudes()
             let barCount = Defaults[.visualizerBarCount]
             var newMags: [Float] = []
@@ -54,25 +58,32 @@ struct RealTimeWaveformScrubberView: View {
             var smoothedMags = [Float](repeating: 0.1, count: newMags.count)
             for i in 0..<newMags.count {
                 if i < magnitudes.count {
-                    smoothedMags[i] = magnitudes[i] * 0.85 + newMags[i] * 0.15
+                    // 0.85/0.15 per frame at 60 Hz, squared for the halved rate
+                    // so the decay looks the same.
+                    smoothedMags[i] = magnitudes[i] * 0.7225 + newMags[i] * 0.2775
                 } else {
                     smoothedMags[i] = newMags[i]
                 }
             }
             
             // Smoothly animate the path update
-            withAnimation(.linear(duration: 1.0 / 60.0)) {
+            withAnimation(.linear(duration: Self.frameInterval)) {
                 magnitudes = smoothedMags
             }
         }
+        newTimer.tolerance = Self.frameInterval / 2
         RunLoop.main.add(newTimer, forMode: .common)
         timer = newTimer
     }
     
     private func stopTimer() {
+        guard timer != nil else { return }
         timer?.invalidate()
         timer = nil
+        AudioTap.shared.release()
     }
+
+    private static let frameInterval: TimeInterval = 1.0 / 30.0
 }
 
 struct WaveformShape: Shape {

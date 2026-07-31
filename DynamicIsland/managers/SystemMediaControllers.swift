@@ -775,7 +775,7 @@ final class SystemBrightnessController {
     private func startPolling() {
         guard pollTimer == nil else { return }
         NSLog("ℹ️ SystemBrightnessController: Starting polling-driven brightness detection as fallback (interval: %.2fs)", pollInterval)
-        pollTimer = Timer.scheduledTimer(withTimeInterval: pollInterval, repeats: true) { [weak self] _ in
+        let timer = Timer.scheduledTimer(withTimeInterval: pollInterval, repeats: true) { [weak self] _ in
             guard let self else { return }
             // Skip polling while an animation is actively running — the
             // animation timer already handles emission during key presses.
@@ -795,6 +795,10 @@ final class SystemBrightnessController {
                 self.lastEmittedBrightness = max(0, min(1, system))
             }
         }
+        // This only runs on hardware where CoreBrightness notifications are
+        // unavailable, but at 6.7 Hz it should still coalesce.
+        timer.tolerance = pollInterval / 2
+        pollTimer = timer
     }
 
     deinit {

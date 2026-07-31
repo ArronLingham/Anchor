@@ -23,6 +23,7 @@
 import AppKit
 import AudioToolbox
 import CoreAudio
+import QuartzCore
 import simd
 import os.log
 
@@ -105,15 +106,34 @@ class AudioTap: NSObject {
     
     let bridge = AudioBridge()
     var isPaused: Bool = false
+    /// Main-thread only. Both consumers poll from main-run-loop timers, and the
+    /// audioQueue paths that reset these hop to main to do it.
     private var displayMagnitudes: [Float] = Array(repeating: 0, count: 6)
+    /// When `displayMagnitudes` was last advanced, so smoothing stays
+    /// frame-rate independent now that it runs on demand rather than on a timer.
+    /// Main-thread only, as above.
+    private var lastSmoothingTick: CFTimeInterval = 0
+
+    /// Number of visible views currently drawing the spectrum.
+    ///
+    /// The CoreAudio process tap is expensive in a way that does not show up in
+    /// `%cpu`: it runs a real-time IO thread and keeps the audio HAL awake, which
+    /// blocks deep idle for as long as it exists. It used to be created once at
+    /// launch and destroyed only at quit, so on a machine with
+    /// `enableRealTimeWaveform` on it ran 24/7 to feed a view that is only on
+    /// screen while the notch is open and music is playing. Capture now follows
+    /// its consumers: created on 0 -> 1, torn down on 1 -> 0.
+    private var consumerCount = 0
+    /// Set when the user turns the feature off, so a late `release()` cannot
+    /// resurrect capture.
+    private var isSuspended = false
 
     // CoreAudio stuff
     private var tapID: AudioObjectID = kAudioObjectUnknown
     private var aggregateDeviceID: AudioObjectID = kAudioObjectUnknown
     private var ioProcID: AudioDeviceIOProcID? = nil
     private var captureIsRunning = false
-    private var updateTimer: Timer?
-    
+
     // Serial queue to prevent race conditions
     private let audioQueue = DispatchQueue(label: "com.anchor.audiotap", qos: .userInitiated)
     
@@ -138,20 +158,79 @@ class AudioTap: NSObject {
         super.init()
     }
 
-    @objc private func updateSmoothedMagnitudes() {
-        let nsMagnitudes = bridge.getSmoothedMagnitudes()
-        let targetLevels = nsMagnitudes.map { $0.floatValue }
-        
-        let smoothingFactor: Float = 0.4
-        
+    /// Advances the smoothing toward the latest analyser output.
+    ///
+    /// This used to be a 60 Hz `Timer` on the main run loop that ran for as long
+    /// as capture did — bridging an `NSArray` of `NSNumber` into `[Float]` sixty
+    /// times a second whether or not anything was drawing. Both consumers poll
+    /// from their own animation timers, so the work is now done when they ask
+    /// for it and not before.
+    ///
+    /// The factor is derived from elapsed time rather than assumed to be one
+    /// 60 Hz step, so a caller ticking at 30 Hz gets the same visual decay the
+    /// old fixed 0.4-per-frame smoothing produced at 60 Hz.
+    private func advanceSmoothing() {
+        let now = CACurrentMediaTime()
+        let elapsed = lastSmoothingTick == 0 ? 1.0 / 60.0 : now - lastSmoothingTick
+        lastSmoothingTick = now
+
+        // 0.4 per 1/60 s, expressed as a per-second time constant.
+        let perFrame = 0.4
+        let factor = Float(min(1.0, 1.0 - pow(1.0 - perFrame, elapsed * 60.0)))
+
+        let targetLevels = bridge.getSmoothedMagnitudes()
         for i in 0..<min(targetLevels.count, displayMagnitudes.count) {
-            let difference = targetLevels[i] - displayMagnitudes[i]
-            displayMagnitudes[i] += difference * smoothingFactor
+            let difference = targetLevels[i].floatValue - displayMagnitudes[i]
+            displayMagnitudes[i] += difference * factor
         }
     }
 
     func getSmoothedMagnitudes() -> [Float] {
+        guard captureIsRunning else { return displayMagnitudes }
+        advanceSmoothing()
         return displayMagnitudes
+    }
+
+    /// Registers a visible consumer, starting capture if this is the first.
+    ///
+    /// Balance every call with `release()`. Safe to call from `onAppear`.
+    func acquire() {
+        audioQueue.async { [weak self] in
+            guard let self else { return }
+            self.consumerCount += 1
+            guard !self.isSuspended, self.consumerCount == 1 else { return }
+            self.startCaptureSync()
+        }
+    }
+
+    /// Drops a consumer, tearing capture down when the last one goes away.
+    func release() {
+        audioQueue.async { [weak self] in
+            guard let self else { return }
+            self.consumerCount = max(0, self.consumerCount - 1)
+            guard self.consumerCount == 0 else { return }
+            self.stopCaptureSync()
+        }
+    }
+
+    /// Turns the feature off wholesale (the user unticked it, or the app is
+    /// quitting). Overrides the consumer count until `resume()`.
+    func suspend() {
+        audioQueue.async { [weak self] in
+            guard let self else { return }
+            self.isSuspended = true
+            self.stopCaptureSync()
+        }
+    }
+
+    /// Re-enables capture, honouring whatever consumers are currently on screen.
+    func resume() {
+        audioQueue.async { [weak self] in
+            guard let self else { return }
+            self.isSuspended = false
+            guard self.consumerCount > 0 else { return }
+            self.startCaptureSync()
+        }
     }
 
     func startCapture() async {
@@ -162,7 +241,7 @@ class AudioTap: NSObject {
             }
         }
     }
-    
+
     private func startCaptureSync() {
         guard !captureIsRunning else {
             print("⚠️ [AudioTap] Capture already running, skipping start")
@@ -260,14 +339,11 @@ class AudioTap: NSObject {
 
         captureIsRunning = true
         callbackCount = 0
-        
+        // Smoothing state belongs to the main thread — this runs on audioQueue.
         DispatchQueue.main.async { [weak self] in
-            self?.updateTimer?.invalidate()
-            let timer = Timer(timeInterval: 1.0 / 60.0, target: self as Any, selector: #selector(self?.updateSmoothedMagnitudes), userInfo: nil, repeats: true)
-            RunLoop.main.add(timer, forMode: .common)
-            self?.updateTimer = timer
+            self?.lastSmoothingTick = 0
         }
-        
+
         print("🟢 [AudioTap] CoreAudio CATap flowing through Aggregate Device!")
     }
     
@@ -284,11 +360,6 @@ class AudioTap: NSObject {
         tapID = kAudioObjectUnknown
         aggregateDeviceID = kAudioObjectUnknown
         ioProcID = nil
-        
-        DispatchQueue.main.async { [weak self] in
-            self?.updateTimer?.invalidate()
-            self?.updateTimer = nil
-        }
     }
 
     func restartCapture() {
@@ -298,11 +369,13 @@ class AudioTap: NSObject {
         // Debounce: wait 500ms before actually restarting
         let workItem = DispatchWorkItem { [weak self] in
             self?.audioQueue.async {
+                guard let self, self.captureIsRunning else { return }
                 print("🔄 [AudioTap] Restarting capture...")
-                self?.stopCaptureSync()
+                self.stopCaptureSync()
                 // Small delay to let CoreAudio fully release resources
                 Thread.sleep(forTimeInterval: 0.1)
-                self?.startCaptureSync()
+                guard !self.isSuspended, self.consumerCount > 0 else { return }
+                self.startCaptureSync()
             }
         }
         pendingRestartWorkItem = workItem
@@ -337,12 +410,11 @@ class AudioTap: NSObject {
         aggregateDeviceID = kAudioObjectUnknown
         ioProcID = nil
         captureIsRunning = false
-        
+        // Same here: these are only ever touched on the main thread, where
+        // advanceSmoothing() runs.
         DispatchQueue.main.async { [weak self] in
-            self?.updateTimer?.invalidate()
-            self?.updateTimer = nil
-            // Reset display magnitudes safely on main thread
             self?.displayMagnitudes = Array(repeating: 0, count: 6)
+            self?.lastSmoothingTick = 0
         }
 
         print("🔴 [AudioTap] CoreAudio CATap capture stopped")

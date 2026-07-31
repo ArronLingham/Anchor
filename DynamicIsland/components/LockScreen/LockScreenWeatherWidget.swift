@@ -116,7 +116,10 @@ struct LockScreenWeatherWidget: View {
 			refreshTimer = Timer.scheduledTimer(withTimeInterval: 15.0, repeats: true) { [weak self] _ in
 				self?.fireNow()
 			}
-			refreshTimer?.tolerance = 0
+			// 5 s of slack lets the kernel coalesce this with other wakeups.
+			// The minute-aligned ticker below still uses zero tolerance because
+			// it drives a clock display and must land on the boundary.
+			refreshTimer?.tolerance = 5
 			if let refreshTimer {
 				RunLoop.main.add(refreshTimer, forMode: .common)
 			}

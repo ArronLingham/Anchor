@@ -162,7 +162,7 @@ class TimerManager: ObservableObject {
         activePresetId = preset?.id
         
         // Start countdown timer
-        timerInstance = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
+        let scheduled = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
             guard let self = self else { return }
             
             Task { @MainActor in
@@ -187,6 +187,10 @@ class TimerManager: ObservableObject {
                 }
             }
         }
+        // A 1 s countdown tolerates 100 ms of drift and lets the timer
+        // coalesce with other wakeups instead of forcing its own.
+        scheduled.tolerance = 0.1
+        timerInstance = scheduled
     }
     
     func startDemoTimer(duration: TimeInterval) {
@@ -242,7 +246,7 @@ class TimerManager: ObservableObject {
         lastUpdated = Date()
         
         // Resume countdown timer with same logic as start timer
-        timerInstance = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
+        let scheduled = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
             guard let self = self else { return }
             
             Task { @MainActor in
@@ -267,6 +271,10 @@ class TimerManager: ObservableObject {
                 }
             }
         }
+        // A 1 s countdown tolerates 100 ms of drift and lets the timer
+        // coalesce with other wakeups instead of forcing its own.
+        scheduled.tolerance = 0.1
+        timerInstance = scheduled
     }
 
     func adoptExternalTimer(name: String, totalDuration: TimeInterval, remaining: TimeInterval, isPaused: Bool) {

@@ -82,9 +82,12 @@ class AudioSpectrum: NSView {
 
     private func startAnimating() {
         guard animationTimer == nil else { return }
-        animationTimer = Timer.scheduledTimer(withTimeInterval: 0.3, repeats: true) { [weak self] _ in
+        let timer = Timer.scheduledTimer(withTimeInterval: 0.3, repeats: true) { [weak self] _ in
             self?.updateBars()
         }
+        // The bars are randomised anyway; exact timing is meaningless here.
+        timer.tolerance = 0.15
+        animationTimer = timer
     }
     
     private func stopAnimating() {

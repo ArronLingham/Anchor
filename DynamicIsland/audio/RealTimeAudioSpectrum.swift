@@ -83,15 +83,24 @@ class RealTimeAudioSpectrum: NSView {
 
     private func startAnimating() {
         guard animationTimer == nil else { return }
+        // Tell AudioTap something is on screen; this is what starts the CoreAudio
+        // process tap. Balanced by the release() in stopAnimating().
+        AudioTap.shared.acquire()
         // Use a timer at ~30fps for smooth animation
-        animationTimer = Timer.scheduledTimer(withTimeInterval: 1.0/30.0, repeats: true) { [weak self] _ in
+        let timer = Timer.scheduledTimer(withTimeInterval: 1.0/30.0, repeats: true) { [weak self] _ in
             self?.updateBarsFromAudio()
         }
+        // Let the kernel coalesce these with other wakeups; a spectrum bar being
+        // a few ms late is invisible.
+        timer.tolerance = 1.0 / 120.0
+        animationTimer = timer
     }
     
     private func stopAnimating() {
+        guard animationTimer != nil else { return }
         animationTimer?.invalidate()
         animationTimer = nil
+        AudioTap.shared.release()
         resetBars()
     }
     

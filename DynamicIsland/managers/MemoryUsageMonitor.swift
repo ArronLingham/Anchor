@@ -29,7 +29,13 @@ final class MemoryUsageMonitor {
 #else
     private let thresholdBytes: UInt64 = 1_024 * 1_024 * 1_024
 #endif
-    private let pollInterval: TimeInterval = 8 // Clamp within 5-10 seconds to limit battery impact
+    /// Base cadence when usage is close to the limit.
+    private let pollInterval: TimeInterval = 8
+    /// Cadence when usage is nowhere near the limit, which is the normal case —
+    /// steady-state RSS is around 30-40 MB against a 1 GB threshold, so checking
+    /// every 8 s spent ~450 wakeups an hour to re-learn the same thing. The
+    /// interval tightens automatically as usage approaches the threshold.
+    private let relaxedPollInterval: TimeInterval = 60
     private let restartCooldown: TimeInterval = 300
     private let logSampleInterval: TimeInterval = 300
     private var monitorTask: Task<Void, Never>?
@@ -43,7 +49,7 @@ final class MemoryUsageMonitor {
             while !Task.isCancelled {
                 await self.evaluateMemoryFootprint()
                 do {
-                    try await Task.sleep(for: .seconds(self.pollInterval))
+                    try await Task.sleep(for: .seconds(self.nextPollInterval()))
                 } catch {
                     break
                 }
@@ -54,6 +60,13 @@ final class MemoryUsageMonitor {
     func stopMonitoring() {
         monitorTask?.cancel()
         monitorTask = nil
+    }
+
+    /// Polls slowly while there is plenty of headroom, tightening to the base
+    /// cadence once usage passes half the threshold.
+    private func nextPollInterval() -> TimeInterval {
+        guard let usage = currentResidentSize() else { return pollInterval }
+        return Double(usage) >= Double(thresholdBytes) * 0.5 ? pollInterval : relaxedPollInterval
     }
 
     private func evaluateMemoryFootprint() async {

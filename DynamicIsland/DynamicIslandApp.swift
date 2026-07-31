@@ -628,24 +628,26 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             PrivacyIndicatorManager.shared.startMonitoring()
         }
         
-        // Setup Real-time Audio Waveform capture if enabled
+        // Real-time waveform. Capture is NOT started here: the CoreAudio process
+        // tap runs a real-time IO thread that keeps the audio HAL awake for as
+        // long as it exists, and starting it at launch meant it ran for the whole
+        // session to feed a view that is only on screen while the notch is open
+        // and music is playing. Measured cost of the old behaviour on a machine
+        // with this setting on: 0.90% median idle CPU. The visualiser views now
+        // acquire/release the tap themselves as they appear and disappear.
         if Defaults[.enableRealTimeWaveform] {
-            Task {
-                await AudioTap.shared.startCapture()
-            }
             setupAudioTapMusicObservers()
         }
-        
+
         // Observe enableRealTimeWaveform changes
         Defaults.publisher(.enableRealTimeWaveform, options: [])
             .sink { [weak self] change in
                 if change.newValue {
-                    Task {
-                        await AudioTap.shared.startCapture()
-                    }
+                    // Honours whatever visualisers are already on screen.
+                    AudioTap.shared.resume()
                     self?.setupAudioTapMusicObservers()
                 } else {
-                    AudioTap.shared.stopCapture()
+                    AudioTap.shared.suspend()
                 }
             }
             .store(in: &cancellables)
@@ -684,6 +686,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }.store(in: &cancellables)
 
         MemoryUsageMonitor.shared.startMonitoring()
+
+        // Deferred a tick: `start()` stats ~/.claude and opens an FSEvents
+        // stream, and nothing that touches the filesystem may run while the
+        // delegate is still being built on the pre-run-loop main thread.
+        DispatchQueue.main.async {
+            ClaudeUsageManager.shared.start()
+        }
 
         ReminderLiveActivityManager.shared.$activeWindowReminders
             .receive(on: RunLoop.main)

@@ -201,11 +201,14 @@ class ScreenRecordingManager: ObservableObject {
         recordingStartTime = Date()
         recordingDuration = 0
         
-        durationTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
+        let timer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 self?.updateDuration()
             }
         }
+        // A recording-duration readout is not worth defeating timer coalescing.
+        timer.tolerance = 0.05
+        durationTimer = timer
         
         print("ScreenRecordingManager: ⏱️ Started duration tracking")
     }
