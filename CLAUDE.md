@@ -69,10 +69,26 @@ Plan of record: `~/.claude/plans/i-want-to-build-functional-pinwheel.md`
 **Every figure before the deadlock fix was measured on a hung app and is
 meaningless.** Only these two are real:
 
-| Build | mean | median | max | RSS mean |
-|---|---|---|---|---|
-| v2.2.0 installed (Release), original baseline | 1.93% | 1.90% | 3.00% | 27 MB |
-| **Current (Debug), steady** | **0.02%** | **0.00%** | 0.80% | 58 MB |
+| Build | mean | median | p90 | max | RSS mean |
+|---|---|---|---|---|---|
+| v2.2.0 installed (Release), original baseline | 1.93% | 1.90% | — | 3.00% | 27 MB |
+| Debug, steady (`.dev` domain — waveform off) | 0.02% | 0.00% | — | 0.80% | 58 MB |
+| Release `e88b20b`, before the AudioTap fix | 0.95% | 0.80% | 1.30% | 8.00% | 27 MB |
+| **Release, after the AudioTap fix** | **0.08%** | **0.00%** | **0.10%** | 2.70% | **16 MB** |
+
+The last two are a true A/B: same machine, same 120 s settle + 240 s sample,
+120 samples each, pid verified stable throughout both runs. **12x less mean
+CPU and 41% less RSS.**
+
+The 0.02% Debug row is not comparable to either. It was measured against the
+`.dev` defaults domain, where `enableRealTimeWaveform` is off; the production
+domain has it on, which is what the 0.95% row is actually measuring.
+| Release, pre-Phase-4, machine in use | 0.72% | 0.70% | 1.90% | 13 MB |
+| **Release + usage watcher, idle machine** | **0.07%** | **0.00%** | 1.70% | 14 MB |
+
+The last two are not a clean A/B — the first was taken while the machine was
+being worked on. The controlled comparison is the watcher on/off pair in the
+Phase 4 section, which shows no difference.
 
 Sampling shows every thread parked in a wait state. RSS is higher than the
 27 MB Release baseline mostly because this is a Debug build with the icon
@@ -86,8 +102,29 @@ and destroy the mean.
 ```
 
 Every poller now parks on display sleep / screen lock / Low Power Mode via
-`SystemActivityGate`. `AudioTap` only runs when `enableRealTimeWaveform` is on
-(it defaults off).
+`SystemActivityGate`.
+
+**`AudioTap` is reference-counted, not launch-started.** It used to start from
+`applicationDidFinishLaunching` whenever `enableRealTimeWaveform` was on and stop
+only at quit, so a CoreAudio process tap (real-time IO thread, keeps the audio
+HAL awake) *and* a 60 Hz main-run-loop `Timer` bridging `NSArray`->`[Float]` ran
+for the whole session to feed a view that is only on screen while the notch is
+open and music plays. `RealTimeAudioSpectrum` and `RealTimeWaveformScrubberView`
+now `acquire()`/`release()`; the tap is built on 0 -> 1 and torn down on 1 -> 0.
+That one change is nearly all of the 0.95% -> 0.08% above.
+
+- Smoothing moved off the timer into `getSmoothedMagnitudes()` and is derived
+  from elapsed time, so it looks identical at any caller rate.
+- `restartCapture()` must gate on `consumerCount`, **not** `captureIsRunning`.
+  `startCaptureSync()` bails when no target music app is running, leaving
+  `captureIsRunning` false — gating on it means the waveform never starts for an
+  app launched after the notch was already open.
+- `displayMagnitudes`/`lastSmoothingTick` are main-thread only; the audioQueue
+  paths that reset them hop to main.
+
+**Measure with `measure-strict.sh`, not `measure.sh`** — it aborts if the pid
+changes mid-run. Two measurements in this environment were silently garbage
+because the app was replaced underneath the sampler.
 
 ## Verifying the UI
 
@@ -215,6 +252,90 @@ Hold **Cmd+Shift+D**, speak, release → transcript pastes into the focused app.
   literals as decimals first. `%` is unsupported on purpose (percent vs modulo).
 - Grid has **no drag-reorder or folders**, deliberately. The old Launchpad
   layout can't be migrated either — macOS 26 removed its database.
+
+## Claude usage watcher (Phase 4)
+
+Detects when a Claude Code session hits its usage limit, counts down to the
+reset in the notch, notifies the phone, and resumes the halted session.
+
+| File | Role |
+|---|---|
+| `managers/ClaudeUsage/ClaudeLimitParser.swift` | Banner text → `(resetDate, timeZone)`. Pure, no I/O |
+| `managers/ClaudeUsage/ClaudeTranscriptWatcher.swift` | `FSEventStream` on `~/.claude/projects` |
+| `managers/ClaudeUsage/ClaudeSessionRegistry.swift` | Live sessions from `~/.claude/sessions/<pid>.json` |
+| `managers/ClaudeUsage/ClaudeUsageManager.swift` | State machine, reset timer, resume |
+| `managers/ClaudeUsage/PhonePush.swift` | ntfy POST + Keychain topic |
+| `components/Live activities/ClaudeUsageLiveActivity.swift` | Notch countdown |
+| `components/Settings/ClaudeUsageSettings.swift` | Settings pane |
+
+- **The reset time exists nowhere on disk except a banner string.** There is no
+  API, socket, or daemon — `~/.claude/daemon/` holds only an opaque `control.key`.
+  The banner is an ordinary `assistant` text event:
+  `You've hit your session limit · resets 8:10pm (America/Toronto)`. Separator is
+  U+00B7, apostrophe is ASCII `'` (both verified by hexdump). Observed forms:
+  `5am`, `12pm`, `1:20pm`, `8:10pm`. **`12pm` is noon and appears 63×** — the
+  am/pm split is the highest-frequency place this can go wrong.
+- **Parsing is anchored to the line's own `timestamp`, not to now.** The first
+  FSEvent for an unseen file scans its existing tail, so a *stale* banner would
+  otherwise schedule a phantom reset up to 24 h out.
+- **Only `type == "assistant"` lines count.** Quoted banners in prose parse just
+  as well as real ones — 23 of 89 fully-matching lines on this machine came from
+  `user`/`queue-operation`/`attachment` events, including this feature's own
+  plan file. The decode and the type check are **one guard**: splitting them let
+  any line that failed to decode skip the check and reach the parser.
+- **The real halt test is transcript growth, not `isAlive`.** A session that
+  stopped writes nothing after its banner; one that merely quoted the wording
+  kept going. The transcript size is recorded at detection and re-checked at
+  reset. `ClaudeSessionRegistry.isAlive` cannot do this job — it runs hours
+  later, by which point *every* session has exited, so it would wave a false
+  positive straight through. Both paths are covered by the fixture test.
+- Auto-resume is capped at **3 consecutive resumes of the same session** and
+  refuses a reset more than **2 h stale**. A resumed run appends to the very
+  transcript being watched, so without the cap a task too large for one window
+  re-arms the loop forever, unattended.
+- **Phone push is sent on detection, not at reset**, using ntfy's `Delay:` header
+  with a Unix timestamp. If the Mac is asleep at 1:40 am no local timer fires, so
+  ntfy holds it server-side. Min delay 10 s, **max 3 days**.
+- The ntfy topic is the only thing protecting the channel — it lives in the
+  **Keychain**, deliberately not in `Defaults` (a world-readable plist).
+- Auto-resume runs `claude -r <sessionId> -p "<prompt>"` with `cwd` from the
+  **`cwd` field inside the JSONL** — the directory name is lossy for any path
+  containing a hyphen. Only the single most recently halted session resumes;
+  restarting every queued one would re-exhaust the window in minutes.
+- **CPU cost is nil.** A/B on the same Debug build against the real (hot)
+  projects directory: watcher on 1.27 % / 31 MB, watcher off 1.29 % / 36 MB —
+  the off arm is *higher*, i.e. the difference is noise. Signed Release on an
+  idle machine: **0.07 % mean, 0.00 % median, 14 MB**.
+  **Never sample while a build is running** — one measurement read 10.6 % mean
+  purely because `xcodebuild` was running concurrently, and `ps %cpu` is a
+  decaying average, so it stays wrong for a while after the load stops.
+- The countdown live activity sits **below** music in `ContentView`'s closed-notch
+  chain, and `.claudeUsage` is excluded from the `InlineHUD` /
+  `SystemEventIndicator` branches. Both matter: everything ranked above music is
+  short-lived, and a usage window lasts hours; and an unhandled sneak-peek type
+  in `InlineHUD` renders nothing while still winning the branch.
+- **Dev hooks are `#if DEBUG` and must stay that way.** `UISnapshotHarness`
+  shipped unguarded in the signed Release, and once it rendered
+  `ClaudeUsageSettings` — whose `onAppear` loads the ntfy topic out of the
+  Keychain — anyone running as the user could
+  `open -n /Applications/Anchor.app --env ANCHOR_RENDER_UI=/tmp/x` and read the
+  credential out of a PNG. The Keychain ACL does not help when the process doing
+  the reading *is* Anchor. `ANCHOR_CLAUDE_BIN` was the same shape: an env var
+  choosing a binary the app then executes. Verify after any Release build:
+  ```bash
+  strings -a /Applications/Anchor.app/Contents/MacOS/Anchor | grep -c ANCHOR_
+  ```
+  must be 0. The topic field is a `SecureField` for the same reason.
+- Testing hooks, inert unless set: `ANCHOR_CLAUDE_PROJECTS_ROOT` redirects the
+  watcher at a fixture tree, `ANCHOR_CLAUDE_BIN` points resume at a stub. Never
+  append a test banner to a real transcript — this feature is strictly read-only
+  with respect to Claude Code's state.
+  ```bash
+  open -n <build>/Anchor.app --env ANCHOR_CLAUDE_PROJECTS_ROOT=/tmp/fake \
+    --env ANCHOR_CLAUDE_BIN=/tmp/stub-claude
+  ```
+  Fixture generator and stub live in `scratchpad/usagetest/`.
+- A GUI launch from a detached shell exits immediately; use `open -n --env`.
 
 ## Speech API — verified working (Phase 0 spike)
 

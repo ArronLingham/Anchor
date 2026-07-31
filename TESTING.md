@@ -194,6 +194,25 @@ ps -o state= -p $(pgrep -x OSDUIHelper)
 **6.4** Drag the progress scrubber and release. ✅ Playback jumps to that point.
 **6.5** Shuffle and repeat buttons toggle.
 **6.6** Waveform visualiser animates while playing, stops when paused.
+
+**6.6a — The waveform is the one thing I changed and could not test.** The audio
+tap no longer runs all the time; it now starts when a visualiser appears and
+stops when it goes away. Four cases, all need a real look:
+
+- Notch already open with music playing → **bars move with the audio.** If they
+  sit flat, the tap is not starting.
+- Pause, wait a few seconds, play again → bars come back.
+- Close the notch, reopen it while still playing → bars come back.
+- **Music app launched *after* the notch is already open** → open the notch
+  first with nothing playing, *then* start Apple Music. Bars must still appear.
+  This is the case a bug of mine broke and I then fixed; it is the most likely
+  place for it to still be wrong.
+
+**6.6b** Settings → turn **Real-time waveform** off and on while music plays.
+✅ Off: bars fall back to the fake randomised visualiser. On: real bars return.
+
+**6.6c** The scrubber waveform now redraws at 30 fps instead of 60. ✅ Should
+look the same. If it looks choppy, say so.
 **6.7** Press the media keys (F7/F8/F9). ✅ Atoll handles them.
 **6.8** Stop all playback. ✅ Idle animation appears.
 
@@ -230,13 +249,24 @@ Start each of these and confirm it appears in the closed notch:
 
 ## 9. Performance
 
-**9.1 — Idle CPU.** Leave the app alone **5+ minutes**, then:
+**9.1 — Idle CPU.** Leave the app alone, then:
 ```bash
-/private/tmp/claude-501/-Users-arronlingham-Anchor/afa47fe6-293c-4cd3-aa73-51fa1a67c979/scratchpad/measure.sh Anchor 180 "manual-check"
+/private/tmp/claude-501/-Users-arronlingham-Anchor/afa47fe6-293c-4cd3-aa73-51fa1a67c979/scratchpad/measure-strict.sh Anchor 240 "manual-check" 120
 ```
-✅ Mean **0.00–0.05%**, RSS around **40 MB**. *Don't measure right after launch — startup spikes to ~28% and ruins the average.*
+✅ Mean **under 0.10%**, median **0.00%**, RSS around **16 MB**.
 
-**9.2 — During playback.** Repeat while music plays. ✅ Should stay low; the waveform is the expensive path.
+Use `measure-strict.sh`, not `measure.sh` — it settles first and aborts if the
+pid changes mid-run instead of quietly reporting nonsense. Measured on this
+build: mean 0.08%, median 0.00%, p90 0.10%, RSS 16 MB, against 0.95% / 0.80% /
+1.30% / 27 MB before the audio-tap change.
+
+**Never measure while a build is running** — `ps %cpu` is a decaying average, so
+a concurrent `xcodebuild` poisons the number and keeps poisoning it for a while
+after it finishes.
+
+**9.2 — During playback.** Repeat while music plays with the notch open. ✅ This
+is now the expensive case rather than idle, because the tap only runs here.
+Expect it to be clearly higher than idle — that is correct and intended.
 
 **9.3 — Energy.** Activity Monitor → Energy tab, after an hour of normal use.
 
