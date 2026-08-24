@@ -1,8 +1,13 @@
 # Anchor
 
-One native macOS app consolidating three utilities: a dynamic notch bar (from Atoll), dictation (replacing WisprFlow), and an app launcher (LaunchMe, built fresh).
+One native macOS app: a dynamic notch bar (from Atoll), with dictation replacing
+WisprFlow and an app launcher (LaunchMe) built fresh. The target feature set is
+the union of what Atoll, Sapphire and boring.notch each do, delivered in phases.
 
-Plan of record: `~/.claude/plans/i-want-to-build-functional-pinwheel.md`
+Plans: `~/.claude/plans/i-want-to-make-recursive-fog.md` is the current plan of
+record (repo, roadmap, licensing). `i-want-to-build-functional-pinwheel.md` is
+the 86-item manual test checklist, mirrored into `TESTING.md`.
+`i-want-to-design-luminous-hennessy.md` is the usage-watcher design.
 
 ## How to work with me
 
@@ -20,16 +25,36 @@ Plan of record: `~/.claude/plans/i-want-to-build-functional-pinwheel.md`
 
 - **Low CPU is the top priority.** Measure before and after any perf change; record idle CPU% and RSS. Never add a polling loop where an event-driven API exists.
 - **Native Swift only.** No Electron, no Node, no sidecar processes.
-- **macOS 26+ / Apple Silicon only.** Target macOS 15.0, build arm64-only.
-- **Personal use only** — never distributed. GPL-3.0 obligations don't apply.
+- **macOS 26+ / Apple Silicon only.** `MACOSX_DEPLOYMENT_TARGET = 26.0`, arm64-only.
+- **Personal use.** The GitHub repo is private, so nothing is distributed and the GPL/AGPL obligations stay dormant. See Licensing — this is a one-way door.
 - **Dictation uses Apple's on-device `SpeechAnalyzer`/`SpeechTranscriber`**, not Whisper. Keep it behind a protocol so a swap stays possible.
 
 ## Layout
 
+The repo is `~/Anchor`, pushed to `github.com/ArronLingham/Anchor` (**private** —
+see Licensing below). It used to sit at `~/DynamicNotch/Anchor/Atoll`, which is
+why the Xcode project is still `DynamicIsland.xcodeproj`.
+
 | Path | What |
 |---|---|
-| `Atoll/` | The host app. Swift/SwiftUI, Xcode project (`DynamicIsland.xcodeproj`, product name `Atoll`). This is where Anchor gets built. |
-| `WisprFlow/` | **Reference only.** Electron; being replaced. Read for behaviour, don't port. |
+| `DynamicIsland/` | The app. Swift/SwiftUI; product name `Anchor`. |
+| `tests/` | Standalone harnesses — see Tests below. |
+| `scripts/measure.sh` | CPU/RSS sampler. Every figure in this file was taken with it. |
+| `~/DynamicNotch/{Atoll,Sapphire,boring.notch}` | **Reference only.** Read for behaviour. GPL-3.0, GPL-3.0, AGPL-3.0. |
+| `~/DynamicNotch/Anchor/{Anchor,WisprFlow}` | **Stale.** `Anchor/` is an abandoned 10-commit checkout of this repo; `WisprFlow/` is the Electron app dictation replaced. |
+
+## Licensing
+
+The repo is private, and that is load-bearing rather than incidental. Anchor
+derives from boring.notch and Atoll, both GPL-3.0. Publishing it would be
+distribution and would trigger their copyleft; porting Sapphire source, which is
+AGPL-3.0, would bind the result to the stricter licence still. Keep `NOTICE`,
+which records the boring.notch -> Atoll chain. Settle the licence question
+before the repo is ever made public, not after.
+
+Sapphire's dependency graph pulls in Firebase, GoogleAppMeasurement and the
+Google Ads on-device conversion SDK. Port the source that implements a feature;
+do not let that graph follow it in.
 
 ## Atoll gotchas
 
@@ -98,7 +123,7 @@ Let the app run for 5+ minutes before sampling — launch transients hit ~28%
 and destroy the mean.
 
 ```bash
-/private/tmp/claude-501/-Users-arronlingham-Anchor/afa47fe6-293c-4cd3-aa73-51fa1a67c979/scratchpad/measure.sh Anchor 180 "<label>"
+scripts/measure.sh Anchor 180 "<label>"
 ```
 
 Every poller now parks on display sleep / screen lock / Low Power Mode via
@@ -122,9 +147,20 @@ That one change is nearly all of the 0.95% -> 0.08% above.
 - `displayMagnitudes`/`lastSmoothingTick` are main-thread only; the audioQueue
   paths that reset them hop to main.
 
-**Measure with `measure-strict.sh`, not `measure.sh`** — it aborts if the pid
-changes mid-run. Two measurements in this environment were silently garbage
-because the app was replaced underneath the sampler.
+**`scripts/measure.sh` aborts if the pid changes mid-run.** Two measurements in
+this environment were silently garbage because the app was replaced underneath
+the sampler, and were quoted for weeks before that surfaced. There is no longer
+a separate `measure-strict.sh`; the strict check is always on.
+
+It samples `cputime` and divides by elapsed wall time. Do not "simplify" it to
+`ps -o %cpu`, which reports a lifetime average — for a process that has been up
+for hours that number describes no particular moment.
+
+The harness lived only in a session scratchpad until 2026-08-24 and was lost with
+it. It could not have been committed: `.gitignore` excluded `*.sh` outright, so
+adding it staged nothing and looked like it had worked. `scripts/` and `tests/`
+are now negated. **Check `git check-ignore -v <path>` if a file you added does
+not show up in `git status`** — that block also swallows `*.py` and `*.txt`.
 
 ## Verifying the UI
 
@@ -199,9 +235,49 @@ xcodebuild -project DynamicIsland.xcodeproj -scheme DynamicIsland \
 - SwiftTerm needs the Metal toolchain (`xcodebuild -downloadComponent MetalToolchain`) — already installed. SwiftTerm is a Phase 1 deletion target, which removes this dependency.
 - Build is clean: 0 errors, 2 warnings.
 
+## Tests
+
+Neither harness needs an app build or a unit-test target — the project has only
+a UI-test target, and adding one would mean surgery on a `.pbxproj` that uses
+file-system-synchronized groups. Both compile the *real* source files with
+`swiftc`, so they cannot drift from the implementation.
+
+```bash
+./tests/run_parser_tests.sh     # 19 cases over the banner wordings
+./tests/run_watcher_tests.sh    # 7 cases, real FSEventStream over a temp dir
+python3 tests/test_privacy_configuration.py
+```
+
+`tests/support/LoggerStub.swift` stands in for `utils/Logger.swift`, which drags
+in SwiftUI and the `Defaults` package for a log level the tests do not need.
+
+**Build fixtures the way Claude Code writes them, not the way Foundation does.**
+`JSONSerialization` escapes `/` as `\/`, which puts a backslash inside the zone
+identifier and makes `TimeZone` reject it. Claude Code is a Node process, so its
+transcripts come from `JSON.stringify`, which leaves `/` raw — a real transcript
+contains `(America/Toronto)`. The watcher's `unescaped()` deliberately handles
+only `\n` and `\"`, so a fixture that over-escapes fails against correct code.
+
 ## Git
 
-Repo is **`ArronLingham/Anchor`** — standalone (not a fork), so commits count on the contribution calendar. Local branch `anchor-main` → remote `main`. Upstream Atoll fork is remote `upstream`.
+Repo is **`ArronLingham/Anchor`**, **private** — standalone (not a fork), so
+commits count on the contribution calendar. Branch `main`. The Atoll fork is
+remote **`atoll`**, renamed from `upstream` so it reads as somewhere to
+cherry-pick from rather than somewhere to merge from.
+
+**Every commit is authored by `ArronLingham
+<196463080+ArronLingham@users.noreply.github.com>`** (set repo-locally, not
+global) and carries no co-author trailer. Keep it that way.
+
+**Commit the call site and the thing it calls together.** `cdd6503` committed
+`ClaudeUsageManager.shared.start()` in `DynamicIslandApp` while the manager
+itself stayed untracked, so the tip did not build for five commits and nobody
+noticed, because the working tree — which had the untracked files — built fine.
+`git status` showing untracked files under `DynamicIsland/` is a build-breaking
+signal, not noise.
+
+Pushes go over **SSH**, which is why the missing `workflow` OAuth scope does not
+block them; that restriction only applies to OAuth-over-HTTPS.
 
 Git LFS is **disabled here on purpose** — upstream's LFS budget is exhausted and all 9 media objects are unreachable. Do not re-enable it; `git lfs install` re-adds a pre-push hook that blocks pushes.
 
@@ -336,6 +412,35 @@ reset in the notch, notifies the phone, and resumes the halted session.
   ```
   Fixture generator and stub live in `scratchpad/usagetest/`.
 - A GUI launch from a detached shell exits immediately; use `open -n --env`.
+
+
+### Verified 2026-08-24
+
+ntfy's scheduled delivery is the load-bearing assumption — the Mac cannot fire a
+local timer while asleep, so the push is sent at *detection* time carrying a
+`Delay` header and held server-side. Checked end to end against a throwaway
+topic:
+
+| Claim | Result |
+|---|---|
+| `Delay: <unix ts>` accepted | HTTP 200, echoed `time` equal to the requested instant |
+| Held, not delivered early | absent from `?poll=1`, present in `?poll=1&sched=1` |
+| Delivered on time | arrived at the scheduled second |
+| Sub-10s delay rejected | HTTP 400, `{"code":40005,"error":"invalid delay parameter: too small"}` |
+
+That last row is why `makeRequest` sends immediately rather than scheduling when
+the reset is nearer than the minimum: a refused schedule delivers nothing at all.
+
+The topic lives in the **Keychain** (`com.arronlingham.Anchor.claudeUsage` /
+`ntfyTopic`), never in `Defaults`. The topic name *is* the credential — anyone
+holding it can read and publish to the channel — and `Defaults` lands in a
+world-readable plist. `Constants.swift` carries a comment saying so; keep it.
+
+**Not yet measured.** The CPU A/B for this feature has not been re-run, because
+there is no installed build: `/Applications/Anchor.app` is gone. The FSEvents
+callback is the risk and must be sampled with a live Claude session running in
+another window, not at idle — `~/.claude/projects` is written on every tool call
+in every session.
 
 ## Speech API — verified working (Phase 0 spike)
 
