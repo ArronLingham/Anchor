@@ -220,7 +220,32 @@ xcodebuild -project DynamicIsland.xcodeproj -scheme DynamicIsland \
 - **`ENABLE_RESOURCE_ACCESS_*` in project.pbxproj overrides the `.entitlements`
   file.** The file said audio-input and no camera while the built app shipped
   the reverse. Change entitlements in *both* places, and `tests/` pins them.
-- Upstream's last build is at `~/Desktop/Atoll-upstream-v2.3.3-backup.app`.
+- Upstream's last build was at `~/Desktop/Atoll-upstream-v2.3.3-backup.app`. It
+  is gone.
+- Install with `ditto <built>/Anchor.app /Applications/Anchor.app`, then
+  `open -a /Applications/Anchor.app`. Verified 2026-08-24: signs under team
+  KLWHJX56T3, `codesign --verify --strict` passes, all three Sparkle guards hold
+  (`startingUpdater: false`, `feedURLString` returns nil, no `SUFeedURL`).
+- **`ANCHOR_RENDER_UI` is compiled out of Release** — confirmed, 0 occurrences in
+  the Release binary. It matters: the harness renders the settings pane, which
+  shows the ntfy topic read from the Keychain, so in a Release build anyone
+  running as the user could `open -n /Applications/Anchor.app --env
+  ANCHOR_RENDER_UI=/tmp/x` and read the topic out of a PNG. Keep it `#if DEBUG`.
+
+### Quitting restores the system OSD — verified
+
+Anchor SIGSTOPs `OSDUIHelper` to suppress the native HUD, so a build that dies
+without running its termination handler leaves the volume and brightness keys
+showing nothing at all until reboot. TESTING.md §5 item 43 is the check, and it
+**passes** as of 2026-08-24: `OSDUIHelper` sat in state `T` while Anchor ran and
+returned to `S` after `tell application "Anchor" to quit`.
+
+```bash
+ps -o state= -p "$(pgrep -x OSDUIHelper)"    # T while running, S after quit
+```
+
+If a crash or `kill -9` ever leaves it frozen, `kill -CONT $(pgrep -x OSDUIHelper)`
+fixes it without a reboot.
 
 ## Build (Debug, for iteration)
 
