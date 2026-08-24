@@ -72,14 +72,39 @@ do not let that graph follow it in.
 
 - ~93 `static let shared` singletons; no central store.
 - ~350 `Defaults` keys in `models/Constants.swift:833+` — the de-facto feature-flag registry. Flip switches before deleting code.
-- `ContentView.swift` (2,161 lines) observes 12 `ObservableObject`s and 40 `@Default`
-  keys. **`@ObservedObject` has no per-property granularity** — any `objectWillChange`
-  from any of them re-renders the whole view, even for properties this view never
-  reads. Split it before adding to it.
+- `ContentView.swift` (1,887 lines) observes 12 `ObservableObject`s and ~34
+  `@Default` keys. **`@ObservedObject` has no per-property granularity** — any
+  `objectWillChange` from any of them re-renders the whole view, even for
+  properties this view never reads. Split it before adding to it.
   - Don't try to move its methods into an `extension ContentView` in another file.
     The lifecycle handlers alone touch ~30 `private` members; making them all
     internal to win a line count trades away real encapsulation. The honest fix is
     to lift state into a model object, not to relocate functions.
+  - **The re-render cost is smaller than it looks, and is not the reason to
+    split.** All twelve publish rarely — the one high-frequency value in the app,
+    `DictationManager.LiveOutput.inputLevel`, is already on a nested observable
+    that only its leaf view watches. Idle median CPU is 0.00. Split it for
+    ownership, not for a performance number you will not be able to measure.
+  - `MusicControlWindowController` is what "lift state into a model object" looks
+    like here: eight `@State` fields holding three `Task`s, a visibility
+    deadline, a suppression flag and a deferred-sync queue, plus twenty methods,
+    none of which drew anything. Follow it for the next one.
+  - The five remaining low-use observations (`privacyManager`, `dictationManager`,
+    `claudeUsageManager`, `capsLockManager`, `recordingManager` — one or two
+    references each) all feed the same mutually-exclusive `if/else if` chain that
+    picks the closed-notch live activity. Extracting that selection is the next
+    real step, and it is *per-screen*: the chain mixes manager state with `vm`
+    state and screen-derived predicates, so a shared selector would be wrong.
+
+- **`ContentView` is instantiated once per screen.** `AppDelegate` keeps
+  `windows: [NSScreen: NSWindow]` and `viewModels[screen]`, and with
+  `showOnAllDisplays` it builds one window, view model and `ContentView` for each.
+  Anything held in that view's `@State` therefore exists N times.
+  - **Known bug, not introduced by the refactor:** N `MusicControlWindowController`
+    instances drive the single `MusicControlWindowManager.shared`, each with its
+    own suppression counter and pending-sync queue. Two displays means two state
+    machines fighting over one window. Fixing it means deciding which screen owns
+    the window, which is a behaviour change and needs its own commit.
 - **Settings panes are one file each** under `components/Settings/`.
   `SettingsView.swift` is now the shell — the two tab enums,
   `SettingsHighlightCoordinator`, the search/highlight plumbing, `SettingsForm`
