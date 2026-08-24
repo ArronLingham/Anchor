@@ -102,6 +102,8 @@ meaningless.** Everything below was measured after it:
 | Release, pre-Phase-4, machine in use | 0.72% | 0.70% | — | 1.90% | 13 MB |
 | Release + usage watcher, idle machine | 0.07% | 0.00% | — | 1.70% | 14 MB |
 | **Release, after the AudioTap fix** | **0.08%** | **0.00%** | **0.10%** | 2.70% | **16 MB** |
+| Release 2026-08-24, **live Claude session** (icon cache v1) | 0.35% | 0.00% | 0.49% | 4.30% | 49 MB |
+| Release 2026-08-24, live Claude session, **icon cache v2** | 0.29% | 0.00% | 0.48% | 8.76% | **36 MB** |
 
 The `e88b20b` row and the last row are a true A/B: same machine, same 120 s
 settle + 240 s sample, 120 samples each, pid verified stable throughout both
@@ -115,9 +117,35 @@ The two Phase-4 rows are not a clean A/B either — the first was taken while th
 machine was being worked on. The controlled comparison for the usage watcher is
 the on/off pair in the Phase 4 section, which shows no difference.
 
-Sampling shows every thread parked in a wait state. RSS is higher than the
-27 MB Release baseline mostly because this is a Debug build with the icon
-cache warm; it settles around 24-30 MB before the launcher is first opened.
+**The 2026-08-24 row is not a regression against the 0.08% row above it, and
+must not be read as one.** Every earlier row was sampled on an idle machine.
+That one was deliberately taken with a live Claude Code session running in
+another window, because `~/.claude/projects` is written on every tool call in
+every session and that is the only thing that exercises the usage watcher's
+FSEvents callback at all. It is the first measurement of that path under load,
+and the shape is the one to want: **median 0.00** with the mean carried by
+occasional bursts. Compare it only to another loaded run.
+
+The v1/v2 icon-cache pair is a real A/B — same machine, same 5-minute settle,
+same 180 s sample, **88 samples each**, both with a live Claude session running.
+Read it as an RSS fix and nothing more:
+
+- **RSS: 49 MB -> 36 MB mean**, max 71 -> 62. Real, and the expected size.
+- **CPU: unchanged.** 0.35% -> 0.29% mean looks like an improvement and is not
+  one. Median is 0.00 in both, p90 is 0.49 vs 0.48, and the max went *up*,
+  4.30% -> 8.76%. With a zero median the mean is carried entirely by a noisy
+  tail. The icon cache is not on any hot path; it had no reason to change CPU
+  and did not.
+- **Disk: 129 MB -> 2.1 MB**, over more apps (87 -> 116).
+
+A first attempt at the v2 arm reported 0.16% mean and was thrown away: it
+collected **15 samples instead of 88**, and its p90 and max were both exactly
+0.48, which is the signature of a window too short to see a tail rather than of
+a quiet app. Check the sample count before believing any row here.
+
+Sampling shows every thread parked in a wait state. RSS above the 16 MB row is
+the launcher icon cache: `NSCache` holds up to 512 icons, and under v1 each one
+decoded to a 1024x1024 RGBA bitmap of roughly 4 MB.
 
 Let the app run for 5+ minutes before sampling — launch transients hit ~28%
 and destroy the mean.
