@@ -58,6 +58,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
     case battery
     case dictation
     case launcher
+    case claudeUsage
     case clipboard
     case downloads
     case shortcuts
@@ -74,7 +75,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         case .media, .liveActivities, .lockScreen, .devices:                 return .mediaAndDisplay
         case .hudAndOSD, .battery:                                           return .system
         case .timer, .calendar, .notes:                                      return .productivity
-        case .dictation, .launcher:                                          return .integrations
+        case .dictation, .launcher, .claudeUsage:                            return .integrations
         case .clipboard, .downloads, .shortcuts:                             return .utilities
         case .terminal:                                                      return .developer
         case .about:                                                         return .info
@@ -95,6 +96,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         case .battery: return String(localized: "Battery")
         case .dictation: return String(localized: "Dictation")
         case .launcher: return String(localized: "Launcher")
+        case .claudeUsage: return String(localized: "Claude Usage")
         case .clipboard: return String(localized: "Clipboard")
         case .downloads: return String(localized: "Downloads")
         case .shortcuts: return String(localized: "Shortcuts")
@@ -118,6 +120,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         case .battery: return "battery.100.bolt"
         case .dictation: return "mic.fill"
         case .launcher: return "square.grid.3x3.fill"
+        case .claudeUsage: return "hourglass"
         case .clipboard: return "clipboard"
         case .downloads: return "square.and.arrow.down"
         case .shortcuts: return "keyboard"
@@ -141,6 +144,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         case .battery: return Color(red: 0.202, green: 0.783, blue: 0.348, opacity: 1.000)
         case .dictation: return .teal
         case .launcher: return .blue
+        case .claudeUsage: return Color(red: 0.85, green: 0.47, blue: 0.28)
         case .clipboard: return .mint
         case .downloads: return .gray
         case .shortcuts: return .orange
@@ -959,6 +963,10 @@ struct SettingsView: View {
         case .launcher:
             SettingsForm(tab: .launcher) {
                 LauncherSettings()
+            }
+        case .claudeUsage:
+            SettingsForm(tab: .claudeUsage) {
+                ClaudeUsageSettings()
             }
         case .clipboard:
             SettingsForm(tab: .clipboard) {

@@ -36,6 +36,7 @@ enum SneakContentType: Equatable {
     case privacy
     case lockScreen
     case capsLock
+    case claudeUsage
 }
 
 extension SneakContentType {
@@ -55,7 +56,8 @@ extension SneakContentType {
              (.bluetoothAudio, .bluetoothAudio),
              (.privacy, .privacy),
              (.lockScreen, .lockScreen),
-             (.capsLock, .capsLock):
+             (.capsLock, .capsLock),
+             (.claudeUsage, .claudeUsage):
             return true
         default:
             return false
@@ -254,11 +256,17 @@ class DynamicIslandViewCoordinator: ObservableObject {
             resolvedDuration = 10
         case .reminder:
             resolvedDuration = Defaults[.reminderSneakPeekDuration]
+        case .claudeUsage:
+            // Long enough to read a reset time; short enough not to sit on the
+            // notch. The countdown itself lives in the live activity, not here.
+            resolvedDuration = 6
         default:
             resolvedDuration = duration
         }
         sneakPeekDuration = resolvedDuration
-        let bypassedTypes: [SneakContentType] = [.music, .timer, .reminder, .bluetoothAudio]
+        // Not a system HUD event — it must show whether or not the user has the
+        // volume/brightness HUD turned on, exactly as .timer and .reminder do.
+        let bypassedTypes: [SneakContentType] = [.music, .timer, .reminder, .bluetoothAudio, .claudeUsage]
         
         
         if !bypassedTypes.contains(type) && !Defaults[.enableSystemHUD] {

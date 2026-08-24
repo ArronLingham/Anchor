@@ -29,10 +29,22 @@ import SwiftUI
 /// comes out as a solid yellow bar) and never materialises lazy containers, so
 /// a `LazyHStack` of app tiles renders completely empty.
 enum UISnapshotHarness {
+    /// Debug-only. The harness renders settings panes, and a settings pane may
+    /// read a credential to display it — `ClaudeUsageSettings` loads the ntfy
+    /// topic out of the Keychain on `onAppear`. In a signed Release that turned
+    /// the Keychain ACL into a no-op: the process doing the reading *is* Anchor,
+    /// so securityd hands the secret over without a prompt, and the harness then
+    /// writes it to a PNG at a path the caller chose via the environment. Anyone
+    /// running as the user could `open -n /Applications/Anchor.app
+    /// --env ANCHOR_RENDER_UI=/tmp/x` and read the topic out of the image.
     static var requestedDirectory: URL? {
-        ProcessInfo.processInfo.environment["ANCHOR_RENDER_UI"].map {
+        #if DEBUG
+        return ProcessInfo.processInfo.environment["ANCHOR_RENDER_UI"].map {
             URL(fileURLWithPath: $0, isDirectory: true)
         }
+        #else
+        return nil
+        #endif
     }
 
     @MainActor
@@ -76,6 +88,14 @@ enum UISnapshotHarness {
                     size: CGSize(width: 720, height: 780),
                     scheme: scheme,
                     to: directory.appendingPathComponent("settings-launcher-\(suffix).png"))
+
+                await capture(
+                    ClaudeUsageSettings()
+                        .formStyle(.grouped)
+                        .environmentObject(highlight),
+                    size: CGSize(width: 720, height: 860),
+                    scheme: scheme,
+                    to: directory.appendingPathComponent("settings-claude-usage-\(suffix).png"))
             }
 
             NSLog("UISnapshotHarness: wrote snapshots to \(directory.path)")

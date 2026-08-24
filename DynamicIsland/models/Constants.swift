@@ -956,6 +956,25 @@ extension Defaults.Keys {
     /// Collapse runs of whitespace and trim the transcript before inserting.
     static let dictationTidyWhitespace = Key<Bool>("dictationTidyWhitespace", default: true)
 
+    // MARK: - Claude usage
+    /// Watch `~/.claude/projects` for the usage-limit banner Claude Code writes
+    /// into its transcripts, and count down to the reset in the notch.
+    static let claudeUsageWatchEnabled = Key<Bool>("claudeUsageWatchEnabled", default: true)
+    /// Relaunch the most recently halted session when the window reopens.
+    /// Only ever one session — resuming the whole queue at once would re-exhaust
+    /// the fresh window within minutes.
+    static let claudeUsageAutoResume = Key<Bool>("claudeUsageAutoResume", default: true)
+    /// Prompt handed to `claude -r <session> -p "…"` on auto-resume.
+    static let claudeUsageResumePrompt = Key<String>("claudeUsageResumePrompt", default: "continue")
+    /// ntfy server used for the scheduled phone push.
+    static let claudeUsageNtfyServer = Key<String>("claudeUsageNtfyServer", default: "https://ntfy.sh")
+    /// Show the limit and reset alerts in the notch.
+    static let claudeUsageNotifyOnMac = Key<Bool>("claudeUsageNotifyOnMac", default: true)
+    // The ntfy TOPIC is deliberately NOT a Defaults key. The topic name *is* the
+    // credential — anyone who knows it can read and publish to it — and Defaults
+    // lands in a world-readable plist under ~/Library/Preferences. It lives in
+    // the Keychain, via `ClaudeUsageKeychain`. Do not add it here.
+
     // MARK: - Launcher
     /// Spotlight-style application launcher panel.
     static let enableLauncher = Key<Bool>("enableLauncher", default: true)
