@@ -80,7 +80,12 @@ do not let that graph follow it in.
     The lifecycle handlers alone touch ~30 `private` members; making them all
     internal to win a line count trades away real encapsulation. The honest fix is
     to lift state into a model object, not to relocate functions.
-- `SettingsView.swift` is 8,694 lines.
+- **Settings panes are one file each** under `components/Settings/`.
+  `SettingsView.swift` is now the shell — the two tab enums,
+  `SettingsHighlightCoordinator`, the search/highlight plumbing, `SettingsForm`
+  and the container. It was 7,784 lines holding eighteen panes; it is 1,062.
+  Add a new pane as its own file and register it in `SettingsTab`, and add it to
+  `UISnapshotHarness.settingsPanes` so it is covered by the render sweep.
 - `StatsManager.swift:514-548` is the one good throttling pattern in the repo. Copy it.
 - **Keep high-frequency `@Published` values on their own nested observable.**
   `DictationManager.LiveOutput` is the reference: `state` changes ~4x per dictation
@@ -197,11 +202,16 @@ checked by rendering it:
 
 ```bash
 ANCHOR_RENDER_UI=/tmp/uishots \
-  <build>/Atoll.app/Contents/MacOS/Atoll
+  <build>/Anchor.app/Contents/MacOS/Anchor
 ```
 
-Writes a PNG of the launcher and each new settings pane in light and dark,
-then exits. Inert unless the variable is set. See `helpers/UISnapshotHarness.swift`.
+Writes a PNG of the launcher and every settings pane in light and dark, then
+exits before any manager starts — it returns early from
+`applicationDidFinishLaunching`, so it never suppresses the OSD. Inert unless
+the variable is set. **Debug only**, deliberately: it renders the settings pane
+that displays the ntfy topic read from the Keychain, so in a Release build
+anyone could `open -n /Applications/Anchor.app --env ANCHOR_RENDER_UI=/tmp/x`
+and read the topic out of a PNG. See `helpers/UISnapshotHarness.swift`.
 
 - Do **not** use `ImageRenderer` — it draws AppKit-backed controls as a yellow
   placeholder (`TextField`) and never materialises lazy containers, so the app
@@ -209,7 +219,14 @@ then exits. Inert unless the variable is set. See `helpers/UISnapshotHarness.swi
 - Appearance must be set on the *window*; `.environment(\.colorScheme)` does not
   reach AppKit controls inside a hosting view.
 - Settings panes need `.formStyle(.grouped)` and a `SettingsHighlightCoordinator`
-  in the environment, or they render as unstyled floating labels.
+  in the environment, or they render as unstyled floating labels. Three
+  (`GeneralSettings`, `HUD`, `NotesSettingsView`) also need a
+  `DynamicIslandViewModel`, and `About` takes an `SPUStandardUpdaterController` —
+  build it with `startingUpdater: false`, never a live one.
+- **The sweep covers every settings pane**, so a pane that renders empty is
+  caught here rather than by clicking through 21 sidebar tabs. Add new panes to
+  `settingsPanes`. All panes share one 720x1200 canvas; a pane that outgrows it
+  is visibly cut off, which is the signal to raise it rather than a failure.
 
 ## Naming
 

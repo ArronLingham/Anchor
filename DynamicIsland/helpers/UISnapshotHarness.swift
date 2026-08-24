@@ -17,6 +17,7 @@
  */
 
 import AppKit
+import Sparkle
 import SwiftUI
 
 /// Renders UI to PNGs so it can be reviewed without a screen-recording grant.
@@ -60,6 +61,7 @@ enum UISnapshotHarness {
             try? await Task.sleep(for: .seconds(4))
 
             let highlight = SettingsHighlightCoordinator()
+            let viewModel = DynamicIslandViewModel()
 
             for scheme in [ColorScheme.dark, ColorScheme.light] {
                 let suffix = scheme == .dark ? "dark" : "light"
@@ -96,11 +98,68 @@ enum UISnapshotHarness {
                     size: CGSize(width: 720, height: 860),
                     scheme: scheme,
                     to: directory.appendingPathComponent("settings-claude-usage-\(suffix).png"))
+
+                // Every remaining settings pane. These were one 7,784-line file
+                // until they were split out, and nothing else exercises them
+                // without opening the window and clicking each tab.
+                for pane in settingsPanes(highlight: highlight, viewModel: viewModel) {
+                    await capture(
+                        pane.view,
+                        size: pane.size,
+                        scheme: scheme,
+                        to: directory.appendingPathComponent("settings-\(pane.name)-\(suffix).png"))
+                }
             }
 
             NSLog("UISnapshotHarness: wrote snapshots to \(directory.path)")
             exit(0)
         }
+    }
+
+    /// Every pane reachable from the settings sidebar.
+    ///
+    /// One tall canvas for all of them rather than a hand-tuned size each: the
+    /// point is to catch a pane that renders empty or crashes, and whitespace at
+    /// the bottom of a short pane costs nothing. A pane that outgrows this will
+    /// be visibly cut off, which is itself the signal to raise it.
+    @MainActor
+    private static func settingsPanes(
+        highlight: SettingsHighlightCoordinator,
+        viewModel: DynamicIslandViewModel
+    ) -> [(name: String, size: CGSize, view: AnyView)] {
+        let size = CGSize(width: 720, height: 1200)
+
+        func pane<V: View>(_ name: String, _ view: V) -> (String, CGSize, AnyView) {
+            (name, size, AnyView(
+                view
+                    .formStyle(.grouped)
+                    .environmentObject(highlight)
+                    .environmentObject(viewModel)))
+        }
+
+        return [
+            pane("general", GeneralSettings()),
+            pane("charge", Charge()),
+            pane("downloads", Downloads()),
+            pane("hud", HUD()),
+            pane("media", Media()),
+            pane("calendar", CalendarSettings()),
+            // startingUpdater: false, matching DynamicIslandApp. Sparkle must
+            // never run here — every channel in UpdateChannel points at upstream
+            // Atoll's appcast, and a live updater replaced Anchor with upstream
+            // once already.
+            pane("about", About(updaterController: SPUStandardUpdaterController(
+                startingUpdater: false, updaterDelegate: nil, userDriverDelegate: nil))),
+            pane("live-activities", LiveActivitiesSettings()),
+            pane("appearance", Appearance()),
+            pane("lock-screen", LockScreenSettings()),
+            pane("shortcuts", Shortcuts()),
+            pane("timer", TimerSettings()),
+            pane("clipboard", ClipboardSettings()),
+            pane("custom-osd", CustomOSDSettings()),
+            pane("notes", NotesSettingsView()),
+            pane("terminal", TerminalSettings()),
+        ]
     }
 
     @MainActor
