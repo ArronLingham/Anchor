@@ -30,8 +30,12 @@ import Foundation
 final class AppIconCache {
     static let shared = AppIconCache()
 
-    /// Rendered size in points. Retina backing is handled by the NSImage size.
+    /// Rendered size in points. The grid draws at 56.
     static let iconSize = CGSize(width: 64, height: 64)
+
+    /// Backing scale the PNGs are rasterised at. 2 covers every Retina display
+    /// at this size, and is what the built-in panel runs at.
+    private static let iconScale = 2
 
     private let memory = NSCache<NSString, NSImage>()
     private let directory: URL
@@ -46,8 +50,21 @@ final class AppIconCache {
     private init() {
         let base = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
             ?? URL(fileURLWithPath: NSTemporaryDirectory())
-        directory = base.appendingPathComponent("Anchor/AppIcons", isDirectory: true)
+        // Versioned: v1 stored whatever `tiffRepresentation` produced, which was
+        // the full-size .icns slice. Reading those back would keep the old
+        // 1024x1024 images alive indefinitely, because the cache key is derived
+        // from the app path and mtime and neither of those changed.
+        directory = base.appendingPathComponent("Anchor/AppIcons-v2", isDirectory: true)
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+
+        // Reclaim v1. Off the calling thread: this deleted 129 MB on the machine
+        // where the bug was found, and per CLAUDE.md nothing in a manager's init
+        // may block.
+        let legacy = base.appendingPathComponent("Anchor/AppIcons", isDirectory: true)
+        DispatchQueue.global(qos: .utility).async {
+            try? FileManager.default.removeItem(at: legacy)
+        }
+
         memory.countLimit = 512
     }
 
@@ -118,9 +135,48 @@ final class AppIconCache {
     }
 
     private func render(_ app: LauncherApp) -> NSImage {
-        let icon = NSWorkspace.shared.icon(forFile: app.url.path)
-        icon.size = Self.iconSize
-        return icon
+        Self.rasterised(NSWorkspace.shared.icon(forFile: app.url.path))
+    }
+
+    /// Draws `image` into a bitmap of exactly the size this cache stores.
+    ///
+    /// `NSImage.size` is a logical hint; it does not touch the underlying
+    /// representations. `NSWorkspace.icon(forFile:)` returns every slice in the
+    /// .icns up to 1024x1024, and `tiffRepresentation` serialises the largest of
+    /// them — so assigning `.size` and writing produced 1024x1024 PNGs of up to
+    /// 3 MB each for icons that are drawn at 56pt. The cache reached 129 MB over
+    /// 87 apps before anyone looked. Rasterise, don't relabel.
+    private static func rasterised(_ image: NSImage) -> NSImage {
+        guard let rep = NSBitmapImageRep(
+            bitmapDataPlanes: nil,
+            pixelsWide: Int(iconSize.width) * iconScale,
+            pixelsHigh: Int(iconSize.height) * iconScale,
+            bitsPerSample: 8,
+            samplesPerPixel: 4,
+            hasAlpha: true,
+            isPlanar: false,
+            colorSpaceName: .deviceRGB,
+            bytesPerRow: 0,
+            bitsPerPixel: 0)
+        else {
+            // Nothing sensible to fall back to but the original.
+            image.size = iconSize
+            return image
+        }
+        rep.size = iconSize
+
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
+        image.draw(
+            in: NSRect(origin: .zero, size: iconSize),
+            from: .zero,
+            operation: .copy,
+            fraction: 1.0)
+        NSGraphicsContext.restoreGraphicsState()
+
+        let output = NSImage(size: iconSize)
+        output.addRepresentation(rep)
+        return output
     }
 
     private func fileURL(for key: String) -> URL {
@@ -137,9 +193,12 @@ final class AppIconCache {
     }
 
     private func writeToDisk(_ image: NSImage, key: String) {
+        // `render` produces a single bitmap rep at the stored size; use it
+        // directly. Falling back through `tiffRepresentation` picks the largest
+        // representation, which is what wrote 1024x1024 PNGs in v1.
+        let existing = image.representations.compactMap { $0 as? NSBitmapImageRep }.first
         guard
-            let tiff = image.tiffRepresentation,
-            let rep = NSBitmapImageRep(data: tiff),
+            let rep = existing ?? image.tiffRepresentation.flatMap({ NSBitmapImageRep(data: $0) }),
             let png = rep.representation(using: .png, properties: [:])
         else { return }
         try? png.write(to: fileURL(for: key), options: .atomic)
