@@ -6,8 +6,6 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 ENTITLEMENTS = ROOT / "DynamicIsland" / "DynamicIsland.entitlements"
 PROJECT = ROOT / "DynamicIsland.xcodeproj" / "project.pbxproj"
-RELEASE_WORKFLOW = ROOT / ".github" / "workflows" / "release.yml"
-CI_WORKFLOW = ROOT / ".github" / "workflows" / "ci.yml"
 INFO_PLIST = ROOT / "DynamicIsland" / "Info.plist"
 
 
@@ -80,35 +78,18 @@ class PrivacyConfigurationTests(unittest.TestCase):
             project.count("INFOPLIST_KEY_NSRemindersFullAccessUsageDescription ="),
         )
 
-    def test_release_resigning_preserves_archived_entitlements(self):
-        workflow = RELEASE_WORKFLOW.read_text()
 
-        self.assertIn(
-            'codesign -d --entitlements :- "$APP_PATH" > "$ENTITLEMENTS_PATH"',
-            workflow,
-        )
-        self.assertIn('--entitlements "$ENTITLEMENTS_PATH"', workflow)
-        self.assertIn(
-            'FINAL_ENTITLEMENTS_PATH="$RUNNER_TEMP/${APP_NAME}-final.entitlements"',
-            workflow,
-        )
-        self.assertIn(
-            'codesign -d --entitlements :- "$APP_PATH" > "$FINAL_ENTITLEMENTS_PATH"',
-            workflow,
-        )
-        self.assertIn(
-            '/usr/libexec/PlistBuddy -c "Print :com.apple.security.device.audio-input" "$FINAL_ENTITLEMENTS_PATH" | grep -qx "true"',
-            workflow,
-        )
-        self.assertIn(
-            '/usr/libexec/PlistBuddy -c "Print :com.apple.security.automation.apple-events" "$FINAL_ENTITLEMENTS_PATH" | grep -qx "true"',
-            workflow,
-        )
-
-    def test_ci_checks_the_privacy_configuration(self):
-        workflow = CI_WORKFLOW.read_text()
-
-        self.assertIn("python3 -m unittest tests.test_privacy_configuration", workflow)
+# Two tests lived here that asserted on .github/workflows/release.yml and ci.yml:
+# that the release job re-signed the app without dropping the audio-input and
+# apple-events entitlements, and that CI ran this suite. Both workflows were
+# upstream Atoll's and were removed in 6703dea — this is a private personal repo
+# that publishes no releases.
+#
+# Nothing runs this file automatically now. Run it by hand:
+#     python3 tests/test_privacy_configuration.py
+# The seven checks above are the ones that matter, because
+# ENABLE_RESOURCE_ACCESS_* in project.pbxproj silently overrides the
+# .entitlements file and the two have disagreed before.
 
 
 if __name__ == "__main__":
