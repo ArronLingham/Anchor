@@ -102,6 +102,16 @@ struct GeneralSettings: View {
             }
 
             Section {
+                Defaults.Toggle(key: .enableSnapZones) {
+                    Text("Snap windows to screen edges")
+                }
+                .settingsHighlight(id: highlightID("Snap windows to screen edges"))
+                .help("Drag a window against the left or right edge to tile it to that half, or the top edge to fill the screen. Needs Accessibility, which dictation already requires. Nothing is observed until a drag begins.")
+            } header: {
+                Text("Window snapping")
+            }
+
+            Section {
                 Defaults.Toggle(key: .enableSystemStats) {
                     Text("System stats")
                 }

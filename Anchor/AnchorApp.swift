@@ -706,6 +706,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             // Touching .shared is the start: the manager schedules from its own
             // settings observer, and does nothing at all while disabled.
             _ = EyeBreakManager.shared
+            _ = SnapZoneManager.shared
         }
 
         ReminderLiveActivityManager.shared.$activeWindowReminders

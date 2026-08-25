@@ -1068,6 +1068,11 @@ extension Defaults.Keys {
     static let lyricsOffsetSeconds = Key<Double>("lyricsOffsetSeconds", default: 0.2)
 
     // MARK: - Eye break (20-20-20)
+    // MARK: - Window snapping
+    /// Drag a window to a screen edge to tile it. Needs Accessibility, which
+    /// dictation already requires.
+    static let enableSnapZones = Key<Bool>("enableSnapZones", default: false)
+
     // MARK: - System stats
     static let enableSystemStats = Key<Bool>("enableSystemStats", default: false)
     /// Seconds between samples while a stats view is on screen.
