@@ -17,6 +17,7 @@
  */
 
 import AppKit
+import Defaults
 import Sparkle
 import SwiftUI
 
@@ -63,6 +64,13 @@ enum UISnapshotHarness {
             let highlight = SettingsHighlightCoordinator()
             let viewModel = DynamicIslandViewModel()
 
+            // The lyrics tab renders an "off" placeholder unless the feature is
+            // enabled, and the key defaults to false. Flip it for the render and
+            // put it back before exiting — this runs against the real defaults
+            // domain, and a snapshot run must not change the user's settings.
+            let lyricsWereEnabled = Defaults[.enableLyrics]
+            Defaults[.enableLyrics] = true
+
             for scheme in [ColorScheme.dark, ColorScheme.light] {
                 let suffix = scheme == .dark ? "dark" : "light"
 
@@ -99,6 +107,16 @@ enum UISnapshotHarness {
                     scheme: scheme,
                     to: directory.appendingPathComponent("settings-claude-usage-\(suffix).png"))
 
+                // The lyrics tab, seeded so it renders the real list rather
+                // than its "nothing playing" state. MusicManager.shared is the
+                // only source these views read, and this process exits without
+                // ever starting playback.
+                await capture(
+                    seededLyricsTab(),
+                    size: CGSize(width: 560, height: 260),
+                    scheme: scheme,
+                    to: directory.appendingPathComponent("notch-lyrics-\(suffix).png"))
+
                 // Every remaining settings pane. These were one 7,784-line file
                 // until they were split out, and nothing else exercises them
                 // without opening the window and clicking each tab.
@@ -110,6 +128,10 @@ enum UISnapshotHarness {
                         to: directory.appendingPathComponent("settings-\(pane.name)-\(suffix).png"))
                 }
             }
+
+            // Restored explicitly rather than with `defer`: exit() terminates
+            // the process without unwinding, so a deferred block never runs.
+            Defaults[.enableLyrics] = lyricsWereEnabled
 
             NSLog("UISnapshotHarness: wrote snapshots to \(directory.path)")
             exit(0)
@@ -160,6 +182,38 @@ enum UISnapshotHarness {
             pane("notes", NotesSettingsView()),
             pane("terminal", TerminalSettings()),
         ]
+    }
+
+    /// The lyrics tab with fixture lyrics in place.
+    ///
+    /// Positioned mid-song so the render shows what actually matters: the
+    /// current line highlighted, the neighbours fading with distance, and lines
+    /// both above and below it.
+    @MainActor
+    private static func seededLyricsTab() -> some View {
+        let manager = MusicManager.shared
+
+        // Setting `currentLyricIndex` directly does not hold: MusicManager runs
+        // a 300 ms sync task that recomputes it from the playback position, and
+        // with nothing playing every fixture timestamp is already in the past,
+        // so it settles on the final line and the render shows no lines below
+        // the highlight. Instead the later timestamps are pushed past any
+        // position that task can produce, which pins the current line at index 2
+        // no matter when the capture lands.
+        let farFuture: TimeInterval = 86_400
+        manager.syncedLyrics = [
+            LyricLine(timestamp: 0, text: "Is this the real life?"),
+            LyricLine(timestamp: 4, text: "Is this just fantasy?"),
+            LyricLine(timestamp: 8, text: "Caught in a landslide"),
+            LyricLine(timestamp: farFuture, text: "No escape from reality"),
+            LyricLine(timestamp: farFuture + 4, text: "Open your eyes"),
+            LyricLine(timestamp: farFuture + 8, text: "Look up to the skies and see"),
+        ]
+        manager.currentLyricIndex = 2
+        manager.currentLyrics = manager.syncedLyrics[2].text
+        return NotchLyricsView()
+            .padding(12)
+            .background(Color.black)
     }
 
     @MainActor

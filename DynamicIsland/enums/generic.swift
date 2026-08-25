@@ -76,6 +76,7 @@ public enum NotchViews {
     case notes
     case clipboard
     case terminal
+    case lyrics
 }
 
 enum NotesLayoutState: Equatable {

@@ -983,6 +983,8 @@ struct ContentView: View {
                                 NotchClipboardList()
                             case .terminal:
                                 NotchTerminalView()
+                            case .lyrics:
+                                NotchLyricsView()
                           }
                       }
                       .id(coordinator.currentView)

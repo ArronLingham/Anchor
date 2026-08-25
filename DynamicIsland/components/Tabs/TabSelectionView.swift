@@ -68,6 +68,9 @@ struct TabSelectionView: View {
         if Defaults[.enableTerminalFeature] {
             tabsArray.append(TabModel(label: "Terminal", icon: "apple.terminal", view: .terminal))
         }
+        if Defaults[.enableLyrics] {
+            tabsArray.append(TabModel(label: "Lyrics", icon: "quote.bubble", view: .lyrics))
+        }
         return tabsArray
     }
     var body: some View {

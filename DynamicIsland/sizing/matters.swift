@@ -82,6 +82,11 @@ func enabledStandardTabCount() -> Int {
         count += 1
     }
 
+    // Lyrics tab
+    if Defaults[.enableLyrics] {
+        count += 1
+    }
+
     return count
 }
 
