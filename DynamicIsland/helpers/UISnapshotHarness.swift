@@ -125,6 +125,20 @@ enum UISnapshotHarness {
                     scheme: scheme,
                     to: directory.appendingPathComponent("notch-lyrics-untimed-\(suffix).png"))
 
+                // The lock screen's immersive player, with and without lyrics
+                // — the layout differs, since artwork centres when there is no
+                // lyric column to sit beside.
+                await capture(
+                    seededImmersivePlayer(withLyrics: true),
+                    size: CGSize(width: 1280, height: 800),
+                    scheme: scheme,
+                    to: directory.appendingPathComponent("lockscreen-immersive-lyrics-\(suffix).png"))
+                await capture(
+                    seededImmersivePlayer(withLyrics: false),
+                    size: CGSize(width: 1280, height: 800),
+                    scheme: scheme,
+                    to: directory.appendingPathComponent("lockscreen-immersive-plain-\(suffix).png"))
+
                 // Every remaining settings pane. These were one 7,784-line file
                 // until they were split out, and nothing else exercises them
                 // without opening the window and clicking each tab.
@@ -234,6 +248,20 @@ enum UISnapshotHarness {
         manager.currentLyricIndex = 2
         manager.currentLyrics = manager.syncedLyrics[2].text
         return AnyView(NotchLyricsView().padding(12).background(Color.black))
+    }
+
+    @MainActor
+    private static func seededImmersivePlayer(withLyrics: Bool) -> AnyView {
+        let manager = MusicManager.shared
+        manager.songTitle = "Bohemian Rhapsody"
+        manager.artistName = "Queen"
+        manager.isPlaying = true
+        if withLyrics {
+            _ = seededLyricsTab(timed: true)
+        } else {
+            manager.syncedLyrics = []
+        }
+        return AnyView(LockScreenImmersivePlayer())
     }
 
     @MainActor

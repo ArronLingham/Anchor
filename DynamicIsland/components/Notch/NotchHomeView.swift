@@ -630,12 +630,23 @@ struct MusicControlsView: View {
         case .airPlay:
             AirPlayPickerButton()
         case .lyrics:
+            // Opens the lyrics, rather than toggling the feature off.
+            //
+            // This used to be `enableLyrics.toggle()`, which reads as "show me
+            // the lyrics" and does the opposite: it disables the feature, and
+            // now also removes the Lyrics tab, so the lyrics become harder to
+            // reach by pressing the lyrics button. Turning the feature on and
+            // off belongs in Settings; the control next to the transport is a
+            // navigation control.
             HoverButton(
-                icon: enableLyrics ? "quote.bubble.fill" : "quote.bubble",
-                iconColor: enableLyrics ? brandAccentColor : .white,
+                icon: coordinator.currentView == .lyrics ? "quote.bubble.fill" : "quote.bubble",
+                iconColor: coordinator.currentView == .lyrics ? brandAccentColor : .white,
                 scale: .medium
             ) {
-                enableLyrics.toggle()
+                if !enableLyrics { enableLyrics = true }
+                withAnimation(.smooth) {
+                    coordinator.currentView = coordinator.currentView == .lyrics ? .home : .lyrics
+                }
             }
         }
     }
