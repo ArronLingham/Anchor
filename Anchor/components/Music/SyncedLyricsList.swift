@@ -17,7 +17,9 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
+import Defaults
 import SwiftUI
+import Translation
 
 /// The scrolling lyric sheet, shared by the notch tab and the lock screen's
 /// immersive player.
@@ -28,6 +30,14 @@ import SwiftUI
 /// two cannot drift.
 struct SyncedLyricsList: View {
     @ObservedObject private var musicManager = MusicManager.shared
+    @ObservedObject private var translator = LyricsTranslator.shared
+    @Default(.lyricsTranslationEnabled) private var translationEnabled
+
+    /// Lines handed to the session. The Translation framework insists on being
+    /// driven from SwiftUI, so the view owns the session and the manager owns
+    /// the results.
+    @State private var pendingTranslation: [String] = []
+    @State private var translationConfiguration: TranslationSession.Configuration?
 
     var currentSize: CGFloat = 15
     var otherSize: CGFloat = 13
@@ -67,6 +77,39 @@ struct SyncedLyricsList: View {
     private var canSeek: Bool { !isUnsynced && !musicManager.isLiveStream }
 
     var body: some View {
+        content
+            .onAppear {
+                LyricsTranslator.shared.requestTranslation = { lines in
+                    Task { @MainActor in
+                        pendingTranslation = lines
+                        // A fresh configuration is what re-triggers the task;
+                        // mutating the existing one does not.
+                        translationConfiguration = TranslationSession.Configuration(
+                            source: nil, target: Locale.current.language)
+                    }
+                }
+            }
+            .translationTask(translationConfiguration) { session in
+                guard !pendingTranslation.isEmpty else { return }
+                do {
+                    let requests = pendingTranslation.map {
+                        TranslationSession.Request(sourceText: $0)
+                    }
+                    var pairs: [(source: String, target: String)] = []
+                    for try await response in session.translate(batch: requests) {
+                        pairs.append((response.sourceText, response.targetText))
+                    }
+                    await MainActor.run { LyricsTranslator.shared.apply(pairs) }
+                } catch {
+                    // Most often the language pair is unavailable or the model
+                    // has not been downloaded. Lyrics keep working untranslated.
+                    await MainActor.run { LyricsTranslator.shared.failed() }
+                }
+            }
+    }
+
+    @ViewBuilder
+    private var content: some View {
         if isUnsynced {
             untimed
         } else if fitted {
@@ -167,6 +210,19 @@ struct SyncedLyricsList: View {
                 musicManager.seek(to: line.timestamp)
             }
             .animation(.easeInOut(duration: 0.28), value: isCurrent)
+            .overlay(alignment: .bottomLeading) {
+                // Only under the current line: a translation under every line
+                // doubles the height of the sheet and buries the thing you are
+                // actually reading.
+                if isCurrent, let translated = translator.translations[line.text] {
+                    Text(translated)
+                        .font(.system(size: otherSize * 0.85))
+                        .foregroundStyle(.white.opacity(0.55))
+                        .fixedSize(horizontal: false, vertical: true)
+                        .offset(y: otherSize * 1.35)
+                        .transition(.opacity)
+                }
+            }
     }
 
     private func opacity(distance: Int, isCurrent: Bool) -> Double {

@@ -707,6 +707,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             // settings observer, and does nothing at all while disabled.
             _ = EyeBreakManager.shared
             _ = SnapZoneManager.shared
+            _ = LyricsTranslator.shared
         }
 
         ReminderLiveActivityManager.shared.$activeWindowReminders

@@ -1067,6 +1067,9 @@ extension Defaults.Keys {
     /// The default is a small lead measured against Spotify on built-in output.
     static let lyricsOffsetSeconds = Key<Double>("lyricsOffsetSeconds", default: 0.2)
 
+    /// Show a translation beneath each lyric line, on device.
+    static let lyricsTranslationEnabled = Key<Bool>("lyricsTranslationEnabled", default: false)
+
     // MARK: - Eye break (20-20-20)
     // MARK: - Window snapping
     /// Drag a window to a screen edge to tile it. Needs Accessibility, which

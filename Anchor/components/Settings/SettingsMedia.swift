@@ -213,6 +213,13 @@ struct Media: View {
                     Text("Enable lyrics")
                 }
                 .settingsHighlight(id: highlightID("Enable lyrics"))
+                Defaults.Toggle(key: .lyricsTranslationEnabled) {
+                    Text("Translate lyrics")
+                }
+                .disabled(!enableLyrics)
+                .settingsHighlight(id: highlightID("Translate lyrics"))
+                .help("Shows a translation beneath the current line, into your Mac's language. Runs on device through Apple's Translation framework — no key, no network, and nothing about what you are listening to leaves the machine. macOS may ask to download a language model the first time.")
+
                 Slider(value: $lyricsOffsetSeconds, in: -1...1, step: 0.05) {
                     HStack {
                         Text("Lyrics timing")
