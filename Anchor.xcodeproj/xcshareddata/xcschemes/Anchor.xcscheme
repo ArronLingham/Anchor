@@ -17,8 +17,8 @@
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "F54406E62CD4987A00C7AFD9"
                BuildableName = "Atoll.app"
-               BlueprintName = "DynamicIsland"
-               ReferencedContainer = "container:DynamicIsland.xcodeproj">
+               BlueprintName = "Anchor"
+               ReferencedContainer = "container:Anchor.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
       </BuildActionEntries>
@@ -35,9 +35,9 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "9CA407B492164F5AEF356E38"
-               BuildableName = "DynamicIslandUITests.xctest"
-               BlueprintName = "DynamicIslandUITests"
-               ReferencedContainer = "container:DynamicIsland.xcodeproj">
+               BuildableName = "AnchorUITests.xctest"
+               BlueprintName = "AnchorUITests"
+               ReferencedContainer = "container:Anchor.xcodeproj">
             </BuildableReference>
          </TestableReference>
       </Testables>
@@ -58,8 +58,8 @@
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "F54406E62CD4987A00C7AFD9"
             BuildableName = "Atoll.app"
-            BlueprintName = "DynamicIsland"
-            ReferencedContainer = "container:DynamicIsland.xcodeproj">
+            BlueprintName = "Anchor"
+            ReferencedContainer = "container:Anchor.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
    </LaunchAction>
@@ -75,8 +75,8 @@
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "F54406E62CD4987A00C7AFD9"
             BuildableName = "Atoll.app"
-            BlueprintName = "DynamicIsland"
-            ReferencedContainer = "container:DynamicIsland.xcodeproj">
+            BlueprintName = "Anchor"
+            ReferencedContainer = "container:Anchor.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
    </ProfileAction>

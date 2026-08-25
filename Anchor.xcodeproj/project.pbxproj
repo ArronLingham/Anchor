@@ -27,7 +27,7 @@
 		7EE1D73F2E6B1E1200997219 /* IOKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7EE1D73E2E6B1E1200997219 /* IOKit.framework */; };
 		7EF10C122F817ECF004229A0 /* Accelerate.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7EF10C112F817ECF004229A0 /* Accelerate.framework */; };
 		7EF19C172F577040005B9929 /* SwiftTerm in Frameworks */ = {isa = PBXBuildFile; productRef = 7EF19C162F577040005B9929 /* SwiftTerm */; };
-		A3C83CAF84544DCE386C3BB8 /* DynamicIslandUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54078F29304A9DBBEFBDF932 /* DynamicIslandUITests.swift */; };
+		A3C83CAF84544DCE386C3BB8 /* AnchorUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54078F29304A9DBBEFBDF932 /* AnchorUITests.swift */; };
 		F910B9C812C7AEFE2293F7D2 /* Cocoa.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4A9C58195E197C19F691DA62 /* Cocoa.framework */; };
 /* End PBXBuildFile section */
 
@@ -45,7 +45,7 @@
 
 /* Begin PBXFileReference section */
 		4A9C58195E197C19F691DA62 /* Cocoa.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Cocoa.framework; path = Platforms/MacOSX.platform/Developer/SDKs/MacOSX15.0.sdk/System/Library/Frameworks/Cocoa.framework; sourceTree = DEVELOPER_DIR; };
-		54078F29304A9DBBEFBDF932 /* DynamicIslandUITests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = DynamicIslandUITests.swift; sourceTree = "<group>"; };
+		54078F29304A9DBBEFBDF932 /* AnchorUITests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AnchorUITests.swift; sourceTree = "<group>"; };
 		7E25ECA02E6C6C3800700E72 /* CoreBrightness.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreBrightness.framework; path = /System/Library/PrivateFrameworks/CoreBrightness.framework; sourceTree = "<absolute>"; };
 		7E25ECA22E6C6E2600700E72 /* OSD.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = OSD.framework; path = /System/Library/PrivateFrameworks/OSD.framework; sourceTree = "<absolute>"; };
 		7E25ECA42E6C6E7800700E72 /* DisplayServices.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = DisplayServices.framework; path = /System/Library/PrivateFrameworks/DisplayServices.framework; sourceTree = "<absolute>"; };
@@ -58,31 +58,31 @@
 		7EE1D73C2E6B1E0B00997219 /* ApplicationServices.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = ApplicationServices.framework; path = System/Library/Frameworks/ApplicationServices.framework; sourceTree = SDKROOT; };
 		7EE1D73E2E6B1E1200997219 /* IOKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = IOKit.framework; path = System/Library/Frameworks/IOKit.framework; sourceTree = SDKROOT; };
 		7EF10C112F817ECF004229A0 /* Accelerate.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Accelerate.framework; path = System/Library/Frameworks/Accelerate.framework; sourceTree = SDKROOT; };
-		A058D80A7EF44593B0F24EB7 /* DynamicIslandUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = DynamicIslandUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		A058D80A7EF44593B0F24EB7 /* AnchorUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = AnchorUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		DAA671E7B1B26733F02166C5 /* Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		F4C1DD09EC134302938E84F6 /* MediaRemoteAdapter.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = MediaRemoteAdapter.framework; path = Frameworks/MediaRemoteAdapter.framework; sourceTree = SOURCE_ROOT; };
 		F54406E72CD4987A00C7AFD9 /* Atoll.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Atoll.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
-		7EA69B1E2F5AE61200EB2D16 /* Exceptions for "Contents" folder in "DynamicIsland" target */ = {
+		7EA69B1E2F5AE61200EB2D16 /* Exceptions for "Contents" folder in "Anchor" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				Helpers/NowPlayingTestClient,
 			);
-			target = F54406E62CD4987A00C7AFD9 /* DynamicIsland */;
+			target = F54406E62CD4987A00C7AFD9 /* Anchor */;
 		};
-		7EA69B212F5B100000EB2D16 /* Exceptions for "DynamicIsland" folder in "DynamicIsland" target */ = {
+		7EA69B212F5B100000EB2D16 /* Exceptions for "Anchor" folder in "Anchor" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				Info.plist,
 			);
-			target = F54406E62CD4987A00C7AFD9 /* DynamicIsland */;
+			target = F54406E62CD4987A00C7AFD9 /* Anchor */;
 		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet section */
-		7EA69B202F5AE63200EB2D16 /* Exceptions for "Contents" folder in "Copy Files" phase from "DynamicIsland" target */ = {
+		7EA69B202F5AE63200EB2D16 /* Exceptions for "Contents" folder in "Copy Files" phase from "Anchor" target */ = {
 			isa = PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet;
 			attributesByRelativePath = {
 				Helpers/NowPlayingTestClient = (CodeSignOnCopy, );
@@ -98,18 +98,18 @@
 		7EA69B1C2F5AE15C00EB2D16 /* Contents */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
-				7EA69B1E2F5AE61200EB2D16 /* Exceptions for "Contents" folder in "DynamicIsland" target */,
-				7EA69B202F5AE63200EB2D16 /* Exceptions for "Contents" folder in "Copy Files" phase from "DynamicIsland" target */,
+				7EA69B1E2F5AE61200EB2D16 /* Exceptions for "Contents" folder in "Anchor" target */,
+				7EA69B202F5AE63200EB2D16 /* Exceptions for "Contents" folder in "Copy Files" phase from "Anchor" target */,
 			);
 			path = Contents;
 			sourceTree = "<group>";
 		};
-		F54406E92CD4987A00C7AFD9 /* DynamicIsland */ = {
+		F54406E92CD4987A00C7AFD9 /* Anchor */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
-				7EA69B212F5B100000EB2D16 /* Exceptions for "DynamicIsland" folder in "DynamicIsland" target */,
+				7EA69B212F5B100000EB2D16 /* Exceptions for "Anchor" folder in "Anchor" target */,
 			);
-			path = DynamicIsland;
+			path = Anchor;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -189,13 +189,13 @@
 			path = LottieAnimations;
 			sourceTree = "<group>";
 		};
-		BF9102C8771E45168EF97D18 /* DynamicIslandUITests */ = {
+		BF9102C8771E45168EF97D18 /* AnchorUITests */ = {
 			isa = PBXGroup;
 			children = (
-				54078F29304A9DBBEFBDF932 /* DynamicIslandUITests.swift */,
+				54078F29304A9DBBEFBDF932 /* AnchorUITests.swift */,
 				DAA671E7B1B26733F02166C5 /* Info.plist */,
 			);
-			path = DynamicIslandUITests;
+			path = AnchorUITests;
 			sourceTree = "<group>";
 		};
 		F54406DE2CD4987A00C7AFD9 = {
@@ -205,9 +205,9 @@
 				7E8840D52E9A341F00C5CB8C /* LottieAnimations */,
 				7E81304F2E3FB42700E08F3F /* Frameworks */,
 				7E81303F2E3FB40500E08F3F /* mediaremote-adapter */,
-				F54406E92CD4987A00C7AFD9 /* DynamicIsland */,
+				F54406E92CD4987A00C7AFD9 /* Anchor */,
 				F54406E82CD4987A00C7AFD9 /* Products */,
-				BF9102C8771E45168EF97D18 /* DynamicIslandUITests */,
+				BF9102C8771E45168EF97D18 /* AnchorUITests */,
 			);
 			sourceTree = "<group>";
 		};
@@ -215,7 +215,7 @@
 			isa = PBXGroup;
 			children = (
 				F54406E72CD4987A00C7AFD9 /* Atoll.app */,
-				A058D80A7EF44593B0F24EB7 /* DynamicIslandUITests.xctest */,
+				A058D80A7EF44593B0F24EB7 /* AnchorUITests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -223,9 +223,9 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		9CA407B492164F5AEF356E38 /* DynamicIslandUITests */ = {
+		9CA407B492164F5AEF356E38 /* AnchorUITests */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 0EE2CF1552DB8896698C28BD /* Build configuration list for PBXNativeTarget "DynamicIslandUITests" */;
+			buildConfigurationList = 0EE2CF1552DB8896698C28BD /* Build configuration list for PBXNativeTarget "AnchorUITests" */;
 			buildPhases = (
 				A11BBB270825A1AC5909239B /* Sources */,
 				C288A7D2D7F2EBA801C0C21F /* Frameworks */,
@@ -235,14 +235,14 @@
 			);
 			dependencies = (
 			);
-			name = DynamicIslandUITests;
-			productName = DynamicIslandUITests;
-			productReference = A058D80A7EF44593B0F24EB7 /* DynamicIslandUITests.xctest */;
+			name = AnchorUITests;
+			productName = AnchorUITests;
+			productReference = A058D80A7EF44593B0F24EB7 /* AnchorUITests.xctest */;
 			productType = "com.apple.product-type.bundle.ui-testing";
 		};
-		F54406E62CD4987A00C7AFD9 /* DynamicIsland */ = {
+		F54406E62CD4987A00C7AFD9 /* Anchor */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = F54406F62CD4987B00C7AFD9 /* Build configuration list for PBXNativeTarget "DynamicIsland" */;
+			buildConfigurationList = F54406F62CD4987B00C7AFD9 /* Build configuration list for PBXNativeTarget "Anchor" */;
 			buildPhases = (
 				F54406E32CD4987A00C7AFD9 /* Sources */,
 				F54406E42CD4987A00C7AFD9 /* Frameworks */,
@@ -256,9 +256,9 @@
 			);
 			fileSystemSynchronizedGroups = (
 				7EA69B1C2F5AE15C00EB2D16 /* Contents */,
-				F54406E92CD4987A00C7AFD9 /* DynamicIsland */,
+				F54406E92CD4987A00C7AFD9 /* Anchor */,
 			);
-			name = DynamicIsland;
+			name = Anchor;
 			packageProductDependencies = (
 				14D032192C68F32E0096E6A1 /* LaunchAtLogin */,
 				14D0321C2C68F3350096E6A1 /* Sparkle */,
@@ -271,7 +271,7 @@
 				7E61181E2E24071E0050006C /* SkyLightWindow */,
 				7EF19C162F577040005B9929 /* SwiftTerm */,
 			);
-			productName = DynamicIsland;
+			productName = Anchor;
 			productReference = F54406E72CD4987A00C7AFD9 /* Atoll.app */;
 			productType = "com.apple.product-type.application";
 		};
@@ -290,7 +290,7 @@
 					};
 				};
 			};
-			buildConfigurationList = F54406E22CD4987A00C7AFD9 /* Build configuration list for PBXProject "DynamicIsland" */;
+			buildConfigurationList = F54406E22CD4987A00C7AFD9 /* Build configuration list for PBXProject "Anchor" */;
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
 			knownRegions = (
@@ -323,8 +323,8 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				F54406E62CD4987A00C7AFD9 /* DynamicIsland */,
-				9CA407B492164F5AEF356E38 /* DynamicIslandUITests */,
+				F54406E62CD4987A00C7AFD9 /* Anchor */,
+				9CA407B492164F5AEF356E38 /* AnchorUITests */,
 			);
 		};
 /* End PBXProject section */
@@ -379,7 +379,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				A3C83CAF84544DCE386C3BB8 /* DynamicIslandUITests.swift in Sources */,
+				A3C83CAF84544DCE386C3BB8 /* AnchorUITests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -402,7 +402,7 @@
 					"$(inherited)",
 					"$(PLATFORM_DIR)/Developer/Library/Frameworks",
 				);
-				INFOPLIST_FILE = DynamicIslandUITests/Info.plist;
+				INFOPLIST_FILE = AnchorUITests/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
@@ -410,12 +410,12 @@
 				);
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.arronlingham.AnchorUITests;
-				PRODUCT_MODULE_NAME = DynamicIslandUITests;
-				PRODUCT_NAME = DynamicIslandUITests;
+				PRODUCT_MODULE_NAME = AnchorUITests;
+				PRODUCT_NAME = AnchorUITests;
 				SDKROOT = macosx;
 				SWIFT_TESTING_FRAMEWORK = YES;
 				SWIFT_VERSION = 5.0;
-				TEST_TARGET_NAME = DynamicIsland;
+				TEST_TARGET_NAME = Anchor;
 				USES_SWIFT_TESTING = YES;
 			};
 			name = Debug;
@@ -429,7 +429,7 @@
 					"$(inherited)",
 					"$(PLATFORM_DIR)/Developer/Library/Frameworks",
 				);
-				INFOPLIST_FILE = DynamicIslandUITests/Info.plist;
+				INFOPLIST_FILE = AnchorUITests/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
@@ -437,12 +437,12 @@
 				);
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.arronlingham.AnchorUITests;
-				PRODUCT_MODULE_NAME = DynamicIslandUITests;
-				PRODUCT_NAME = DynamicIslandUITests;
+				PRODUCT_MODULE_NAME = AnchorUITests;
+				PRODUCT_NAME = AnchorUITests;
 				SDKROOT = macosx;
 				SWIFT_TESTING_FRAMEWORK = YES;
 				SWIFT_VERSION = 5.0;
-				TEST_TARGET_NAME = DynamicIsland;
+				TEST_TARGET_NAME = Anchor;
 				USES_SWIFT_TESTING = YES;
 			};
 			name = Release;
@@ -571,13 +571,13 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIconDev;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				AUTOMATION_APPLE_EVENTS = YES;
-				CODE_SIGN_ENTITLEMENTS = DynamicIsland/Anchor.entitlements;
+				CODE_SIGN_ENTITLEMENTS = Anchor/Anchor.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1160;
-				DEVELOPMENT_ASSET_PATHS = "\"DynamicIsland/Preview Content\"";
+				DEVELOPMENT_ASSET_PATHS = "\"Anchor/Preview Content\"";
 				DEVELOPMENT_TEAM = KLWHJX56T3;
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -595,7 +595,7 @@
 					"$(PROJECT_DIR)/mediaremote-adapter",
 				);
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = DynamicIsland/Info.plist;
+				INFOPLIST_FILE = Anchor/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Anchor;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
 				INFOPLIST_KEY_LSUIElement = YES;
@@ -629,7 +629,7 @@
 				RUNTIME_EXCEPTION_DISABLE_EXECUTABLE_PAGE_PROTECTION = NO;
 				RUNTIME_EXCEPTION_DISABLE_LIBRARY_VALIDATION = NO;
 				SWIFT_EMIT_LOC_STRINGS = YES;
-				SWIFT_OBJC_BRIDGING_HEADER = "DynamicIsland/Anchor-Bridging-Header.h";
+				SWIFT_OBJC_BRIDGING_HEADER = "Anchor/Anchor-Bridging-Header.h";
 				SWIFT_VERSION = 5.0;
 				SYSTEM_FRAMEWORK_SEARCH_PATHS = (
 					"$(SDKROOT)/System/Library/Frameworks",
@@ -644,13 +644,13 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				AUTOMATION_APPLE_EVENTS = YES;
-				CODE_SIGN_ENTITLEMENTS = DynamicIsland/Anchor.entitlements;
+				CODE_SIGN_ENTITLEMENTS = Anchor/Anchor.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Developer ID Application";
 				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1160;
-				DEVELOPMENT_ASSET_PATHS = "\"DynamicIsland/Preview Content\"";
+				DEVELOPMENT_ASSET_PATHS = "\"Anchor/Preview Content\"";
 				DEVELOPMENT_TEAM = "";
 				"DEVELOPMENT_TEAM[sdk=macosx*]" = KLWHJX56T3;
 				ENABLE_APP_SANDBOX = NO;
@@ -669,7 +669,7 @@
 					"$(PROJECT_DIR)/mediaremote-adapter",
 				);
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = DynamicIsland/Info.plist;
+				INFOPLIST_FILE = Anchor/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Anchor;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
 				INFOPLIST_KEY_LSUIElement = YES;
@@ -703,7 +703,7 @@
 				RUNTIME_EXCEPTION_DISABLE_EXECUTABLE_PAGE_PROTECTION = NO;
 				RUNTIME_EXCEPTION_DISABLE_LIBRARY_VALIDATION = NO;
 				SWIFT_EMIT_LOC_STRINGS = YES;
-				SWIFT_OBJC_BRIDGING_HEADER = "DynamicIsland/Anchor-Bridging-Header.h";
+				SWIFT_OBJC_BRIDGING_HEADER = "Anchor/Anchor-Bridging-Header.h";
 				SWIFT_VERSION = 5.0;
 				SYSTEM_FRAMEWORK_SEARCH_PATHS = (
 					"$(SDKROOT)/System/Library/Frameworks",
@@ -715,7 +715,7 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		0EE2CF1552DB8896698C28BD /* Build configuration list for PBXNativeTarget "DynamicIslandUITests" */ = {
+		0EE2CF1552DB8896698C28BD /* Build configuration list for PBXNativeTarget "AnchorUITests" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				80C3D48B29D18AD34C41AA75 /* Release */,
@@ -724,7 +724,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		F54406E22CD4987A00C7AFD9 /* Build configuration list for PBXProject "DynamicIsland" */ = {
+		F54406E22CD4987A00C7AFD9 /* Build configuration list for PBXProject "Anchor" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				F54406F42CD4987B00C7AFD9 /* Debug */,
@@ -733,7 +733,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		F54406F62CD4987B00C7AFD9 /* Build configuration list for PBXNativeTarget "DynamicIsland" */ = {
+		F54406F62CD4987B00C7AFD9 /* Build configuration list for PBXNativeTarget "Anchor" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				F54406F72CD4987B00C7AFD9 /* Debug */,
