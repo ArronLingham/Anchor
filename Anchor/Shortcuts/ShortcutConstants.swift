@@ -34,4 +34,6 @@ extension KeyboardShortcuts.Name {
     static let toggleNotchOpen = Self("toggleNotchOpen", default: .init(.i, modifiers: [.command, .shift]))
     static let toggleTerminalTab = Self("toggleTerminalTab", default: .init(.backtick, modifiers: [.control]))
     static let startDemoTimer = Self("startDemoTimer", default: .init(.t, modifiers: [.command, .shift]))
+    /// Opens the system eyedropper and copies the picked colour.
+    static let pickColor = Self("pickColor", default: .init(.p, modifiers: [.command, .shift]))
 }

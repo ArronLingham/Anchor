@@ -81,6 +81,13 @@ struct Appearance: View {
         currentRecommendedMinimumNotchWidth()
     }
 
+    private var colorFormatBinding: Binding<String> {
+        Binding(
+            get: { Defaults[.colorPickerFormat] },
+            set: { Defaults[.colorPickerFormat] = $0 }
+        )
+    }
+
     private func highlightID(_ title: String) -> String {
         SettingsTab.appearance.highlightID(for: title)
     }
@@ -439,6 +446,31 @@ struct Appearance: View {
                 HStack {
                     Text("Additional features")
                 }
+            }
+
+            Section {
+                Defaults.Toggle(key: .enableColorPickerFeature) {
+                    Text("Screen colour picker")
+                }
+                .settingsHighlight(id: highlightID("Screen colour picker"))
+                .help("Opens the system eyedropper and copies the colour under the cursor.")
+
+                if Defaults[.enableColorPickerFeature] {
+                    Picker("Copy as", selection: colorFormatBinding) {
+                        ForEach(ColorPickerManager.availableFormats, id: \.self) { name in
+                            Text(name).tag(name)
+                        }
+                    }
+                    .settingsHighlight(id: highlightID("Copy as"))
+
+                    ColorPickerHistoryStrip()
+                }
+            } header: {
+                Text("Colour picker")
+            } footer: {
+                Text("Press the Pick colour shortcut to sample. Set it under Shortcuts.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
             }
 
             // MARK: - Custom Idle Animations Section

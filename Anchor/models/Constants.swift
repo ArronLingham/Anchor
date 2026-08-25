@@ -888,6 +888,8 @@ extension Defaults.Keys {
     
     // MARK: ColorPicker Feature
     static let enableColorPickerFeature = Key<Bool>("enableColorPickerFeature", default: true)
+    /// Which of `PickedColor.allFormats` is written to the clipboard, by name.
+    static let colorPickerFormat = Key<String>("colorPickerFormat", default: "HEX")
     
     // MARK: Clipboard Feature
     static let enableClipboardManager = Key<Bool>("enableClipboardManager", default: true)
