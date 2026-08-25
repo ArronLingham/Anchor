@@ -72,6 +72,9 @@ struct TabSelectionView: View {
         if Defaults[.enableLyrics] {
             tabsArray.append(TabModel(label: "Lyrics", icon: "quote.bubble", view: .lyrics))
         }
+        if Defaults[.enableShelf] {
+            tabsArray.append(TabModel(label: "Shelf", icon: "tray.full", view: .shelf))
+        }
         return tabsArray
     }
     var body: some View {

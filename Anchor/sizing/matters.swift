@@ -88,6 +88,11 @@ func enabledStandardTabCount() -> Int {
         count += 1
     }
 
+    // Shelf tab
+    if Defaults[.enableShelf] {
+        count += 1
+    }
+
     return count
 }
 

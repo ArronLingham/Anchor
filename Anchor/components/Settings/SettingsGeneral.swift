@@ -34,6 +34,7 @@ import UniformTypeIdentifiers
 // Richard Kunkli on 07/08/2024. Behaviour unchanged.
 
 struct GeneralSettings: View {
+    @Default(.enableShelf) var enableShelf
     @Default(.eyeBreakEnabled) var eyeBreakEnabled
     @Default(.eyeBreakWorkMinutes) var eyeBreakWorkMinutes
     @Default(.eyeBreakRestSeconds) var eyeBreakRestSeconds
@@ -98,6 +99,16 @@ struct GeneralSettings: View {
                 Text("UI Mode")
             } footer: {
                 Text("Minimalistic mode focuses on media controls and system HUDs, hiding all extra features for a clean, focused experience. Automatically enables simpler animations.")
+            }
+
+            Section {
+                Defaults.Toggle(key: .enableShelf) {
+                    Text("File shelf")
+                }
+                .settingsHighlight(id: highlightID("File shelf"))
+                .help("Adds a Shelf tab to the notch. Drop files onto it to park them, drag them back out to move them on. Files are referenced, not copied, so a large file costs a bookmark rather than a second copy.")
+            } header: {
+                Text("Shelf")
             }
 
             Section {
