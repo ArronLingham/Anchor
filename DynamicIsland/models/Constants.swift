@@ -1103,6 +1103,13 @@ extension Defaults.Keys {
     
     // MARK: Lyrics Feature
     static let enableLyrics = Key<Bool>("enableLyrics", default: false)
+    /// Seconds to lead the lyrics by. Positive shows each line earlier.
+    ///
+    /// A player reports where its decoder is, which is ahead of what has reached
+    /// the speakers, and that report itself arrives late; how much differs by app
+    /// and by output device, so this is adjustable rather than a fixed constant.
+    /// The default is a small lead measured against Spotify on built-in output.
+    static let lyricsOffsetSeconds = Key<Double>("lyricsOffsetSeconds", default: 0.2)
     static let showLiveCanvasInDynamicIsland = Key<Bool>("showLiveCanvasInDynamicIsland", default: false)
     
     // MARK: Notes Feature

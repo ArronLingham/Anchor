@@ -33,6 +33,8 @@ import UniformTypeIdentifiers
 // Richard Kunkli on 07/08/2024. Behaviour unchanged.
 
 struct Media: View {
+    @Default(.lyricsOffsetSeconds) var lyricsOffsetSeconds
+    @Default(.enableLyrics) var enableLyrics
     @Default(.waitInterval) var waitInterval
     @Default(.mediaController) var mediaController
     @ObservedObject var coordinator = DynamicIslandViewCoordinator.shared
@@ -210,6 +212,21 @@ struct Media: View {
                     Text("Enable lyrics")
                 }
                 .settingsHighlight(id: highlightID("Enable lyrics"))
+                Slider(value: $lyricsOffsetSeconds, in: -1...1, step: 0.05) {
+                    HStack {
+                        Text("Lyrics timing")
+                        Spacer()
+                        Text(lyricsOffsetSeconds == 0
+                             ? "on the beat"
+                             : String(format: "%+.2fs %@", lyricsOffsetSeconds,
+                                      lyricsOffsetSeconds > 0 ? "early" : "late"))
+                            .foregroundStyle(.secondary)
+                            .monospacedDigit()
+                    }
+                }
+                .disabled(!enableLyrics)
+                .settingsHighlight(id: highlightID("Lyrics timing"))
+                .help("Nudge lyrics earlier or later. Players report the position their decoder has reached, which runs ahead of what you hear, and that report arrives with its own lag — how much depends on the app and the output device.")
                 Defaults.Toggle(key: .showLiveCanvasInDynamicIsland) {
                     Text("Show live canvas in Dynamic Island")
                 }

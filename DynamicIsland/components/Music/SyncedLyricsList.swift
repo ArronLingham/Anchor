@@ -33,6 +33,24 @@ struct SyncedLyricsList: View {
     var lineSpacing: CGFloat = 10
     var alignment: HorizontalAlignment = .leading
 
+    /// Fill the available height with as many lines as fit and step through them
+    /// in place, instead of scrolling a longer sheet.
+    ///
+    /// The notch is short enough that a scroll view is mostly chrome — a scroll
+    /// position to fight, momentum, and a sheet taller than anything visible.
+    /// Fitted mode measures the space, shows exactly the lines that fit, and
+    /// keeps the current one in the middle of them.
+    var fitted: Bool = false
+
+    /// Fixed number of lines in fitted mode. Without it the count is measured
+    /// from the available height.
+    var fittedCapacity: Int? = nil
+
+    /// How many already-sung lines to keep above the current one. Defaults to
+    /// half the window, i.e. centred. A smaller number weights the view toward
+    /// what is coming, which is what you want to read.
+    var linesBefore: Int? = nil
+
     /// LRCLIB often has only a plain version of a track. Those lyrics are worth
     /// reading, but nothing about them is timed: no line is current and there is
     /// no position to seek to.
@@ -50,9 +68,43 @@ struct SyncedLyricsList: View {
     var body: some View {
         if isUnsynced {
             untimed
+        } else if fitted {
+            fittedTimed
         } else {
             timed
         }
+    }
+
+    /// No scroll view: measure, take the lines that fit, centre the current one.
+    private var fittedTimed: some View {
+        GeometryReader { geo in
+            let rowHeight = currentSize + lineSpacing
+            let capacity = fittedCapacity ?? max(1, Int(geo.size.height / rowHeight))
+            let window = windowedLines(capacity: capacity, before: linesBefore ?? capacity / 2)
+
+            VStack(alignment: alignment, spacing: lineSpacing) {
+                ForEach(window, id: \.index) { entry in
+                    lineView(index: entry.index, line: entry.line)
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+            .animation(.easeInOut(duration: 0.3), value: musicManager.currentLyricIndex)
+        }
+    }
+
+    /// The slice of lines to show, holding the current line as near the middle
+    /// as it can while still filling the space at the start and end of a track.
+    private func windowedLines(capacity: Int, before: Int) -> [(index: Int, line: LyricLine)] {
+        let lines = musicManager.syncedLyrics
+        guard !lines.isEmpty else { return [] }
+
+        let current = max(0, musicManager.currentLyricIndex)
+        // Clamped rather than offset blindly: near either end, holding the
+        // current line at a fixed row would leave blank space while there are
+        // still lines to show.
+        let start = min(max(0, current - before), max(0, lines.count - capacity))
+        let end = min(lines.count, start + capacity)
+        return (start..<end).map { (index: $0, line: lines[$0]) }
     }
 
     private var timed: some View {

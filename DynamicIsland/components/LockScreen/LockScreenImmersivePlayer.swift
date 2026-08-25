@@ -51,14 +51,21 @@ struct LockScreenImmersivePlayer: View {
                         artwork(side: artSide)
 
                         if hasLyrics {
+                            // Five lines, one already sung and three ahead: at
+                            // this size the sheet is for reading along, so the
+                            // room goes to what is coming rather than to what
+                            // has gone. No fade mask — nothing scrolls past an
+                            // edge to soften.
                             SyncedLyricsList(
-                                currentSize: 22,
-                                otherSize: 18,
-                                lineSpacing: 14
+                                currentSize: 34,
+                                otherSize: 25,
+                                lineSpacing: 22,
+                                fitted: true,
+                                fittedCapacity: 5,
+                                linesBefore: 1
                             )
                             .frame(maxWidth: .infinity)
                             .frame(height: artSide)
-                            .mask(fadeEdges)
                         }
                     }
                     .padding(.horizontal, geo.size.width * 0.07)
@@ -106,17 +113,6 @@ struct LockScreenImmersivePlayer: View {
         }
         .clipped()
         .ignoresSafeArea()
-    }
-
-    private var fadeEdges: LinearGradient {
-        LinearGradient(
-            stops: [
-                .init(color: .clear, location: 0),
-                .init(color: .black, location: 0.12),
-                .init(color: .black, location: 0.88),
-                .init(color: .clear, location: 1),
-            ],
-            startPoint: .top, endPoint: .bottom)
     }
 
     // MARK: - Artwork

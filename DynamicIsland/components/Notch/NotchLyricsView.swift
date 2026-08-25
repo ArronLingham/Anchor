@@ -44,7 +44,7 @@ struct NotchLyricsView: View {
                         : "LRCLIB has nothing for this track.")
             } else {
                 // Shared with the lock screen's immersive player.
-                SyncedLyricsList(currentSize: 15, otherSize: 13, lineSpacing: 10)
+                SyncedLyricsList(currentSize: 15, otherSize: 13, lineSpacing: 10, fitted: true)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)

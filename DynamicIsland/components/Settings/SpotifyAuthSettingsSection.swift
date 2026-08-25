@@ -24,6 +24,11 @@ struct SpotifyAuthSettingsSection: View {
     @Default(.spotifySPDCCookie) private var spotifySPDCCookie
     @ObservedObject private var spotifyAuthManager = SpotifyAuthManager.shared
     @State private var showingLoginSheet = false
+    /// The cookie is a live Spotify session token — anyone holding it can act as
+    /// this account. It was rendered in full by anything that captured this pane,
+    /// including the snapshot harness, and was readable over a shoulder whenever
+    /// Settings was open. Masked unless deliberately revealed.
+    @State private var isCookieRevealed = false
 
     private var hasCookie: Bool {
         !SpotifyAuthManager.sanitizeCookie(spotifySPDCCookie).isEmpty
@@ -43,11 +48,32 @@ struct SpotifyAuthSettingsSection: View {
                 }
                 .buttonStyle(.borderedProminent)
 
-                TextField("sp_dc cookie", text: $spotifySPDCCookie, axis: .vertical)
+                HStack(alignment: .top, spacing: 8) {
+                    Group {
+                        if isCookieRevealed {
+                            TextField("sp_dc cookie", text: $spotifySPDCCookie, axis: .vertical)
+                                .lineLimit(2...4)
+                                .textSelection(.enabled)
+                        } else {
+                            // SecureField has no multiline form, so revealing
+                            // swaps in the wrapping field rather than toggling a
+                            // property on one control.
+                            SecureField("sp_dc cookie", text: $spotifySPDCCookie)
+                        }
+                    }
                     .textFieldStyle(.roundedBorder)
                     .font(.caption.monospaced())
-                    .lineLimit(2...4)
-                    .textSelection(.enabled)
+
+                    Button {
+                        isCookieRevealed.toggle()
+                    } label: {
+                        Image(systemName: isCookieRevealed ? "eye.slash" : "eye")
+                            .frame(width: 16)
+                    }
+                    .buttonStyle(.borderless)
+                    .help(isCookieRevealed ? "Hide the cookie" : "Show the cookie")
+                    .accessibilityLabel(isCookieRevealed ? "Hide the cookie" : "Show the cookie")
+                }
             }
 
             HStack(spacing: 10) {

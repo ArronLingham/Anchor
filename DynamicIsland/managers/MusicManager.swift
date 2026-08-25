@@ -897,7 +897,7 @@ class MusicManager: ObservableObject {
         // would pair the new elapsedTime with the previous stamp and overshoot
         // by the gap between reports.
         if timeChanged {
-            self.updateCurrentLyric(for: self.estimatedPlaybackPosition())
+            self.updateCurrentLyric(for: self.lyricPosition())
         }
 
         // Manage lyric sync task based on playback/lyrics availability
@@ -1603,7 +1603,7 @@ class MusicManager: ObservableObject {
             return
         }
 
-        let playbackPosition = max(estimatedPlaybackPosition(), elapsedTime)
+        let playbackPosition = max(lyricPosition(), elapsedTime)
         updateCurrentLyric(for: playbackPosition)
 
         if currentLyricIndex == -1, let firstLine = lyrics.first?.text {
@@ -1691,24 +1691,56 @@ class MusicManager: ObservableObject {
     }
 
     // Start a background task that periodically updates the displayed lyric
+    /// Playback position as the lyrics should read it.
+    ///
+    /// `lyricsOffsetSeconds` leads or trails the estimate. A player reports the
+    /// position its decoder is at, which runs ahead of what has actually reached
+    /// the speakers, and the reported value itself arrives with some lag; the
+    /// residual differs per app and per output path, so it is a setting rather
+    /// than a constant. Positive values pull the lyrics earlier.
+    private func lyricPosition() -> TimeInterval {
+        estimatedPlaybackPosition() + Defaults[.lyricsOffsetSeconds]
+    }
+
+    /// How long until the first line after `position` is due, or nil at the end.
+    private func timeUntilNextLyric(after position: TimeInterval) -> TimeInterval? {
+        guard let next = syncedLyrics.first(where: { $0.timestamp > position }) else { return nil }
+        return next.timestamp - position
+    }
+
     private func startLyricSync() {
         // If already running, keep it
         if lyricSyncTask != nil { return }
 
         lyricSyncTask = Task { [weak self] in
-            guard let self = self else { return }
             while !Task.isCancelled {
-                // Compute estimated playback position and update lyric
-                let position = self.estimatedPlaybackPosition()
-                await MainActor.run {
+                guard let self else { return }
+
+                let wait = await MainActor.run { () -> TimeInterval in
+                    let position = self.lyricPosition()
                     self.updateCurrentLyric(for: position)
+                    return self.timeUntilNextLyric(after: position) ?? Self.lyricSyncMaximumWait
                 }
 
-                // Sleep ~300ms between updates
-                try? await Task.sleep(nanoseconds: 300_000_000)
+                // Wake when the next line is actually due rather than on a fixed
+                // tick. A 300 ms poll could only ever change the line at a tick
+                // boundary, so every line landed up to 300 ms late; sleeping to
+                // the boundary lands on it. It is also fewer wakeups — one per
+                // line instead of three a second — which matters more here than
+                // the accuracy, since this task runs for as long as music does.
+                //
+                // Capped so a seek or a rate change, which invalidate the wait
+                // that was computed before them, self-correct within a second
+                // instead of stalling until the next line. Floored so a line at
+                // or before the current position cannot spin the loop.
+                let sleepFor = min(max(wait, Self.lyricSyncMinimumWait), Self.lyricSyncMaximumWait)
+                try? await Task.sleep(nanoseconds: UInt64(sleepFor * 1_000_000_000))
             }
         }
     }
+
+    private static let lyricSyncMinimumWait: TimeInterval = 0.02
+    private static let lyricSyncMaximumWait: TimeInterval = 1.0
 
     private func stopLyricSync() {
         lyricSyncTask?.cancel()
