@@ -43,6 +43,19 @@ why the Xcode project is still `Anchor.xcodeproj`.
 | `~/DynamicNotch/{Atoll,Sapphire,boring.notch}` | **Reference only.** Read for behaviour. GPL-3.0, GPL-3.0, AGPL-3.0. |
 | `~/DynamicNotch/Anchor/{Anchor,WisprFlow}` | **Stale.** `Anchor/` is an abandoned 10-commit checkout of this repo; `WisprFlow/` is the Electron app dictation replaced. |
 
+## Not built, and why
+
+These are not oversights — each needs something on the user's machine that is
+theirs to grant, and none should be built without asking first.
+
+| Feature | Blocker |
+|---|---|
+| Per-app volume, per-app EQ | Needs a virtual audio driver / HAL plug-in installed to `/Library/Audio/Plug-Ins/HAL` with admin rights. macOS has no public per-process volume API; `AudioHardwareCreateProcessTap` can *observe* a process's audio but not control its level. |
+| Camera mirror | `ENABLE_RESOURCE_ACCESS_CAMERA = NO` in both build configurations, and `tests/test_privacy_configuration.py` has `test_camera_entitlement_is_not_reintroduced` pinning it. |
+| Face ID / proximity unlock | Needs the privileged-helper story settled, and only an *Apple Development* identity exists here — no Developer ID Application. |
+| Battery charge limit, fan control | Same privileged helper (SMC writes). |
+| Notification mirroring | Full Disk Access. |
+
 ## Licensing
 
 The repo is private, and that is load-bearing rather than incidental. Anchor
@@ -120,6 +133,28 @@ do not let that graph follow it in.
   Add a new pane as its own file and register it in `SettingsTab`, and add it to
   `UISnapshotHarness.settingsPanes` so it is covered by the render sweep.
 - `StatsManager.swift:514-548` is the one good throttling pattern in the repo. Copy it.
+- **A `Defaults` key referenced only inside `components/Settings/` is a dead
+  switch.** This repo produces them steadily — Phase 1 alone left several
+  behind. The audit that finds them:
+  ```bash
+  # keys whose only references live in the settings panes
+  grep -oE 'static let [a-zA-Z0-9_]+ = Key<' Anchor/models/Constants.swift |
+    awk '{print $3}' | while read -r k; do
+      refs=$(grep -rln "\.$k\b" Anchor --include='*.swift' | grep -v models/Constants.swift)
+      [ -n "$refs" ] && [ -z "$(echo "$refs" | grep -v components/Settings/)" ] && echo "$k"
+    done
+  ```
+  It found four of 320: `selectedDownloadIconStyle` (defaulted to a value the
+  app then ignored, and had no control at all), `customVisualizers` (the pane
+  adds them, nothing renders them), and `showEmojis` / `systemHUDSensitivity`
+  (`@Default` properties declared and never read even in their own file — live
+  subscriptions re-rendering a pane for nothing).
+- **Zero unreferenced keys is not the same as zero dead switches.** All 320 keys
+  are referenced somewhere; the dead ones are referenced *only* by their own UI.
+- **Two adjacent toggles read as duplicates when one is mislabelled.**
+  `playerColorTinting` was captioned "Enable colored spectograms", a misspelt
+  copy of the toggle above it, so the pane showed two identical-looking switches
+  doing different things.
 - **Keep high-frequency `@Published` values on their own nested observable.**
   `DictationManager.LiveOutput` is the reference: `state` changes ~4x per dictation
   and `ContentView` must watch it, but `inputLevel` changes 10-20x a second. On one
@@ -293,8 +328,16 @@ and read the topic out of a PNG. See `helpers/UISnapshotHarness.swift`.
   build it with `startingUpdater: false`, never a live one.
 - **The sweep covers every settings pane**, so a pane that renders empty is
   caught here rather than by clicking through 21 sidebar tabs. Add new panes to
-  `settingsPanes`. All panes share one 720x1200 canvas; a pane that outgrows it
+  `settingsPanes`. All panes share one 720x1800 canvas; a pane that outgrows it
   is visibly cut off, which is the signal to raise it rather than a failure.
+  (It was 720x1200 until Appearance outgrew it.)
+- **A short sweep means it was killed, not that a pane failed.** The full run
+  writes **50 PNGs — 25 light, 25 dark** — and takes ~85 s at the 1800 canvas.
+  It renders every pane dark first, then every pane light, so a run cut off
+  early looks exactly like "all the dark ones worked and the light ones are
+  broken". Three runs here returned 37, 33 and 50 PNGs purely from where the
+  kill landed. Count the PNGs and check for both appearances before reading
+  anything into a missing pane.
 
 ## Naming
 
@@ -315,6 +358,19 @@ Three things keep upstream's name on purpose:
   but `AppSupportDirectory` moves it to `Anchor/` on first use rather than
   abandoning what is in it. Do not "simplify" that away until it has run
   everywhere it needs to.
+- **The Apple Notes sync folder is still `Atoll`, and must stay.**
+  `AppleNotesSyncManager.syncFolderName` names a real folder in the user's
+  Notes, and `atollTagPattern` is a marker embedded in the body of their actual
+  notes — it is how a note is matched back to its record. Renaming either
+  creates a second folder and orphans everything already synced. The Notes
+  settings text interpolates the constant rather than hardcoding a name,
+  because a cleanup pass here did rename the prose and left it describing a
+  folder that does not exist.
+- **`utils/Logger`'s subsystem must match the diagnostic collector's
+  predicate.** It did not: the logger published under `com.ebullioscopic.Atoll`
+  while `collectDiagnostics` filtered on `com.arronlingham.Anchor`, so the
+  app's own log lines were never collected. Same mismatch as the crash-log
+  filename bug, in the other half of the same feature.
 
 GPL headers still credit Atoll and boring.notch, and must keep doing so.
 `NOTICE` records the fork and rename above upstream's original notice.
@@ -477,6 +533,38 @@ Hold **Cmd+Shift+D**, speak, release → transcript pastes into the focused app.
   literals as decimals first. `%` is unsupported on purpose (percent vs modulo).
 - Grid has **no drag-reorder or folders**, deliberately. The old Launchpad
   layout can't be migrated either — macOS 26 removed its database.
+
+## Smaller features
+
+| Feature | Where | Notes |
+|---|---|---|
+| Desktop number | `managers/SpaceIndicatorManager.swift` | Off by default |
+| Battery history | `managers/BatteryHistoryManager.swift` | Off by default |
+| Colour picker | `managers/ColorPickerManager.swift` | Cmd+Shift+P |
+| Animation profiles | `animations/drop.swift` | Bouncy / smooth / snappy / instant |
+
+- **There is no public API for the current Space.** `SpaceIndicatorManager`
+  reads SkyLight's `CGSCopyManagedDisplaySpaces`, the same list Mission Control
+  numbers from, and filters to `type == 0`. Fullscreen apps each occupy their
+  own Space, so counting them makes the number jump when you fullscreen
+  something — which is not what anyone means by "desktop 3". Verified against
+  the live window server before it was wired up: 4 desktops, current index 3.
+  Driven entirely by `activeSpaceDidChangeNotification`; no timer.
+- **Battery history has no sampler.** `BatteryActivityManager` already owns an
+  `IOPSNotificationCreateRunLoopSource` and an observer registry, so history
+  subscribes to that. A sample is written only when the level or charging state
+  actually moves — on a machine sitting at 100% plugged in, that is nothing per
+  hour. Repeat signals for one real change are collapsed and saves coalesced.
+- **`NSColorSampler` is the system eyedropper.** AppKit owns the magnifier and
+  the capture, so the colour picker needs no screen-recording grant and nothing
+  of ours runs until the shortcut is pressed. The colour model is
+  `models/PickedColor.swift`, which survived Phase 1 and already carries all
+  eight output formats — a first pass here defined a second `PickedColor` and
+  `ColorFormat` and collided at build time. Check `models/` before adding a type.
+- **`AnchorAnimations` is not what draws the notch.** It looks like the
+  animation owner and carries a TODO saying so, but `ContentView` hardcoded its
+  own springs and never read it. Adding a profile there alone would have been
+  another dead switch; `activeNotchStateAnimation` reads the profile now.
 
 ## Claude usage watcher (Phase 4)
 

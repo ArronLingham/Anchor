@@ -358,3 +358,32 @@ will correctly appear to do nothing.
 ## Reporting back
 
 Give me the item number, what you expected, and what happened. For dictation, say which app you were pasting into — native apps, Electron apps, and terminals each take a different path.
+
+## 12. Added since the checklist was written
+
+Each is off by default unless noted — turn it on in Settings first.
+
+87. **Desktop number** (Settings → General → Desktop). Enable, then switch
+    desktops with Ctrl+Arrow. The badge in the notch header should track it and
+    match Mission Control. Fullscreen an app: the number must **not** change,
+    because a fullscreen Space is not a desktop.
+88. **Battery history** (Settings → Battery → History). Enable and leave it a
+    while; the graph fills as the level moves. It samples on power-source
+    change, not on a timer, so a machine held at 100% on mains legitimately
+    shows "Collecting…" for a long time. Unplug to make it move.
+89. **Colour picker** — **⌘⇧P**. The system eyedropper appears; pick a colour
+    and it lands on the clipboard. Change the format under Appearance → Colour
+    picker and confirm the pasted text changes. Click a swatch in Recent to
+    copy it again.
+90. **Notch animation profile** (Settings → Appearance → General → Open and
+    close). Try all four. **Bouncy is the default and must feel exactly as it
+    did before** — it reproduces the values that were previously hardcoded.
+    Instant should have no animation even with "Use simpler close animation"
+    toggled either way.
+91. **Download icon style** (Settings → Downloads). Start a download in a
+    Chromium browser and check the live activity shows the file's icon on
+    "Only app icon" (the default), the arrow on "Only download icon", and both
+    on the third. It is the icon of the *file*, not of the browser — this
+    watches the Downloads folder and cannot tell which app started a download.
+92. **Diagnostic log collection** should now actually contain the app's own log
+    lines; before this it filtered on a subsystem the logger never used.
