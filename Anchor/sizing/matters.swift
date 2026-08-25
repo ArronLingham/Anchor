@@ -93,6 +93,11 @@ func enabledStandardTabCount() -> Int {
         count += 1
     }
 
+    // Stats tab
+    if Defaults[.enableSystemStats] {
+        count += 1
+    }
+
     return count
 }
 

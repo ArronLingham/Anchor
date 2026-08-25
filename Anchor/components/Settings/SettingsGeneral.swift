@@ -102,6 +102,16 @@ struct GeneralSettings: View {
             }
 
             Section {
+                Defaults.Toggle(key: .enableSystemStats) {
+                    Text("System stats")
+                }
+                .settingsHighlight(id: highlightID("System stats"))
+                .help("Adds a Stats tab showing CPU, memory and network throughput. Sampling only runs while that tab is open — nothing is measured in the background.")
+            } header: {
+                Text("Stats")
+            }
+
+            Section {
                 Defaults.Toggle(key: .enableShelf) {
                     Text("File shelf")
                 }

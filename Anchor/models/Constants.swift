@@ -1068,6 +1068,11 @@ extension Defaults.Keys {
     static let lyricsOffsetSeconds = Key<Double>("lyricsOffsetSeconds", default: 0.2)
 
     // MARK: - Eye break (20-20-20)
+    // MARK: - System stats
+    static let enableSystemStats = Key<Bool>("enableSystemStats", default: false)
+    /// Seconds between samples while a stats view is on screen.
+    static let statsRefreshSeconds = Key<Double>("statsRefreshSeconds", default: 2.0)
+
     /// Drag-and-drop file shelf.
     static let enableShelf = Key<Bool>("enableShelf", default: false)
     static let eyeBreakEnabled = Key<Bool>("eyeBreakEnabled", default: false)

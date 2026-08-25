@@ -997,6 +997,8 @@ struct ContentView: View {
                                 NotchLyricsView()
                             case .shelf:
                                 NotchShelfView()
+                            case .stats:
+                                NotchStatsView()
                           }
                       }
                       .id(coordinator.currentView)

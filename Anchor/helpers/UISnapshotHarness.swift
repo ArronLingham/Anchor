@@ -140,6 +140,15 @@ enum UISnapshotHarness {
                     scheme: scheme,
                     to: directory.appendingPathComponent("lockscreen-immersive-plain-\(suffix).png"))
 
+                // The stats tab, which samples for real — acquire() runs on
+                // appear, so this render exercises the actual readings rather
+                // than a fixture.
+                await capture(
+                    NotchStatsView().padding(12).background(Color.black),
+                    size: CGSize(width: 420, height: 130),
+                    scheme: scheme,
+                    to: directory.appendingPathComponent("notch-stats-\(suffix).png"))
+
                 // Every remaining settings pane. These were one 7,784-line file
                 // until they were split out, and nothing else exercises them
                 // without opening the window and clicking each tab.

@@ -75,6 +75,9 @@ struct TabSelectionView: View {
         if Defaults[.enableShelf] {
             tabsArray.append(TabModel(label: "Shelf", icon: "tray.full", view: .shelf))
         }
+        if Defaults[.enableSystemStats] {
+            tabsArray.append(TabModel(label: "Stats", icon: "chart.line.uptrend.xyaxis", view: .stats))
+        }
         return tabsArray
     }
     var body: some View {
