@@ -213,10 +213,37 @@ That one change is nearly all of the 0.95% -> 0.08% above.
 - `displayMagnitudes`/`lastSmoothingTick` are main-thread only; the audioQueue
   paths that reset them hop to main.
 
+### Lyric sync gating — measured 2026-08-25
+
+Replacing the lyric loop's 300 ms poll with sleep-until-next-line helped while
+playing and left it waking once a second while *paused*, and against *untimed*
+lyrics, where no line can change and `updateCurrentLyric` returns immediately.
+
+| | lyrics on | lyrics off |
+|---|---|---|
+| before gating | 0.48% median | 0.24% median |
+| after gating | 0.33% | 0.33% |
+
+Identical on and off is the result to want: the feature now costs nothing at
+idle. The 0.33% floor is not lyrics and not reducible from here — a 20 s profile
+at 1 ms finds 32 non-idle leaf samples out of ~20,000, and the largest single
+leaf is `__proc_info`, which is what `ps` triggers by observing the process.
+Lifetime average over 4h25m is 0.094%.
+
+**A 7-sample run reported 0.00% median / 0.00% p90 for this and was wrong to
+quote.** It is in the commit message of 3e8136d, which overstates the result.
+Two runs have now been discarded in this project for the same reason — check the
+sample count before believing any figure, including your own.
+
 **`scripts/measure.sh` aborts if the pid changes mid-run.** Two measurements in
 this environment were silently garbage because the app was replaced underneath
 the sampler, and were quoted for weeks before that surfaced. There is no longer
 a separate `measure-strict.sh`; the strict check is always on.
+
+It samples `cputime` and divides by elapsed wall time. Until 3e8136d it divided
+by a *string*: it used `date +%s.%N`, and macOS `date` has no `%N`, so every
+elapsed-time term was literally `1787610000.N`. Figures taken before that fix are
+not comparable with ones taken after it.
 
 It samples `cputime` and divides by elapsed wall time. Do not "simplify" it to
 `ps -o %cpu`, which reports a lifetime average — for a process that has been up
