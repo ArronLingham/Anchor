@@ -501,12 +501,14 @@ struct ContentView: View {
     /// `.animation(_:value:)` inside never reached it — the container snapped to
     /// its closed width in one frame while the notch was still animating shut.
     private var activeNotchStateAnimation: Animation {
+        let profile = Defaults[.notchAnimationProfile]
         guard useModernCloseAnimation else {
-            return .spring.speed(1.2)
+            // The legacy path has always been one symmetric spring. Instant
+            // still has to win here, or the picker looks broken with the
+            // modern close animation switched off.
+            return profile == .instant ? profile.animation : .spring.speed(1.2)
         }
-        return vm.notchState == .open
-            ? .spring(response: 0.42, dampingFraction: 0.8, blendDuration: 0)
-            : .spring(response: 0.45, dampingFraction: 1.0, blendDuration: 0)
+        return vm.notchState == .open ? profile.openAnimation : profile.closeAnimation
     }
 
     private var configuredMainLayout: some View {

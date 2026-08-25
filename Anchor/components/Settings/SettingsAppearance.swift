@@ -81,6 +81,13 @@ struct Appearance: View {
         currentRecommendedMinimumNotchWidth()
     }
 
+    private var animationProfileBinding: Binding<NotchAnimationProfile> {
+        Binding(
+            get: { Defaults[.notchAnimationProfile] },
+            set: { Defaults[.notchAnimationProfile] = $0 }
+        )
+    }
+
     private var colorFormatBinding: Binding<String> {
         Binding(
             get: { Defaults[.colorPickerFormat] },
@@ -139,7 +146,15 @@ struct Appearance: View {
                     Text("Corner radius scaling")
                 }
                 .settingsHighlight(id: highlightID("Corner radius scaling"))
-                Defaults.Toggle(key: .useModernCloseAnimation) {
+                Picker("Open and close", selection: animationProfileBinding) {
+                    ForEach(NotchAnimationProfile.allCases, id: \.self) { profile in
+                        Text(profile.label).tag(profile)
+                    }
+                }
+                .settingsHighlight(id: highlightID("Open and close"))
+                .help(Defaults[.notchAnimationProfile].detail)
+
+                                Defaults.Toggle(key: .useModernCloseAnimation) {
                     Text("Use simpler close animation")
                 }
                 .settingsHighlight(id: highlightID("Use simpler close animation"))

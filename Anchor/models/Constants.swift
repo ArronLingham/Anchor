@@ -644,6 +644,8 @@ extension Defaults.Keys {
     static let enableShadow = Key<Bool>("enableShadow", default: true)
     static let cornerRadiusScaling = Key<Bool>("cornerRadiusScaling", default: true)
     static let useModernCloseAnimation = Key<Bool>("useModernCloseAnimation", default: true)
+    /// How the notch opens and closes. Read by `AnchorAnimations.animation`.
+    static let notchAnimationProfile = Key<NotchAnimationProfile>("notchAnimationProfile", default: .bouncy)
     static let showNotHumanFace = Key<Bool>("showNotHumanFace", default: false)
     static let customIdleAnimations = Key<[CustomIdleAnimation]>("customIdleAnimations", default: [])
     static let selectedIdleAnimation = Key<CustomIdleAnimation?>("selectedIdleAnimation", default: nil)
