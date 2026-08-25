@@ -853,8 +853,10 @@ class MusicManager: ObservableObject {
 
         if timeChanged {
             self.elapsedTime = state.currentTime
-            // Update current lyric based on elapsed time
-            self.updateCurrentLyric(for: state.currentTime)
+            // The lyric is updated further down, once timestampDate has been
+            // set. Doing it here with state.currentTime used the raw reported
+            // position, which is already stale by however long ago the player
+            // reported it — see the note at the update site.
         }
 
         if durationChanged {
@@ -879,6 +881,24 @@ class MusicManager: ObservableObject {
         
         updateLiveStreamState(with: state)
         self.timestampDate = state.lastUpdated
+
+        // Deliberately here, and deliberately extrapolated.
+        //
+        // Two paths move the lyric index: this one, and the sync task. The task
+        // uses estimatedPlaybackPosition(), which carries the reported position
+        // forward by the time elapsed since the player reported it. This path
+        // used `state.currentTime` raw, so every playback update dragged the
+        // index back to wherever playback was when the report was generated, and
+        // the lyric ran late by that reporting delay. The task would inch it
+        // forward again until the next update pulled it back.
+        //
+        // It has to run after timestampDate is assigned: the estimate is
+        // elapsedTime plus the time since that stamp, so calling it earlier
+        // would pair the new elapsedTime with the previous stamp and overshoot
+        // by the gap between reports.
+        if timeChanged {
+            self.updateCurrentLyric(for: self.estimatedPlaybackPosition())
+        }
 
         // Manage lyric sync task based on playback/lyrics availability
         if Defaults[.enableLyrics] && !self.syncedLyrics.isEmpty {

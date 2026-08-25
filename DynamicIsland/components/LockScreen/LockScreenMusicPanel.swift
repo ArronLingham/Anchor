@@ -137,7 +137,14 @@ struct LockScreenMusicPanel: View {
     }
 
     private var shouldShowInlineLyrics: Bool {
-        enableLyrics && !showsDetachedFullscreenLyrics
+        // Also requires an actual line. This gates `lyricsExtraHeight` as well as
+        // the section itself, so without the emptiness check the panel reserves
+        // 64pt collapsed or 96pt expanded for a row that draws nothing — which is
+        // what a track with untimed lyrics produces, since there is no current
+        // line to show and `currentLyrics` is deliberately left empty.
+        enableLyrics
+            && !showsDetachedFullscreenLyrics
+            && !musicManager.currentLyrics.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
     
     var body: some View {

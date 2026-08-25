@@ -112,10 +112,18 @@ enum UISnapshotHarness {
                 // only source these views read, and this process exits without
                 // ever starting playback.
                 await capture(
-                    seededLyricsTab(),
+                    seededLyricsTab(timed: true),
                     size: CGSize(width: 560, height: 260),
                     scheme: scheme,
                     to: directory.appendingPathComponent("notch-lyrics-\(suffix).png"))
+
+                // The untimed variant: LRCLIB frequently has only a plain
+                // version, and that path renders differently.
+                await capture(
+                    seededLyricsTab(timed: false),
+                    size: CGSize(width: 560, height: 260),
+                    scheme: scheme,
+                    to: directory.appendingPathComponent("notch-lyrics-untimed-\(suffix).png"))
 
                 // Every remaining settings pane. These were one 7,784-line file
                 // until they were split out, and nothing else exercises them
@@ -190,8 +198,22 @@ enum UISnapshotHarness {
     /// current line highlighted, the neighbours fading with distance, and lines
     /// both above and below it.
     @MainActor
-    private static func seededLyricsTab() -> some View {
+    private static func seededLyricsTab(timed: Bool) -> AnyView {
         let manager = MusicManager.shared
+
+        guard timed else {
+            // Untimed lyrics: every stamp 0, which is what
+            // `MusicManager.untimedLines(from:)` produces from a plain blob.
+            manager.syncedLyrics = MusicManager.untimedLines(from: """
+                Emiliana, it's been so long since you texted me
+                I finally took a break and now I feel like I'm on ecstasy
+                You say what my work means to me will one day be the death of me
+                But I keep going anyway
+                """)
+            manager.currentLyricIndex = -1
+            manager.currentLyrics = ""
+            return AnyView(NotchLyricsView().padding(12).background(Color.black))
+        }
 
         // Setting `currentLyricIndex` directly does not hold: MusicManager runs
         // a 300 ms sync task that recomputes it from the playback position, and
@@ -211,9 +233,7 @@ enum UISnapshotHarness {
         ]
         manager.currentLyricIndex = 2
         manager.currentLyrics = manager.syncedLyrics[2].text
-        return NotchLyricsView()
-            .padding(12)
-            .background(Color.black)
+        return AnyView(NotchLyricsView().padding(12).background(Color.black))
     }
 
     @MainActor
