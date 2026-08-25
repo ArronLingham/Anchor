@@ -703,6 +703,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // delegate is still being built on the pre-run-loop main thread.
         DispatchQueue.main.async {
             ClaudeUsageManager.shared.start()
+            // Touching .shared is the start: the manager schedules from its own
+            // settings observer, and does nothing at all while disabled.
+            _ = EyeBreakManager.shared
         }
 
         ReminderLiveActivityManager.shared.$activeWindowReminders

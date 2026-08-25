@@ -1066,6 +1066,13 @@ extension Defaults.Keys {
     /// and by output device, so this is adjustable rather than a fixed constant.
     /// The default is a small lead measured against Spotify on built-in output.
     static let lyricsOffsetSeconds = Key<Double>("lyricsOffsetSeconds", default: 0.2)
+
+    // MARK: - Eye break (20-20-20)
+    static let eyeBreakEnabled = Key<Bool>("eyeBreakEnabled", default: false)
+    /// Minutes of screen time between breaks.
+    static let eyeBreakWorkMinutes = Key<Int>("eyeBreakWorkMinutes", default: 20)
+    /// Seconds to look away for.
+    static let eyeBreakRestSeconds = Key<Int>("eyeBreakRestSeconds", default: 20)
     static let showLiveCanvasInDynamicIsland = Key<Bool>("showLiveCanvasInDynamicIsland", default: false)
     
     // MARK: Notes Feature

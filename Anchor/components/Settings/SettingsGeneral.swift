@@ -34,6 +34,9 @@ import UniformTypeIdentifiers
 // Richard Kunkli on 07/08/2024. Behaviour unchanged.
 
 struct GeneralSettings: View {
+    @Default(.eyeBreakEnabled) var eyeBreakEnabled
+    @Default(.eyeBreakWorkMinutes) var eyeBreakWorkMinutes
+    @Default(.eyeBreakRestSeconds) var eyeBreakRestSeconds
     @Default(.caffeinateEnabled) var caffeinateEnabled
     @Default(.caffeinateKeepsDisplayAwake) var caffeinateKeepsDisplayAwake
     @Default(.caffeinateDurationMinutes) var caffeinateDurationMinutes
@@ -95,6 +98,34 @@ struct GeneralSettings: View {
                 Text("UI Mode")
             } footer: {
                 Text("Minimalistic mode focuses on media controls and system HUDs, hiding all extra features for a clean, focused experience. Automatically enables simpler animations.")
+            }
+
+            Section {
+                Defaults.Toggle(key: .eyeBreakEnabled) {
+                    Text("Eye break reminders")
+                }
+                .settingsHighlight(id: highlightID("Eye break reminders"))
+                .help("The 20-20-20 rule: every twenty minutes, look twenty feet away for twenty seconds. Reminders pause while the display sleeps or the Mac is locked, and the interval restarts when you come back — time away from the screen is not screen time.")
+
+                Stepper(value: $eyeBreakWorkMinutes, in: 5...60, step: 5) {
+                    HStack {
+                        Text("Break every")
+                        Spacer()
+                        Text("\(eyeBreakWorkMinutes) min").foregroundStyle(.secondary).monospacedDigit()
+                    }
+                }
+                .disabled(!eyeBreakEnabled)
+
+                Stepper(value: $eyeBreakRestSeconds, in: 10...60, step: 5) {
+                    HStack {
+                        Text("Look away for")
+                        Spacer()
+                        Text("\(eyeBreakRestSeconds)s").foregroundStyle(.secondary).monospacedDigit()
+                    }
+                }
+                .disabled(!eyeBreakEnabled)
+            } header: {
+                Text("Eye break")
             }
 
             Section {

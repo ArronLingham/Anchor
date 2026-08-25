@@ -38,6 +38,7 @@ enum SneakContentType: Equatable {
     case lockScreen
     case capsLock
     case claudeUsage
+    case eyeBreak
 }
 
 extension SneakContentType {
@@ -58,7 +59,8 @@ extension SneakContentType {
              (.privacy, .privacy),
              (.lockScreen, .lockScreen),
              (.capsLock, .capsLock),
-             (.claudeUsage, .claudeUsage):
+             (.claudeUsage, .claudeUsage),
+             (.eyeBreak, .eyeBreak):
             return true
         default:
             return false
@@ -267,7 +269,7 @@ class AnchorViewCoordinator: ObservableObject {
         sneakPeekDuration = resolvedDuration
         // Not a system HUD event — it must show whether or not the user has the
         // volume/brightness HUD turned on, exactly as .timer and .reminder do.
-        let bypassedTypes: [SneakContentType] = [.music, .timer, .reminder, .bluetoothAudio, .claudeUsage]
+        let bypassedTypes: [SneakContentType] = [.music, .timer, .reminder, .bluetoothAudio, .claudeUsage, .eyeBreak]
         
         
         if !bypassedTypes.contains(type) && !Defaults[.enableSystemHUD] {

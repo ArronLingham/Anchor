@@ -53,6 +53,7 @@ struct ContentView: View {
     /// window. The per-second countdown is on `ClaudeUsageManager.live` and is
     /// observed by `ClaudeUsageLiveActivity` alone — never from here.
     @ObservedObject var claudeUsageManager = ClaudeUsageManager.shared
+    @ObservedObject var eyeBreakManager = EyeBreakManager.shared
     @State private var downloadManager = DownloadManager.shared
     
     @Default(.enableReminderLiveActivity) var enableReminderLiveActivity
@@ -875,6 +876,14 @@ struct ContentView: View {
                       // whereas a usage window runs for hours, and outranking
                       // music would silently take the closed notch away from the
                       // most-used surface for the whole of it.
+                      // Above the usage countdown: a break prompt is twenty
+                      // seconds long and the thing it is asking for is to stop
+                      // looking at this screen, so it should not queue behind
+                      // something that sits there for hours.
+                      } else if vm.notchState == .closed && eyeBreakManager.isResting && !vm.hideOnClosed {
+                          EyeBreakLiveActivity()
+                              .id("eye-break-live-activity")
+                              .transition(closedLiveActivitySwapTransition)
                       } else if vm.notchState == .closed && claudeUsageManager.isLiveActivityVisible && !vm.hideOnClosed {
                           ClaudeUsageLiveActivity()
                               .id("claude-usage-live-activity")
