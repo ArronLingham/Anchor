@@ -142,6 +142,7 @@ meaningless.** Everything below was measured after it:
 | **Release, after the AudioTap fix** | **0.08%** | **0.00%** | **0.10%** | 2.70% | **16 MB** |
 | Release 2026-08-24, **live Claude session** (icon cache v1) | 0.35% | 0.00% | 0.49% | 4.30% | 49 MB |
 | Release 2026-08-24, live Claude session, **icon cache v2** | 0.29% | 0.00% | 0.48% | 8.76% | **36 MB** |
+| **Release 2026-08-25, six features added, all off** | **0.100%** | — | — | — | **26 MB** |
 
 The `e88b20b` row and the last row are a true A/B: same machine, same 120 s
 settle + 240 s sample, 120 samples each, pid verified stable throughout both
@@ -163,6 +164,13 @@ every session and that is the only thing that exercises the usage watcher's
 FSEvents callback at all. It is the first measurement of that path under load,
 and the shape is the one to want: **median 0.00** with the mean carried by
 occasional bursts. Compare it only to another loaded run.
+
+The 2026-08-25 row is the check that mattered after adding six features: they
+default off, and the claim that off costs nothing is exactly the sort of thing
+that should be measured rather than asserted. Taken from cputime over a 120 s
+window after a 5-minute settle, not sampled — 0.12 s of CPU for 120 s of wall
+clock. It is *lower* than the rows above it because the lyric-sync gate landed in
+the same build.
 
 The v1/v2 icon-cache pair is a real A/B — same machine, same 5-minute settle,
 same 180 s sample, **88 samples each**, both with a live Claude session running.
