@@ -3,7 +3,7 @@
 #
 # The parser is pure Foundation with no app dependencies, so it compiles
 # standalone. That keeps these tests runnable without adding a unit-test target
-# to DynamicIsland.xcodeproj (which has only a UI-test target) and without a
+# to Anchor.xcodeproj (which has only a UI-test target) and without a
 # full app build.
 #
 #   ./tests/run_parser_tests.sh
@@ -12,7 +12,7 @@
 set -euo pipefail
 
 repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-src="$repo/DynamicIsland/managers/ClaudeUsage/ClaudeLimitParser.swift"
+src="$repo/Anchor/managers/ClaudeUsage/ClaudeLimitParser.swift"
 test_src="$repo/tests/ClaudeLimitParserTests.swift"
 
 [[ -f "$src" ]] || { echo "missing source: $src" >&2; exit 1; }

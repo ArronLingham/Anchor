@@ -4,9 +4,9 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-ENTITLEMENTS = ROOT / "DynamicIsland" / "DynamicIsland.entitlements"
-PROJECT = ROOT / "DynamicIsland.xcodeproj" / "project.pbxproj"
-INFO_PLIST = ROOT / "DynamicIsland" / "Info.plist"
+ENTITLEMENTS = ROOT / "Anchor" / "Anchor.entitlements"
+PROJECT = ROOT / "Anchor.xcodeproj" / "project.pbxproj"
+INFO_PLIST = ROOT / "Anchor" / "Info.plist"
 
 
 class PrivacyConfigurationTests(unittest.TestCase):
@@ -46,7 +46,7 @@ class PrivacyConfigurationTests(unittest.TestCase):
         self.assertFalse(info.get("SUEnableAutomaticChecks", True))
 
         delegate = (
-            ROOT / "DynamicIsland" / "services" / "AtollUpdaterDelegate.swift"
+            ROOT / "Anchor" / "services" / "AnchorUpdaterDelegate.swift"
         ).read_text()
         self.assertNotIn("feedURL.absoluteString", delegate)
 

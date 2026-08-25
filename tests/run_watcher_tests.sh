@@ -13,8 +13,8 @@ out="$(mktemp -d)"
 trap 'rm -rf "$out"' EXIT
 
 swiftc -O \
-  "$repo/DynamicIsland/managers/ClaudeUsage/ClaudeLimitParser.swift" \
-  "$repo/DynamicIsland/managers/ClaudeUsage/ClaudeTranscriptWatcher.swift" \
+  "$repo/Anchor/managers/ClaudeUsage/ClaudeLimitParser.swift" \
+  "$repo/Anchor/managers/ClaudeUsage/ClaudeTranscriptWatcher.swift" \
   "$repo/tests/support/LoggerStub.swift" \
   "$repo/tests/ClaudeTranscriptWatcherTests.swift" \
   -o "$out/watchertests"
