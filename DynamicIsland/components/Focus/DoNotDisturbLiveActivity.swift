@@ -21,7 +21,7 @@ import Defaults
 import SwiftUI
 
 struct DoNotDisturbLiveActivity: View {
-    @EnvironmentObject var vm: DynamicIslandViewModel
+    @EnvironmentObject var vm: AnchorViewModel
     @ObservedObject var manager = DoNotDisturbManager.shared
     @Default(.showDoNotDisturbLabel) private var showLabelSetting
     @Default(.focusIndicatorNonPersistent) private var focusToastMode
@@ -488,7 +488,7 @@ struct DoNotDisturbLiveActivity: View {
 
 #Preview {
     DoNotDisturbLiveActivity()
-        .environmentObject(DynamicIslandViewModel())
+        .environmentObject(AnchorViewModel())
         .frame(width: 320, height: 54)
         .background(Color.black)
 }

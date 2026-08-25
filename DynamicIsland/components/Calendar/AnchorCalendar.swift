@@ -184,7 +184,7 @@ private struct CellWidthKey: PreferenceKey {
 }
 
 struct WheelPicker: View {
-    @EnvironmentObject var vm: DynamicIslandViewModel
+    @EnvironmentObject var vm: AnchorViewModel
     @Binding var selectedDate: Date
     @State private var scrollPosition: Int?
     @State private var haptics: Bool = false
@@ -367,7 +367,7 @@ struct WheelPicker: View {
 }
 
 struct CalendarView: View {
-    @EnvironmentObject var vm: DynamicIslandViewModel
+    @EnvironmentObject var vm: AnchorViewModel
     @ObservedObject private var calendarManager = CalendarManager.shared
     @State private var selectedDate = Date()
     @State private var dateExpanded = false
@@ -476,7 +476,7 @@ struct CalendarView: View {
 }
 
 struct StandaloneCalendarView: View {
-    @EnvironmentObject var vm: DynamicIslandViewModel
+    @EnvironmentObject var vm: AnchorViewModel
     @ObservedObject private var calendarManager = CalendarManager.shared
     @State private var selectedDate = Date()
     @State private var displayedMonth = Date()
@@ -1417,5 +1417,5 @@ struct ConferenceJoinButton: View {
         .frame(width: 250)
         .padding(.horizontal)
         .background(.black)
-        .environmentObject(DynamicIslandViewModel.init())
+        .environmentObject(AnchorViewModel.init())
 }

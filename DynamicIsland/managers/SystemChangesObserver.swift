@@ -23,7 +23,7 @@ import AppKit
 import AVFoundation
 
 final class SystemChangesObserver: MediaKeyInterceptorDelegate {
-    private weak var coordinator: DynamicIslandViewCoordinator?
+    private weak var coordinator: AnchorViewCoordinator?
     private let volumeController = SystemVolumeController.shared
     private let brightnessController = SystemBrightnessController.shared
     private let keyboardBacklightController = SystemKeyboardBacklightController.shared
@@ -55,7 +55,7 @@ final class SystemChangesObserver: MediaKeyInterceptorDelegate {
     private var brightnessEnabled = false
     private var keyboardBacklightEnabled = false
 
-    init(coordinator: DynamicIslandViewCoordinator) {
+    init(coordinator: AnchorViewCoordinator) {
         self.coordinator = coordinator
     }
 

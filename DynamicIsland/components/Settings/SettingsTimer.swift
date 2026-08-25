@@ -33,7 +33,7 @@ import UniformTypeIdentifiers
 // Richard Kunkli on 07/08/2024. Behaviour unchanged.
 
 struct TimerSettings: View {
-    @ObservedObject private var coordinator = DynamicIslandViewCoordinator.shared
+    @ObservedObject private var coordinator = AnchorViewCoordinator.shared
     @Default(.enableTimerFeature) var enableTimerFeature
     @Default(.timerPresets) private var timerPresets
     @Default(.timerIconColorMode) private var colorMode

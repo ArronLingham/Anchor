@@ -26,7 +26,7 @@ import SwiftUI
 import AppKit
 import AVFoundation
 
-private final class DynamicIslandArtworkLoopController {
+private final class AnchorArtworkLoopController {
     let player: AVQueuePlayer
     private var looper: AVPlayerLooper?
     private var playbackStateCancellable: AnyCancellable?
@@ -62,7 +62,7 @@ private final class DynamicIslandArtworkLoopController {
     }
 }
 
-private final class DynamicIslandArtworkVideoContainerView: NSView {
+private final class AnchorArtworkVideoContainerView: NSView {
     let playerLayer = AVPlayerLayer()
 
     override init(frame frameRect: NSRect) {
@@ -84,7 +84,7 @@ private final class DynamicIslandArtworkVideoContainerView: NSView {
     }
 }
 
-private struct DynamicIslandArtworkVideoView: NSViewRepresentable {
+private struct AnchorArtworkVideoView: NSViewRepresentable {
     let url: URL
     let videoGravity: AVLayerVideoGravity
 
@@ -92,18 +92,18 @@ private struct DynamicIslandArtworkVideoView: NSViewRepresentable {
         Coordinator()
     }
 
-    func makeNSView(context: Context) -> DynamicIslandArtworkVideoContainerView {
-        let view = DynamicIslandArtworkVideoContainerView(frame: .zero)
+    func makeNSView(context: Context) -> AnchorArtworkVideoContainerView {
+        let view = AnchorArtworkVideoContainerView(frame: .zero)
         context.coordinator.attach(layer: view.playerLayer, url: url, gravity: videoGravity)
         return view
     }
 
-    func updateNSView(_ nsView: DynamicIslandArtworkVideoContainerView, context: Context) {
+    func updateNSView(_ nsView: AnchorArtworkVideoContainerView, context: Context) {
         context.coordinator.attach(layer: nsView.playerLayer, url: url, gravity: videoGravity)
     }
 
     final class Coordinator {
-        private var controller: DynamicIslandArtworkLoopController?
+        private var controller: AnchorArtworkLoopController?
         private var currentURL: URL?
 
         func attach(layer: AVPlayerLayer, url: URL, gravity: AVLayerVideoGravity) {
@@ -111,7 +111,7 @@ private struct DynamicIslandArtworkVideoView: NSViewRepresentable {
 
             if currentURL != url || controller == nil {
                 currentURL = url
-                controller = DynamicIslandArtworkLoopController(url: url)
+                controller = AnchorArtworkLoopController(url: url)
             }
 
             if layer.player !== controller?.player {
@@ -121,7 +121,7 @@ private struct DynamicIslandArtworkVideoView: NSViewRepresentable {
     }
 }
 
-struct DynamicIslandArtworkSourceView: View {
+struct AnchorArtworkSourceView: View {
     @ObservedObject private var musicManager = MusicManager.shared
     @Default(.showLiveCanvasInDynamicIsland) private var showLiveCanvasInDynamicIsland
 
@@ -136,7 +136,7 @@ struct DynamicIslandArtworkSourceView: View {
     var body: some View {
         Group {
             if let liveCanvasURL {
-                DynamicIslandArtworkVideoView(url: liveCanvasURL, videoGravity: .resizeAspectFill)
+                AnchorArtworkVideoView(url: liveCanvasURL, videoGravity: .resizeAspectFill)
             } else {
                 Image(nsImage: musicManager.albumArt)
                     .resizable()
@@ -150,7 +150,7 @@ struct DynamicIslandArtworkSourceView: View {
 // MARK: - Music Player Components
 
 struct MusicPlayerView: View {
-    @EnvironmentObject var vm: DynamicIslandViewModel
+    @EnvironmentObject var vm: AnchorViewModel
     let albumArtNamespace: Namespace.ID
 
     var body: some View {
@@ -165,7 +165,7 @@ struct MusicPlayerView: View {
 
 struct AlbumArtView: View {
     @ObservedObject var musicManager = MusicManager.shared
-    @ObservedObject var vm: DynamicIslandViewModel
+    @ObservedObject var vm: AnchorViewModel
     @Default(.showLiveCanvasInDynamicIsland) private var showLiveCanvasInDynamicIsland
     let albumArtNamespace: Namespace.ID
 
@@ -196,7 +196,7 @@ struct AlbumArtView: View {
         Color.clear
             .aspectRatio(1, contentMode: .fit)
             .background(
-                DynamicIslandArtworkSourceView(
+                AnchorArtworkSourceView(
                     cornerRadius: albumArtCornerRadius,
                     contentMode: .fill
                 )
@@ -251,7 +251,7 @@ struct AlbumArtView: View {
         Color.clear
             .aspectRatio(1, contentMode: .fit)
             .overlay {
-                DynamicIslandArtworkSourceView(
+                AnchorArtworkSourceView(
                     cornerRadius: albumArtCornerRadius,
                     contentMode: .fit
                 )
@@ -275,9 +275,9 @@ struct AlbumArtView: View {
 }
 
 struct MusicControlsView: View {
-    @EnvironmentObject var vm: DynamicIslandViewModel
+    @EnvironmentObject var vm: AnchorViewModel
     @ObservedObject var musicManager = MusicManager.shared
-    @ObservedObject var coordinator = DynamicIslandViewCoordinator.shared
+    @ObservedObject var coordinator = AnchorViewCoordinator.shared
     @State private var sliderValue: Double = MusicManager.shared.estimatedPlaybackPosition()
     @State private var dragging: Bool = false
     @State private var lastDragged: Date = .distantPast
@@ -694,9 +694,9 @@ struct MusicControlsView: View {
 // MARK: - Main View
 
 struct NotchHomeView: View {
-    @EnvironmentObject var vm: DynamicIslandViewModel
+    @EnvironmentObject var vm: AnchorViewModel
     @ObservedObject var batteryModel = BatteryStatusViewModel.shared
-    @ObservedObject var coordinator = DynamicIslandViewCoordinator.shared
+    @ObservedObject var coordinator = AnchorViewCoordinator.shared
     @ObservedObject private var musicManager = MusicManager.shared
     @Default(.showStandardMediaControls) private var showStandardMediaControls
     @Default(.autoHideInactiveNotchMediaPlayer) private var autoHideInactiveNotchMediaPlayer
@@ -1030,7 +1030,7 @@ private struct MediaOutputPickerButton: View {
     @StateObject private var volumeModel = MediaOutputVolumeViewModel()
     @State private var isPopoverPresented = false
     @State private var isHoveringPopover = false
-    @EnvironmentObject private var vm: DynamicIslandViewModel
+    @EnvironmentObject private var vm: AnchorViewModel
 
     var body: some View {
         HoverButton(icon: buttonIcon, iconColor: .white, scale: .medium) {
@@ -1082,7 +1082,7 @@ private struct AirPlayPickerButton: View {
     @ObservedObject private var airPlayManager = AppleMusicAirPlayManager.shared
     @State private var isPopoverPresented = false
     @State private var isHoveringPopover = false
-    @EnvironmentObject private var vm: DynamicIslandViewModel
+    @EnvironmentObject private var vm: AnchorViewModel
 
     private var isAppleMusicActive: Bool {
         musicManager.bundleIdentifier == "com.apple.Music"
@@ -1416,5 +1416,5 @@ final class MediaOutputVolumeViewModel: ObservableObject {
     NotchHomeView(
         albumArtNamespace: Namespace().wrappedValue
     )
-    .environmentObject(DynamicIslandViewModel())
+    .environmentObject(AnchorViewModel())
 }

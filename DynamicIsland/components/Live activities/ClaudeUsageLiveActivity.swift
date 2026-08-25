@@ -29,7 +29,7 @@ import SwiftUI
 /// It also tells the manager when it is on screen, because the per-second timer
 /// exists only to drive this readout and is stopped whenever nothing shows it.
 struct ClaudeUsageLiveActivity: View {
-    @EnvironmentObject var vm: DynamicIslandViewModel
+    @EnvironmentObject var vm: AnchorViewModel
     @ObservedObject private var live = ClaudeUsageManager.shared.live
 
     private let wingSpacing: CGFloat = 8

@@ -19,7 +19,7 @@
 import Foundation
 
 extension Notification.Name {
-    static let keyboardBacklightDidChange = Notification.Name("DynamicIsland.keyboardBacklightDidChange")
+    static let keyboardBacklightDidChange = Notification.Name("Anchor.keyboardBacklightDidChange")
 }
 
 final class SystemKeyboardBacklightController {

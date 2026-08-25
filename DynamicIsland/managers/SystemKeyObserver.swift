@@ -19,9 +19,9 @@
 import Cocoa
 
 class SystemKeyObserver: NSApplication {
-    static let volumeChanged = Notification.Name("DynamicIsland.volumeChanged")
-    static let brightnessChanged = Notification.Name("DynamicIsland.brightnessChanged")
-    static let keyboardIlluminationChanged = Notification.Name("DynamicIsland.keyboardIlluminationChanged")
+    static let volumeChanged = Notification.Name("Anchor.volumeChanged")
+    static let brightnessChanged = Notification.Name("Anchor.brightnessChanged")
+    static let keyboardIlluminationChanged = Notification.Name("Anchor.keyboardIlluminationChanged")
 
     override func sendEvent(_ event: NSEvent) {
         if event.type == .systemDefined && event.subtype.rawValue == 8 {

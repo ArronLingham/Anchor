@@ -19,10 +19,10 @@
 import Defaults
 import SwiftUI
 
-struct DynamicIslandHeader: View {
-    @EnvironmentObject var vm: DynamicIslandViewModel
+struct AnchorHeader: View {
+    @EnvironmentObject var vm: AnchorViewModel
     @ObservedObject var batteryModel = BatteryStatusViewModel.shared
-    @ObservedObject var coordinator = DynamicIslandViewCoordinator.shared
+    @ObservedObject var coordinator = AnchorViewCoordinator.shared
     @ObservedObject var clipboardManager = ClipboardManager.shared
     @ObservedObject var timerManager = TimerManager.shared
     @ObservedObject var doNotDisturbManager = DoNotDisturbManager.shared
@@ -196,7 +196,7 @@ struct DynamicIslandHeader: View {
                             .transition(.opacity.combined(with: .scale(scale: 0.85)))
                         }
                     } else {
-                        DynamicIslandBatteryView(
+                        AnchorBatteryView(
                             batteryWidth: 30,
                             isCharging: batteryModel.isCharging,
                             isInLowPowerMode: batteryModel.isInLowPowerMode,
@@ -256,7 +256,7 @@ struct DynamicIslandHeader: View {
     }
 }
 
-private extension DynamicIslandHeader {
+private extension AnchorHeader {
     var shouldSuppressStatusIndicators: Bool {
         Defaults[.settingsIconInNotch]
             && Defaults[.enableClipboardManager]
@@ -266,6 +266,6 @@ private extension DynamicIslandHeader {
 }
 
 #Preview {
-    DynamicIslandHeader()
-        .environmentObject(DynamicIslandViewModel())
+    AnchorHeader()
+        .environmentObject(AnchorViewModel())
 }

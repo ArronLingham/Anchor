@@ -42,7 +42,7 @@ final class TimerControlWindowManager {
     private init() {}
 
     @discardableResult
-    func present(using viewModel: DynamicIslandViewModel, metrics: TimerControlWindowMetrics) -> Bool {
+    func present(using viewModel: AnchorViewModel, metrics: TimerControlWindowMetrics) -> Bool {
         guard !LockScreenManager.shared.currentLockStatus else {
             hide(animated: false)
             return false
@@ -104,7 +104,7 @@ final class TimerControlWindowManager {
     }
 
     @discardableResult
-    func refresh(using viewModel: DynamicIslandViewModel, metrics: TimerControlWindowMetrics) -> Bool {
+    func refresh(using viewModel: AnchorViewModel, metrics: TimerControlWindowMetrics) -> Bool {
         guard window != nil else {
             return present(using: viewModel, metrics: metrics)
         }
@@ -200,7 +200,7 @@ final class TimerControlWindowManager {
         return CGSize(width: ceil(size.width), height: ceil(size.height))
     }
 
-    private func resolveScreen(from viewModel: DynamicIslandViewModel) -> NSScreen? {
+    private func resolveScreen(from viewModel: AnchorViewModel) -> NSScreen? {
         if let screenName = viewModel.screen,
            let targetScreen = NSScreen.screens.first(where: { $0.localizedName == screenName }) {
             return targetScreen
@@ -208,7 +208,7 @@ final class TimerControlWindowManager {
         return NSScreen.main
     }
 
-    private func frame(for size: CGSize, viewModel: DynamicIslandViewModel, screen: NSScreen, metrics: TimerControlWindowMetrics) -> NSRect {
+    private func frame(for size: CGSize, viewModel: AnchorViewModel, screen: NSScreen, metrics: TimerControlWindowMetrics) -> NSRect {
         let screenFrame = screen.frame
         let notchOriginX = screenFrame.midX - (metrics.notchWidth / 2)
         let originY = screenFrame.maxY - size.height

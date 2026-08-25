@@ -33,8 +33,8 @@ import UniformTypeIdentifiers
 // Richard Kunkli on 07/08/2024. Behaviour unchanged.
 
 struct NotesSettingsView: View {
-    @EnvironmentObject var vm: DynamicIslandViewModel
-    @ObservedObject var coordinator = DynamicIslandViewCoordinator.shared
+    @EnvironmentObject var vm: AnchorViewModel
+    @ObservedObject var coordinator = AnchorViewCoordinator.shared
     @ObservedObject private var appleNotesSync = AppleNotesSyncManager.shared
     @Default(.enableNotes) private var enableNotes
     @Default(.enableAppleNotesSync) private var enableAppleNotesSync

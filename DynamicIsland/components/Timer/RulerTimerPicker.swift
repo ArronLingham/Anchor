@@ -115,7 +115,7 @@ private func triggerHaptic() {
 // MARK: - RulerTimerPicker
 
 struct RulerTimerPicker: View {
-    @EnvironmentObject private var vm: DynamicIslandViewModel
+    @EnvironmentObject private var vm: AnchorViewModel
 
     @Binding var hours: Int
     @Binding var minutes: Int

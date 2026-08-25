@@ -489,7 +489,7 @@ class MusicManager: ObservableObject {
         return hasRealTitle || hasRealArtist
     }
 
-    @Published var animations: DynamicIslandAnimations = .init()
+    @Published var animations: AnchorAnimations = .init()
     @Published var avgColor: NSColor = .white
     @Published var secondaryColor: NSColor = .gray
     @Published var bundleIdentifier: String? = nil
@@ -500,7 +500,7 @@ class MusicManager: ObservableObject {
     @Published var isShuffled: Bool = false
     @Published var repeatMode: RepeatMode = .off
     @Published var isLiveStream: Bool = false
-    @ObservedObject var coordinator = DynamicIslandViewCoordinator.shared
+    @ObservedObject var coordinator = AnchorViewCoordinator.shared
     @Published var usingAppIconForArtwork: Bool = false
     @Published private(set) var skipGesturePulse: SkipGesturePulse?
 

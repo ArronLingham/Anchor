@@ -62,7 +62,7 @@ enum UISnapshotHarness {
             try? await Task.sleep(for: .seconds(4))
 
             let highlight = SettingsHighlightCoordinator()
-            let viewModel = DynamicIslandViewModel()
+            let viewModel = AnchorViewModel()
 
             // The lyrics tab renders an "off" placeholder unless the feature is
             // enabled, and the key defaults to false. Flip it for the render and
@@ -169,7 +169,7 @@ enum UISnapshotHarness {
     @MainActor
     private static func settingsPanes(
         highlight: SettingsHighlightCoordinator,
-        viewModel: DynamicIslandViewModel
+        viewModel: AnchorViewModel
     ) -> [(name: String, size: CGSize, view: AnyView)] {
         let size = CGSize(width: 720, height: 1200)
 
@@ -188,7 +188,7 @@ enum UISnapshotHarness {
             pane("hud", HUD()),
             pane("media", Media()),
             pane("calendar", CalendarSettings()),
-            // startingUpdater: false, matching DynamicIslandApp. Sparkle must
+            // startingUpdater: false, matching AnchorApp. Sparkle must
             // never run here — every channel in UpdateChannel points at upstream
             // Atoll's appcast, and a live updater replaced Anchor with upstream
             // once already.

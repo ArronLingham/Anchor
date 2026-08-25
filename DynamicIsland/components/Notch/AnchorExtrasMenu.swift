@@ -18,7 +18,7 @@
 
 import SwiftUI
 
-struct DynamicIslandLargeButtons: View {
+struct AnchorLargeButtons: View {
     var action: () -> Void
     var icon: Image
     var title: String
@@ -38,8 +38,8 @@ struct DynamicIslandLargeButtons: View {
     }
 }
 
-struct DynamicIslandExtrasMenu : View {
-    @ObservedObject var vm: DynamicIslandViewModel
+struct AnchorExtrasMenu : View {
+    @ObservedObject var vm: AnchorViewModel
     
     var body: some View {
         VStack{
@@ -52,7 +52,7 @@ struct DynamicIslandExtrasMenu : View {
     }
     
     var github: some View {
-        DynamicIslandLargeButtons(
+        AnchorLargeButtons(
             action: {
                 NSWorkspace.shared.open(productPage)
             },
@@ -62,7 +62,7 @@ struct DynamicIslandExtrasMenu : View {
     }
     
     var donate: some View {
-        DynamicIslandLargeButtons(
+        AnchorLargeButtons(
             action: {
                 NSWorkspace.shared.open(sponsorPage)
             },
@@ -88,7 +88,7 @@ struct DynamicIslandExtrasMenu : View {
     }
     
     var hide: some View {
-        DynamicIslandLargeButtons(
+        AnchorLargeButtons(
             action: {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
                     //vm.openMusic()
@@ -100,7 +100,7 @@ struct DynamicIslandExtrasMenu : View {
     }
     
     var close: some View {
-        DynamicIslandLargeButtons(
+        AnchorLargeButtons(
             action: {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
@@ -116,5 +116,5 @@ struct DynamicIslandExtrasMenu : View {
 
 
 #Preview {
-    DynamicIslandExtrasMenu(vm: DynamicIslandViewModel())
+    AnchorExtrasMenu(vm: AnchorViewModel())
 }

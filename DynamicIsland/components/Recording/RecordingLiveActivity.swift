@@ -20,7 +20,7 @@ import SwiftUI
 import Defaults
 
 struct RecordingLiveActivity: View {
-    @EnvironmentObject var vm: DynamicIslandViewModel
+    @EnvironmentObject var vm: AnchorViewModel
     @ObservedObject var recordingManager = ScreenRecordingManager.shared
     @State private var isHovering: Bool = false
     @State private var gestureProgress: CGFloat = 0

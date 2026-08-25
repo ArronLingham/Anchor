@@ -56,11 +56,7 @@ struct CustomAppIcon: Codable, Hashable, Equatable, Defaults.Serializable, Ident
     }
 
     static let iconDirectory: URL = {
-        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-        let dir = base.appendingPathComponent("DynamicIsland", isDirectory: true)
-            .appendingPathComponent("AppIcons", isDirectory: true)
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        return dir
+        AppSupportDirectory.subdirectory("AppIcons")
     }()
 
     var fileURL: URL {

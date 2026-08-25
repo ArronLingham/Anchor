@@ -20,7 +20,7 @@ import SwiftUI
 import Defaults
 
 struct LockScreenLiveActivity: View {
-    @EnvironmentObject var vm: DynamicIslandViewModel
+    @EnvironmentObject var vm: AnchorViewModel
     @ObservedObject private var lockScreenManager = LockScreenManager.shared
     @StateObject private var iconAnimator = LockIconAnimator(initiallyLocked: LockScreenManager.shared.isLocked)
     @State private var isHovering: Bool = false

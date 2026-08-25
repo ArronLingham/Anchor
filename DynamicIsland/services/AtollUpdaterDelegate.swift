@@ -27,7 +27,7 @@ import Sparkle
 /// Sparkle cheerfully replaces Anchor with upstream Atoll on its own schedule,
 /// which is exactly what happened to the copy in /Applications (it self-updated
 /// from v2.2.0 to upstream v2.3.3 mid-development).
-class AtollUpdaterDelegate: NSObject, SPUUpdaterDelegate {
+class AnchorUpdaterDelegate: NSObject, SPUUpdaterDelegate {
     func feedURLString(for updater: SPUUpdater) -> String? {
         nil
     }

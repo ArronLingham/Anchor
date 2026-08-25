@@ -22,9 +22,9 @@ import CoreGraphics
 import IOKit
 
 extension Notification.Name {
-    static let systemVolumeDidChange = Notification.Name("DynamicIsland.systemVolumeDidChange")
-    static let systemBrightnessDidChange = Notification.Name("DynamicIsland.systemBrightnessDidChange")
-    static let systemAudioRouteDidChange = Notification.Name("DynamicIsland.systemAudioRouteDidChange")
+    static let systemVolumeDidChange = Notification.Name("Anchor.systemVolumeDidChange")
+    static let systemBrightnessDidChange = Notification.Name("Anchor.systemBrightnessDidChange")
+    static let systemAudioRouteDidChange = Notification.Name("Anchor.systemAudioRouteDidChange")
 }
 
 final class HUDSuppressionCoordinator {

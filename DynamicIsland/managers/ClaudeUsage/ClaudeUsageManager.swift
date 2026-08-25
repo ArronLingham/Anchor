@@ -735,7 +735,7 @@ final class ClaudeUsageManager: ObservableObject {
 
     private func showAlert(icon: String, title: String, subtitle: String, accent: Color) {
         guard Defaults[.claudeUsageNotifyOnMac] else { return }
-        DynamicIslandViewCoordinator.shared.toggleSneakPeek(
+        AnchorViewCoordinator.shared.toggleSneakPeek(
             status: true,
             type: .claudeUsage,
             duration: Self.alertDuration,

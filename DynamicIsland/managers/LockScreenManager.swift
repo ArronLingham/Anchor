@@ -35,8 +35,8 @@ class LockScreenManager: ObservableObject {
     static let shared = LockScreenManager()
     
     // MARK: - Coordinator
-    private let coordinator = DynamicIslandViewCoordinator.shared
-    private weak var viewModel: DynamicIslandViewModel?
+    private let coordinator = AnchorViewCoordinator.shared
+    private weak var viewModel: AnchorViewModel?
     
     // MARK: - Published Properties
     @Published var isLocked: Bool = false
@@ -292,7 +292,7 @@ class LockScreenManager: ObservableObject {
 // MARK: - Extensions
 
 extension LockScreenManager {
-    func configure(viewModel: DynamicIslandViewModel) {
+    func configure(viewModel: AnchorViewModel) {
         self.viewModel = viewModel
     }
     

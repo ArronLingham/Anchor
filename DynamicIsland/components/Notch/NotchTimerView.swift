@@ -23,9 +23,9 @@ import AppKit
 #endif
 
 struct NotchTimerView: View {
-    @EnvironmentObject var vm: DynamicIslandViewModel
+    @EnvironmentObject var vm: AnchorViewModel
     @ObservedObject var timerManager = TimerManager.shared
-    @ObservedObject var coordinator = DynamicIslandViewCoordinator.shared
+    @ObservedObject var coordinator = AnchorViewCoordinator.shared
     @Default(.enableTimerFeature) var enableTimerFeature
     @Default(.enableMinimalisticUI) private var enableMinimalisticUI
     @Default(.timerPresets) private var timerPresets
@@ -738,7 +738,7 @@ private struct TimerPresetCard: View {
 
 #Preview {
     NotchTimerView()
-        .environmentObject(DynamicIslandViewModel())
+        .environmentObject(AnchorViewModel())
         .frame(width: 600, height: 320)
         .background(.black)
 }

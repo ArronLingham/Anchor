@@ -24,7 +24,7 @@ import SwiftUI
 import Defaults
 
 struct BouncingButtonStyle: ButtonStyle {
-    let vm: DynamicIslandViewModel
+    let vm: AnchorViewModel
     @State private var isPressed = false
     
     func makeBody(configuration: Configuration) -> some View {
@@ -45,7 +45,7 @@ struct BouncingButtonStyle: ButtonStyle {
 }
 
 extension Button {
-    func bouncingStyle(vm: DynamicIslandViewModel) -> some View {
+    func bouncingStyle(vm: AnchorViewModel) -> some View {
         self.buttonStyle(BouncingButtonStyle(vm: vm))
     }
 }

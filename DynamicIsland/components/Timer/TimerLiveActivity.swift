@@ -28,7 +28,7 @@ typealias PlatformFont = UIFont
 #endif
 
 struct TimerLiveActivity: View {
-    @EnvironmentObject var vm: DynamicIslandViewModel
+    @EnvironmentObject var vm: AnchorViewModel
     @ObservedObject var timerManager = TimerManager.shared
     @ObservedObject var lockScreenManager = LockScreenManager.shared
     @State private var isHovering: Bool = false
@@ -709,7 +709,7 @@ struct TimerLiveActivity: View {
 
 #Preview {
     TimerLiveActivity()
-        .environmentObject(DynamicIslandViewModel())
+        .environmentObject(AnchorViewModel())
         .frame(width: 300, height: 32)
         .background(.black)
         .onAppear {

@@ -38,10 +38,10 @@ class BatteryStatusViewModel: ObservableObject {
     private var wasCharging: Bool = false
     private var powerSourceChangedCallback: IOPowerSourceCallbackType?
     private var runLoopSource: Unmanaged<CFRunLoopSource>?
-    var animations: DynamicIslandAnimations = DynamicIslandAnimations()
+    var animations: AnchorAnimations = AnchorAnimations()
     private let lowBatteryAlertSoundPlayer = AudioPlayer()
 
-    @ObservedObject var coordinator = DynamicIslandViewCoordinator.shared
+    @ObservedObject var coordinator = AnchorViewCoordinator.shared
 
     @Published private(set) var levelBattery: Float = 0.0
     @Published private(set) var maxCapacity: Float = 0.0

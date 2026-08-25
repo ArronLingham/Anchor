@@ -24,7 +24,7 @@ import SwiftUI
 import Defaults
 
 struct SystemEventIndicatorModifier: View {
-    @EnvironmentObject var vm: DynamicIslandViewModel
+    @EnvironmentObject var vm: AnchorViewModel
     @Binding var eventType: SneakContentType
     @Binding var value: CGFloat {
         didSet {
@@ -221,7 +221,7 @@ private extension ProgressColorMode {
 }
 
 struct DraggableProgressBar: View {
-    @EnvironmentObject var vm: DynamicIslandViewModel
+    @EnvironmentObject var vm: AnchorViewModel
     @Binding var value: CGFloat
     var colorMode: ProgressColorMode? = nil
     

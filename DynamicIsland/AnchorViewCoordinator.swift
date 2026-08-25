@@ -90,8 +90,8 @@ struct ExpandedItem {
     var autoHideDuration: TimeInterval? = nil
 }
 
-class DynamicIslandViewCoordinator: ObservableObject {
-    static let shared = DynamicIslandViewCoordinator()
+class AnchorViewCoordinator: ObservableObject {
+    static let shared = AnchorViewCoordinator()
     private var cancellables = Set<AnyCancellable>()
     private var hoverOpenSuppressedUntil: Date = .distantPast
     

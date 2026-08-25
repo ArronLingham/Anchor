@@ -30,7 +30,7 @@ struct BatteryView: View {
     var isForNotification: Bool
     var showPercentInside: Bool = false
 
-    var animationStyle: DynamicIslandAnimations = DynamicIslandAnimations()
+    var animationStyle: AnchorAnimations = AnchorAnimations()
 
     var icon: String = "battery.0"
 
@@ -299,7 +299,7 @@ struct BatteryMenuView: View {
 
 
 /// A view that displays the battery status and allows interaction to show detailed information.
-struct DynamicIslandBatteryView: View {
+struct AnchorBatteryView: View {
     
     @Default(.showBatteryPercentage) var showBatteryPercentage
     @State var batteryWidth: CGFloat = 26
@@ -315,7 +315,7 @@ struct DynamicIslandBatteryView: View {
     @State private var isPressed: Bool = false
     @State private var isHoveringPopover: Bool = false
 
-    @EnvironmentObject var vm: DynamicIslandViewModel
+    @EnvironmentObject var vm: AnchorViewModel
 
     var body: some View {
         HStack {
@@ -535,7 +535,7 @@ struct BatteryTemporaryActivityView: View {
 
     private var surfaceShape: AnyShape {
         if isDynamicIslandMode {
-            return AnyShape(DynamicIslandPillShape(cornerRadius: dynamicIslandPillCornerRadiusInsets.opened))
+            return AnyShape(AnchorPillShape(cornerRadius: dynamicIslandPillCornerRadiusInsets.opened))
         } else {
             return AnyShape(NotchShape(topCornerRadius: topCornerRadius, bottomCornerRadius: metrics.bottomRadius))
         }
@@ -826,7 +826,7 @@ struct BatteryTemporaryActivityView: View {
 }
 
 #Preview {
-    DynamicIslandBatteryView(
+    AnchorBatteryView(
         batteryWidth: 30,
         isCharging: false,
         isInLowPowerMode: false,

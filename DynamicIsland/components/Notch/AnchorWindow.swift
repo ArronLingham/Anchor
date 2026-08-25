@@ -22,7 +22,7 @@
 
 import Cocoa
 
-class DynamicIslandWindow: NSPanel {
+class AnchorWindow: NSPanel {
     override init(
         contentRect: NSRect,
         styleMask: NSWindow.StyleMask,

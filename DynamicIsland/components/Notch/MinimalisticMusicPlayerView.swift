@@ -26,7 +26,7 @@ import AppKit
 // Lyrics are shown/hidden only via Defaults[.enableLyrics] in settings. Inline display is used in the player views.
 
 struct MinimalisticMusicPlayerView: View {
-    @EnvironmentObject var vm: DynamicIslandViewModel
+    @EnvironmentObject var vm: AnchorViewModel
     let albumArtNamespace: Namespace.ID
     @Default(.showShuffleAndRepeat) private var showCustomControls
     @Default(.musicControlSlots) private var slotConfig
@@ -35,7 +35,7 @@ struct MinimalisticMusicPlayerView: View {
     @Default(.showMinimalisticBatteryIndicator) private var showMinimalisticBatteryIndicator
     @ObservedObject private var reminderManager = ReminderLiveActivityManager.shared
     @ObservedObject private var timerManager = TimerManager.shared
-    @ObservedObject private var coordinator = DynamicIslandViewCoordinator.shared
+    @ObservedObject private var coordinator = AnchorViewCoordinator.shared
     @State private var hudValue: Double = 0
     @State private var hudDragging: Bool = false
     @State private var hudLastDragged: Date = .distantPast
@@ -502,7 +502,7 @@ private struct MinimalisticReminderEventRow: View {
     let textFont: Font
     let separatorSpacing: CGFloat
 
-    @EnvironmentObject private var vm: DynamicIslandViewModel
+    @EnvironmentObject private var vm: AnchorViewModel
     @State private var didCopyLink = false
     @State private var copyResetToken: UUID?
     @State private var isDetailsPopoverPresented = false
@@ -1090,7 +1090,7 @@ private struct MinimalisticReminderDetailsView: View {
     private struct MinimalisticMediaOutputButton: View {
         @ObservedObject private var routeManager = AudioRouteManager.shared
         @StateObject private var volumeModel = MediaOutputVolumeViewModel()
-        @EnvironmentObject private var vm: DynamicIslandViewModel
+        @EnvironmentObject private var vm: AnchorViewModel
         @State private var isPopoverPresented = false
         @State private var isHoveringPopover = false
 
@@ -1146,7 +1146,7 @@ private struct MinimalisticReminderDetailsView: View {
     private struct MinimalisticAirPlayButton: View {
         @ObservedObject private var musicManager = MusicManager.shared
         @ObservedObject private var airPlayManager = AppleMusicAirPlayManager.shared
-        @EnvironmentObject private var vm: DynamicIslandViewModel
+        @EnvironmentObject private var vm: AnchorViewModel
         @State private var isPopoverPresented = false
         @State private var isHoveringPopover = false
 
@@ -1220,7 +1220,7 @@ private struct MinimalisticReminderDetailsView: View {
 
 struct MinimalisticAlbumArtView: View {
     @ObservedObject var musicManager = MusicManager.shared
-    @ObservedObject var vm: DynamicIslandViewModel
+    @ObservedObject var vm: AnchorViewModel
     @Default(.showLiveCanvasInDynamicIsland) private var showLiveCanvasInDynamicIsland
     let albumArtNamespace: Namespace.ID
 
@@ -1245,7 +1245,7 @@ struct MinimalisticAlbumArtView: View {
         Color.clear
             .aspectRatio(1, contentMode: .fit)
             .background(
-                DynamicIslandArtworkSourceView(
+                AnchorArtworkSourceView(
                     cornerRadius: albumArtCornerRadius,
                     contentMode: .fill
                 )
@@ -1275,7 +1275,7 @@ struct MinimalisticAlbumArtView: View {
                 Color.clear
                     .aspectRatio(1, contentMode: .fit)
                     .background(
-                        DynamicIslandArtworkSourceView(
+                        AnchorArtworkSourceView(
                             cornerRadius: albumArtCornerRadius,
                             contentMode: .fit
                         )

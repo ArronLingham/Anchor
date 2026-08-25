@@ -94,7 +94,7 @@ struct AirPodsListeningModeSymbol: View {
 }
 
 struct InlineHUD: View {
-    @EnvironmentObject var vm: DynamicIslandViewModel
+    @EnvironmentObject var vm: AnchorViewModel
     @Binding var type: SneakContentType
     @Binding var value: CGFloat
     @Binding var icon: String
@@ -594,5 +594,5 @@ struct InlineHUD: View {
         .padding(.horizontal, 8)
         .background(Color.black)
         .padding()
-        .environmentObject(DynamicIslandViewModel())
+        .environmentObject(AnchorViewModel())
 }

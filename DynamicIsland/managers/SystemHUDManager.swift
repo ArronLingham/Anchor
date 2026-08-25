@@ -24,7 +24,7 @@ class SystemHUDManager {
     static let shared = SystemHUDManager()
     
     private var changesObserver: SystemChangesObserver?
-    private weak var coordinator: DynamicIslandViewCoordinator?
+    private weak var coordinator: AnchorViewCoordinator?
     private var isSetupComplete = false
     private var isSystemOperationInProgress = false
     
@@ -215,7 +215,7 @@ class SystemHUDManager {
         return isSystemOperationInProgress
     }
     
-    func setup(coordinator: DynamicIslandViewCoordinator) {
+    func setup(coordinator: AnchorViewCoordinator) {
         self.coordinator = coordinator
 
         // Initialize OSD manager

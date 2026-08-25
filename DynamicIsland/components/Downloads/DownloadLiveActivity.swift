@@ -20,7 +20,7 @@ import SwiftUI
 import Defaults
 
 struct DownloadLiveActivity: View {
-    @EnvironmentObject var vm: DynamicIslandViewModel
+    @EnvironmentObject var vm: AnchorViewModel
     @State private var downloadManager = DownloadManager.shared
     
     @State private var isHovering: Bool = false

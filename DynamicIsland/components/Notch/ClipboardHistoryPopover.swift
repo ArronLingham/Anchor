@@ -21,7 +21,7 @@ import SwiftUI
 struct ClipboardHistoryPopover: View {
     @ObservedObject var clipboardManager = ClipboardManager.shared
     @Binding var isPresented: Bool
-    @EnvironmentObject var vm: DynamicIslandViewModel
+    @EnvironmentObject var vm: AnchorViewModel
     
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {

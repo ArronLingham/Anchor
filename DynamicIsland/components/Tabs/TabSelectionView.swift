@@ -41,7 +41,7 @@ struct TabModel: Identifiable {
 }
 
 struct TabSelectionView: View {
-    @ObservedObject var coordinator = DynamicIslandViewCoordinator.shared
+    @ObservedObject var coordinator = AnchorViewCoordinator.shared
     @Default(.enableTimerFeature) var enableTimerFeature
     @Default(.timerDisplayMode) var timerDisplayMode
     @Default(.showCalendar) private var showCalendar
@@ -132,5 +132,5 @@ struct TabSelectionView: View {
 }
 
 #Preview {
-    DynamicIslandHeader().environmentObject(DynamicIslandViewModel())
+    AnchorHeader().environmentObject(AnchorViewModel())
 }

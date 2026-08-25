@@ -113,7 +113,7 @@ final class BetterDisplayManager: ObservableObject {
     private var launchedObserver: NSObjectProtocol?
     private var terminatedObserver: NSObjectProtocol?
     private var cancellables = Set<AnyCancellable>()
-    private weak var coordinator: DynamicIslandViewCoordinator?
+    private weak var coordinator: AnchorViewCoordinator?
 
     private var isBetterDisplayIntegrationEnabled: Bool {
         Defaults[.enableThirdPartyDDCIntegration] && Defaults[.thirdPartyDDCProvider] == .betterDisplay
@@ -134,7 +134,7 @@ final class BetterDisplayManager: ObservableObject {
     // MARK: - Public API
 
     /// Configure with the view coordinator for HUD dispatch.
-    func configure(coordinator: DynamicIslandViewCoordinator) {
+    func configure(coordinator: AnchorViewCoordinator) {
         self.coordinator = coordinator
         refreshListeningState()
     }

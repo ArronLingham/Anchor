@@ -20,8 +20,8 @@ import SwiftUI
 import Defaults
 
 struct NotchNotesView: View {
-    @EnvironmentObject var vm: DynamicIslandViewModel
-    @ObservedObject var coordinator = DynamicIslandViewCoordinator.shared
+    @EnvironmentObject var vm: AnchorViewModel
+    @ObservedObject var coordinator = AnchorViewCoordinator.shared
     @ObservedObject private var appleNotesSync = AppleNotesSyncManager.shared
     @FocusState private var isFocused: Bool
     @Default(.savedNotes) var savedNotes
@@ -443,7 +443,7 @@ struct NotchNotesView: View {
 // MARK: - Subviews
 
 struct NotchClipboardList: View {
-    @EnvironmentObject var vm: DynamicIslandViewModel
+    @EnvironmentObject var vm: AnchorViewModel
     @ObservedObject var clipboardManager = ClipboardManager.shared
     @State private var hoveredItemId: UUID?
     @State private var justCopiedId: UUID?
@@ -622,7 +622,7 @@ struct NotchClipboardItemRow: View {
 
 
 struct NoteListView: View {
-    @EnvironmentObject var vm: DynamicIslandViewModel
+    @EnvironmentObject var vm: AnchorViewModel
     @ObservedObject private var appleNotesSync = AppleNotesSyncManager.shared
     let notes: [NoteItem]
     let onSelect: (NoteItem) -> Void

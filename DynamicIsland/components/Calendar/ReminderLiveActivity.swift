@@ -28,7 +28,7 @@ private typealias ReminderFont = UIFont
 #endif
 
 struct ReminderLiveActivity: View {
-    @EnvironmentObject var vm: DynamicIslandViewModel
+    @EnvironmentObject var vm: AnchorViewModel
     @ObservedObject var manager = ReminderLiveActivityManager.shared
 
     @Default(.reminderPresentationStyle) private var presentationStyle

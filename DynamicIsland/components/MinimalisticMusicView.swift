@@ -22,7 +22,7 @@ import Defaults
 // Note: lyrics display is inlined into the main minimalistic view below and is controlled by Defaults[.enableLyrics]
 
 struct MinimalisticMusicView: View {
-    @EnvironmentObject var vm: DynamicIslandViewModel
+    @EnvironmentObject var vm: AnchorViewModel
     @ObservedObject var musicManager = MusicManager.shared
     @Default(.enableLyrics) var enableLyrics
     @State private var isHovering: Bool = false

@@ -61,7 +61,7 @@ final class MusicControlWindowController {
     /// measured against a notch that is still animating.
     private let resumeDelay: TimeInterval = 0.24
 
-    private weak var viewModel: DynamicIslandViewModel?
+    private weak var viewModel: AnchorViewModel?
     private var chrome = Chrome()
 
     private var isWindowVisible = false
@@ -78,7 +78,7 @@ final class MusicControlWindowController {
 
     /// `vm` is an `@EnvironmentObject`, so it does not exist when `@State` is
     /// initialised. The view hands it over from `onAppear`.
-    func configure(viewModel: DynamicIslandViewModel) {
+    func configure(viewModel: AnchorViewModel) {
         self.viewModel = viewModel
     }
 
@@ -281,7 +281,7 @@ final class MusicControlWindowController {
     private var shouldShowWindow: Bool {
         guard let viewModel,
               isEnabled,
-              DynamicIslandViewCoordinator.shared.musicLiveActivityEnabled,
+              AnchorViewCoordinator.shared.musicLiveActivityEnabled,
               standardControlsActive,
               !viewModel.hideOnClosed,
               canPresent,

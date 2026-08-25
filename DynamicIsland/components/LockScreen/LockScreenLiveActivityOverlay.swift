@@ -72,7 +72,7 @@ struct LockScreenLiveActivityOverlay: View {
 		.background(Color.black)
 		.clipShape(
 			isDynamicIslandMode
-				? AnyShape(DynamicIslandPillShape(
+				? AnyShape(AnchorPillShape(
 					cornerRadius: max(notchSize.height / 2, dynamicIslandPillCornerRadiusInsets.closed.standard)
 				  ))
 				: AnyShape(NotchShape(

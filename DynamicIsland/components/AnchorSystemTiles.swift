@@ -21,7 +21,7 @@ import SwiftUI
 import Defaults
 
 struct SystemItemButton: View {
-    @EnvironmentObject var vm: DynamicIslandViewModel
+    @EnvironmentObject var vm: AnchorViewModel
     @State var icon: String = "gear"
     var onTap: () -> Void
     @State var label: String?
@@ -78,7 +78,7 @@ func logout() {
     }
 }
 
-struct DynamicIslandSystemTiles: View {
+struct AnchorSystemTiles: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             Label {
@@ -104,5 +104,5 @@ struct DynamicIslandSystemTiles: View {
 }
 
 #Preview {
-    DynamicIslandSystemTiles().padding()
+    AnchorSystemTiles().padding()
 }

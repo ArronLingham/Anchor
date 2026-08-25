@@ -38,7 +38,7 @@ class BluetoothAudioManager: ObservableObject {
     // MARK: - Private Properties
     private var observers: [NSObjectProtocol] = []
     private var cancellables = Set<AnyCancellable>()
-    private let coordinator = DynamicIslandViewCoordinator.shared
+    private let coordinator = AnchorViewCoordinator.shared
     private var pollingTimer: Timer?
     private let bluetoothPreferencesSuite = "/Library/Preferences/com.apple.Bluetooth"
     private let batteryReader = BluetoothLEBatteryReader()

@@ -33,11 +33,11 @@ struct DynamicNotchApp: App {
     let updaterController: SPUStandardUpdaterController
     /// Retained delegate instance that dynamically selects the Sparkle feed URL
     /// based on the user's update channel preference.
-    private let updaterDelegate = AtollUpdaterDelegate()
+    private let updaterDelegate = AnchorUpdaterDelegate()
 
     init() {
         // Skip Sparkle's launch-time update check during UI testing.
-        // The AtollUpdaterDelegate overrides the feed URL at runtime
+        // The AnchorUpdaterDelegate overrides the feed URL at runtime
         // based on the user's selected update channel.
         // Not started. Anchor has no update feed of its own, and every channel
         // in UpdateChannel points at upstream Atoll — a running updater would
@@ -57,7 +57,7 @@ struct DynamicNotchApp: App {
             }
             CheckForUpdatesView(updater: updaterController.updater)
             Divider()
-            Button("Restart Atoll") {
+            Button("Restart Anchor") {
                 guard let bundleIdentifier = Bundle.main.bundleIdentifier else { return }
 
                 let workspace = NSWorkspace.shared
@@ -105,10 +105,10 @@ extension AppDelegate {
 class AppDelegate: NSObject, NSApplicationDelegate {
     var statusItem: NSStatusItem?
     var windows: [NSScreen: NSWindow] = [:]
-    var viewModels: [NSScreen: DynamicIslandViewModel] = [:]
+    var viewModels: [NSScreen: AnchorViewModel] = [:]
     var window: NSWindow?
-    let vm: DynamicIslandViewModel = .init()
-    @ObservedObject var coordinator = DynamicIslandViewCoordinator.shared
+    let vm: AnchorViewModel = .init()
+    @ObservedObject var coordinator = AnchorViewCoordinator.shared
     var whatsNewWindow: NSWindow?
     var timer: Timer?
     // These MUST be lazy.
@@ -342,7 +342,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    private func createDynamicIslandWindow(for screen: NSScreen, with viewModel: DynamicIslandViewModel)
+    private func createDynamicIslandWindow(for screen: NSScreen, with viewModel: AnchorViewModel)
         -> NSWindow
     {
         // Use the current required size instead of always using openNotchSize
@@ -351,7 +351,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let roundedWidth = requiredSize.width.rounded()
         let roundedHeight = requiredSize.height.rounded()
         
-        let window = DynamicIslandWindow(
+        let window = AnchorWindow(
             contentRect: NSRect(
                 x: 0, y: 0, width: roundedWidth, height: roundedHeight),
             styleMask: [.borderless, .nonactivatingPanel],
@@ -360,7 +360,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         )
 
         window.animationBehavior = .none
-        // collectionBehavior is configured in DynamicIslandWindow.init
+        // collectionBehavior is configured in AnchorWindow.init
 
         window.contentView = FirstMouseHostingView(
             rootView: ContentView()
@@ -927,7 +927,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func installTopMenuItemsIfNeeded() {
         guard let mainMenu = NSApp.mainMenu else { return }
-        if mainMenu.items.contains(where: { $0.identifier?.rawValue == "Atoll.Focus.Menu" }) {
+        if mainMenu.items.contains(where: { $0.identifier?.rawValue == "Anchor.Focus.Menu" }) {
             updateFocusMenuState()
             return
         }
@@ -935,7 +935,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let insertionIndex = preferredMenuInsertionIndex(in: mainMenu)
 
         let focusMenuItem = NSMenuItem(title: "Focus", action: nil, keyEquivalent: "")
-        focusMenuItem.identifier = NSUserInterfaceItemIdentifier("Atoll.Focus.Menu")
+        focusMenuItem.identifier = NSUserInterfaceItemIdentifier("Anchor.Focus.Menu")
         let focusSubmenu = NSMenu(title: "Focus")
 
         let withoutDevTools = NSMenuItem(
@@ -961,7 +961,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         focusUseDevToolsMenuItem = useDevTools
 
         let accessibilityMenuItem = NSMenuItem(title: "Accessibility", action: nil, keyEquivalent: "")
-        accessibilityMenuItem.identifier = NSUserInterfaceItemIdentifier("Atoll.Accessibility.Menu")
+        accessibilityMenuItem.identifier = NSUserInterfaceItemIdentifier("Anchor.Accessibility.Menu")
         let accessibilitySubmenu = NSMenu(title: "Accessibility")
 
         let requestAccessibility = NSMenuItem(
@@ -984,7 +984,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         mainMenu.insertItem(accessibilityMenuItem, at: insertionIndex + 1)
 
         let permissionsMenuItem = NSMenuItem(title: "Permissions", action: nil, keyEquivalent: "")
-        permissionsMenuItem.identifier = NSUserInterfaceItemIdentifier("Atoll.Permissions.Menu")
+        permissionsMenuItem.identifier = NSUserInterfaceItemIdentifier("Anchor.Permissions.Menu")
         let permissionsSubmenu = NSMenu(title: "Permissions")
 
         let requestFullDisk = NSMenuItem(
@@ -1016,7 +1016,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         mainMenu.insertItem(permissionsMenuItem, at: insertionIndex + 2)
 
         let toolsMenuItem = NSMenuItem(title: "Tools", action: nil, keyEquivalent: "")
-        toolsMenuItem.identifier = NSUserInterfaceItemIdentifier("Atoll.Tools.Menu")
+        toolsMenuItem.identifier = NSUserInterfaceItemIdentifier("Anchor.Tools.Menu")
         let toolsSubmenu = NSMenu(title: "Tools")
 
         let loggingLevelItem = NSMenuItem(title: "Logging Level", action: nil, keyEquivalent: "")
@@ -1125,7 +1125,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func exportLogs() {
         let savePanel = NSSavePanel()
-        savePanel.nameFieldStringValue = "Atoll_Logs.zip"
+        savePanel.nameFieldStringValue = "Anchor_Logs.zip"
         savePanel.title = "Export Logs & Crash Reports"
         
         savePanel.begin { response in
@@ -1151,13 +1151,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                     
                     let diagDir = URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Library/Logs/DiagnosticReports")
                     let allFiles = (try? FileManager.default.contentsOfDirectory(at: diagDir, includingPropertiesForKeys: nil)) ?? []
-                    for file in allFiles where file.lastPathComponent.contains("Atoll") {
+                    for file in allFiles where isAnchorLog(file) {
                         try? FileManager.default.copyItem(at: file, to: tempDir.appendingPathComponent(file.lastPathComponent))
                     }
                     
                     let sysDiagDir = URL(fileURLWithPath: "/Library/Logs/DiagnosticReports")
                     let sysFiles = (try? FileManager.default.contentsOfDirectory(at: sysDiagDir, includingPropertiesForKeys: nil)) ?? []
-                    for file in sysFiles where file.lastPathComponent.contains("Atoll") {
+                    for file in sysFiles where isAnchorLog(file) {
                         try? FileManager.default.copyItem(at: file, to: tempDir.appendingPathComponent(file.lastPathComponent))
                     }
                     
@@ -1332,7 +1332,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             
             for screen in currentScreens {
                 if windows[screen] == nil {
-                    let viewModel = DynamicIslandViewModel(screen: screen.localizedName)
+                    let viewModel = AnchorViewModel(screen: screen.localizedName)
                     let window = createDynamicIslandWindow(for: screen, with: viewModel)
                     
                     windows[screen] = window
@@ -1498,19 +1498,19 @@ final class MediaControlsStateCoordinator {
 
     private func cacheAndDisableMusicLiveActivity() {
         if Defaults[.cachedMusicLiveActivityPreference] == nil {
-            Defaults[.cachedMusicLiveActivityPreference] = DynamicIslandViewCoordinator.shared.musicLiveActivityEnabled
+            Defaults[.cachedMusicLiveActivityPreference] = AnchorViewCoordinator.shared.musicLiveActivityEnabled
         }
 
-        if DynamicIslandViewCoordinator.shared.musicLiveActivityEnabled {
-            DynamicIslandViewCoordinator.shared.musicLiveActivityEnabled = false
+        if AnchorViewCoordinator.shared.musicLiveActivityEnabled {
+            AnchorViewCoordinator.shared.musicLiveActivityEnabled = false
         }
     }
 
     private func restoreMusicLiveActivity(clearCache: Bool) {
         guard let cached = Defaults[.cachedMusicLiveActivityPreference] else { return }
 
-        if DynamicIslandViewCoordinator.shared.musicLiveActivityEnabled != cached {
-            DynamicIslandViewCoordinator.shared.musicLiveActivityEnabled = cached
+        if AnchorViewCoordinator.shared.musicLiveActivityEnabled != cached {
+            AnchorViewCoordinator.shared.musicLiveActivityEnabled = cached
         }
 
         if clearCache {
@@ -1552,4 +1552,12 @@ final class MediaControlsStateCoordinator {
         Defaults[.musicControlWindowEnabled] = cached
         Defaults[.cachedMusicControlWindowPreference] = nil
     }
+}
+
+/// Crash and diagnostic logs are named after the running product. This build is
+/// Anchor; anything from before the rename is still on disk as Atoll, and a
+/// report that silently omitted those would be worse than one that over-collects.
+private func isAnchorLog(_ url: URL) -> Bool {
+    let name = url.lastPathComponent
+    return name.contains("Anchor") || name.contains("Atoll")
 }

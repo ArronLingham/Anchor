@@ -20,7 +20,7 @@ import SwiftUI
 import Defaults
 
 struct PrivacyLiveActivity: View {
-    @EnvironmentObject var vm: DynamicIslandViewModel
+    @EnvironmentObject var vm: AnchorViewModel
     @ObservedObject var privacyManager = PrivacyIndicatorManager.shared
     @ObservedObject var recordingManager = ScreenRecordingManager.shared
     @State private var isHovering: Bool = false

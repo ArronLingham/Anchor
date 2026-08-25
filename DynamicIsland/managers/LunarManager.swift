@@ -74,7 +74,7 @@ final class LunarManager: ObservableObject {
     private var workspaceLaunchObserver: NSObjectProtocol?
     private var workspaceTermObserver: NSObjectProtocol?
     private var cancellables = Set<AnyCancellable>()
-    private weak var coordinator: DynamicIslandViewCoordinator?
+    private weak var coordinator: AnchorViewCoordinator?
 
     /// Reconnection back-off state.
     private var reconnectTask: Task<Void, Never>?
@@ -100,7 +100,7 @@ final class LunarManager: ObservableObject {
     // MARK: - Public API
 
     /// Configure with the view coordinator for HUD dispatch.
-    func configure(coordinator: DynamicIslandViewCoordinator) {
+    func configure(coordinator: AnchorViewCoordinator) {
         self.coordinator = coordinator
         refreshConnectionState()
     }

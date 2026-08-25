@@ -32,7 +32,7 @@ class LockScreenLiveActivityWindowManager {
     private var hostingView: NSHostingView<LockScreenLiveActivityOverlay>?
     private let overlayModel = LockScreenLiveActivityOverlayModel()
     private let overlayAnimator = LockIconAnimator(initiallyLocked: LockScreenManager.shared.isLocked)
-    private weak var viewModel: DynamicIslandViewModel?
+    private weak var viewModel: AnchorViewModel?
     private var screenChangeObserver: NSObjectProtocol?
     private var workspaceObservers: [NSObjectProtocol] = []
     private var currentNotchSize: CGSize?
@@ -284,7 +284,7 @@ class LockScreenLiveActivityWindowManager {
         print("[\(timestamp())] LockScreenLiveActivityWindowManager: HUD hidden")
     }
 
-    func configure(viewModel: DynamicIslandViewModel) {
+    func configure(viewModel: AnchorViewModel) {
         self.viewModel = viewModel
     }
 }

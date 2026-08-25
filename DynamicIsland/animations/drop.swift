@@ -24,7 +24,7 @@ import Foundation
 import SwiftUI
 
 
-public class DynamicIslandAnimations {
+public class AnchorAnimations {
     @Published var notchStyle: Style = .notch
     
     init() {

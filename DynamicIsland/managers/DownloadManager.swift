@@ -29,7 +29,7 @@ class DownloadManager {
     private(set) var isDownloading: Bool = false
     private(set) var isDownloadCompleted: Bool = false
     
-    private let coordinator = DynamicIslandViewCoordinator.shared
+    private let coordinator = AnchorViewCoordinator.shared
     private var source: DispatchSourceFileSystemObject?
     private let queue = DispatchQueue(label: "com.dynamicisland.downloads.monitor", qos: .utility)
     private var completionTimer: Timer?

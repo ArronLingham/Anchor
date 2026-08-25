@@ -143,7 +143,7 @@ func minimalisticOpenNotchSize(isDynamicIslandMode: Bool) -> CGSize {
         size.height += reminderHeight
     }
 
-    if DynamicIslandViewCoordinator.shared.timerLiveActivityEnabled && TimerManager.shared.isExternalTimerActive {
+    if AnchorViewCoordinator.shared.timerLiveActivityEnabled && TimerManager.shared.isExternalTimerActive {
         size.height += minimalisticTimerCountdownBlockHeight
     }
 

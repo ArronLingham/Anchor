@@ -499,7 +499,7 @@ final class ReminderLiveActivityManager: ObservableObject {
             }
             if activeReminder != entry {
                 activeReminder = entry
-                DynamicIslandViewCoordinator.shared.toggleSneakPeek(
+                AnchorViewCoordinator.shared.toggleSneakPeek(
                     status: true,
                     type: .reminder,
                     duration: Defaults[.reminderSneakPeekDuration],
@@ -516,7 +516,7 @@ final class ReminderLiveActivityManager: ObservableObject {
                     if !hasShownCriticalSneakPeek {
                         let displayDuration = min(criticalWindow, max(timeRemaining - 2, 0))
                         if displayDuration > 0 {
-                            DynamicIslandViewCoordinator.shared.toggleSneakPeek(
+                            AnchorViewCoordinator.shared.toggleSneakPeek(
                                 status: true,
                                 type: .reminder,
                                 duration: displayDuration,

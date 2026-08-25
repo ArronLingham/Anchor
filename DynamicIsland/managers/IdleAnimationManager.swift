@@ -29,7 +29,7 @@ class IdleAnimationManager {
     private init() {
         // Create storage directory in Application Support
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-        storageDirectory = appSupport.appendingPathComponent("DynamicIsland/IdleAnimations", isDirectory: true)
+        storageDirectory = AppSupportDirectory.subdirectory("IdleAnimations")
         
         // Create directory if it doesn't exist
         try? FileManager.default.createDirectory(at: storageDirectory, withIntermediateDirectories: true)

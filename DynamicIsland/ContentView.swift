@@ -35,9 +35,9 @@ import UIKit
 
 @MainActor
 struct ContentView: View {
-    @EnvironmentObject var vm: DynamicIslandViewModel
+    @EnvironmentObject var vm: AnchorViewModel
 
-    @ObservedObject var coordinator = DynamicIslandViewCoordinator.shared
+    @ObservedObject var coordinator = AnchorViewCoordinator.shared
     @ObservedObject var musicManager = MusicManager.shared
     @ObservedObject var timerManager = TimerManager.shared
     @ObservedObject var reminderManager = ReminderLiveActivityManager.shared
@@ -373,7 +373,7 @@ struct ContentView: View {
     }
     
     /// Pill shape for Dynamic Island mode with animated corner radius transitions.
-    private var currentPillShape: DynamicIslandPillShape {
+    private var currentPillShape: AnchorPillShape {
         let radius: CGFloat
         if vm.notchState == .open {
             radius = enableMinimalisticUI
@@ -383,7 +383,7 @@ struct ContentView: View {
             // Use half the closed height for a true capsule shape
             radius = max(vm.closedNotchSize.height / 2, dynamicIslandPillCornerRadiusInsets.closed.standard)
         }
-        return DynamicIslandPillShape(cornerRadius: radius)
+        return AnchorPillShape(cornerRadius: radius)
     }
 
     private var isBatteryHUDVisibleOnCurrentScreen: Bool {
@@ -425,7 +425,7 @@ struct ContentView: View {
 
         if isDynamicIslandMode {
             let radius = dynamicIslandPillCornerRadiusInsets.opened
-            return AnyShape(DynamicIslandPillShape(cornerRadius: radius))
+            return AnyShape(AnchorPillShape(cornerRadius: radius))
         } else {
             let topRadius = activeCornerRadiusInsets.closed.top
             let bottomRadius: CGFloat = {
@@ -487,7 +487,7 @@ struct ContentView: View {
             .padding(.horizontal, isIslandMode ? dynamicIslandShadowInset : 0)
             .padding(.bottom, isIslandMode ? dynamicIslandShadowInset : 0)
             .padding(.top, pillTopOffset)
-            .accessibilityIdentifier("AtollNotch")
+            .accessibilityIdentifier("AnchorNotch")
     }
 
     /// The animation the notch's open/close uses, whichever branch of
@@ -898,9 +898,9 @@ struct ContentView: View {
                       } else if false {
                       } else if !coordinator.expandingView.show && vm.notchState == .closed && (!musicManager.isPlaying && musicManager.isPlayerIdle) && Defaults[.showNotHumanFace] && !vm.hideOnClosed  {
                       } else if !isCurrentScreenExpansionVisible && vm.notchState == .closed && (!musicManager.isPlaying && musicManager.isPlayerIdle) && Defaults[.showNotHumanFace] && !vm.hideOnClosed  {
-                          DynamicIslandFaceAnimation().animation(.interactiveSpring, value: musicManager.isPlayerIdle)
+                          AnchorFaceAnimation().animation(.interactiveSpring, value: musicManager.isPlayerIdle)
                       } else if vm.notchState == .open {
-                          DynamicIslandHeader()
+                          AnchorHeader()
                               .frame(height: (Defaults[.enableMinimalisticUI] && isDynamicIslandMode) ? nil : max(24, vm.effectiveClosedNotchHeight))
                        } else {
                            Rectangle().fill(.clear).frame(width: vm.closedNotchSize.width - 20, height: vm.effectiveClosedNotchHeight)
@@ -1036,7 +1036,7 @@ struct ContentView: View {
     }()
 
     @ViewBuilder
-    func DynamicIslandFaceAnimation() -> some View {
+    func AnchorFaceAnimation() -> some View {
         let sideSize = max(0, vm.effectiveClosedNotchHeight - 12)
         HStack {
             HStack {

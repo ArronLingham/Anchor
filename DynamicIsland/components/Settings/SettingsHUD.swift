@@ -914,7 +914,7 @@ struct DevicesSettingsView: View {
 }
 
 struct HUD: View {
-    @EnvironmentObject var vm: DynamicIslandViewModel
+    @EnvironmentObject var vm: AnchorViewModel
     @Default(.inlineHUD) var inlineHUD
     @Default(.progressBarStyle) var progressBarStyle
     @Default(.enableSystemHUD) var enableSystemHUD
@@ -923,7 +923,7 @@ struct HUD: View {
     @Default(.enableKeyboardBacklightHUD) var enableKeyboardBacklightHUD
     @Default(.enableThirdPartyDDCIntegration) var enableThirdPartyDDCIntegration
     @Default(.systemHUDSensitivity) var systemHUDSensitivity
-    @ObservedObject var coordinator = DynamicIslandViewCoordinator.shared
+    @ObservedObject var coordinator = AnchorViewCoordinator.shared
     @ObservedObject private var accessibilityPermission = AccessibilityPermissionStore.shared
 
     private func highlightID(_ title: String) -> String {

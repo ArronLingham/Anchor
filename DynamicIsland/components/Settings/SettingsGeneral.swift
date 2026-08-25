@@ -34,8 +34,8 @@ import UniformTypeIdentifiers
 
 struct GeneralSettings: View {
     @State private var screens: [String] = NSScreen.screens.compactMap { $0.localizedName }
-    @EnvironmentObject var vm: DynamicIslandViewModel
-    @ObservedObject var coordinator = DynamicIslandViewCoordinator.shared
+    @EnvironmentObject var vm: AnchorViewModel
+    @ObservedObject var coordinator = AnchorViewCoordinator.shared
     @Default(.showEmojis) var showEmojis
     @Default(.gestureSensitivity) var gestureSensitivity
     @Default(.minimumHoverDuration) var minimumHoverDuration

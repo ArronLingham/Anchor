@@ -21,11 +21,11 @@ import Defaults
 import SwiftUI
 
 @MainActor
-class DynamicIslandViewModel: NSObject, ObservableObject {
-    @ObservedObject var coordinator = DynamicIslandViewCoordinator.shared
+class AnchorViewModel: NSObject, ObservableObject {
+    @ObservedObject var coordinator = AnchorViewCoordinator.shared
     @ObservedObject var detector = FullscreenMediaDetector.shared
 
-    let animationLibrary: DynamicIslandAnimations = .init()
+    let animationLibrary: AnchorAnimations = .init()
     let animation: Animation?
 
     @Published var contentType: ContentType = .normal

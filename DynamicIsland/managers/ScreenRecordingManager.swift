@@ -53,7 +53,7 @@ class ScreenRecordingManager: ObservableObject {
     static let shared = ScreenRecordingManager()
     
     // MARK: - Coordinator
-    private let coordinator = DynamicIslandViewCoordinator.shared
+    private let coordinator = AnchorViewCoordinator.shared
     
     // MARK: - Published Properties
     @Published var isRecording: Bool = false

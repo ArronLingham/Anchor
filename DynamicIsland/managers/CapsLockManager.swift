@@ -30,7 +30,7 @@ class CapsLockManager: ObservableObject {
     
     private var localEventMonitor: Any?
     private var globalEventMonitor: Any?
-    private let coordinator = DynamicIslandViewCoordinator.shared
+    private let coordinator = AnchorViewCoordinator.shared
     private let capsLockAnimation = Animation.spring(response: 0.32, dampingFraction: 0.85)
     
     private init() {

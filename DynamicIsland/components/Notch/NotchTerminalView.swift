@@ -84,7 +84,7 @@ struct TerminalNSViewRepresentable: NSViewRepresentable {
 /// terminal buffer exceeds the visible area (handled internally by SwiftTerm).
 struct NotchTerminalView: View {
     @ObservedObject var terminalManager = TerminalManager.shared
-    @EnvironmentObject var vm: DynamicIslandViewModel
+    @EnvironmentObject var vm: AnchorViewModel
     @Default(.enableTerminalFeature) var enableTerminalFeature
     @Default(.cornerRadiusScaling) var cornerRadiusScaling
     @Default(.enableMinimalisticUI) var enableMinimalisticUI
@@ -96,7 +96,7 @@ struct NotchTerminalView: View {
     private static let terminalClipTopCornerRadius: CGFloat = 6
 
     private var currentScreenName: String {
-        vm.screen ?? DynamicIslandViewCoordinator.shared.selectedScreen
+        vm.screen ?? AnchorViewCoordinator.shared.selectedScreen
     }
 
     private var isDynamicIslandMode: Bool {

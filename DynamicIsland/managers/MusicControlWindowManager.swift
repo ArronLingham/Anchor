@@ -42,7 +42,7 @@ final class MusicControlWindowManager {
     private init() {}
 
     @discardableResult
-    func present(using viewModel: DynamicIslandViewModel, metrics: MusicControlWindowMetrics) -> Bool {
+    func present(using viewModel: AnchorViewModel, metrics: MusicControlWindowMetrics) -> Bool {
         guard let screen = resolveScreen(from: viewModel) else { return false }
         guard viewModel.effectiveClosedNotchHeight > 0, viewModel.closedNotchSize.width > 0 else {
             hide()
@@ -100,7 +100,7 @@ final class MusicControlWindowManager {
     }
 
     @discardableResult
-    func refresh(using viewModel: DynamicIslandViewModel, metrics: MusicControlWindowMetrics) -> Bool {
+    func refresh(using viewModel: AnchorViewModel, metrics: MusicControlWindowMetrics) -> Bool {
         guard window != nil else {
             return present(using: viewModel, metrics: metrics)
         }
@@ -196,7 +196,7 @@ final class MusicControlWindowManager {
         return CGSize(width: ceil(size.width), height: ceil(size.height))
     }
 
-    private func resolveScreen(from viewModel: DynamicIslandViewModel) -> NSScreen? {
+    private func resolveScreen(from viewModel: AnchorViewModel) -> NSScreen? {
         if let screenName = viewModel.screen,
            let targetScreen = NSScreen.screens.first(where: { $0.localizedName == screenName }) {
             return targetScreen
@@ -204,7 +204,7 @@ final class MusicControlWindowManager {
         return NSScreen.main
     }
 
-    private func frame(for size: CGSize, viewModel: DynamicIslandViewModel, screen: NSScreen, metrics: MusicControlWindowMetrics) -> NSRect {
+    private func frame(for size: CGSize, viewModel: AnchorViewModel, screen: NSScreen, metrics: MusicControlWindowMetrics) -> NSRect {
         let screenFrame = screen.frame
         let notchOriginX = screenFrame.midX - (metrics.notchWidth / 2)
         let originY = screenFrame.maxY - size.height

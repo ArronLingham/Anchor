@@ -22,7 +22,7 @@ import SwiftUI
 /// Notch live activity shown while push-to-talk dictation is running:
 /// a mic on the left wing, a level meter and live transcript on the right.
 struct DictationLiveActivity: View {
-    @EnvironmentObject var vm: DynamicIslandViewModel
+    @EnvironmentObject var vm: AnchorViewModel
     @ObservedObject private var dictation = DictationManager.shared
 
     private let wingSpacing: CGFloat = 8
