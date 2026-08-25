@@ -490,25 +490,38 @@ struct ContentView: View {
             .accessibilityIdentifier("AtollNotch")
     }
 
+    /// The animation the notch's open/close uses, whichever branch of
+    /// `configuredMainLayout` is live.
+    ///
+    /// Hoisted out of those branches because `rootBodyView`'s outer frame has to
+    /// animate with the same curve. That frame changes `maxWidth` by 24pt keyed
+    /// on `vm.notchState`, but it wraps `configuredMainLayout`, so the
+    /// `.animation(_:value:)` inside never reached it — the container snapped to
+    /// its closed width in one frame while the notch was still animating shut.
+    private var activeNotchStateAnimation: Animation {
+        guard useModernCloseAnimation else {
+            return .spring.speed(1.2)
+        }
+        return vm.notchState == .open
+            ? .spring(response: 0.42, dampingFraction: 0.8, blendDuration: 0)
+            : .spring(response: 0.45, dampingFraction: 1.0, blendDuration: 0)
+    }
+
     private var configuredMainLayout: some View {
         mainLayoutBase
             .conditionalModifier(!useModernCloseAnimation) { view in
                 let hoverAnimation = Animation.bouncy.speed(1.2)
-                let notchStateAnimation = Animation.spring.speed(1.2)
                 return view
                     .animation(hoverAnimation, value: isHovering)
-                    .animation(notchStateAnimation, value: vm.notchState)
+                    .animation(activeNotchStateAnimation, value: vm.notchState)
                     .animation(.smooth, value: gestureProgress)
                     .transition(.blurReplace.animation(.interactiveSpring(dampingFraction: 1.2)))
             }
             .conditionalModifier(useModernCloseAnimation) { view in
                 let hoverAnimation = Animation.bouncy.speed(1.2)
-                let openAnimation = Animation.spring(response: 0.42, dampingFraction: 0.8, blendDuration: 0)
-                let closeAnimation = Animation.spring(response: 0.45, dampingFraction: 1.0, blendDuration: 0)
-                let notchAnimation = vm.notchState == .open ? openAnimation : closeAnimation
                 return view
                     .animation(hoverAnimation, value: isHovering)
-                    .animation(notchAnimation, value: vm.notchState)
+                    .animation(activeNotchStateAnimation, value: vm.notchState)
                     .animation(.smooth, value: gestureProgress)
             }
             .conditionalModifier(interactionsEnabled) { view in
@@ -662,6 +675,9 @@ struct ContentView: View {
             maxHeight: (dynamicNotchSize.height + (vm.notchState == .open ? 12 : 0) + (isDynamicIslandMode ? dynamicIslandTopOffset + dynamicIslandShadowInset * 2 : currentShadowPadding)).rounded(),
             alignment: .top
         )
+        // Without this the 24pt maxWidth change above lands in a single frame
+        // while the notch is still animating shut.
+        .animation(activeNotchStateAnimation, value: vm.notchState)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .environmentObject(privacyManager)
         .background(dragDetector)
