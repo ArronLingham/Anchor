@@ -162,6 +162,11 @@ struct AnchorHeader: View {
                         .buttonStyle(PlainButtonStyle())
                     }
                     
+                    if Defaults[.showSpaceIndicator] && !shouldSuppressStatusIndicators {
+                        SpaceIndicatorBadge()
+                            .frame(width: 30, height: 30)
+                    }
+
                     // Screen Recording Indicator
                     if Defaults[.enableScreenRecordingDetection] && Defaults[.showRecordingIndicator] && !shouldSuppressStatusIndicators {
                         RecordingIndicator()

@@ -1071,6 +1071,9 @@ extension Defaults.Keys {
     static let lyricsTranslationEnabled = Key<Bool>("lyricsTranslationEnabled", default: false)
 
     // MARK: - Eye break (20-20-20)
+    /// Show which desktop you are on in the notch.
+    static let showSpaceIndicator = Key<Bool>("showSpaceIndicator", default: false)
+
     // MARK: - Window snapping
     /// Drag a window to a screen edge to tile it. Needs Accessibility, which
     /// dictation already requires.

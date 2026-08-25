@@ -708,6 +708,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             _ = EyeBreakManager.shared
             _ = SnapZoneManager.shared
             _ = LyricsTranslator.shared
+            _ = SpaceIndicatorManager.shared
         }
 
         ReminderLiveActivityManager.shared.$activeWindowReminders

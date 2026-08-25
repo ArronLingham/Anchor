@@ -102,6 +102,16 @@ struct GeneralSettings: View {
             }
 
             Section {
+                Defaults.Toggle(key: .showSpaceIndicator) {
+                    Text("Show desktop number")
+                }
+                .settingsHighlight(id: highlightID("Show desktop number"))
+                .help("Shows which desktop you are on, updated when macOS reports a Space change. Fullscreen apps are not counted as desktops.")
+            } header: {
+                Text("Desktop")
+            }
+
+            Section {
                 Defaults.Toggle(key: .enableSnapZones) {
                     Text("Snap windows to screen edges")
                 }
