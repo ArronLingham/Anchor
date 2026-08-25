@@ -281,6 +281,80 @@ Expect it to be clearly higher than idle — that is correct and intended.
 
 ---
 
+## 11. Added 2026-08-25 — all default OFF, enable before testing
+
+Every feature below is off out of the box. Turn each on in Settings first, or it
+will correctly appear to do nothing.
+
+### Lyrics (cat 4) — Settings › Media › Enable lyrics
+- A track with timed lyrics: the sheet fills, the current line is bold and
+  centred, and lines advance in step with the music.
+- **Tap a line** — playback seeks there. Try Spotify *and* Apple Music; they take
+  different paths through `MusicManager.seek(to:)`.
+- Timing feels right. If lines land early, pull **Lyrics timing** toward 0. It
+  defaults to +0.20s, calibrated to one report on Spotify over built-in speakers
+  — a guess, not a measurement.
+- A track LRCLIB has no timing for (Drake — *Janice STFU*): the tab reads as a
+  plain sheet headed "Timing unavailable", and the notch and lock screen show
+  **no lyric row at all** rather than an empty gap.
+- A track LRCLIB has nothing for: "No lyrics found", no hang.
+- **Translate lyrics** on: a translation appears under the current line only.
+  macOS may ask to download a language model. A failure must leave the lyrics
+  readable, not blank.
+- The notch lyrics tab does **not** scroll — it fits lines to the height.
+
+### Lock screen immersive player — no setting, tap the artwork
+- Lock with music playing, tap the album art: blurred artwork behind, large
+  cover, transport along the bottom.
+- With lyrics: five lines beside the cover, one behind and three ahead.
+- Without lyrics the cover centres instead of sitting off to one side.
+- Escape dismisses; so does a tap on the backdrop, but **not** on the artwork.
+- Unlock while it is open — no full-screen window left behind.
+- **Never exercised.** Only the layout was verified, by render. The window
+  resize, the transition and dismissal are all unproven.
+
+### Eye break (cat 20) — Settings › General
+- Set "Break every" to 5 minutes rather than waiting 20. The notch shows
+  "Look 20 feet away" and counts down.
+- The × skips; skips are counted separately from completions.
+- Sleep the display mid-interval and return: the interval restarts rather than
+  firing immediately.
+
+### File shelf (cat 10) — Settings › General
+- Drop files on the Shelf tab; thumbnails appear.
+- Drag one out to Finder — it moves the **original**, not a copy.
+- Double click opens; right click reveals or removes; Clear empties it.
+- Quit, move a file elsewhere on disk, relaunch: the item survives, because these
+  are bookmarks rather than paths. Delete a file instead and its row disappears.
+
+### System stats (cat 8) — Settings › General
+- The Stats tab shows CPU, memory, network. Compare CPU with Activity Monitor;
+  they should agree within a few points.
+- **The point of the design:** close the Stats tab and sampling stops. Anchor's
+  own CPU should fall back to idle.
+
+### Window snapping (cat 16) — Settings › General
+- Needs Accessibility, which dictation already required. Drag a window against
+  the left or right edge to tile it; top edge fills the screen.
+- Try a second display if you have one — the coordinate conversion differs there
+  and is the likeliest thing to be wrong.
+
+### Caffeinate (cat 20) — Settings › General
+- On, then from Terminal:
+  ```bash
+  pmset -g assertions | grep Anchor
+  ```
+  Expect `NoDisplaySleepAssertion named: "Anchor: keeping this Mac awake"`.
+- Off — the assertion disappears. Quit with it on and relaunch: it is re-taken,
+  because assertions die with the process.
+
+### The rename — no user-visible change intended
+- Settings all still hold their values; the bundle id did not change.
+- Idle animations and shelf contents survived the Application Support move from
+  `DynamicIsland/` to `Anchor/`.
+- **Export logs** produces a non-empty archive. It was searching for files named
+  "Atoll" and finding none, since crash logs are named after the product.
+
 ## Reporting back
 
 Give me the item number, what you expected, and what happened. For dictation, say which app you were pasting into — native apps, Electron apps, and terminals each take a different path.
