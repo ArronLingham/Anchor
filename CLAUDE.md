@@ -102,9 +102,17 @@ do not let that graph follow it in.
   Anything held in that view's `@State` therefore exists N times.
   - **Known bug, not introduced by the refactor:** N `MusicControlWindowController`
     instances drive the single `MusicControlWindowManager.shared`, each with its
-    own suppression counter and pending-sync queue. Two displays means two state
-    machines fighting over one window. Fixing it means deciding which screen owns
-    the window, which is a behaviour change and needs its own commit.
+    own suppression counter and pending-sync queue. `ensureWindow(on:)` returns
+    the existing panel whatever screen it is handed, so `present()` just drags
+    the one window onto whichever notch synced last, and a `hide()` from one
+    screen tears down the window another screen still wants — leaving that one's
+    `isWindowVisible` stale-true so it will not re-present.
+  - **Decided: give every display its own control window** (a per-screen
+    `MusicControlWindowManager`, not one shared panel). Deferred — it cannot be
+    tested without a second display. **If anything odd turns up around the
+    floating control window, raise this first.** Dormant on a single display.
+    Note `showOnAllDisplays` defaults to false but is *on* for this user, so the
+    multi-display paths are live for them the moment a monitor is attached.
 - **Settings panes are one file each** under `components/Settings/`.
   `SettingsView.swift` is now the shell — the two tab enums,
   `SettingsHighlightCoordinator`, the search/highlight plumbing, `SettingsForm`
