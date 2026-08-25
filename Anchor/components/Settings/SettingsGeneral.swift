@@ -34,6 +34,9 @@ import UniformTypeIdentifiers
 // Richard Kunkli on 07/08/2024. Behaviour unchanged.
 
 struct GeneralSettings: View {
+    @Default(.caffeinateEnabled) var caffeinateEnabled
+    @Default(.caffeinateKeepsDisplayAwake) var caffeinateKeepsDisplayAwake
+    @Default(.caffeinateDurationMinutes) var caffeinateDurationMinutes
     @State private var screens: [String] = NSScreen.screens.compactMap { $0.localizedName }
     @EnvironmentObject var vm: AnchorViewModel
     @ObservedObject var coordinator = AnchorViewCoordinator.shared
@@ -283,6 +286,37 @@ struct GeneralSettings: View {
     @ViewBuilder
     func NotchBehaviour() -> some View {
         Section {
+            Section("Keep awake") {
+                Toggle("Prevent this Mac from sleeping", isOn: Binding(
+                    get: { caffeinateEnabled },
+                    set: { on in
+                        caffeinateEnabled = on
+                        if on {
+                            let minutes = caffeinateDurationMinutes
+                            CaffeinateManager.shared.activate(
+                                for: minutes > 0 ? TimeInterval(minutes) * 60 : nil)
+                        } else {
+                            CaffeinateManager.shared.deactivate()
+                        }
+                    }))
+                .settingsHighlight(id: highlightID("Prevent this Mac from sleeping"))
+                .help("Held as a power assertion, the same mechanism the caffeinate command uses. Nothing runs in the background while it is on.")
+
+                Toggle("Keep the display on too", isOn: $caffeinateKeepsDisplayAwake)
+                    .disabled(!caffeinateEnabled)
+                    .help("Off keeps the Mac running but lets the screen sleep.")
+
+                Picker("Turn off after", selection: $caffeinateDurationMinutes) {
+                    Text("Never").tag(0)
+                    Text("15 minutes").tag(15)
+                    Text("30 minutes").tag(30)
+                    Text("1 hour").tag(60)
+                    Text("2 hours").tag(120)
+                    Text("4 hours").tag(240)
+                }
+                .disabled(!caffeinateEnabled)
+            }
+
             Defaults.Toggle(key: .extendHoverArea) {
                 Text("Extend hover area")
             }

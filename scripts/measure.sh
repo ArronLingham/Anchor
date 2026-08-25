@@ -40,23 +40,28 @@ if (( uptime_s < 300 )); then
   echo "WARNING: $name has only been up ${uptime_s}s. Launch transients will skew this." >&2
 fi
 
+# macOS `date` has no %N, so `date +%s.%N` yields "1787610000.N" and every
+# elapsed-time computation built on it is malformed. python gives real
+# sub-second resolution.
+now_s() { python3 -c 'import time; print(f"{time.monotonic():.3f}")'; }
+
 cputime_s() { ps -o cputime= -p "$1" 2>/dev/null | tr -d ' ' | awk -F'[:]' '{
   if (NF==3) printf "%.2f", $1*3600+$2*60+$3; else printf "%.2f", $1*60+$2 }'; }
 
 echo "measuring $name (pid $pid) for ${duration}s${label:+ — $label}"
 
-prev_cpu="$(cputime_s "$pid")"; prev_t="$(date +%s.%N)"
+prev_cpu="$(cputime_s "$pid")"; prev_t="$(now_s)"
 samples=(); rss_samples=()
-deadline=$(echo "$(date +%s) + $duration" | bc)
+deadline=$(( $(date +%s) + duration ))
 
-while (( $(date +%s) < ${deadline%.*} )); do
+while (( $(date +%s) < deadline )); do
   sleep "$interval"
   now_pid="$(pgrep -x "$name" | head -1)"
   if [[ "$now_pid" != "$pid" ]]; then
     echo "ABORT: pid changed $pid -> ${now_pid:-<gone>} mid-run. Measurement discarded." >&2
     exit 2
   fi
-  cur_cpu="$(cputime_s "$pid")"; cur_t="$(date +%s.%N)"
+  cur_cpu="$(cputime_s "$pid")"; cur_t="$(now_s)"
   [[ -n "$cur_cpu" ]] || { echo "ABORT: process vanished" >&2; exit 2; }
   pct=$(echo "scale=4; ($cur_cpu - $prev_cpu) / ($cur_t - $prev_t) * 100" | bc -l)
   samples+=("$pct")

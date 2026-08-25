@@ -245,6 +245,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // suppressing it, OSDUIHelper is SIGSTOP-frozen and the async restore in
         // enableSystemHUD() would not finish before the process dies. Resume it
         // synchronously here so it is never left frozen. (See issue #568.)
+        CaffeinateManager.shared.deactivate()
         SystemOSDManager.resumeOSDUIHelperForTermination()
 
         // Cancel any pending window size updates
@@ -685,6 +686,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         Defaults.publisher(.terminalMaxHeightFraction, options: []).sink { [weak self] _ in
             self?.debouncedUpdateWindowSize()
         }.store(in: &cancellables)
+
+        // Re-take the power assertion if the setting was left on. Assertions
+        // die with the process, so without this "keep awake" silently lapses
+        // across a restart while the switch still reads as on.
+        if Defaults[.caffeinateEnabled] {
+            let minutes = Defaults[.caffeinateDurationMinutes]
+            CaffeinateManager.shared.activate(
+                for: minutes > 0 ? TimeInterval(minutes) * 60 : nil)
+        }
 
         MemoryUsageMonitor.shared.startMonitoring()
 

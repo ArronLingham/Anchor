@@ -1051,6 +1051,14 @@ extension Defaults.Keys {
     
     // MARK: Lyrics Feature
     static let enableLyrics = Key<Bool>("enableLyrics", default: false)
+    // MARK: Caffeinate
+    /// Keep the Mac awake. Held as an IOKit power assertion; see CaffeinateManager.
+    static let caffeinateEnabled = Key<Bool>("caffeinateEnabled", default: false)
+    /// Keep the *display* awake too, not just the system. The display assertion
+    /// implies the system one, so this picks which is taken rather than adding.
+    static let caffeinateKeepsDisplayAwake = Key<Bool>("caffeinateKeepsDisplayAwake", default: true)
+    /// Minutes for a timed session. 0 runs until switched off.
+    static let caffeinateDurationMinutes = Key<Int>("caffeinateDurationMinutes", default: 0)
     /// Seconds to lead the lyrics by. Positive shows each line earlier.
     ///
     /// A player reports where its decoder is, which is ahead of what has reached
