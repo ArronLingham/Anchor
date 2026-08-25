@@ -25,7 +25,7 @@ import SwiftUI
 import SkyLightWindow
 
 @main
-struct DynamicNotchApp: App {
+struct AnchorApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     @Default(.menubarIcon) var showMenuBarIcon
     @Environment(\.openWindow) var openWindow

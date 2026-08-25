@@ -135,35 +135,7 @@ enum AnimationSource: Codable, Hashable, Equatable {
 
 // MARK: - Extension Authorization Models
 
-enum ExtensionPermissionScope: String, CaseIterable, Codable, Defaults.Serializable {
-    case liveActivities
-    case lockScreenWidgets
-    case notchExperiences
-    case fileSharing
 
-    var displayName: String {
-        switch self {
-        case .liveActivities: return "Live Activities"
-        case .lockScreenWidgets: return "Lock Screen Widgets"
-        case .notchExperiences: return "Notch Experiences"
-        case .fileSharing: return "File Sharing"
-        }
-    }
-}
-
-enum ExtensionAuthorizationStatus: String, CaseIterable, Codable, Defaults.Serializable {
-    case pending
-    case authorized
-    case denied
-    case revoked
-
-    var isActive: Bool {
-        switch self {
-        case .authorized: return true
-        case .pending, .denied, .revoked: return false
-        }
-    }
-}
 
 
 
@@ -525,18 +497,6 @@ enum ReminderPresentationStyle: String, CaseIterable, Identifiable, Defaults.Ser
     }
 }
 
-// AI Model types for screen assistant
-
-struct AIModel: Codable, Identifiable, Defaults.Serializable {
-    let id: String
-    let name: String
-    let supportsThinking: Bool
-    
-    var displayName: String {
-        return name + (supportsThinking ? " (Thinking)" : "")
-    }
-}
-
 struct NoteItem: Codable, Identifiable, Defaults.Serializable, Hashable {
     var id: UUID = UUID()
     var title: String
@@ -851,8 +811,6 @@ extension Defaults.Keys {
     static let systemEventIndicatorUseAccent = Key<Bool>("systemEventIndicatorUseAccent", default: false)
     static let showProgressPercentages = Key<Bool>("showProgressPercentages", default: true)
     
-        static let localSendDevicePickerGlassMode = Key<LockScreenGlassCustomizationMode>("localSendDevicePickerGlassMode", default: .standard)
-        static let localSendDevicePickerLiquidGlassVariant = Key<LiquidGlassVariant>("localSendDevicePickerLiquidGlassVariant", default: .v11)
     
         // MARK: Calendar
     static let calendarSelectionState = Key<CalendarSelectionState>("calendarSelectionState", default: .all)
@@ -884,12 +842,6 @@ extension Defaults.Keys {
     static let showAirPodsListeningModeChanges = Key<Bool>("showAirPodsListeningModeChanges", default: false)
     
     // MARK: Stats Feature
-    static let enableStatsFeature = Key<Bool>("enableStatsFeature", default: false)
-    static let showCpuGraph = Key<Bool>("showCpuGraph", default: true)
-    static let showMemoryGraph = Key<Bool>("showMemoryGraph", default: true)
-    static let showGpuGraph = Key<Bool>("showGpuGraph", default: true)
-    static let showNetworkGraph = Key<Bool>("showNetworkGraph", default: false)
-    static let showDiskGraph = Key<Bool>("showDiskGraph", default: false)
     
     // MARK: Terminal Feature
     static let enableTerminalFeature = Key<Bool>("enableTerminalFeature", default: false)
@@ -1067,7 +1019,6 @@ extension Defaults.Keys {
     static let enableScreenRecordingDetection = Key<Bool>("enableScreenRecordingDetection", default: true)
     static let showRecordingIndicator = Key<Bool>("showRecordingIndicator", default: true)
     // Polling removed - now uses event-driven private API detection (CGSIsScreenWatcherPresent)
-    // static let enableScreenRecordingPolling = Key<Bool>("enableScreenRecordingPolling", default: false)
 
     // MARK: Focus / Do Not Disturb Detection
     static let enableDoNotDisturbDetection = Key<Bool>("enableDoNotDisturbDetection", default: true)
