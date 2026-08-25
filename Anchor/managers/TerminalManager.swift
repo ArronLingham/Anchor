@@ -1,5 +1,6 @@
 /*
- * Atoll (DynamicIsland)
+ * Anchor
+ * Derived from Atoll (DynamicIsland), itself derived from boring.notch.
  * Copyright (C) 2024-2026 Atoll Contributors
  * Adapted from SwiftTerm (https://github.com/migueldeicaza/SwiftTerm)
  *

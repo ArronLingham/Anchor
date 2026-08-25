@@ -1,5 +1,6 @@
 /*
- * Atoll (DynamicIsland)
+ * Anchor
+ * Derived from Atoll (DynamicIsland), itself derived from boring.notch.
  * Copyright (C) 2024-2026 Atoll Contributors
  *
  * Originally from boring.notch project
@@ -900,9 +901,19 @@ class MusicManager: ObservableObject {
             self.updateCurrentLyric(for: self.lyricPosition())
         }
 
-        // Manage lyric sync task based on playback/lyrics availability
-        if Defaults[.enableLyrics] && !self.syncedLyrics.isEmpty {
-            // Ensure syncing runs while lyrics are enabled
+        // Only run the sync task when it can actually change something.
+        //
+        // Two cases where it cannot, and both were costing a wakeup a second for
+        // nothing. Untimed lyrics have no line to advance to — updateCurrentLyric
+        // returns immediately for them — and paused playback freezes the position
+        // the line is derived from. Measured at 0.24% of a core with the loop
+        // running against untimed lyrics on a paused track, which is all of what
+        // enabling lyrics cost at idle.
+        //
+        // Seeking while paused still moves the line: that arrives through this
+        // same method, which updates it directly below. Resuming restarts the
+        // task, because playback state changes land here too.
+        if Defaults[.enableLyrics] && lyricsAreSynced && self.isPlaying {
             startLyricSync()
         } else {
             stopLyricSync()
@@ -1610,7 +1621,7 @@ class MusicManager: ObservableObject {
             currentLyrics = firstLine
         }
 
-        if Defaults[.enableLyrics] {
+        if Defaults[.enableLyrics] && lyricsAreSynced && isPlaying {
             startLyricSync()
         } else {
             stopLyricSync()

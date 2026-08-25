@@ -33,11 +33,11 @@ the 86-item manual test checklist, mirrored into `TESTING.md`.
 
 The repo is `~/Anchor`, pushed to `github.com/ArronLingham/Anchor` (**private** —
 see Licensing below). It used to sit at `~/DynamicNotch/Anchor/Atoll`, which is
-why the Xcode project is still `DynamicIsland.xcodeproj`.
+why the Xcode project is still `Anchor.xcodeproj`.
 
 | Path | What |
 |---|---|
-| `DynamicIsland/` | The app. Swift/SwiftUI; product name `Anchor`. |
+| `Anchor/` | The app. Swift/SwiftUI; product name `Anchor`. |
 | `tests/` | Standalone harnesses — see Tests below. |
 | `scripts/measure.sh` | CPU/RSS sampler. Every figure in this file was taken with it. |
 | `~/DynamicNotch/{Atoll,Sapphire,boring.notch}` | **Reference only.** Read for behaviour. GPL-3.0, GPL-3.0, AGPL-3.0. |
@@ -263,12 +263,23 @@ and read the topic out of a PNG. See `helpers/UISnapshotHarness.swift`.
 
 ## Naming
 
-The app is **Anchor** (`/Applications/Anchor.app`, bundle id
-`com.arronlingham.Anchor`, process name `Anchor`). Internals are still named
-after upstream — the Xcode project is `DynamicIsland.xcodeproj`, the source
-directory is `DynamicIsland/`, and types are `DynamicIsland*`. That is
-deliberate: renaming ~671 internal references touches the project file
-extensively for no user-visible gain.
+The app is **Anchor** throughout: `/Applications/Anchor.app`, bundle id
+`com.arronlingham.Anchor`, process `Anchor`, `Anchor.xcodeproj`, scheme `Anchor`,
+source in `Anchor/`, types `Anchor*`. This file previously recorded the opposite
+decision — that renaming ~671 internal references was not worth it — and that was
+reversed in 9b14ade and the commit after it.
+
+Three things keep upstream's name on purpose:
+
+- **`Copyright (C) 2024-2026 Atoll Contributors`**, on every source file. The GPL
+  requires copyright notices be preserved. Only the title line above it is this
+  project's to change.
+- **`/auth/DynamicIsland`** in the YouTube Music client — a path on upstream's
+  service, not a name this project owns.
+- **`~/Library/Application Support/DynamicIsland`** is *not* referenced any more,
+  but `AppSupportDirectory` moves it to `Anchor/` on first use rather than
+  abandoning what is in it. Do not "simplify" that away until it has run
+  everywhere it needs to.
 
 GPL headers still credit Atoll and boring.notch, and must keep doing so.
 `NOTICE` records the fork and rename above upstream's original notice.
@@ -284,7 +295,7 @@ The daily-driver build is a **signed Release** at `/Applications/Anchor.app`,
 which is also the login item.
 
 ```bash
-xcodebuild -project DynamicIsland.xcodeproj -scheme DynamicIsland \
+xcodebuild -project Anchor.xcodeproj -scheme Anchor \
   -configuration Release -destination 'platform=macOS,arch=arm64' \
   CODE_SIGN_IDENTITY="Apple Development: arronlingham@icloud.com (Q4FNFX8QSH)" \
   CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM=KLWHJX56T3 \
@@ -328,7 +339,7 @@ fixes it without a reboot.
 ## Build (Debug, for iteration)
 
 ```bash
-xcodebuild -project DynamicIsland.xcodeproj -scheme DynamicIsland \
+xcodebuild -project Anchor.xcodeproj -scheme Anchor \
   -configuration Debug -destination 'platform=macOS,arch=arm64' \
   CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM="" \
   PROVISIONING_PROFILE_SPECIFIER="" build
@@ -376,7 +387,7 @@ global) and carries no co-author trailer. Keep it that way.
 `ClaudeUsageManager.shared.start()` in `DynamicIslandApp` while the manager
 itself stayed untracked, so the tip did not build for five commits and nobody
 noticed, because the working tree — which had the untracked files — built fine.
-`git status` showing untracked files under `DynamicIsland/` is a build-breaking
+`git status` showing untracked files under `Anchor/` is a build-breaking
 signal, not noise.
 
 Pushes go over **SSH**, which is why the missing `workflow` OAuth scope does not
