@@ -271,6 +271,20 @@ struct ContentView: View {
         currentShadowPadding + bodyHoverAreaPadding
     }
 
+    /// Extra hit area below the closed notch, when the user has asked for it.
+    ///
+    /// The closed notch's hover target is its own outline — `.contentShape` is
+    /// given `resolvedClipShape`. With nothing playing that outline shrinks to
+    /// the bare physical notch, and `minimumHoverDuration` requires holding the
+    /// cursor inside it for the whole dwell, so a small drift cancels the open.
+    ///
+    /// This is applied *before* `.contentShape` and subtracted from the padding
+    /// applied after it, so the hit area grows while the layout does not move.
+    private var closedHoverExtension: CGFloat {
+        guard Defaults[.extendHoverArea], vm.notchState == .closed else { return 0 }
+        return 12
+    }
+
     private var pillTopOffset: CGFloat {
         isIslandMode ? dynamicIslandTopOffset : 0
     }
@@ -499,7 +513,13 @@ struct ContentView: View {
             }
             .conditionalModifier(interactionsEnabled) { view in
                 view
-                    .contentShape(resolvedClipShape)
+                    .padding(.bottom, closedHoverExtension)
+                    // A rect, not the notch outline: the outline's curved
+                    // corners cut hittable area out of the very box we just
+                    // grew. Only when extending — otherwise hover stays tight
+                    // to the visible shape.
+                    .contentShape(
+                        closedHoverExtension > 0 ? AnyShape(Rectangle()) : resolvedClipShape)
                     .onHover { hovering in
                         handleHover(hovering)
                     }
@@ -534,7 +554,7 @@ struct ContentView: View {
             // Shadow bottom padding and hide-until-hover offset applied AFTER
             // interaction modifiers so .contentShape / .onHover only covers
             // the actual notch content, not the shadow clearance below it.
-            .padding(.bottom, notchBottomPadding)
+            .padding(.bottom, notchBottomPadding - closedHoverExtension)
             .offset(y: shouldHideUntilHover && !isHovering
                 ? -(vm.closedNotchSize.height + pillTopOffset + currentShadowPadding + 10)
                 : 0
