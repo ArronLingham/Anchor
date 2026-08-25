@@ -1071,6 +1071,9 @@ extension Defaults.Keys {
     static let lyricsTranslationEnabled = Key<Bool>("lyricsTranslationEnabled", default: false)
 
     // MARK: - Eye break (20-20-20)
+    /// Record battery level over the last 24 hours.
+    static let enableBatteryHistory = Key<Bool>("enableBatteryHistory", default: false)
+
     /// Show which desktop you are on in the notch.
     static let showSpaceIndicator = Key<Bool>("showSpaceIndicator", default: false)
 
