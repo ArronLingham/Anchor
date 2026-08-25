@@ -583,6 +583,41 @@ callback is the risk and must be sampled with a live Claude session running in
 another window, not at idle — `~/.claude/projects` is written on every tool call
 in every session.
 
+## Features added 2026-08-25
+
+All four default **off** and cost nothing until enabled.
+
+| Feature | Cat | Cost when on |
+|---|---|---|
+| Lyrics tab + tap-to-seek | 4 | one timer per lyric line, only while playing |
+| Eye break (20-20-20) | 20 | one timer per interval |
+| File shelf | 10 | none — event-driven only |
+| System stats | 8 | one timer, **only while the Stats tab is open** |
+| Window snapping | 16 | none until a drag starts |
+| Caffeinate | 20 | none — a kernel power assertion |
+
+Three rules these follow, and the next feature should too:
+
+- **Reference-count anything periodic.** `SystemStatsManager` samples nothing
+  unless a view has called `acquire()`. This is the `AudioTap` pattern and it is
+  the difference between a stats readout costing nothing and costing 100% of the
+  time for a tab that is open 1% of it.
+- **Schedule, do not poll.** Eye break and the lyric sync both compute *when* the
+  next thing is due and sleep exactly that long. Repeating timers are a last
+  resort; when one is unavoidable give it leeway so the system can coalesce it.
+- **A loop that no-ops is still a loop.** The lyric task was gated on the feature
+  flag but not on whether it could change anything, and woke once a second
+  against paused playback and untimed lyrics for 0.24% of a core. Gate on the
+  work existing, not on the feature being on.
+
+**Camera mirror (cat 20) and Face ID (cat 15) are deliberately not built.**
+`ENABLE_RESOURCE_ACCESS_CAMERA = NO` in both build configurations and
+`tests/test_privacy_configuration.py` carries
+`test_camera_entitlement_is_not_reintroduced`. Enabling the camera broadens the
+app's privacy surface and trips a test written to prevent exactly that; it needs
+a decision, not an inference. The same applies to notification mirroring
+(cat 19), which needs Full Disk Access.
+
 ## Speech API — verified working (Phase 0 spike)
 
 Proven end-to-end on this machine: `en_CA` supported (30 locales), assets auto-download via `AssetInventory`, 8.7 s of audio transcribed in ~3.7 s including model load, punctuation and proper nouns correct.
