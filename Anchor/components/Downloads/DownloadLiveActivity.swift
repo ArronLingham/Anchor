@@ -32,6 +32,37 @@ struct DownloadLiveActivity: View {
         .accentColor
     }
     
+    /// Honours `DownloadIconStyle`. The watcher only sees files land in
+    /// ~/Downloads, so the "app icon" is the icon of the file itself; when it
+    /// cannot be resolved this falls back to the arrow rather than drawing a
+    /// blank capsule.
+    @ViewBuilder
+    private var downloadGlyph: some View {
+        let arrow = Image(systemName: "arrow.down.circle.fill")
+            .font(.system(size: 14, weight: .semibold))
+            .foregroundStyle(tint)
+
+        switch Defaults[.selectedDownloadIconStyle] {
+        case .onlyIcon:
+            arrow
+        case .onlyAppIcon:
+            if let icon = downloadManager.activeFileIcon {
+                Image(nsImage: icon).resizable().scaledToFit().padding(3)
+            } else {
+                arrow
+            }
+        case .iconAndAppIcon:
+            if let icon = downloadManager.activeFileIcon {
+                ZStack(alignment: .bottomTrailing) {
+                    Image(nsImage: icon).resizable().scaledToFit().padding(3)
+                    arrow.font(.system(size: 8, weight: .semibold))
+                }
+            } else {
+                arrow
+            }
+        }
+    }
+
     var body: some View {
         HStack(spacing: 0) {
             // Left side: download icon capsule
@@ -43,9 +74,7 @@ struct DownloadLiveActivity: View {
                                 RoundedRectangle(cornerRadius: 6, style: .continuous)
                                     .fill(tint.opacity(0.14))
                                 
-                                Image(systemName: "arrow.down.circle.fill")
-                                    .font(.system(size: 14, weight: .semibold))
-                                    .foregroundStyle(tint)
+                                downloadGlyph
                             }
                             .frame(
                                 width: vm.effectiveClosedNotchHeight - 12,

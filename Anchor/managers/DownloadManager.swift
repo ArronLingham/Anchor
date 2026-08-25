@@ -29,6 +29,14 @@ class DownloadManager {
     
     private(set) var isDownloading: Bool = false
     private(set) var isDownloadCompleted: Bool = false
+
+    /// Icon of the file currently downloading, for `DownloadIconStyle`.
+    ///
+    /// This watcher only sees files appear in ~/Downloads — it never learns
+    /// which app started the download — so the only icon available is the
+    /// file's own. Resolved once when a download starts, never per frame:
+    /// `NSWorkspace.icon(forFile:)` hits disk on every call.
+    private(set) var activeFileIcon: NSImage?
     
     private let coordinator = AnchorViewCoordinator.shared
     private var source: DispatchSourceFileSystemObject?
@@ -168,7 +176,7 @@ class DownloadManager {
             let newActiveFiles = newFiles.subtracting(ignoredFiles)
             if !newActiveFiles.isEmpty {
                 if !isDownloading {
-                    updateDownloadingState(isActive: true)
+                    updateDownloadingState(isActive: true, fileName: newActiveFiles.sorted().first)
                 }
             }
         }
@@ -198,7 +206,21 @@ class DownloadManager {
         _ = try? FileManager.default.contentsOfDirectory(at: downloadsDirectory, includingPropertiesForKeys: nil)
     }
     
-    private func updateDownloadingState(isActive: Bool) {
+    /// The name of an in-flight download ends in .crdownload or .download;
+    /// the icon we want is for the real extension underneath.
+    private func resolveFileIcon(for inFlight: String?) -> NSImage? {
+        guard let directory = downloadsDirectory, let inFlight else { return nil }
+
+        var name = inFlight
+        for suffix in [".crdownload", ".download"] where name.hasSuffix(suffix) {
+            name = String(name.dropLast(suffix.count))
+        }
+        let icon = NSWorkspace.shared.icon(forFile: directory.appendingPathComponent(name).path)
+        icon.size = NSSize(width: 32, height: 32)
+        return icon
+    }
+
+    private func updateDownloadingState(isActive: Bool, fileName: String? = nil) {
         completionTimer?.invalidate()
         completionTimer = nil
         
@@ -209,6 +231,7 @@ class DownloadManager {
                 withAnimation(.smooth) {
                     isDownloading = true
                 }
+                activeFileIcon = resolveFileIcon(for: fileName)
                 coordinator.toggleExpandingView(
                     status: true,
                     type: .download,

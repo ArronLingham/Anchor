@@ -923,7 +923,6 @@ struct HUD: View {
     @Default(.enableBrightnessHUD) var enableBrightnessHUD
     @Default(.enableKeyboardBacklightHUD) var enableKeyboardBacklightHUD
     @Default(.enableThirdPartyDDCIntegration) var enableThirdPartyDDCIntegration
-    @Default(.systemHUDSensitivity) var systemHUDSensitivity
     @ObservedObject var coordinator = AnchorViewCoordinator.shared
     @ObservedObject private var accessibilityPermission = AccessibilityPermissionStore.shared
 

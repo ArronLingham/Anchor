@@ -72,6 +72,15 @@ struct Downloads: View {
                     }
                 }
                 .settingsHighlight(id: highlightID("Download indicator style"))
+
+                Picker("Icon", selection: $selectedDownloadIconStyle) {
+                    ForEach(DownloadIconStyle.allCases, id: \.self) { style in
+                        Text(style.rawValue).tag(style)
+                    }
+                }
+                .disabled(!Defaults[.enableDownloadListener])
+                .settingsHighlight(id: highlightID("Icon"))
+                .help("The app icon is the icon of the file being downloaded — this watches the Downloads folder and cannot tell which app started a download.")
             } header: {
                 Text("Download Detection")
             } footer: {
