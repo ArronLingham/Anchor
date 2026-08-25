@@ -45,6 +45,8 @@ struct LockScreenMusicPanel: View {
     @State private var lastDragged: Date = .distantPast
     @State private var isActive = true
     @State private var isExpanded = false
+    /// Presenting the full-screen player. Reached by tapping the artwork.
+    @State private var isImmersive = false
     @State private var isVolumeSliderVisible = false
     @State private var isAirPlayPopoverPresented = false
     @State private var isArtworkFullscreen = false
@@ -92,6 +94,12 @@ struct LockScreenMusicPanel: View {
     }
 
     private var currentSize: CGSize {
+        // Must match the window the manager sizes, or the view is laid out
+        // against one rect and hosted in another.
+        if isImmersive {
+            let screen = LockScreenPanelManager.shared.immersiveSize
+            if screen != .zero { return screen }
+        }
         let base = isExpanded ? Self.expandedSize : collapsedPanelSize
         return CGSize(width: base.width, height: base.height + totalExtraHeight)
     }
@@ -101,7 +109,10 @@ struct LockScreenMusicPanel: View {
     }
 
     private var panelCornerRadius: CGFloat {
-        isExpanded ? expandedPanelCornerRadius : collapsedPanelCornerRadius
+        // Square corners full-screen; a rounded rect inset from the display
+        // edges would show the desktop through the corners.
+        if isImmersive { return 0 }
+        return isExpanded ? expandedPanelCornerRadius : collapsedPanelCornerRadius
     }
 
     private var usesCustomLiquidGlass: Bool {
@@ -149,7 +160,17 @@ struct LockScreenMusicPanel: View {
     
     var body: some View {
         if isActive && musicManager.hasActiveSession {
-            panelContent
+            if isImmersive {
+                // Replaces the panel rather than layering over it: the window is
+                // the full screen in this state, so the panel chrome underneath
+                // would be a rounded card stretched across the whole display.
+                LockScreenImmersivePlayer(onDismiss: { setImmersive(false) })
+                    .frame(width: currentSize.width, height: currentSize.height)
+                    .transition(.opacity)
+                    .onExitCommand { setImmersive(false) }
+            } else {
+                panelContent
+            }
         } else {
             Color.clear
                 .frame(width: collapsedPanelSize.width, height: collapsedPanelSize.height)
@@ -429,7 +450,7 @@ struct LockScreenMusicPanel: View {
         .animation(.easeInOut(duration: 0.2), value: musicManager.isPlaying)
         .animation(.easeInOut(duration: 0.28), value: isArtworkFullscreen)
         .onTapGesture {
-            toggleExpanded()
+            setImmersive(true)
         }
         .onRightClick {
             expandArtworkToFullscreen()
@@ -1102,8 +1123,20 @@ struct LockScreenMusicPanel: View {
         LockScreenPanelManager.shared.updatePanelSize(
             expanded: isExpanded,
             additionalHeight: panelAdditionalHeight(forExpanded: isExpanded),
-            animated: animated
+            animated: animated,
+            immersive: isImmersive
         )
+    }
+
+    /// Enter or leave the full-screen player, resizing the host window to match.
+    private func setImmersive(_ immersive: Bool) {
+        guard immersive != isImmersive else { return }
+        suspendParallaxInteraction()
+        withAnimation(.easeInOut(duration: 0.32)) {
+            isImmersive = immersive
+        }
+        updatePanelSize()
+        logPanelAppearance(event: immersive ? "🖼️ Immersive" : "🖼️ Immersive dismissed")
     }
 
     private var volumeIconName: String {

@@ -40,6 +40,10 @@ class LockScreenPanelManager {
     private let collapsedPanelCornerRadius: CGFloat = 28
     private let expandedPanelCornerRadius: CGFloat = 52
     private(set) var latestFrame: NSRect?
+    /// Whether the panel is currently presenting the full-screen player. The
+    /// relayout paths below re-apply the current size, and without this they
+    /// would collapse it back to a panel on the next screen or lock change.
+    private(set) var isPanelImmersive = false
     private let panelAnimator = LockScreenPanelAnimator()
     private var hideTask: Task<Void, Never>?
     private var screenChangeObserver: NSObjectProtocol?
@@ -181,18 +185,37 @@ class LockScreenPanelManager {
         print("[\(timestamp())] LockScreenPanelManager: panel visible")
     }
 
-    func updatePanelSize(expanded: Bool, additionalHeight: CGFloat = 0, animated: Bool = true) {
+    /// Size the panel window for the size of screen it is on.
+    ///
+    /// Read by the panel view so its SwiftUI frame matches the window it is
+    /// hosted in when immersive.
+    var immersiveSize: CGSize { currentScreen()?.frame.size ?? .zero }
+
+    func updatePanelSize(
+        expanded: Bool,
+        additionalHeight: CGFloat = 0,
+        animated: Bool = true,
+        immersive: Bool = false
+    ) {
         guard let window = panelWindow, let screen = currentScreen() else {
             return
         }
+        isPanelImmersive = immersive
 
         let resizeDuration: CFTimeInterval = 0.28
 
-        let baseSize = expanded ? LockScreenMusicPanel.expandedSize : LockScreenMusicPanel.collapsedSize
-        let targetFrame = targetFrame(
-            for: screen.frame,
-            panelSize: CGSize(width: baseSize.width, height: baseSize.height + additionalHeight)
-        )
+        // Immersive takes the whole screen, so it bypasses the two fixed panel
+        // sizes and the centring in targetFrame(for:panelSize:) entirely.
+        let targetFrame: NSRect
+        if immersive {
+            targetFrame = screen.frame
+        } else {
+            let baseSize = expanded ? LockScreenMusicPanel.expandedSize : LockScreenMusicPanel.collapsedSize
+            targetFrame = self.targetFrame(
+                for: screen.frame,
+                panelSize: CGSize(width: baseSize.width, height: baseSize.height + additionalHeight)
+            )
+        }
 
         if animated {
             NSAnimationContext.runAnimationGroup { context in
@@ -236,7 +259,7 @@ class LockScreenPanelManager {
         collapsedFrame = newCollapsed
 
         guard panelWindow != nil else { return }
-        updatePanelSize(expanded: isPanelExpanded, additionalHeight: currentAdditionalHeight, animated: animated)
+        updatePanelSize(expanded: isPanelExpanded, additionalHeight: currentAdditionalHeight, animated: animated, immersive: isPanelImmersive)
         LockScreenTimerWidgetManager.shared.notifyMusicPanelFrameChanged(animated: animated)
     }
 
@@ -271,7 +294,7 @@ class LockScreenPanelManager {
 
         let screenFrame = screen.frame
         collapsedFrame = collapsedFrame(for: screenFrame)
-        updatePanelSize(expanded: isPanelExpanded, additionalHeight: currentAdditionalHeight, animated: false)
+        updatePanelSize(expanded: isPanelExpanded, additionalHeight: currentAdditionalHeight, animated: false, immersive: isPanelImmersive)
         LockScreenTimerWidgetManager.shared.notifyMusicPanelFrameChanged(animated: false)
 
         print("[\(timestamp())] LockScreenPanelManager: realigned window due to \(reason)")
