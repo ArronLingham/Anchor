@@ -175,20 +175,28 @@ struct CircularHUDView: View {
             return AudioDeviceInfo(isAirPods: false, isHeadphones: false)
         }
         
-        // Get device name
-        var deviceName: CFString = "" as CFString
-        var nameSize = UInt32(MemoryLayout<CFString>.size)
+        // Get device name.
+        //
+        // CoreAudio writes a +1-retained CFStringRef into this buffer, so it
+        // has to be an Unmanaged reference: pointing a raw pointer at a plain
+        // `CFString` var and letting the framework overwrite it is forming a
+        // pointer to an object reference, which the compiler warns about and
+        // which leaks the returned string.
+        var deviceName: Unmanaged<CFString>?
+        var nameSize = UInt32(MemoryLayout<Unmanaged<CFString>?>.size)
         var nameAddress = AudioObjectPropertyAddress(
             mSelector: kAudioDevicePropertyDeviceNameCFString,
             mScope: kAudioObjectPropertyScopeGlobal,
             mElement: kAudioObjectPropertyElementMain
         )
-        
-        guard AudioObjectGetPropertyData(deviceID, &nameAddress, 0, nil, &nameSize, &deviceName) == noErr else {
+
+        guard AudioObjectGetPropertyData(deviceID, &nameAddress, 0, nil, &nameSize, &deviceName) == noErr,
+              let cfName = deviceName?.takeRetainedValue()
+        else {
             return AudioDeviceInfo(isAirPods: false, isHeadphones: false)
         }
-        
-        let name = (deviceName as String).lowercased()
+
+        let name = (cfName as String).lowercased()
         
         // Check for AirPods specifically
         let isAirPods = name.contains("airpod")

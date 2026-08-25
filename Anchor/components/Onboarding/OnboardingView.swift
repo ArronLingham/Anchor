@@ -155,7 +155,10 @@ struct OnboardingView: View {
     }
 
     func requestCalendarPermission() async {
-        await calendarService.requestAccess()
+        // The prompt is the point here. Whether it was granted is read back
+        // from the permission state when the calendar view actually needs it,
+        // so the result is deliberately discarded rather than ignored.
+        _ = await calendarService.requestAccess()
     }
 }
 

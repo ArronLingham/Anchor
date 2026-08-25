@@ -207,7 +207,7 @@ struct MinimalisticMusicPlayerView: View {
             let chars = Array(newText)
 
             animationTask = Task {
-                for (i, c) in chars.enumerated() {
+                for (_, c) in chars.enumerated() {
                     if Task.isCancelled { return }
                     try? await Task.sleep(for: .milliseconds(Int(30 / max(playbackRate, 0.1))))
                     if Task.isCancelled { return }

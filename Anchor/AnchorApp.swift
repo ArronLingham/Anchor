@@ -495,7 +495,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             baseSize.height = min(screenHeight * maxFraction, max(300, screenHeight * maxFraction))
         }
         
-        var result = addShadowPadding(
+        let result = addShadowPadding(
             to: baseSize,
             isMinimalistic: Defaults[.enableMinimalisticUI]
         )
