@@ -160,16 +160,25 @@ struct LockScreenMusicPanel: View {
     
     var body: some View {
         if isActive && musicManager.hasActiveSession {
-            if isImmersive {
-                // Replaces the panel rather than layering over it: the window is
-                // the full screen in this state, so the panel chrome underneath
-                // would be a rounded card stretched across the whole display.
-                LockScreenImmersivePlayer(onDismiss: { setImmersive(false) })
-                    .frame(width: currentSize.width, height: currentSize.height)
-                    .transition(.opacity)
-                    .onExitCommand { setImmersive(false) }
-            } else {
+            ZStack {
+                // panelContent stays mounted and is hidden rather than removed.
+                //
+                // Its .onAppear/.onDisappear own `isActive`, and `body` is gated
+                // on `isActive`. Swapping it out for the immersive player tore
+                // it from the tree, fired .onDisappear, set isActive false, and
+                // the next evaluation of this very branch fell through to
+                // Color.clear — so opening the player made the whole panel
+                // vanish a frame later.
                 panelContent
+                    .opacity(isImmersive ? 0 : 1)
+                    .allowsHitTesting(!isImmersive)
+
+                if isImmersive {
+                    LockScreenImmersivePlayer(onDismiss: { setImmersive(false) })
+                        .frame(width: currentSize.width, height: currentSize.height)
+                        .transition(.opacity)
+                        .onExitCommand { setImmersive(false) }
+                }
             }
         } else {
             Color.clear
@@ -1131,6 +1140,11 @@ struct LockScreenMusicPanel: View {
     /// Enter or leave the full-screen player, resizing the host window to match.
     private func setImmersive(_ immersive: Bool) {
         guard immersive != isImmersive else { return }
+        // The path this replaced, toggleExpanded(), managed this timer. If the
+        // panel was already expanded when the artwork was tapped, a pending
+        // auto-collapse would still fire underneath the player and resize the
+        // window out from under it.
+        if immersive { cancelCollapseTimer() }
         suspendParallaxInteraction()
         withAnimation(.easeInOut(duration: 0.32)) {
             isImmersive = immersive
