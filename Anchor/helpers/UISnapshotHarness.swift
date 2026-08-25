@@ -181,7 +181,7 @@ enum UISnapshotHarness {
         highlight: SettingsHighlightCoordinator,
         viewModel: AnchorViewModel
     ) -> [(name: String, size: CGSize, view: AnyView)] {
-        let size = CGSize(width: 720, height: 1200)
+        let size = CGSize(width: 720, height: 1800)
 
         func pane<V: View>(_ name: String, _ view: V) -> (String, CGSize, AnyView) {
             (name, size, AnyView(

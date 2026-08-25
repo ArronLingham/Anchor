@@ -64,7 +64,11 @@ enum LogCategory: String {
 }
 
 struct Logger {
-    private static let subsystem = "com.ebullioscopic.Atoll"
+    /// Must match the predicate the diagnostic collector uses in
+    /// `AnchorApp.collectDiagnostics`. It did not: this logger published under
+    /// upstream's subsystem while the collector filtered on Anchor's, so the
+    /// app's own log lines were never collected.
+    private static let subsystem = "com.arronlingham.Anchor"
     private static let dateFormatter: ISO8601DateFormatter = {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]

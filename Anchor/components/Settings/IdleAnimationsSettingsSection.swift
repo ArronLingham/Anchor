@@ -130,7 +130,7 @@ struct IdleAnimationsSettingsSection: View {
             }
         } footer: {
             if showNotHumanFace {
-                Text("Choose animation to display when Atoll is idle. Tap to select, hold to delete custom animations.")
+                Text("Choose animation to display when Anchor is idle. Tap to select, hold to delete custom animations.")
             }
         }
         .fileImporter(

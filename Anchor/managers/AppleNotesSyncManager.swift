@@ -31,7 +31,7 @@ enum AppleNotesSyncError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .automationDenied:
-            return String(localized: "Allow Atoll to control Notes in System Settings → Privacy & Security → Automation.")
+            return String(localized: "Allow Anchor to control Notes in System Settings → Privacy & Security → Automation.")
         case .scriptFailed(let message):
             return message
         }
@@ -54,7 +54,14 @@ final class AppleNotesSyncManager: ObservableObject {
     @Published private(set) var isSyncing = false
     @Published private(set) var lastError: String?
 
-    private static let syncFolderName = "Atoll"
+    /// The folder these notes live in inside Notes.app.
+    ///
+    /// Deliberately still "Atoll" after the rename: it names a real folder in
+    /// the user's Apple Notes, and changing it would create a second folder and
+    /// orphan everything already synced. `atollTagPattern` below is the same —
+    /// that marker is embedded in the body of the user's actual notes and is
+    /// how a note is matched back to its record.
+    static let syncFolderName = "Atoll"
     private static let fieldSeparator = "\u{241F}"
     private static let recordSeparator = "\u{241E}"
     private static let atollTagPattern = #"<!--atoll:id=([0-9A-Fa-f-]{36})-->"#

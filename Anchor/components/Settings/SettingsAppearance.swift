@@ -253,8 +253,9 @@ struct Appearance: View {
                 }
                 .settingsHighlight(id: highlightID("Enable colored spectrograms"))
                 Defaults.Toggle(key: .playerColorTinting) {
-                    Text("Enable colored spectograms")
+                    Text("Tint the player with the album art")
                 }
+                .settingsHighlight(id: highlightID("Tint the player with the album art"))
                 Defaults.Toggle(key: .lightingEffect) {
                     Text("Enable blur effect behind album art")
                 }

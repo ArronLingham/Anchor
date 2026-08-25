@@ -71,7 +71,7 @@ struct UpdateErrorView: View {
                 .foregroundStyle(.primary)
 
             // Error message
-            Text(state.errorMessage ?? "An unknown error occurred while updating Atoll.")
+            Text(state.errorMessage ?? "An unknown error occurred while updating Anchor.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
