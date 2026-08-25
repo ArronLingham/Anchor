@@ -30,11 +30,17 @@ struct NotchLyricsView: View {
     @ObservedObject private var musicManager = MusicManager.shared
     @Default(.enableLyrics) private var enableLyrics
 
-    /// Lyrics with no timing are delivered as a single line stamped 0 — a plain
-    /// blob from LRCLIB with no `syncedLyrics`. It is worth showing, but it must
-    /// not pretend to be seekable.
+    /// LRCLIB often has only a plain version of a track. Those lyrics are worth
+    /// reading, but nothing about them is timed: there is no current line to
+    /// highlight and no position to seek to.
+    ///
+    /// Derived from the lines themselves rather than read off
+    /// `MusicManager.lyricsAreSynced`, which is only set on the fetch path — so
+    /// anything that installs lyrics directly, the snapshot harness included,
+    /// would otherwise be rendered as untimed no matter what its stamps say.
+    /// Same rule `applyLyricsToDisplay` uses.
     private var isUnsynced: Bool {
-        musicManager.syncedLyrics.count == 1 && musicManager.syncedLyrics[0].timestamp == 0
+        !musicManager.syncedLyrics.contains { $0.timestamp > 0 }
     }
 
     /// Live streams have no meaningful position to seek to.
@@ -50,6 +56,8 @@ struct NotchLyricsView: View {
                     detail: musicManager.isPlayerIdle
                         ? "Start a track to see its lyrics."
                         : "LRCLIB has nothing for this track.")
+            } else if isUnsynced {
+                unsyncedList
             } else {
                 lyricsList
             }
@@ -75,6 +83,30 @@ struct NotchLyricsView: View {
             .onChange(of: musicManager.currentLyricIndex) { _, index in
                 scroll(proxy, to: index, animated: true)
             }
+        }
+    }
+
+    /// Untimed lyrics: a plain readable sheet. No highlight, because nothing is
+    /// current, and no tap-to-seek, because every line is stamped 0 and tapping
+    /// would jump to the start of the track.
+    private var unsyncedList: some View {
+        ScrollView(.vertical, showsIndicators: false) {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Timing unavailable for this track")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.4))
+                    .padding(.bottom, 2)
+
+                ForEach(musicManager.syncedLyrics) { line in
+                    Text(line.text)
+                        .font(.system(size: 13))
+                        .foregroundStyle(.white.opacity(0.7))
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .padding(.horizontal, 4)
+            .padding(.vertical, 8)
         }
     }
 

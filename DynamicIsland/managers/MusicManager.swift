@@ -509,6 +509,11 @@ class MusicManager: ObservableObject {
     @Published var syncedLyrics: [LyricLine] = []
     @Published var showLyrics: Bool = false
     @Published var currentLyricIndex: Int = -1
+    /// False when the loaded lyrics carry no timing — LRCLIB had only a plain
+    /// version. Nothing can be "current" in that case, so the index stays at -1,
+    /// the one-line surfaces show nothing rather than the whole song, and the
+    /// lyrics tab presents a static sheet.
+    @Published private(set) var lyricsAreSynced: Bool = false
 
     // Task used to periodically sync displayed lyric with playback position
     private var lyricSyncTask: Task<Void, Never>?
@@ -1443,7 +1448,7 @@ class MusicManager: ObservableObject {
                 if !synced.isEmpty {
                     return parseLRC(synced)
                 } else if !plain.isEmpty {
-                    return [LyricLine(timestamp: 0, text: plain)]
+                    return Self.untimedLines(from: plain)
                 } else {
                     return []
                 }
@@ -1469,7 +1474,7 @@ class MusicManager: ObservableObject {
                     }
 
                     // Otherwise treat as plain lyrics blob
-                    return [LyricLine(timestamp: 0, text: trimmed)]
+                    return Self.untimedLines(from: trimmed)
                 }
                 return []
             }
@@ -1548,8 +1553,12 @@ class MusicManager: ObservableObject {
             else if resultAlbum.contains(album) || album.contains(resultAlbum) { score += 2 }
         }
 
+        // Deliberately larger than every text-match bonus combined. A result
+        // with timing is the whole point of the feature, and a +3 bonus let a
+        // plain-only result win on a closer album name — which is how a track
+        // with synced lyrics available still ended up unsynced.
         if !(result["syncedLyrics"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            score += 3
+            score += 100
         }
 
         return score
@@ -1558,9 +1567,18 @@ class MusicManager: ObservableObject {
     private func applyLyricsToDisplay(_ lyrics: [LyricLine]) {
         syncedLyrics = lyrics
         currentLyricIndex = -1
+        lyricsAreSynced = lyrics.contains { $0.timestamp > 0 }
 
         guard !lyrics.isEmpty else {
             currentLyrics = Defaults[.enableLyrics] ? "No lyrics found" : ""
+            stopLyricSync()
+            return
+        }
+
+        // Untimed lyrics have no current line. Showing the first one would sit
+        // there unchanging for the whole track, which reads as broken sync.
+        guard lyricsAreSynced else {
+            currentLyrics = ""
             stopLyricSync()
             return
         }
@@ -1577,6 +1595,20 @@ class MusicManager: ObservableObject {
         } else {
             stopLyricSync()
         }
+    }
+
+    /// Splits an untimed lyrics blob into one entry per line, all stamped 0.
+    ///
+    /// LRCLIB returns plain lyrics as a single string. Handing that back as one
+    /// `LyricLine` meant the entire song became a single "current lyric", so the
+    /// one-line surfaces marqueed the whole thing and the lyrics tab rendered one
+    /// enormous paragraph — which reads exactly like lyrics stuck at the start of
+    /// the song, because that is where the blob begins.
+    static func untimedLines(from text: String) -> [LyricLine] {
+        text.components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+            .map { LyricLine(timestamp: 0, text: $0) }
     }
 
     private func parseLRC(_ lrc: String) -> [LyricLine] {
@@ -1618,7 +1650,7 @@ class MusicManager: ObservableObject {
     }
 
     func updateCurrentLyric(for elapsedTime: TimeInterval) {
-        guard !syncedLyrics.isEmpty else { return }
+        guard !syncedLyrics.isEmpty, lyricsAreSynced else { return }
 
         // Find the current lyric based on elapsed time
         var newIndex = -1
