@@ -178,6 +178,26 @@ meaningless.** Everything below was measured after it:
 | Release 2026-08-24, **live Claude session** (icon cache v1) | 0.35% | 0.00% | 0.49% | 4.30% | 49 MB |
 | Release 2026-08-24, live Claude session, **icon cache v2** | 0.29% | 0.00% | 0.48% | 8.76% | **36 MB** |
 | **Release 2026-08-25, six features added, all off** | **0.100%** | — | — | — | **26 MB** |
+| **Release 2026-08-25, end of the cleanup pass, quiet** | **0.08%** | **0.00%** | 0.48% | 0.48% | **81 MB** |
+
+**The 81 MB in the last row is not a regression, and the 26 MB above it does
+not reproduce.** A same-machine A/B against `7178fbe` — the commit immediately
+before that pass, identical 4-minute settle, both quiet — measured **85.2 MB for
+the baseline and 79.4 MB for the new tip**, with `MALLOC_SMALL` at 56 MB and
+57 MB respectively. The new code is if anything marginally *lower*. So ~80 MB is
+the current steady state of this tree and has been for some time; what the 26 MB
+row measured is unexplained and should not be treated as a target until someone
+reproduces it. RSS was flat across a 70-second watch, so it is an allocation
+profile, not a leak. It is not the launcher icon cache either — that shows up
+under CG image / IOSurface, and those total under 5 MB with the launcher unused.
+
+**The 0.08% row was measured with me doing nothing.** An earlier attempt in the
+same session read **0.56% mean / 0.48% median** and was discarded: the whole
+dead-code sweep ran inside its sampling window, and every tool call writes
+`~/.claude/projects`, which is the one thing that drives the usage watcher's
+FSEvents callback. Sampling this app from a Claude session measures the session
+as much as the app. A third run was thrown away before that for overlapping an
+`xcodebuild`, which CLAUDE.md already warned about — and I did it anyway.
 
 The `e88b20b` row and the last row are a true A/B: same machine, same 120 s
 settle + 240 s sample, 120 samples each, pid verified stable throughout both
@@ -441,7 +461,11 @@ xcodebuild -project Anchor.xcodeproj -scheme Anchor \
 
 - The project hardcodes upstream's team `9Y64TRM77N`; ad-hoc (`-`) signing is required until it's changed. A real `Apple Development: arronlingham@icloud.com (Q4FNFX8QSH)` identity exists and should be used once TCC grants matter.
 - SwiftTerm needs the Metal toolchain (`xcodebuild -downloadComponent MetalToolchain`) — already installed. SwiftTerm is a Phase 1 deletion target, which removes this dependency.
-- Build is clean: 0 errors, 2 warnings.
+- Build is clean: **0 errors, 82 warnings** in a clean Release build (it was
+  94 before this pass; the "2 warnings" recorded here previously was long
+  stale). Most are deprecated `onChange(of:perform:)` and `Text` `+`.
+  **An incremental build reports far fewer — it only recompiles what changed —
+  so only compare clean builds.**
 
 ## Tests
 
