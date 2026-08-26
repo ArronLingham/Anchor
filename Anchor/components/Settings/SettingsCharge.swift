@@ -123,6 +123,16 @@ struct Charge: View {
                 }
 
                 Section {
+                    BatteryHealthView()
+                } header: {
+                    Text("Health")
+                } footer: {
+                    Text("Read from the battery's own registers. Anchor cannot set a charge limit — that needs a privileged helper, which needs a Developer ID certificate this build is not signed with.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+
+                Section {
                     Defaults.Toggle(key: .enableBatteryHistory) {
                         Text("Record battery history")
                     }
