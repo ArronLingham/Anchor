@@ -121,7 +121,13 @@ final class AppleSpeechTranscriber: SpeechTranscribing {
     /// Safe to call from the audio thread: `yield` is thread-safe and preserves
     /// call order, so buffers reach the analyzer in the order they were captured.
     func append(_ buffer: AVAudioPCMBuffer) {
-        continuationLock.withLock { $0?.yield(AnalyzerInput(buffer: buffer)) }
+        continuationLock.withLock { continuation in
+            // yield returns whether the value was enqueued. This stream is
+            // unbounded, so it cannot drop — but the result is discarded
+            // explicitly rather than implicitly, because a silently dropped
+            // buffer here is lost audio in the middle of a dictation.
+            _ = continuation?.yield(AnalyzerInput(buffer: buffer))
+        }
     }
 
     func finish() async throws -> String {

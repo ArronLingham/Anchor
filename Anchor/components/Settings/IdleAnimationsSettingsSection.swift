@@ -40,6 +40,7 @@ struct IdleAnimationsSettingsSection: View {
     @State private var urlInput = ""
     @State private var nameInput = ""
     @State private var selectedForDeletion: CustomIdleAnimation?
+    @State private var deletionError: String?
     @State private var showingDeleteAlert = false
     @State private var importError: String?
     @State private var showingError = false
@@ -130,7 +131,13 @@ struct IdleAnimationsSettingsSection: View {
             }
         } footer: {
             if showNotHumanFace {
-                Text("Choose animation to display when Anchor is idle. Tap to select, hold to delete custom animations.")
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Choose animation to display when Anchor is idle. Tap to select, hold to delete custom animations.")
+                    if let deletionError {
+                        Text(deletionError)
+                            .foregroundStyle(.orange)
+                    }
+                }
             }
         }
         .fileImporter(
@@ -198,8 +205,15 @@ struct IdleAnimationsSettingsSection: View {
         .alert("Delete Animation", isPresented: $showingDeleteAlert) {
             Button("Cancel", role: .cancel) { }
             Button("Delete", role: .destructive) {
+                deletionError = nil
                 if let animation = selectedForDeletion {
-                    IdleAnimationManager.shared.deleteAnimation(animation)
+                    // deleteAnimation reports failure — it refuses built-ins —
+                    // and this alert has nowhere to show that, so a refused
+                    // delete would dismiss as though it had worked. Surfaced
+                    // in the section's error line instead of dropped.
+                    if !IdleAnimationManager.shared.deleteAnimation(animation) {
+                        deletionError = "\(animation.name) could not be deleted."
+                    }
                 }
             }
         } message: {
