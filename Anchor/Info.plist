@@ -8,13 +8,11 @@
 		<true/>
 	</dict>
 	<key>NSAppleMusicUsageDescription</key>
-	<string>Atoll uses Apple Music to fetch animated artwork for the lock screen wallpaper.</string>
+	<string>Anchor uses Apple Music to fetch animated artwork for the lock screen wallpaper.</string>
 	<key>NSAudioCaptureUsageDescription</key>
-	<string>Atoll needs audio capture permission to display the real-time music waveform visualizer.</string>
+	<string>Anchor needs audio capture permission to display the real-time music waveform visualizer.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Anchor uses the microphone for push-to-talk dictation. Audio is transcribed on-device and never leaves your Mac.</string>
-	<key>NSScreenCaptureUsageDescription</key>
-	<string>Atoll needs screen recording permission to capture screenshots for the AI assistant feature.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
 	<string>Anchor transcribes your dictation on-device using Apple's speech recognition.</string>
 	<key>SUAutomaticallyUpdate</key>

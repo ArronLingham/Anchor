@@ -23,6 +23,15 @@ class PrivacyConfigurationTests(unittest.TestCase):
 
         self.assertNotIn("com.apple.security.device.camera", entitlements)
 
+    def test_screen_capture_usage_description_is_not_reintroduced(self):
+        """ScreenAssistant was removed in Phase 1 and nothing captures the
+        screen any more. The usage string outlived it, so the app was still
+        asking for screen recording to run a feature that no longer exists.
+        Adding the key back means something started capturing — check that
+        before deleting this test."""
+        plist = (ROOT / "Anchor" / "Info.plist").read_text()
+        self.assertNotIn("NSScreenCaptureUsageDescription", plist)
+
     def test_resource_access_build_settings_match_the_entitlements(self):
         # ENABLE_RESOURCE_ACCESS_* injects entitlements at build time and
         # silently overrides the .entitlements file. The camera entitlement
@@ -66,7 +75,7 @@ class PrivacyConfigurationTests(unittest.TestCase):
         self.assertEqual(
             2,
             project.count(
-                'INFOPLIST_KEY_NSAppleEventsUsageDescription = "Atoll uses AppleScripts to control Spotify, Apple Music, and Notes.";'
+                'INFOPLIST_KEY_NSAppleEventsUsageDescription = "Anchor uses AppleScripts to control Spotify, Apple Music, and Notes.";'
             ),
         )
 

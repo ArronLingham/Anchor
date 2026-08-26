@@ -378,7 +378,10 @@ GPL headers still credit Atoll and boring.notch, and must keep doing so.
 Changing the bundle id resets TCC grants (unavoidable — they key on identifier
 plus signature) and would have reset ~300 settings; `PreferencesMigration`
 carries the settings over from `com.Ebullioscopic.Atoll` on first launch.
-Old settings are also exported to `~/Desktop/Atoll-settings-backup.plist`.
+`PreferencesMigration` no longer exports a backup to the Desktop — that
+code is gone, and this file claimed otherwise for a while. Nothing in the
+app writes to the Desktop at all, which is why
+`NSDesktopFolderUsageDescription` was removed.
 
 ## Install / signing
 

@@ -600,19 +600,18 @@
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
 				INFOPLIST_KEY_LSUIElement = YES;
 				INFOPLIST_KEY_MetalCaptureEnabled = YES;
-				INFOPLIST_KEY_NSAppleEventsUsageDescription = "Atoll uses AppleScripts to control Spotify, Apple Music, and Notes.";
-				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "Atoll needs Bluetooth access to detect when audio devices connect and display their battery status in the HUD.";
-				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "Show calender events inside the notch";
-				INFOPLIST_KEY_NSCalendarsUsageDescription = "Need for Calendar Mode";
-				INFOPLIST_KEY_NSCameraUsageDescription = "We need your camera for Mirror mode";
-				INFOPLIST_KEY_NSDesktopFolderUsageDescription = "Atoll needs access to save screenshots to your desktop.";
-				INFOPLIST_KEY_NSDocumentsFolderUsageDescription = "Atoll needs access to save and read shelf dragged files.";
-				INFOPLIST_KEY_NSDownloadsFolderUsageDescription = "Atoll needs access to read files in the downloads folder.";
+				INFOPLIST_KEY_NSAppleEventsUsageDescription = "Anchor uses AppleScripts to control Spotify, Apple Music, and Notes.";
+				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "Anchor needs Bluetooth access to detect when audio devices connect and display their battery status in the HUD.";
+				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "Anchor shows your calendar events inside the notch.";
+				INFOPLIST_KEY_NSCalendarsUsageDescription = "Anchor shows your calendar events inside the notch.";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Anchor does not use the camera. ENABLE_RESOURCE_ACCESS_CAMERA is NO and no code requests it.";
+								INFOPLIST_KEY_NSDocumentsFolderUsageDescription = "Anchor needs access to save and read shelf dragged files.";
+				INFOPLIST_KEY_NSDownloadsFolderUsageDescription = "Anchor needs access to read files in the downloads folder.";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
-				INFOPLIST_KEY_NSLocationUsageDescription = "Atoll uses your location to display accurate lock screen weather.";
-				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Atoll uses your location to display accurate lock screen weather.";
-				INFOPLIST_KEY_NSRemindersFullAccessUsageDescription = "Atoll needs Reminders access to show your reminders";
-				INFOPLIST_KEY_NSRemindersUsageDescription = "Atoll needs Reminders access to show your reminders";
+				INFOPLIST_KEY_NSLocationUsageDescription = "Anchor uses your location to display accurate lock screen weather.";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Anchor uses your location to display accurate lock screen weather.";
+				INFOPLIST_KEY_NSRemindersFullAccessUsageDescription = "Anchor needs Reminders access to show your reminders";
+				INFOPLIST_KEY_NSRemindersUsageDescription = "Anchor needs Reminders access to show your reminders";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
@@ -674,19 +673,18 @@
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
 				INFOPLIST_KEY_LSUIElement = YES;
 				INFOPLIST_KEY_MetalCaptureEnabled = YES;
-				INFOPLIST_KEY_NSAppleEventsUsageDescription = "Atoll uses AppleScripts to control Spotify, Apple Music, and Notes.";
-				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "Atoll needs Bluetooth access to detect when audio devices connect and display their battery status in the HUD.";
-				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "Show calender events inside the notch";
-				INFOPLIST_KEY_NSCalendarsUsageDescription = "Need for Calendar Mode";
-				INFOPLIST_KEY_NSCameraUsageDescription = "We need your camera for Mirror mode";
-				INFOPLIST_KEY_NSDesktopFolderUsageDescription = "Atoll needs access to save screenshots to your desktop.";
-				INFOPLIST_KEY_NSDocumentsFolderUsageDescription = "Atoll needs access to save and read shelf dragged files.";
-				INFOPLIST_KEY_NSDownloadsFolderUsageDescription = "Atoll needs access to read files in the downloads folder.";
+				INFOPLIST_KEY_NSAppleEventsUsageDescription = "Anchor uses AppleScripts to control Spotify, Apple Music, and Notes.";
+				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "Anchor needs Bluetooth access to detect when audio devices connect and display their battery status in the HUD.";
+				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "Anchor shows your calendar events inside the notch.";
+				INFOPLIST_KEY_NSCalendarsUsageDescription = "Anchor shows your calendar events inside the notch.";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Anchor does not use the camera. ENABLE_RESOURCE_ACCESS_CAMERA is NO and no code requests it.";
+								INFOPLIST_KEY_NSDocumentsFolderUsageDescription = "Anchor needs access to save and read shelf dragged files.";
+				INFOPLIST_KEY_NSDownloadsFolderUsageDescription = "Anchor needs access to read files in the downloads folder.";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
-				INFOPLIST_KEY_NSLocationUsageDescription = "Atoll uses your location to display accurate lock screen weather.";
-				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Atoll uses your location to display accurate lock screen weather.";
-				INFOPLIST_KEY_NSRemindersFullAccessUsageDescription = "Atoll needs Reminders access to show your reminders";
-				INFOPLIST_KEY_NSRemindersUsageDescription = "Atoll needs Reminders access to show your reminders";
+				INFOPLIST_KEY_NSLocationUsageDescription = "Anchor uses your location to display accurate lock screen weather.";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Anchor uses your location to display accurate lock screen weather.";
+				INFOPLIST_KEY_NSRemindersFullAccessUsageDescription = "Anchor needs Reminders access to show your reminders";
+				INFOPLIST_KEY_NSRemindersUsageDescription = "Anchor needs Reminders access to show your reminders";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
