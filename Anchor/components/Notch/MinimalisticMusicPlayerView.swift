@@ -1050,11 +1050,11 @@ private struct MinimalisticReminderDetailsView: View {
             )
         case .shuffle:
             controlButton(icon: "shuffle", isActive: musicManager.isShuffled) {
-                Task { await musicManager.toggleShuffle() }
+                Task { musicManager.toggleShuffle() }
             }
         case .repeatMode:
             controlButton(icon: repeatIcon, isActive: musicManager.repeatMode != .off, symbolEffect: .replace) {
-                Task { await musicManager.toggleRepeat() }
+                Task { musicManager.toggleRepeat() }
             }
         case .mediaOutput:
             MinimalisticMediaOutputButton()

@@ -177,7 +177,7 @@ final class ReminderLiveActivityManager: ObservableObject {
                 Logger.log("settingsUpdateTask cancelled after sleep", category: .debug)
                 return
             }
-            await self.applyPendingSettingsRecalculation()
+            self.applyPendingSettingsRecalculation()
         }
     }
 
@@ -227,7 +227,7 @@ final class ReminderLiveActivityManager: ObservableObject {
             let delay = UInt64(eventsDebounceInterval * 1_000_000_000)
             try? await Task.sleep(nanoseconds: delay)
             guard !Task.isCancelled else { return }
-            await self.applyPendingEventsSnapshot()
+            self.applyPendingEventsSnapshot()
         }
     }
 

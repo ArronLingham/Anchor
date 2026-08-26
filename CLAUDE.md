@@ -493,9 +493,19 @@ xcodebuild -project Anchor.xcodeproj -scheme Anchor \
 
 - The project hardcodes upstream's team `9Y64TRM77N`; ad-hoc (`-`) signing is required until it's changed. A real `Apple Development: arronlingham@icloud.com (Q4FNFX8QSH)` identity exists and should be used once TCC grants matter.
 - SwiftTerm needs the Metal toolchain (`xcodebuild -downloadComponent MetalToolchain`) — already installed. SwiftTerm is a Phase 1 deletion target, which removes this dependency.
-- Build is clean: **0 errors, 58 warnings** in a clean Release build — 94 at
-  the start of this pass, then 82, 69, now 58. Swift 6 language-mode errors
-  went 5 -> 1 and deprecated `onChange(of:perform:)` 6 -> 0. The "2 warnings" recorded here
+- Build is clean: **0 errors, 37 warnings** in a clean Release build, from 94
+  at the start of this pass (82 → 69 → 58 → 52 → 37). Swift 6 language-mode
+  errors 5 → 1, deprecated `onChange(of:perform:)` 6 → 0, macOS 12 constant
+  renames 10 → 0, redundant `await` 5 → 0, unused results 4 → 1.
+- **Reading the warnings was worth it.** Two of them were live bugs: pinned
+  clipboard items silently breaking on every restart, and the download
+  listener toggle doing nothing until relaunch. Both had been sitting in the
+  build output.
+- The **five non-Sendable capture warnings are deliberately left**. They are
+  Swift 6 annotation friction on callbacks that run *synchronously* —
+  `AVAudioConverter.convert`'s input block, `Timer` blocks, CoreAudio
+  callbacks. None is a real race, and changing isolation in the audio and
+  dictation paths cannot be verified without a microphone and a person. The "2 warnings" recorded here
   previously was long stale. What is left is mostly deprecated
   `onChange(of:perform:)`, `Text` `+`, and main-actor isolation notes.
   **An incremental build reports far fewer — it only recompiles what

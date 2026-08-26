@@ -1797,7 +1797,7 @@ class MusicManager: ObservableObject {
             currentLyrics = "Loading lyrics..."
 
             Task {
-                await fetchLyrics()
+                fetchLyrics()
 
                 // If fetch completed but no lyrics were found, show a friendly message.
                 await MainActor.run {
