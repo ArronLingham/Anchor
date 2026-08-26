@@ -437,3 +437,16 @@ Each is off by default unless noted — turn it on in Settings first.
     cycle count and maximum capacity should match. There is deliberately no
     charge-limit control — that needs a privileged helper this build cannot
     install.
+
+97. **Pinned clipboard items survive a restart.** Enable the clipboard manager,
+    copy a few things, pin one, then quit and relaunch Anchor. The pin must
+    still be there. This was broken: `ClipboardItem.id` was a `let` with an
+    initial value, which Codable encodes but cannot decode, so every launch
+    minted fresh UUIDs — and pinning matches `$0.id == item.id` across two
+    separately-persisted arrays, so the same item ended up with two different
+    ids and never matched.
+98. **Toggling "enable download listener" takes effect immediately.** Turn it
+    off, start a download, confirm no live activity; turn it on, start another,
+    confirm it appears — without restarting Anchor. The Combine subscription
+    watching that setting was discarded at creation, so the toggle previously
+    did nothing until relaunch.

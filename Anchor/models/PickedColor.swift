@@ -22,7 +22,10 @@ import Foundation
 import Defaults
 
 struct PickedColor: Identifiable, Codable, Hashable, Defaults.Serializable {
-    let id = UUID()
+    /// `var` so it decodes. This type is `Hashable` and the id participates,
+    /// so a regenerated one made a stored colour unequal to itself after a
+    /// reload.
+    var id = UUID()
     let red: Double
     let green: Double
     let blue: Double

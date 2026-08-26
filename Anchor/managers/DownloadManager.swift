@@ -17,6 +17,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
+import Combine
 import Foundation
 import SwiftUI
 import Observation
@@ -39,6 +40,11 @@ class DownloadManager {
     private(set) var activeFileIcon: NSImage?
     
     private let coordinator = AnchorViewCoordinator.shared
+    /// Holds the Defaults subscription. Without somewhere to keep the
+    /// AnyCancellable that `sink` returns, the subscription is torn down the
+    /// instant it is created.
+    private var cancellables = Set<AnyCancellable>()
+
     private var source: DispatchSourceFileSystemObject?
     private let queue = DispatchQueue(label: "com.dynamicisland.downloads.monitor", qos: .utility)
     private var completionTimer: Timer?
@@ -59,6 +65,9 @@ class DownloadManager {
             self?.startMonitoringIfNeeded()
         }
         
+        // The AnyCancellable this returns was previously discarded, which
+        // cancels the subscription immediately — so toggling the download
+        // listener in Settings did nothing until the app was restarted.
         Defaults.publisher(.enableDownloadListener)
             .sink { [weak self] _ in
                 guard let self else { return }
@@ -66,6 +75,7 @@ class DownloadManager {
                     self.startMonitoringIfNeeded()
                 }
             }
+            .store(in: &cancellables)
     }
     
     private func startMonitoringIfNeeded() {

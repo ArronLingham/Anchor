@@ -26,7 +26,14 @@ import Defaults
 
 // Clipboard item data structure
 struct ClipboardItem: Identifiable, Codable {
-    let id = UUID()
+    /// `var`, not `let`, so it survives a round trip.
+    ///
+    /// A `let` with an initial value is encoded but never decoded — Swift
+    /// cannot overwrite it — so every launch minted a fresh UUID. Pinning
+    /// matches with `$0.id == item.id` across `clipboardHistory` and
+    /// `pinnedItems`, and both are persisted, so after a restart the same item
+    /// held two different ids in the two arrays and the match never succeeded.
+    var id = UUID()
     let type: ClipboardItemType
     let timestamp: Date
     let preview: String

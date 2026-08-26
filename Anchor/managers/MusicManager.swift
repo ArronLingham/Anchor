@@ -29,7 +29,9 @@ import SwiftUI
 
 // MARK: - Lyric Data Structures
 struct LyricLine: Identifiable, Codable {
-    let id = UUID()
+    /// `var` so it decodes — see the note on `ClipboardItem.id`. A `let` with
+    /// an initial value is encoded and then thrown away on decode.
+    var id = UUID()
     let timestamp: TimeInterval
     let text: String
 
