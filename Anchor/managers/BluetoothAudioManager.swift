@@ -39,7 +39,17 @@ class BluetoothAudioManager: ObservableObject {
     // MARK: - Private Properties
     private var observers: [NSObjectProtocol] = []
     private var cancellables = Set<AnyCancellable>()
-    private let coordinator = AnchorViewCoordinator.shared
+    // `lazy` rather than a stored-property initializer: constructing a
+    // main-actor singleton in a property initializer is the deadlock shape
+    // CLAUDE.md warns about.
+    //
+    // This still warns under Swift 6 — the lazy initializer runs in whichever
+    // context touches it first, and this class is not `@MainActor`. Fixing it
+    // properly means isolating the class, which changes the threading of
+    // everything that talks to IOBluetooth, and none of that can be verified
+    // without physically connecting and disconnecting a device. Left as the
+    // one remaining Swift 6 isolation warning, deliberately.
+    private lazy var coordinator = AnchorViewCoordinator.shared
     private var pollingTimer: Timer?
     private let bluetoothPreferencesSuite = "/Library/Preferences/com.apple.Bluetooth"
     private let batteryReader = BluetoothLEBatteryReader()

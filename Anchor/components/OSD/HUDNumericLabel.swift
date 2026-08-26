@@ -42,7 +42,7 @@ struct HUDNumericLabel: View {
             .onAppear {
                 animatedValue = value
             }
-            .onChange(of: value) { newValue in
+            .onChange(of: value) { _, newValue in
                 withAnimation(animation) {
                     animatedValue = newValue
                 }

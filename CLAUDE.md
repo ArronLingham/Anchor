@@ -493,8 +493,9 @@ xcodebuild -project Anchor.xcodeproj -scheme Anchor \
 
 - The project hardcodes upstream's team `9Y64TRM77N`; ad-hoc (`-`) signing is required until it's changed. A real `Apple Development: arronlingham@icloud.com (Q4FNFX8QSH)` identity exists and should be used once TCC grants matter.
 - SwiftTerm needs the Metal toolchain (`xcodebuild -downloadComponent MetalToolchain`) — already installed. SwiftTerm is a Phase 1 deletion target, which removes this dependency.
-- Build is clean: **0 errors, 69 warnings** in a clean Release build — 94 at
-  the start of this pass, then 82, now 69. The "2 warnings" recorded here
+- Build is clean: **0 errors, 58 warnings** in a clean Release build — 94 at
+  the start of this pass, then 82, 69, now 58. Swift 6 language-mode errors
+  went 5 -> 1 and deprecated `onChange(of:perform:)` 6 -> 0. The "2 warnings" recorded here
   previously was long stale. What is left is mostly deprecated
   `onChange(of:perform:)`, `Text` `+`, and main-actor isolation notes.
   **An incremental build reports far fewer — it only recompiles what

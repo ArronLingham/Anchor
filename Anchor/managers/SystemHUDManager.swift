@@ -339,8 +339,20 @@ class SystemHUDManager {
     
     deinit {
         cancellables.removeAll()
+        // A Task spawned here outlives `deinit`, so calling an instance method
+        // from it references an object that is already gone. Capture the
+        // observer by value instead and make the static call directly — what
+        // actually matters is that enableSystemHUD() runs, because leaving
+        // OSDUIHelper SIGSTOP'd kills the volume and brightness HUD
+        // system-wide until the next launch.
+        //
+        // applicationWillTerminate does this synchronously on a graceful quit;
+        // this is the safety net for any other teardown.
+        let observer = changesObserver
+        changesObserver = nil
         Task { @MainActor in
-            await stopSystemObserver()
+            observer?.stopObserving()
+            SystemOSDManager.enableSystemHUD()
         }
     }
 }

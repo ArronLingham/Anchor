@@ -97,7 +97,7 @@ struct AnchorHeader: View {
                         .popover(isPresented: $showClipboardPopover, arrowEdge: .bottom) {
                             ClipboardPopover()
                         }
-                        .onChange(of: showClipboardPopover) { isActive in
+                        .onChange(of: showClipboardPopover) { _, isActive in
                             vm.isClipboardPopoverActive = isActive
                             
                             // If popover was closed, trigger a hover recheck
@@ -135,7 +135,7 @@ struct AnchorHeader: View {
                         .popover(isPresented: $showTimerPopover, arrowEdge: .bottom) {
                             TimerPopover()
                         }
-                        .onChange(of: showTimerPopover) { isActive in
+                        .onChange(of: showTimerPopover) { _, isActive in
                             vm.isTimerPopoverActive = isActive
                             if !isActive {
                                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
@@ -224,7 +224,7 @@ struct AnchorHeader: View {
         }
         .foregroundColor(.gray)
         .environmentObject(vm)
-        .onChange(of: coordinator.shouldToggleClipboardPopover) { _ in
+        .onChange(of: coordinator.shouldToggleClipboardPopover) { _, _ in
             // Only toggle if clipboard is enabled
             if Defaults[.enableClipboardManager] {
                 switch clipboardDisplayMode {

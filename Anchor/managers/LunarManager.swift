@@ -55,8 +55,12 @@ final class LunarManager: ObservableObject {
     nonisolated static let bundleID = "fyi.lunar.Lunar"
 
     /// UserDefaults suite used by Lunar to store its API key.
-    private static let lunarDomain = "fyi.lunar.Lunar"
-    private static let apiKeyKey = "apiKey"
+    // `nonisolated` because `retrieveAPIKey()` and `writeLunarDefault(hideOSD:)`
+    // are nonisolated so they can run from `deinit`. Both are immutable
+    // strings, so there is nothing to isolate. Without this it is a warning
+    // today and a build error under the Swift 6 language mode.
+    nonisolated private static let lunarDomain = "fyi.lunar.Lunar"
+    nonisolated private static let apiKeyKey = "apiKey"
 
     // MARK: Published state
 
