@@ -255,10 +255,11 @@ final class VerticalHUDWindowManager {
                 context.duration = animationDuration
                 window.nsWindow.animator().alphaValue = 0
             } completionHandler: { [weak self] in
-                // queue: .main / AppKit animation completion both run on the
-                // main thread; assumeIsolated states that and traps if it ever
-                // stops being true, rather than assuming it silently.
-                MainActor.assumeIsolated {
+                // AppKit invokes this on the main thread, but that is convention
+                // rather than a documented contract the way NotificationCenter's
+                // `queue:` is. A deferred hop rather than assumeIsolated, because
+                // a trap here would crash every time this window hides.
+                Task { @MainActor in
                     self?.applyInteractivity(window, visibleOverride: false)
                 }
             }

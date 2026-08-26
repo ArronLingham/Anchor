@@ -523,6 +523,12 @@ xcodebuild -project Anchor.xcodeproj -scheme Anchor \
   **It traps rather than warns if that ever stops holding**, which is the point:
   a violated assumption becomes a crash at the site instead of a data race
   somewhere else.
+  - **Only the thirteen NotificationCenter ones use `assumeIsolated`.** The
+    three `NSAnimationContext` completions use `Task { @MainActor in }` instead.
+    AppKit does invoke them on the main thread, but that is convention rather
+    than a documented contract the way `queue:` is, and these fire every time
+    the music control window, timer window or vertical HUD hides — a trap there
+    would crash a common path. The deferred hop cannot crash.
   - Verified only that the app runs 45 s without trapping. The geometry
     observers fire on display changes, which could not be triggered here without
     altering the user's display settings, so **those paths are unexercised** —
