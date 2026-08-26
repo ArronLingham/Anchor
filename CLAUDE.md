@@ -931,11 +931,26 @@ ungated 3 s Bluetooth poll, and both `/usr/bin/log stream` children. New
 `SystemActivityGate` parks pollers on display sleep / screen lock / Low Power.
 
 Still outstanding:
-- `MusicManager` publishes 27 properties from one object, including `elapsedTime`.
-  `ContentView` never reads it but still re-renders on every tick, because
-  `@ObservedObject` invalidates on the object, not the property. The fix is the
-  `LiveOutput` pattern below (or an `@Observable` migration); deferred because
-  `elapsedTime` alone spans 7 files and the media surface is the most-used one.
+- `MusicManager` publishes 27 properties from one object, including
+  `elapsedTime`, and `@ObservedObject` invalidates on the object rather than the
+  property — so a publish does re-render `ContentView`.
+  **This note used to say that happened "on every tick". It does not, and
+  acting on that would have been a bad trade.** Measured by reading the call
+  path rather than assuming:
+  - Spotify, Apple Music and the MediaRemote `NowPlayingController` are
+    **event-driven**. `updateFromPlaybackState` runs on a controller publish,
+    and `elapsedTime` is only assigned when `timeChanged`. No tick.
+  - YouTube Music prefers a **WebSocket**; the 2 s `updateTimer` is the fallback
+    when that is unavailable, and only while YT Music is the active source.
+  - Progress in the notch is drawn by
+    `TimelineView(.animation(paused: isProgressTimelinePaused))` in
+    `NotchHomeView`, which **interpolates locally** — it does not need a publish
+    per frame.
+
+  So the worst case is a 2 s re-render in one fallback path of one source. The
+  `LiveOutput` split is still the correct shape if this is ever touched, but it
+  is a 7-file change to the most-used surface in the app buying a cost that
+  mostly does not exist. **Do not start it expecting a measurable win.**
   Playback progress itself is already cheap — `TimelineView` interpolates it, and
   the spectrum visualiser is a plain `NSView` driving CALayer animations.
 - `ContentView.swift` still re-renders the whole notch on any manager `@Published`
