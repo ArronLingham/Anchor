@@ -578,6 +578,7 @@ Hold **Cmd+Shift+D**, speak, release → transcript pastes into the focused app.
 | Battery history | `managers/BatteryHistoryManager.swift` | Off by default |
 | Colour picker | `managers/ColorPickerManager.swift` | Cmd+Shift+P |
 | Animation profiles | `animations/drop.swift` | Bouncy / smooth / snappy / instant |
+| Touch ID lock | `managers/BiometricAuthManager.swift` | Off by default |
 
 - **There is no public API for the current Space.** `SpaceIndicatorManager`
   reads SkyLight's `CGSCopyManagedDisplaySpaces`, the same list Mission Control
@@ -597,6 +598,18 @@ Hold **Cmd+Shift+D**, speak, release → transcript pastes into the focused app.
   `models/PickedColor.swift`, which survived Phase 1 and already carries all
   eight output formats — a first pass here defined a second `PickedColor` and
   `ColorFormat` and collided at build time. Check `models/` before adding a type.
+- **`LocalAuthentication` needs no entitlement and no privileged helper.** The
+  match happens in the Secure Enclave and this process only ever sees a yes or
+  no, which is why Touch ID was buildable while charge limiting — also filed
+  under "security" — is not. `BiometricGate` only *calls* its content closure
+  once unlocked, so a gated view is never built; gating with `.opacity` or
+  `.blur` would leave the real text one screenshot away. The clipboard panel is
+  gated before the panel is constructed for the same reason.
+- It evaluates `deviceOwnerAuthentication`, not the biometrics-only policy, so a
+  lid-shut Mac or three failed attempts falls back to the login password rather
+  than locking the user out. If no policy is available at all it **opens** — this
+  is a convenience lock over local UI, not a security boundary.
+
 - **`AnchorAnimations` is not what draws the notch.** It looks like the
   animation owner and carries a TODO saying so, but `ContentView` hardcoded its
   own springs and never read it. Adding a profile there alone would have been

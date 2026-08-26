@@ -396,3 +396,12 @@ Each is off by default unless noted — turn it on in Settings first.
     while a bar is showing; it should follow. Unplug the second monitor with a
     bar visible: that bar should disappear rather than reappear stranded on the
     remaining screen. **This code has never run on two displays.**
+
+94. **Touch ID lock** (Settings → General → Touch ID). Turn on "Lock clipboard
+    history" and "Lock notes". Open the clipboard panel with ⌘⇧C — Touch ID
+    should be asked for **before** the panel appears, not after. Cancel: nothing
+    should open. Open the notes and clipboard tabs in the notch — each shows a
+    lock until unlocked. Within the grace window it should not re-ask; lock the
+    screen and it should ask again. Set "Always ask" and confirm every open
+    prompts. **Also confirm the fallback**: three failed fingerprints should
+    offer your login password rather than locking you out.
