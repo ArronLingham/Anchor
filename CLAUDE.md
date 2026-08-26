@@ -509,6 +509,7 @@ file-system-synchronized groups. Both compile the *real* source files with
 ./tests/run_parser_tests.sh     # 19 cases over the banner wordings
 ./tests/run_watcher_tests.sh    # 7 cases, real FSEventStream over a temp dir
 ./tests/run_launcher_tests.sh   # 25 cases over fuzzy matching and the calculator
+./tests/run_color_tests.sh      # 24 cases over the eight clipboard colour formats
 python3 tests/test_privacy_configuration.py
 ```
 
@@ -518,6 +519,19 @@ that the acronym bonus makes initials win, that `100/3` is decimal rather than
 integer `33`, that the integer rewrite does not split `7.5`, and that `%` is
 refused. `FuzzyMatcher` and `CalculatorAction` are pure and import only
 Foundation, so this harness needs no stub — unlike the watcher tests.
+
+`run_color_tests.sh` checks what the colour picker actually pastes. A wrong
+HSL hue sector is invisible in the swatch — that is drawn from RGB — so it would
+be silently wrong work rather than a visible bug.
+
+**A stub *file* cannot satisfy an `import`.** `LoggerStub.swift` works because
+`Logger` is a type in the same module; `PickedColor` does `import Defaults`, so
+the stub has to be compiled into a module actually named `Defaults`, with
+`-emit-module` **and** `-c -parse-as-library` for an object to link against.
+Without the object you get "protocol descriptor not found"; without
+`-parse-as-library` swiftc treats the lone file as `main.swift` and you get a
+duplicate `_main`. Linking SwiftUI this way warns about `SwiftUICore` not being
+an allowed client — that is only a warning and the binary runs.
 
 **Top-level code only runs in `main.swift`.** Both Swift harnesses put their
 body in a `@main struct` for this reason; a file of bare `check(...)` calls
