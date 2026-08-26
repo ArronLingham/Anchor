@@ -967,9 +967,19 @@ Still outstanding:
   It was worth doing because "never add a polling loop where an event-driven API
   exists" is a project rule and this was the last unconditional poller, not
   because a number moved.
-- `RealTimeWaveformScrubberView` drives a SwiftUI transaction per frame, now at
-  30 Hz rather than 60. It starts on `onAppear`, **not** on hover — the older
-  note here claiming "only while hovering" was wrong.
+- `RealTimeWaveformScrubberView` drives a SwiftUI transaction per frame at
+  30 Hz. **It only runs while the pointer is over the progress bar**, and this
+  file previously said otherwise — "it starts on `onAppear`, not on hover" —
+  while "correcting" an earlier note that had been right. `NotchHomeView` builds
+  it inside `if showScrubber`, and `showScrubber` is
+  `isHovering && enableRealTimeWaveform && enableWaveformScrubber`. A SwiftUI
+  `if` does not construct the view when false, so `onAppear` cannot fire.
+  **Check the call site before trusting a lifecycle claim about a view.**
+- It is now also gated on `musicManager.isPlaying`: hovering a *paused* player
+  animated a flat waveform thirty times a second, which is the same
+  "a loop that no-ops is still a loop" mistake already made once with lyric
+  sync. `startTimer` returns before `AudioTap.acquire()` and `stopTimer` guards
+  on `timer != nil`, so the reference count stays balanced on every path.
 
 **OSD suppression caveat:** only a graceful quit (menu, ⌘Q) runs
 `applicationWillTerminate` and resumes `OSDUIHelper`. A force-quit or crash

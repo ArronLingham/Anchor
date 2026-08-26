@@ -7,6 +7,12 @@ struct RealTimeWaveformScrubberView: View {
     let progress: Double
     let minHeight: CGFloat
     
+    /// Only observed to start and stop the 30 Hz loop. A paused player has a
+    /// flat waveform, and animating a flat waveform thirty times a second is
+    /// the "a loop that no-ops is still a loop" mistake this project has
+    /// already made once, with lyric sync.
+    @ObservedObject private var musicManager = MusicManager.shared
+
     @State private var timer: Timer? = nil
     @State private var magnitudes: [Float] = Array(repeating: 0.1, count: 6)
 
@@ -31,6 +37,9 @@ struct RealTimeWaveformScrubberView: View {
             }
             .clipShape(RoundedRectangle(cornerRadius: minHeight / 2))
         }
+        .onChange(of: musicManager.isPlaying) { _, playing in
+            if playing { startTimer() } else { stopTimer() }
+        }
         .onAppear {
             startTimer()
         }
@@ -41,6 +50,11 @@ struct RealTimeWaveformScrubberView: View {
     
     private func startTimer() {
         guard timer == nil else { return }
+        // Nothing to draw and nothing to tap while playback is stopped. This
+        // view only exists while the pointer is over the progress bar, so the
+        // window is short — but it is still thirty transactions a second over
+        // a flat vector.
+        guard musicManager.isPlaying else { return }
         // Starts the CoreAudio process tap if this is the only consumer on screen.
         AudioTap.shared.acquire()
         // 30 Hz, not 60: each tick runs a full SwiftUI transaction over an
