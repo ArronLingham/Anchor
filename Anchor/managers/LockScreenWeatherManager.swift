@@ -709,7 +709,6 @@ private actor LockScreenWeatherProvider {
         let longitude = String(format: "%.4f", location.coordinate.longitude)
 
         let unit = Defaults[.lockScreenWeatherTemperatureUnit]
-        let usesMetric = unit.usesMetricSystem
         var weatherComponents = URLComponents(string: "https://api.open-meteo.com/v1/forecast")
         var weatherQueryItems: [URLQueryItem] = [
             URLQueryItem(name: "latitude", value: latitude),

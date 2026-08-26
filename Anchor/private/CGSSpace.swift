@@ -52,7 +52,10 @@ public final class CGSSpace {
     }
 
     public init(id: UInt64) {
-        let flag = 0x1 // this value MUST be 1, otherwise, Finder decides to draw desktop icons
+        // `init(level:)` passes a flag of 1 to CGSSpaceCreate — it MUST be 1 or
+        // Finder draws desktop icons on the space. This initializer adopts an
+        // existing space rather than creating one, so it had a copy of that
+        // constant with nothing to pass it to.
         self.identifier = id
         CGSShowSpaces(_CGSDefaultConnection(), [self.identifier])
         self.createdByInit = false // Mark as created externally

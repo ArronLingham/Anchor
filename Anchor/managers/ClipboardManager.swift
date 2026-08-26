@@ -445,7 +445,6 @@ class ClipboardManager: ObservableObject {
         let hasImageData = pasteboard.data(forType: .png) != nil || 
                           pasteboard.data(forType: .tiff) != nil || 
                           pasteboard.data(forType: NSPasteboard.PasteboardType("public.jpeg")) != nil
-        let hasString = pasteboard.string(forType: .string) != nil
         
         // Step 2: Smart detection based on context
         

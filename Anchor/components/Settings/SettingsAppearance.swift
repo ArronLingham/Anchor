@@ -708,7 +708,6 @@ struct Appearance: View {
             let dynamicRange = Double(recommendedMin)...900
             
             let closedRange = Double(80)...400
-            let minimalisticRange = Double(250)...600
 
             let widthBinding = Binding<Double>(
                 get: { Double(openNotchWidth) },

@@ -395,13 +395,24 @@ final class SystemVolumeController {
         }
     }
 
+    // These four take an unconstrained `T`, so the compiler cannot know it is
+    // not a class, and `&data` as a raw pointer warns accordingly. Every caller
+    // passes a CoreAudio POD — Float32, UInt32, AudioObjectID — so going
+    // through `withUnsafe(Mutable)Bytes` says "treat this as raw bytes"
+    // explicitly rather than forming a pointer to a possible object reference.
     private func getData<T>(selector: AudioObjectPropertySelector, data: inout T) -> OSStatus {
         var lastStatus: OSStatus = kAudioHardwareUnspecifiedError
         for element in preferredElements(for: selector) {
             var address = makeAddress(selector: selector, element: element)
             guard propertyExists(deviceID: currentDeviceID, address: &address) else { continue }
             var size = UInt32(MemoryLayout<T>.size)
-            lastStatus = AudioObjectGetPropertyData(currentDeviceID, &address, 0, nil, &size, &data)
+            lastStatus = withUnsafeMutableBytes(of: &data) { buffer in
+                guard let base = buffer.baseAddress else {
+                    return kAudioHardwareUnspecifiedError
+                }
+                return AudioObjectGetPropertyData(
+                    currentDeviceID, &address, 0, nil, &size, base)
+            }
             if lastStatus == noErr {
                 cache(element: element, for: selector)
                 return lastStatus
@@ -416,7 +427,13 @@ final class SystemVolumeController {
             var address = makeAddress(selector: selector, element: element)
             guard propertyExists(deviceID: currentDeviceID, address: &address) else { continue }
             let size = UInt32(MemoryLayout<T>.size)
-            lastStatus = AudioObjectSetPropertyData(currentDeviceID, &address, 0, nil, size, &data)
+            lastStatus = withUnsafeBytes(of: &data) { buffer in
+                guard let base = buffer.baseAddress else {
+                    return kAudioHardwareUnspecifiedError
+                }
+                return AudioObjectSetPropertyData(
+                    currentDeviceID, &address, 0, nil, size, base)
+            }
             if lastStatus == noErr {
                 cache(element: element, for: selector)
                 return lastStatus
@@ -431,7 +448,13 @@ final class SystemVolumeController {
             return kAudioHardwareUnknownPropertyError
         }
         var size = UInt32(MemoryLayout<T>.size)
-        return AudioObjectGetPropertyData(currentDeviceID, &address, 0, nil, &size, &data)
+        return withUnsafeMutableBytes(of: &data) { buffer in
+            guard let base = buffer.baseAddress else {
+                return kAudioHardwareUnspecifiedError
+            }
+            return AudioObjectGetPropertyData(
+                currentDeviceID, &address, 0, nil, &size, base)
+        }
     }
 
     private func setData<T>(selector: AudioObjectPropertySelector, element: AudioObjectPropertyElement, data: inout T) -> OSStatus {
@@ -440,7 +463,13 @@ final class SystemVolumeController {
             return kAudioHardwareUnknownPropertyError
         }
         let size = UInt32(MemoryLayout<T>.size)
-        return AudioObjectSetPropertyData(currentDeviceID, &address, 0, nil, size, &data)
+        return withUnsafeBytes(of: &data) { buffer in
+            guard let base = buffer.baseAddress else {
+                return kAudioHardwareUnspecifiedError
+            }
+            return AudioObjectSetPropertyData(
+                currentDeviceID, &address, 0, nil, size, base)
+        }
     }
 
     private func volumeElements() -> [AudioObjectPropertyElement] {

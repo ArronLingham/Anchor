@@ -159,7 +159,6 @@ struct RulerTimerPicker: View {
     private var rulerArea: some View {
         GeometryReader { geo in
             let width = geo.size.width
-            let mid   = width / 2
 
             ZStack(alignment: .top) {
                 // ── tick marks and labels ──

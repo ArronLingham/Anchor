@@ -493,9 +493,18 @@ xcodebuild -project Anchor.xcodeproj -scheme Anchor \
 
 - The project hardcodes upstream's team `9Y64TRM77N`; ad-hoc (`-`) signing is required until it's changed. A real `Apple Development: arronlingham@icloud.com (Q4FNFX8QSH)` identity exists and should be used once TCC grants matter.
 - SwiftTerm needs the Metal toolchain (`xcodebuild -downloadComponent MetalToolchain`) — already installed. SwiftTerm is a Phase 1 deletion target, which removes this dependency.
-- Build is clean: **0 errors, 82 warnings** in a clean Release build (it was
-  94 before this pass; the "2 warnings" recorded here previously was long
-  stale). Most are deprecated `onChange(of:perform:)` and `Text` `+`.
+- Build is clean: **0 errors, 69 warnings** in a clean Release build — 94 at
+  the start of this pass, then 82, now 69. The "2 warnings" recorded here
+  previously was long stale. What is left is mostly deprecated
+  `onChange(of:perform:)`, `Text` `+`, and main-actor isolation notes.
+  **An incremental build reports far fewer — it only recompiles what
+  changed — so only compare clean builds.**
+- **All four `forming 'UnsafeRawPointer' to a variable of type 'T'` warnings
+  are gone.** They were the ones worth caring about: generic CoreAudio
+  helpers in `SystemMediaControllers` passing `&data` for an unconstrained
+  `T`, plus the two CFString reads. They now go through
+  `withUnsafe(Mutable)Bytes`, which says "raw bytes" explicitly instead of
+  forming a pointer to a possible object reference.
   **An incremental build reports far fewer — it only recompiles what changed —
   so only compare clean builds.**
 

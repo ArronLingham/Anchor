@@ -29,7 +29,10 @@ class IdleAnimationManager {
     
     private init() {
         // Create storage directory in Application Support
-        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        // AppSupportDirectory owns the Anchor/ location and the migration from
+        // the old DynamicIsland/ one. A second URL was computed here with a
+        // force-unwrapped `.first!` and never used — unused, and a crash on any
+        // machine without an Application Support directory.
         storageDirectory = AppSupportDirectory.subdirectory("IdleAnimations")
         
         // Create directory if it doesn't exist
