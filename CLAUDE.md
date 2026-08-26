@@ -188,6 +188,7 @@ meaningless.** Everything below was measured after it:
 | Release 2026-08-24, live Claude session, **icon cache v2** | 0.29% | 0.00% | 0.48% | 8.76% | **36 MB** |
 | **Release 2026-08-25, six features added, all off** | **0.100%** | — | — | — | **26 MB** |
 | **Release 2026-08-25, end of the cleanup pass, quiet** | **0.08%** | **0.00%** | 0.48% | 0.48% | **81 MB** |
+| Release 2026-08-25, + Touch ID and per-display control windows | 0.09% | 0.00% | 0.48% | 0.48% | 80 MB |
 
 **The 81 MB in the last row is not a regression, and the 26 MB above it does
 not reproduce.** A same-machine A/B against `7178fbe` — the commit immediately
