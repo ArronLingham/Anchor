@@ -1,22 +1,25 @@
 # Anchor — manual test plan
 
-## Four things only you can decide
+## Before you start
 
-Everything else in this file is built and ready to test. These four are not
-blocked on more work — they need a decision or your physical presence.
+Camera mirror, battery charge limiting and fan control were dropped and their
+code removed. The Spotify cookie has been rotated. The old commit trailers are
+left alone. Nothing here is waiting on a decision.
 
-| | What | What it needs |
+Worth doing first, because these are the checks I could not run myself:
+
+| | What | Why it needs you |
 |---|---|---|
-| 1 | **Camera mirror** | Your go-ahead, and then about five minutes. `CameraMirrorManager` and `NotchCameraMirrorView` are **built and committed**; all that is missing is a `Defaults.Toggle(key: .enableCameraMirror)` in `SettingsGeneral` and a case wherever the notch should show it. Adding that toggle was refused three times as needing explicit authorization. **No entitlement or test change is needed** — the app is not sandboxed, so `ENABLE_RESOURCE_ACCESS_CAMERA` is inert. macOS TCC (prompt + green light) stays the only real gate. |
-| 2 | **Battery charge limit** | One write attempt, with you at the keyboard. `AppleSMC` opens unprivileged and `CHTE` exists, size 4, writable-flagged, currently `0`. Unknown: whether the kernel permits an unprivileged write. Safe first test is writing its current value back to itself. Not done unattended — it is the battery charge controller and the effect cannot be observed from here. |
-| 3 | **Spotify `sp_dc` cookie** | Rotate it. It was exposed in a `/tmp` PNG earlier in development. Nobody but you can do this. |
-| 4 | **Six `Co-Authored-By` trailers** | Optional. GitHub attributes **nothing** — author, committer and the whole contributor list are you alone on all 81 commits. Cosmetic text in six message bodies; removing it means rewriting pushed history. |
+| 1 | **Multi-display control windows** (item 93) | Needs a second monitor. This code has never run on two screens, and `showOnAllDisplays` is on for your profile, so it goes live the moment you plug one in. |
+| 2 | **Per-app mute** (item 95) | Verified by construction only — a probe could not create a real tap without the audio grant, so the mute has never been *heard* to work. |
+| 3 | **`assumeIsolated` paths** (item 99) | These crash rather than warn if an assumption is wrong. Triggering them means changing display settings, which I would not do to your machine. |
+| 4 | **The two bugs I fixed** (items 97, 98) | Pinned clipboard items surviving a restart, and the download toggle taking effect without one. Both were broken before this pass. |
 
 ---
 
 Each item says **what** you're checking, **how** to do it, and **what correct looks like**. Work top-down; §1–§3 are where real bugs would be.
 
-Current build: `/private/tmp/claude-501/-Users-arronlingham-Anchor/afa47fe6-293c-4cd3-aa73-51fa1a67c979/scratchpad/dd/Build/Products/Debug/Atoll.app`
+Build under test: the installed signed Release at `/Applications/Anchor.app`.
 
 **Before you start** — a fresh profile hides most tabs. `Notes` and `Terminal` default to off and clipboard opens as a panel, so you'll only see **Home + Timer** until you enable the rest in Settings.
 
@@ -26,7 +29,6 @@ Current build: `/private/tmp/claude-501/-Users-arronlingham-Anchor/afa47fe6-293c
 
 | Thing | Why |
 |---|---|
-| Settings → "Enable Camera Detection" does nothing | `CameraMonitor` was removed; nothing sets camera state. Mic half works. |
 | Bluetooth HUD animations don't render | The 8 `.mov` files are unreachable LFS stubs |
 | **⌘F1 / ⌘F2** backlight shortcuts do nothing | Declared but no handler registered — pre-existing |
 | Dead Settings toggles | Stats, Color Picker, Mirror, Screen Assistant, Shelf, Extensions |
@@ -83,7 +85,7 @@ ls ~/Library/Logs/DiagnosticReports/ | grep -i anchor
 ✅ Every app shows its real icon in both views. The first open may show blank tiles briefly while icons render; the second open should be instant, since they're cached to disk.
 
 **2.10 — Newly installed apps appear.** Install or copy any `.app` into `/Applications`, then reopen the panel.
-✅ It's searchable without restarting Atoll.
+✅ It's searchable without restarting Anchor.
 
 **2.11 — It's fast.** Type and delete quickly in the search field.
 ✅ No lag or beachball. Search measures 0.4 ms across 109 apps, so any stutter is a UI bug, not the matcher.
@@ -162,23 +164,23 @@ ls ~/Library/Logs/DiagnosticReports/ | grep -i anchor
 
 I rewrote the OSD suppression from a 150 ms polling loop to an event-driven watcher. This is the most likely thing to be broken.
 
-**4.1 — Atoll's HUD replaces the system one.** Press volume up/down, then brightness, then keyboard backlight.
-✅ You see Atoll's notch HUD. ❌ Seeing macOS's grey square means suppression isn't working.
+**4.1 — Anchor's HUD replaces the system one.** Press volume up/down, then brightness, then keyboard backlight.
+✅ You see Anchor's notch HUD. ❌ Seeing macOS's grey square means suppression isn't working.
 
 **4.2 — Confirm suppression is active.**
 ```bash
 ps -o state= -p $(pgrep -x OSDUIHelper)
 ```
-✅ Prints `T` (stopped). That's Atoll holding the system HUD frozen.
+✅ Prints `T` (stopped). That's Anchor holding the system HUD frozen.
 
 **4.3 — ⚠️ The important one: quit Anchor, then press volume keys.**
-✅ macOS's own HUD comes back. ❌ **No HUD at all** means Atoll left `OSDUIHelper` frozen on exit — you'd have no volume feedback until you reboot. Test this deliberately.
+✅ macOS's own HUD comes back. ❌ **No HUD at all** means Anchor left `OSDUIHelper` frozen on exit — you'd have no volume feedback until you reboot. Test this deliberately.
 
 **4.4 — Toggle it off and on.** Settings → Controls → turn off the system HUD replacement, press volume, turn it back on, press volume.
-✅ Native HUD returns, then Atoll's takes over again.
+✅ Native HUD returns, then Anchor's takes over again.
 
 **4.5 — Survives sleep.** Sleep the display (⌃⇧⏻), wake it, press volume.
-✅ Atoll's HUD still appears.
+✅ Anchor's HUD still appears.
 
 **4.6 — Survives lock.** Lock (⌃⌘Q), unlock, press volume.
 ✅ Same.
@@ -227,7 +229,7 @@ stops when it goes away. Four cases, all need a real look:
 
 **6.6c** The scrubber waveform now redraws at 30 fps instead of 60. ✅ Should
 look the same. If it looks choppy, say so.
-**6.7** Press the media keys (F7/F8/F9). ✅ Atoll handles them.
+**6.7** Press the media keys (F7/F8/F9). ✅ Anchor handles them.
 **6.8** Stop all playback. ✅ Idle animation appears.
 
 ---
@@ -290,7 +292,7 @@ Expect it to be clearly higher than idle — that is correct and intended.
 
 **10.1** Leave it running a full day, then check for crash logs (see 1.2).
 **10.2** Sleep and wake the Mac several times.
-**10.3** Restart; confirm Atoll launches at login.
+**10.3** Restart; confirm Anchor launches at login.
 **10.4** Leave music playing an hour; watch RSS in Activity Monitor for steady growth (a leak).
 
 ---
@@ -367,7 +369,7 @@ will correctly appear to do nothing.
 - Idle animations and shelf contents survived the Application Support move from
   `DynamicIsland/` to `Anchor/`.
 - **Export logs** produces a non-empty archive. It was searching for files named
-  "Atoll" and finding none, since crash logs are named after the product.
+  "Anchor" and finding none, since crash logs are named after the product.
 
 ## Reporting back
 
@@ -434,9 +436,7 @@ Each is off by default unless noted — turn it on in Settings first.
 96. **Battery health** (Settings → Battery → Health). Shows condition, maximum
     capacity, cycle count, capacity in mAh and temperature, read from the
     battery's own registers. Cross-check against System Information → Power:
-    cycle count and maximum capacity should match. There is deliberately no
-    charge-limit control — that needs a privileged helper this build cannot
-    install.
+    cycle count and maximum capacity should match. Read-only; there is no charge-limit control.
 
 97. **Pinned clipboard items survive a restart.** Enable the clipboard manager,
     copy a few things, pin one, then quit and relaunch Anchor. The pin must

@@ -51,10 +51,7 @@ theirs to grant, and none should be built without asking first.
 | Feature | Blocker |
 |---|---|
 | Per-app volume, per-app EQ | Needs a virtual audio driver / HAL plug-in installed to `/Library/Audio/Plug-Ins/HAL` with admin rights. macOS has no public per-process volume API; `AudioHardwareCreateProcessTap` can *observe* a process's audio but not control its level. |
-| Camera mirror | **Implemented but not reachable.** `managers/CameraMirrorManager.swift` and `components/Notch/NotchCameraMirrorView.swift` are complete; there is no Settings toggle, so nothing builds the view. Adding the toggle was refused as needing explicit human authorization. **No entitlement change is required** — this app is not sandboxed (no `com.apple.security.app-sandbox`), so `ENABLE_RESOURCE_ACCESS_CAMERA` is inert and `test_camera_entitlement_is_not_reintroduced` stays green either way. TCC is the real gate and is untouched. |
 | Face ID / proximity unlock | Needs the privileged-helper story settled, and only an *Apple Development* identity exists here — no Developer ID Application. |
-| Battery charge *limit* | **Probably not a helper problem — that earlier claim looks wrong.** See "SMC access" below. Needs one write attempt to settle, which is a write to the battery controller and wants a human present. |
-| Fan control | **Not applicable to this Mac.** `Mac14,2` is a MacBook Air M2 and is fanless: zero `AppleSMCFanControl` nodes, zero fan entries in the `AppleSMC` ioreg tree. There is no fan to control. |
 | Notification mirroring | Full Disk Access. |
 
 ## Licensing
@@ -700,35 +697,12 @@ Hold **Cmd+Shift+D**, speak, release → transcript pastes into the focused app.
   `models/PickedColor.swift`, which survived Phase 1 and already carries all
   eight output formats — a first pass here defined a second `PickedColor` and
   `ColorFormat` and collided at build time. Check `models/` before adding a type.
-### SMC access — measured, and it contradicts what this file used to say
-
-This file claimed SMC writes need a privileged helper signed with a Developer
-ID. A read-only probe says otherwise:
-
-- **`IOServiceOpen` on `AppleSMC` succeeds as the ordinary user.** No root, no
-  helper. Key metadata and values read fine — `#KEY` reports 1631 keys.
-- **`CHTE` is present, size 4, attributes `0xd4`** — which sets the writable
-  bit (`0x40`). It currently reads `00 00 00 00`, i.e. no charge limit set.
-  `ACLC` is also present and writable-flagged.
-- The Intel-era keys are **absent** on this Mac: `CHWA`, `CH0B`, `CH0C`,
-  `CH0I`, `BCLM`. Looking for those and finding nothing is what produced the
-  wrong "needs a helper" conclusion.
-
-**What is still unknown:** whether the AppleSMC user client actually permits a
-*write* selector from an unprivileged process, or only advertises the attribute.
-The only way to find out is to attempt a write to the battery charge
-controller. That was deliberately not done unattended — it is hardware state,
-the effect cannot be observed from here, and a wrong guess about `CHTE`
-semantics changes how the machine charges. **Writing the current value back to
-itself is the safe first test** if someone is at the keyboard.
-
-`utils/SMC.swift` already has the read/write plumbing for this.
-
-- **Battery *health* needs no privileges; only the charge *limit* does.** The
+- **Battery health is read-only and needs no privileges.** The
   `AppleSmartBattery` IORegistry node exposes `CycleCount`, `DesignCapacity`,
   `NominalChargeCapacity`, `Temperature` and `PermanentFailureStatus` to any
   process. `MacBatteryManager.currentHealth()` reads them and
-  `BatteryHealthView` shows them. Verified against this machine: 386 cycles,
+  `BatteryHealthView` shows them. There is deliberately no charge *limit*
+  control — that feature was dropped, and `utils/SMC.swift` with it. Verified against this machine: 386 cycles,
   4077 of 4563 mAh, 89%, 30.0 °C, condition Normal.
   - `Temperature` is in **hundredths of a degree Celsius** — 3004 is 30.04 °C.
     Reading it as Kelvin gives an absurd answer, which is the check that the
@@ -759,8 +733,7 @@ itself is the safe first test** if someone is at the keyboard.
 
 - **`LocalAuthentication` needs no entitlement and no privileged helper.** The
   match happens in the Secure Enclave and this process only ever sees a yes or
-  no, which is why Touch ID was buildable while charge limiting — also filed
-  under "security" — is not. `BiometricGate` only *calls* its content closure
+  no, which is why it needs neither an entitlement nor a helper. `BiometricGate` only *calls* its content closure
   once unlocked, so a gated view is never built; gating with `.opacity` or
   `.blur` would leave the real text one screenshot away. The clipboard panel is
   gated before the panel is constructed for the same reason.
@@ -914,13 +887,13 @@ Three rules these follow, and the next feature should too:
   against paused playback and untimed lyrics for 0.24% of a core. Gate on the
   work existing, not on the feature being on.
 
-**Camera mirror (cat 20) and Face ID (cat 15) are deliberately not built.**
-`ENABLE_RESOURCE_ACCESS_CAMERA = NO` in both build configurations and
-`tests/test_privacy_configuration.py` carries
-`test_camera_entitlement_is_not_reintroduced`. Enabling the camera broadens the
-app's privacy surface and trips a test written to prevent exactly that; it needs
-a decision, not an inference. The same applies to notification mirroring
-(cat 19), which needs Full Disk Access.
+**Camera mirror, battery charge limiting and fan control were dropped at the
+user's request** and their code is gone: `CameraMirrorManager`,
+`NotchCameraMirrorView` and `utils/SMC.swift`. `ENABLE_RESOURCE_ACCESS_CAMERA`
+stays `NO` in both configurations and
+`tests/test_privacy_configuration.py::test_camera_entitlement_is_not_reintroduced`
+still pins it. Fan control was never applicable anyway — `Mac14,2` is a
+MacBook Air M2 and is fanless.
 
 ## Speech API — verified working (Phase 0 spike)
 
