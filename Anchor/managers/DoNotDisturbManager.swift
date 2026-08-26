@@ -46,6 +46,8 @@ final class DoNotDisturbManager: ObservableObject {
     private let assertionsURL = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent("Library/DoNotDisturb/DB/Assertions.json")
     private var pollingSource: DispatchSourceTimer?
+    /// FSEvents watch on the Focus assertions directory. Replaces the timer.
+    private var assertionsStream: FSEventStreamRef?
     private var lastAssertionsModificationDate: Date?
     private var modeCancellable: AnyCancellable?
     /// Periodic task that verifies focus is still active when `isDoNotDisturbActive` is true.
@@ -582,28 +584,84 @@ private extension DoNotDisturbManager {
         }
     }
 
+    /// Watches the Focus assertions file instead of polling it.
+    ///
+    /// This was a 2 s repeating timer doing a `stat()`, and it was the last
+    /// unconditional poller in the app — against a project rule that says never
+    /// add a polling loop where an event-driven API exists. It now waits on
+    /// FSEvents and wakes only when the file actually changes, which on a
+    /// machine whose Focus state is not moving is never.
+    ///
+    /// The **directory** is watched, not the file: `Assertions.json` is
+    /// rewritten atomically, so the inode a file-descriptor watch held would be
+    /// the old one after the first change.
+    ///
+    /// Latency is 0.5 s. `ClaudeTranscriptWatcher` can afford 10 s because a
+    /// usage reset is hours away; a Focus change is on screen, so this
+    /// coalesces bursts without being perceptible.
     func startAssertionsPolling() {
         stopAssertionsPolling()
         lastAssertionsModificationDate = nil
 
-        let timer = DispatchSource.makeTimerSource(queue: pollingQueue)
-        // 1 s of leeway (was 250 ms) so this coalesces with other wakeups instead
-        // of forcing its own. Focus state arriving up to a second later is not
-        // perceptible — the notification path handles anything the user just did,
-        // and this poll only exists to catch changes that arrive without one.
-        timer.schedule(deadline: .now() + .seconds(1), repeating: .seconds(2), leeway: .seconds(1))
-        timer.setEventHandler { [weak self] in
-            // Focus state cannot change in any way the user would see while the
-            // display is asleep or the screen is locked, so skip the stat() —
-            // this is the last poller that ran unconditionally.
-            guard !SystemActivityGate.shared.shouldSuspendBackgroundWork else { return }
-            self?.pollAssertionsState()
+        let directory = assertionsURL.deletingLastPathComponent().path
+
+        var context = FSEventStreamContext(
+            version: 0,
+            info: Unmanaged.passUnretained(self).toOpaque(),
+            retain: nil,
+            release: nil,
+            copyDescription: nil
+        )
+
+        let flags = UInt32(
+            kFSEventStreamCreateFlagFileEvents
+                | kFSEventStreamCreateFlagNoDefer
+                | kFSEventStreamCreateFlagUseCFTypes
+        )
+
+        guard let stream = FSEventStreamCreate(
+            kCFAllocatorDefault,
+            { _, info, _, _, _, _ in
+                guard let info else { return }
+                let manager = Unmanaged<DoNotDisturbManager>
+                    .fromOpaque(info).takeUnretainedValue()
+                // Still gated: a change that lands while the display is asleep
+                // is read when something asks, not on the callback.
+                guard !SystemActivityGate.shared.shouldSuspendBackgroundWork else { return }
+                manager.pollAssertionsState()
+            },
+            &context,
+            [directory] as CFArray,
+            FSEventStreamEventId(kFSEventStreamEventIdSinceNow),
+            0.5,
+            flags
+        ) else {
+            Logger.log(
+                "FSEventStreamCreate failed for \(directory); Focus state will only "
+                    + "follow notifications", category: .error)
+            return
         }
-        timer.resume()
-        pollingSource = timer
+
+        FSEventStreamSetDispatchQueue(stream, pollingQueue)
+        guard FSEventStreamStart(stream) else {
+            FSEventStreamInvalidate(stream)
+            FSEventStreamRelease(stream)
+            Logger.log("FSEventStreamStart failed for \(directory)", category: .error)
+            return
+        }
+        assertionsStream = stream
+
+        // One read at startup, since FSEvents only reports what happens next.
+        pollingQueue.async { [weak self] in self?.pollAssertionsState() }
     }
 
     func stopAssertionsPolling() {
+        if let stream = assertionsStream {
+            FSEventStreamStop(stream)
+            FSEventStreamInvalidate(stream)
+            FSEventStreamRelease(stream)
+        }
+        assertionsStream = nil
         pollingSource?.cancel()
         pollingSource = nil
         lastAssertionsModificationDate = nil

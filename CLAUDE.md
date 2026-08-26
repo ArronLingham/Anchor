@@ -940,10 +940,18 @@ Still outstanding:
   the spectrum visualiser is a plain `NSView` driving CALayer animations.
 - `ContentView.swift` still re-renders the whole notch on any manager `@Published`
   change (12 `ObservableObject` + 40 `@Default` in one 2,161-line view).
-- `DoNotDisturbManager` 2 s assertions poll — mtime-gated and now given 1 s of
-  leeway, so it coalesces. Low priority, but it is a poll where an event-driven
-  API exists: the assertions plist could be watched with FSEvents, the way
-  `ClaudeTranscriptWatcher` watches `~/.claude/projects`.
+- ~~`DoNotDisturbManager` 2 s assertions poll~~ — **done.** It now watches the
+  Focus assertions **directory** with `FSEventStream` at 0.5 s latency and wakes
+  only when the file changes. The directory rather than the file, because
+  `Assertions.json` is rewritten atomically and a descriptor-based watch would
+  hold the old inode after the first change. Verified with a probe: the callback
+  fires on `replaceItemAt` (5 events for 3 replaces — the temp files count too,
+  and the existing mtime guard absorbs the extras).
+  **Do not expect this to show in a CPU measurement.** A gated, mtime-guarded
+  2 s timer was already cheap; the run-to-run spread is wider than the effect.
+  It was worth doing because "never add a polling loop where an event-driven API
+  exists" is a project rule and this was the last unconditional poller, not
+  because a number moved.
 - `RealTimeWaveformScrubberView` drives a SwiftUI transaction per frame, now at
   30 Hz rather than 60. It starts on `onAppear`, **not** on hover — the older
   note here claiming "only while hovering" was wrong.
