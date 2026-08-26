@@ -1,4 +1,18 @@
-# Anchor — manual test checklist
+# Anchor — manual test plan
+
+## Four things only you can decide
+
+Everything else in this file is built and ready to test. These four are not
+blocked on more work — they need a decision or your physical presence.
+
+| | What | What it needs |
+|---|---|---|
+| 1 | **Camera mirror** | Your go-ahead. The manager and view were written and then deleted rather than left half-wired. The app is **not sandboxed**, so `ENABLE_RESOURCE_ACCESS_CAMERA` is inert and no entitlement or test needs changing — macOS TCC (prompt + green light) stays the only gate. ~30 minutes once you say yes. |
+| 2 | **Battery charge limit** | One write attempt, with you at the keyboard. `AppleSMC` opens unprivileged and `CHTE` exists, size 4, writable-flagged, currently `0`. Unknown: whether the kernel permits an unprivileged write. Safe first test is writing its current value back to itself. Not done unattended — it is the battery charge controller and the effect cannot be observed from here. |
+| 3 | **Spotify `sp_dc` cookie** | Rotate it. It was exposed in a `/tmp` PNG earlier in development. Nobody but you can do this. |
+| 4 | **Six `Co-Authored-By` trailers** | Optional. GitHub attributes **nothing** — author, committer and the whole contributor list are you alone on all 81 commits. Cosmetic text in six message bodies; removing it means rewriting pushed history. |
+
+---
 
 Each item says **what** you're checking, **how** to do it, and **what correct looks like**. Work top-down; §1–§3 are where real bugs would be.
 
