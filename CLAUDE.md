@@ -53,7 +53,7 @@ theirs to grant, and none should be built without asking first.
 | Per-app volume, per-app EQ | Needs a virtual audio driver / HAL plug-in installed to `/Library/Audio/Plug-Ins/HAL` with admin rights. macOS has no public per-process volume API; `AudioHardwareCreateProcessTap` can *observe* a process's audio but not control its level. |
 | Camera mirror | `ENABLE_RESOURCE_ACCESS_CAMERA = NO` in both build configurations, and `tests/test_privacy_configuration.py` has `test_camera_entitlement_is_not_reintroduced` pinning it. |
 | Face ID / proximity unlock | Needs the privileged-helper story settled, and only an *Apple Development* identity exists here — no Developer ID Application. |
-| Battery charge *limit* | SMC writes need a privileged helper, which needs a Developer ID Application certificate this build is not signed with. The **read-only** half is built — see Smaller features. |
+| Battery charge *limit* | **Probably not a helper problem — that earlier claim looks wrong.** See "SMC access" below. Needs one write attempt to settle, which is a write to the battery controller and wants a human present. |
 | Fan control | **Not applicable to this Mac.** `Mac14,2` is a MacBook Air M2 and is fanless: zero `AppleSMCFanControl` nodes, zero fan entries in the `AppleSMC` ioreg tree. There is no fan to control. |
 | Notification mirroring | Full Disk Access. |
 
@@ -647,6 +647,30 @@ Hold **Cmd+Shift+D**, speak, release → transcript pastes into the focused app.
   `models/PickedColor.swift`, which survived Phase 1 and already carries all
   eight output formats — a first pass here defined a second `PickedColor` and
   `ColorFormat` and collided at build time. Check `models/` before adding a type.
+### SMC access — measured, and it contradicts what this file used to say
+
+This file claimed SMC writes need a privileged helper signed with a Developer
+ID. A read-only probe says otherwise:
+
+- **`IOServiceOpen` on `AppleSMC` succeeds as the ordinary user.** No root, no
+  helper. Key metadata and values read fine — `#KEY` reports 1631 keys.
+- **`CHTE` is present, size 4, attributes `0xd4`** — which sets the writable
+  bit (`0x40`). It currently reads `00 00 00 00`, i.e. no charge limit set.
+  `ACLC` is also present and writable-flagged.
+- The Intel-era keys are **absent** on this Mac: `CHWA`, `CH0B`, `CH0C`,
+  `CH0I`, `BCLM`. Looking for those and finding nothing is what produced the
+  wrong "needs a helper" conclusion.
+
+**What is still unknown:** whether the AppleSMC user client actually permits a
+*write* selector from an unprivileged process, or only advertises the attribute.
+The only way to find out is to attempt a write to the battery charge
+controller. That was deliberately not done unattended — it is hardware state,
+the effect cannot be observed from here, and a wrong guess about `CHTE`
+semantics changes how the machine charges. **Writing the current value back to
+itself is the safe first test** if someone is at the keyboard.
+
+`utils/SMC.swift` already has the read/write plumbing for this.
+
 - **Battery *health* needs no privileges; only the charge *limit* does.** The
   `AppleSmartBattery` IORegistry node exposes `CycleCount`, `DesignCapacity`,
   `NominalChargeCapacity`, `Temperature` and `PermanentFailureStatus` to any
