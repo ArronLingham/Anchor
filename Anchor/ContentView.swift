@@ -990,9 +990,17 @@ struct ContentView: View {
                               case .timer:
                                   NotchTimerView()
                             case .notes:
-                                NotchNotesView()
+                                BiometricGate(
+                                    surface: "notes",
+                                    reason: "unlock your notes",
+                                    enabled: Defaults[.requireBiometricForNotes]
+                                ) { NotchNotesView() }
                             case .clipboard:
-                                NotchClipboardList()
+                                BiometricGate(
+                                    surface: "clipboard",
+                                    reason: "unlock your clipboard history",
+                                    enabled: Defaults[.requireBiometricForClipboard]
+                                ) { NotchClipboardList() }
                             case .terminal:
                                 NotchTerminalView()
                             case .lyrics:

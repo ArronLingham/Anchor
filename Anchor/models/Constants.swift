@@ -1081,6 +1081,15 @@ extension Defaults.Keys {
     static let lyricsTranslationEnabled = Key<Bool>("lyricsTranslationEnabled", default: false)
 
     // MARK: - Eye break (20-20-20)
+    /// Require Touch ID before revealing clipboard history.
+    static let requireBiometricForClipboard = Key<Bool>("requireBiometricForClipboard", default: false)
+
+    /// Require Touch ID before revealing notes.
+    static let requireBiometricForNotes = Key<Bool>("requireBiometricForNotes", default: false)
+
+    /// How long an unlock lasts before the prompt returns, in seconds.
+    static let biometricGraceSeconds = Key<Int>("biometricGraceSeconds", default: 300)
+
     /// Record battery level over the last 24 hours.
     static let enableBatteryHistory = Key<Bool>("enableBatteryHistory", default: false)
 

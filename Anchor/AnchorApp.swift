@@ -261,6 +261,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     
     @objc func onScreenLocked(_: Notification) {
         print("Screen locked")
+        // Walking away has to re-arm the prompt, or a five-minute grace period
+        // outlives the reason for having one.
+        BiometricAuthManager.shared.relock()
         hideWindowsForLock()
     }
 

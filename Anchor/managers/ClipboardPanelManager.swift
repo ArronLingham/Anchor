@@ -18,6 +18,7 @@
  */
 
 import AppKit
+import Defaults
 import SwiftUI
 
 class ClipboardPanelManager: ObservableObject {
@@ -28,6 +29,22 @@ class ClipboardPanelManager: ObservableObject {
     private init() {}
     
     func showClipboardPanel() {
+        guard Defaults[.requireBiometricForClipboard] else {
+            presentPanel()
+            return
+        }
+        // The gate has to come before the panel is built, not before it is
+        // shown: clipboard history is where copied passwords end up, and a
+        // panel that exists then gets hidden has already rendered them.
+        Task { @MainActor in
+            let granted = await BiometricAuthManager.shared.authenticate(
+                "clipboard", reason: "unlock your clipboard history")
+            guard granted else { return }
+            self.presentPanel()
+        }
+    }
+
+    private func presentPanel() {
         hideClipboardPanel() // Close any existing panel
         
         let panel = ClipboardPanel()

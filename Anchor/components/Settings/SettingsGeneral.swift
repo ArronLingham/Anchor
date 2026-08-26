@@ -65,6 +65,13 @@ struct GeneralSettings: View {
     @Default(.externalDisplayStyle) var externalDisplayStyle
     @Default(.hideNonNotchUntilHover) var hideNonNotchUntilHover
 
+    private var biometricGraceBinding: Binding<Int> {
+        Binding(
+            get: { Defaults[.biometricGraceSeconds] },
+            set: { Defaults[.biometricGraceSeconds] = $0 }
+        )
+    }
+
     private func highlightID(_ title: String) -> String {
         SettingsTab.general.highlightID(for: title)
     }
@@ -98,6 +105,37 @@ struct GeneralSettings: View {
                 Text("UI Mode")
             } footer: {
                 Text("Minimalistic mode focuses on media controls and system HUDs, hiding all extra features for a clean, focused experience. Automatically enables simpler animations.")
+            }
+
+            Section {
+                if BiometricAuthManager.shared.isAvailable {
+                    Defaults.Toggle(key: .requireBiometricForClipboard) {
+                        Text("Lock clipboard history")
+                    }
+                    .settingsHighlight(id: highlightID("Lock clipboard history"))
+
+                    Defaults.Toggle(key: .requireBiometricForNotes) {
+                        Text("Lock notes")
+                    }
+                    .settingsHighlight(id: highlightID("Lock notes"))
+
+                    Picker("Stay unlocked for", selection: biometricGraceBinding) {
+                        Text("1 minute").tag(60)
+                        Text("5 minutes").tag(300)
+                        Text("15 minutes").tag(900)
+                        Text("Always ask").tag(0)
+                    }
+                    .settingsHighlight(id: highlightID("Stay unlocked for"))
+                } else {
+                    Text("This Mac has no enrolled biometrics.")
+                        .foregroundStyle(.secondary)
+                }
+            } header: {
+                Text(BiometricAuthManager.shared.biometryName)
+            } footer: {
+                Text("Asks before revealing clipboard history or notes, and again after the screen sleeps. Falls back to your login password if the sensor is unavailable. This is a convenience lock over the notch UI — it does not encrypt anything on disk.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
             }
 
             Section {
