@@ -191,6 +191,7 @@ meaningless.** Everything below was measured after it:
 | **Release 2026-08-25, end of the cleanup pass, quiet** | **0.08%** | **0.00%** | 0.48% | 0.48% | **81 MB** |
 | Release 2026-08-25, + Touch ID and per-display control windows | 0.09% | 0.00% | 0.48% | 0.48% | 80 MB (unsettled) |
 | **Release 2026-08-25, fully settled (12+ min), two runs** | **0.30% / 0.35%** | 0.47% | 0.48% | 0.48% | **18.9 / 19.1 MB** |
+| **Release 2026-08-25, end of session, quiet machine** | **0.03%** | **0.00%** | **0.00%** | 0.48% | **21.6 MB** |
 
 **RSS needs ~12 minutes to settle, not 5, and every reading above taken at a
 5-minute settle is of an app that had not finished settling.** Watched on one
@@ -208,6 +209,18 @@ believing any RSS figure.**
 
 Not a leak, and not the launcher icon cache — that shows up under CG image /
 IOSurface, which total under 5 MB with the launcher unused.
+
+**The last row is the honest idle figure, and it invalidates the "0.33% floor"
+claim above it.** 87 samples with **median and p90 both 0.00** and RSS flat to
+0.2 MB — a far cleaner signature than the 0.30/0.35 rows, whose medians were
+0.47. Those were taken shortly after builds; this one had a quiet seven-minute
+settle with nothing else running. Lifetime cputime agrees: 1.70 s over 13
+minutes.
+
+So the earlier attribution of a floor to `__proc_info` was over-stated. `ps`
+observing the process does cost something, but it is not a 0.3% floor — with the
+machine actually quiet this app is at **0.03%**, and p90 of 0.00 means it is
+doing nothing at all in the overwhelming majority of samples.
 
 **The same build measured 0.09%, 0.53%, 0.30% and 0.35% in one afternoon, with
 every thread parked in all four.** The spread between runs is larger than most
