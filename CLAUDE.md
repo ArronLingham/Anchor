@@ -508,8 +508,20 @@ file-system-synchronized groups. Both compile the *real* source files with
 ```bash
 ./tests/run_parser_tests.sh     # 19 cases over the banner wordings
 ./tests/run_watcher_tests.sh    # 7 cases, real FSEventStream over a temp dir
+./tests/run_launcher_tests.sh   # 25 cases over fuzzy matching and the calculator
 python3 tests/test_privacy_configuration.py
 ```
+
+`run_launcher_tests.sh` pins the behaviours this file records as having been
+wrong: that `ss` ranks *System Settings* above *Chess* (the greedy-vs-DP bug),
+that the acronym bonus makes initials win, that `100/3` is decimal rather than
+integer `33`, that the integer rewrite does not split `7.5`, and that `%` is
+refused. `FuzzyMatcher` and `CalculatorAction` are pure and import only
+Foundation, so this harness needs no stub — unlike the watcher tests.
+
+**Top-level code only runs in `main.swift`.** Both Swift harnesses put their
+body in a `@main struct` for this reason; a file of bare `check(...)` calls
+fails to compile with "expressions are not allowed at the top level".
 
 `tests/support/LoggerStub.swift` stands in for `utils/Logger.swift`, which drags
 in SwiftUI and the `Defaults` package for a log level the tests do not need.
