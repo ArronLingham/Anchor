@@ -1009,6 +1009,8 @@ struct ContentView: View {
                                 NotchShelfView()
                             case .stats:
                                 NotchStatsView()
+                            case .notifications:
+                                NotchNotificationsView()
                           }
                       }
                       .id(coordinator.currentView)

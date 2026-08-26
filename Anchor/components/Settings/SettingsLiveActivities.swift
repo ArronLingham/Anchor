@@ -101,6 +101,28 @@ struct LiveActivitiesSettings: View {
                     )
                 }
 
+                Defaults.Toggle(key: .enableNotificationMirroring) {
+                    Text("Mirror notifications")
+                }
+                .help("Shows macOS notifications in the notch as they arrive. Reads Apple's notification database, which is why it needs Full Disk Access — there is no public API for another app's notifications.")
+
+                if Defaults[.enableNotificationMirroring],
+                   NotificationMirrorManager.shared.state == .needsPermission
+                {
+                    HStack(spacing: 8) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundStyle(.orange)
+                        Text("Full Disk Access not granted — nothing will be mirrored.")
+                            .font(.caption)
+                        Spacer()
+                        Button("Re-check") {
+                            NotificationMirrorManager.shared.recheckPermission()
+                        }
+                        .buttonStyle(.link)
+                        .font(.caption)
+                    }
+                }
+
                 Defaults.Toggle(key: .enableDoNotDisturbDetection) {
                     Text("Enable Focus Detection")
                 }

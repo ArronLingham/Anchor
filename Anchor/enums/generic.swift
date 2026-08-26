@@ -80,6 +80,7 @@ public enum NotchViews {
     case lyrics
     case shelf
     case stats
+    case notifications
 }
 
 enum NotesLayoutState: Equatable {

@@ -747,6 +747,47 @@ Hold **Cmd+Shift+D**, speak, release → transcript pastes into the focused app.
   own springs and never read it. Adding a profile there alone would have been
   another dead switch; `activeNotchStateAnimation` reads the profile now.
 
+## Notification mirroring
+
+Mirrors macOS notifications into the notch. Off by default; **needs Full Disk
+Access**, which is why it is opt-in and the Settings row says what that costs.
+
+There is no public API for another app's notifications — `UNUserNotificationCenter`
+only ever reports your own. The only record is Apple's private store at
+`~/Library/Group Containers/group.com.apple.usernoted/db2/db`.
+
+- **Schema**, verified against the live database: `record(rec_id, app_id, uuid,
+  data, request_date, delivered_date, presented, style, ...)` joined to
+  `app(app_id, identifier)`. `data` is a `bplist00` whose `req` dictionary holds
+  four-character keys — `titl`, `subt`, `body`. All 13 records on this machine
+  parsed; rows without a title are the system's bookkeeping entries and are
+  skipped. `delivered_date` is seconds since 2001.
+- Opened **`SQLITE_OPEN_READONLY`**. This is the system's own notification store
+  and nothing here has any business writing to it.
+- **FSEvents does not work for this path, and that was measured, not assumed.**
+  A notification arrived, the record landed, `db-wal`'s mtime moved — and the
+  stream fired **zero** times. Group Containers appear not to be reported to an
+  unprivileged watcher. A kqueue `DispatchSource` on `db-wal` sees the same
+  commit as five `write`/`extend` events, so that is what it uses. The WAL,
+  because SQLite is in WAL mode and commits land there before folding into `db`.
+- **`db-wal`, not `db.wal`.** SQLite appends a *hyphenated* suffix, so
+  `appendingPathExtension("wal")` yields a file that does not exist and opens as
+  fd -1. That bug shipped in the first version and was caught only by tracing
+  the real app.
+- The watch re-arms on `.delete`/`.rename`/`.revoke`, because a checkpoint
+  replaces the WAL and invalidates the descriptor.
+- **Only counts and bundle ids are logged, never titles or bodies.** The point
+  of mirroring someone's notifications is that they stay theirs.
+
+### TCC grants bind to the code signature, not the bundle id
+
+**An ad-hoc signed Debug build does not inherit Full Disk Access**, even though
+`com.arronlingham.Anchor.dev` is listed as allowed in TCC. Traced directly:
+`isReadableFile` returned **false** under `CODE_SIGN_IDENTITY=-` and **true** in
+the same code signed with the Apple Development identity. Anything gated on FDA
+— this feature, the Focus assertions read — can only be tested in a **signed**
+build. Testing it in Debug will look like a broken feature.
+
 ## Claude usage watcher (Phase 4)
 
 Detects when a Claude Code session hits its usage limit, counts down to the

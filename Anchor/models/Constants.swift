@@ -1084,6 +1084,9 @@ extension Defaults.Keys {
     /// Per-app mute in the media controls.
     static let enablePerAppAudio = Key<Bool>("enablePerAppAudio", default: false)
 
+    /// Mirror macOS notifications into the notch. Needs Full Disk Access.
+    static let enableNotificationMirroring = Key<Bool>("enableNotificationMirroring", default: false)
+
     /// Require Touch ID before revealing clipboard history.
     static let requireBiometricForClipboard = Key<Bool>("requireBiometricForClipboard", default: false)
 

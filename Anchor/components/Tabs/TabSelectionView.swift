@@ -78,6 +78,9 @@ struct TabSelectionView: View {
         if Defaults[.enableSystemStats] {
             tabsArray.append(TabModel(label: "Stats", icon: "chart.line.uptrend.xyaxis", view: .stats))
         }
+        if Defaults[.enableNotificationMirroring] {
+            tabsArray.append(TabModel(label: "Alerts", icon: "bell.badge", view: .notifications))
+        }
         return tabsArray
     }
     var body: some View {

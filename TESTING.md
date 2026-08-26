@@ -460,3 +460,14 @@ Each is off by default unless noted — turn it on in Settings first.
     lock and unlock; let the music control window animate closed; let a
     vertical HUD fade out. A crash log naming `assumeIsolated` means one of the
     sixteen was wrong and should be reverted to `Task { @MainActor in ... }`.
+
+100. **Notification mirroring** (Settings → Live Activities → Mirror
+     notifications). Needs Full Disk Access for Anchor — already granted. Turn
+     it on; an "Alerts" tab appears in the notch. Trigger a notification (send
+     yourself an iMessage, or run
+     `osascript -e 'display notification "x" with title "y"'`) and it should
+     appear in that tab within about a second, with the sending app's icon.
+     Verified working end to end on a signed build: the kqueue watch armed, the
+     commit fired it, and the record parsed. **It will look broken in a Debug
+     build** — TCC grants bind to the code signature, so an ad-hoc signed build
+     reports the database as unreadable.

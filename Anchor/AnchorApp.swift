@@ -717,6 +717,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             _ = LyricsTranslator.shared
             _ = SpaceIndicatorManager.shared
             _ = BatteryHistoryManager.shared
+            _ = NotificationMirrorManager.shared
         }
 
         ReminderLiveActivityManager.shared.$activeWindowReminders
