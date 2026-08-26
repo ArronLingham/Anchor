@@ -53,7 +53,8 @@ theirs to grant, and none should be built without asking first.
 | Per-app volume, per-app EQ | Needs a virtual audio driver / HAL plug-in installed to `/Library/Audio/Plug-Ins/HAL` with admin rights. macOS has no public per-process volume API; `AudioHardwareCreateProcessTap` can *observe* a process's audio but not control its level. |
 | Camera mirror | `ENABLE_RESOURCE_ACCESS_CAMERA = NO` in both build configurations, and `tests/test_privacy_configuration.py` has `test_camera_entitlement_is_not_reintroduced` pinning it. |
 | Face ID / proximity unlock | Needs the privileged-helper story settled, and only an *Apple Development* identity exists here — no Developer ID Application. |
-| Battery charge limit, fan control | Same privileged helper (SMC writes). |
+| Battery charge *limit* | SMC writes need a privileged helper, which needs a Developer ID Application certificate this build is not signed with. The **read-only** half is built — see Smaller features. |
+| Fan control | **Not applicable to this Mac.** `Mac14,2` is a MacBook Air M2 and is fanless: zero `AppleSMCFanControl` nodes, zero fan entries in the `AppleSMC` ioreg tree. There is no fan to control. |
 | Notification mirroring | Full Disk Access. |
 
 ## Licensing
@@ -646,6 +647,21 @@ Hold **Cmd+Shift+D**, speak, release → transcript pastes into the focused app.
   `models/PickedColor.swift`, which survived Phase 1 and already carries all
   eight output formats — a first pass here defined a second `PickedColor` and
   `ColorFormat` and collided at build time. Check `models/` before adding a type.
+- **Battery *health* needs no privileges; only the charge *limit* does.** The
+  `AppleSmartBattery` IORegistry node exposes `CycleCount`, `DesignCapacity`,
+  `NominalChargeCapacity`, `Temperature` and `PermanentFailureStatus` to any
+  process. `MacBatteryManager.currentHealth()` reads them and
+  `BatteryHealthView` shows them. Verified against this machine: 386 cycles,
+  4077 of 4563 mAh, 89%, 30.0 °C, condition Normal.
+  - `Temperature` is in **hundredths of a degree Celsius** — 3004 is 30.04 °C.
+    Reading it as Kelvin gives an absurd answer, which is the check that the
+    scale is right.
+  - `NominalChargeCapacity` is what System Information calls maximum capacity.
+    `AppleRawMaxCapacity` is the pre-calibration figure and reads lower; it is
+    the fallback only.
+  - Read on appear, never polled. Cycle count moves a few times a week and
+    capacity a few times a year.
+
 - **`AudioHardwareCreateProcessTap` returns `noErr` with an invalid tap ID when
   the caller lacks the audio-capture grant.** A standalone probe got status 0
   and `tapID == kAudioObjectUnknown` for both itself and Spotify. Status alone

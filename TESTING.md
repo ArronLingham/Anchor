@@ -416,3 +416,10 @@ Each is off by default unless noted — turn it on in Settings first.
     the tap with the process. **This is the one feature verified only by
     construction**: a standalone probe could not create a real tap (no audio TCC
     grant), so the mute has never actually been heard to work.
+
+96. **Battery health** (Settings → Battery → Health). Shows condition, maximum
+    capacity, cycle count, capacity in mAh and temperature, read from the
+    battery's own registers. Cross-check against System Information → Power:
+    cycle count and maximum capacity should match. There is deliberately no
+    charge-limit control — that needs a privileged helper this build cannot
+    install.
