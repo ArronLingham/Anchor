@@ -113,19 +113,28 @@ do not let that graph follow it in.
   `windows: [NSScreen: NSWindow]` and `viewModels[screen]`, and with
   `showOnAllDisplays` it builds one window, view model and `ContentView` for each.
   Anything held in that view's `@State` therefore exists N times.
-  - **Known bug, not introduced by the refactor:** N `MusicControlWindowController`
-    instances drive the single `MusicControlWindowManager.shared`, each with its
-    own suppression counter and pending-sync queue. `ensureWindow(on:)` returns
-    the existing panel whatever screen it is handed, so `present()` just drags
-    the one window onto whichever notch synced last, and a `hide()` from one
-    screen tears down the window another screen still wants — leaving that one's
-    `isWindowVisible` stale-true so it will not re-present.
-  - **Decided: give every display its own control window** (a per-screen
-    `MusicControlWindowManager`, not one shared panel). Deferred — it cannot be
-    tested without a second display. **If anything odd turns up around the
-    floating control window, raise this first.** Dormant on a single display.
-    Note `showOnAllDisplays` defaults to false but is *on* for this user, so the
-    multi-display paths are live for them the moment a monitor is attached.
+  - **Fixed: every display now has its own control window.**
+    `MusicControlWindowManager` was one shared instance that all N
+    `MusicControlWindowController`s drove. `ensureWindow(on:)` returned the
+    existing panel whatever screen it was handed, so `present()` dragged the one
+    window onto whichever notch synced last, and a `hide()` from one screen tore
+    down a window another screen still wanted — leaving that one's
+    `isWindowVisible` stale-true so it would never re-present.
+    `MusicControlWindowManager.manager(for:)` now returns one instance per
+    display, keyed by `NSScreen.localizedName`; `hideAll()` covers quit and
+    switching the feature off, and `pruneDetachedScreens()` runs on
+    `didChangeScreenParametersNotification` so a manager cannot outlive its
+    display holding a panel positioned off every remaining screen.
+  - The controller records `boundScreen` when it presents rather than resolving
+    the screen from its weak view model at hide time — otherwise a hide can land
+    on a different display's panel, which is the whole bug. It also handles the
+    notch moving between displays mid-present by tearing the old panel down and
+    presenting on the new one.
+  - **Still untested on real hardware — this was written without a second
+    display.** Verified only that it builds, launches and behaves unchanged on
+    one screen. `showOnAllDisplays` defaults to false but is *on* for this user,
+    so these paths go live the moment a monitor is attached. Check it first if
+    anything odd shows up around the floating control window.
 - **Settings panes are one file each** under `components/Settings/`.
   `SettingsView.swift` is now the shell — the two tab enums,
   `SettingsHighlightCoordinator`, the search/highlight plumbing, `SettingsForm`

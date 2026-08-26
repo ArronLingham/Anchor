@@ -36,9 +36,16 @@ import Foundation
 /// is deliberately not a singleton: with `showOnAllDisplays` there is a window,
 /// a view model and a `ContentView` per screen, so making this shared would
 /// silently collapse N state machines into one and change behaviour under cover
-/// of a refactor. It does mean the pre-existing conflict is preserved — N
-/// controllers still drive the single `MusicControlWindowManager.shared`, each
-/// with its own suppression counter. That is a real bug, and a separate one.
+/// of a refactor.
+///
+/// `MusicControlWindowManager` is now per-display too. It used to be a single
+/// shared instance that all N controllers drove, so presenting dragged the one
+/// panel onto whichever notch synced last, and a hide from one screen tore down
+/// a window another screen still wanted — leaving that screen believing its
+/// window was up and refusing to re-present. Each controller now talks to the
+/// manager for the display it presented on, tracked in `boundScreen` rather
+/// than resolved from the weak view model, so a hide always lands on the panel
+/// it opened.
 @MainActor
 final class MusicControlWindowController {
 
@@ -63,6 +70,13 @@ final class MusicControlWindowController {
     private let resumeDelay: TimeInterval = 0.24
 
     private weak var viewModel: AnchorViewModel?
+
+    /// The display this controller presented on, remembered so `hide()` tears
+    /// down the panel it actually opened. `viewModel` is weak and the screen
+    /// can change under us; resolving it lazily would let a hide land on
+    /// another display's window, which is the bug this per-screen split exists
+    /// to fix.
+    private var boundScreen: String?
     private var chrome = Chrome()
 
     private var isWindowVisible = false
@@ -246,8 +260,9 @@ final class MusicControlWindowController {
 
     func hide() {
         guard isWindowVisible else { return }
-        MusicControlWindowManager.shared.hide()
+        MusicControlWindowManager.manager(for: boundScreen).hide()
         isWindowVisible = false
+        boundScreen = nil
     }
 
     // MARK: - Internals
@@ -401,12 +416,26 @@ final class MusicControlWindowController {
         }
 
         if !isWindowVisible {
-            isWindowVisible = MusicControlWindowManager.shared.present(
+            let screen = viewModel.screen
+            isWindowVisible = MusicControlWindowManager.manager(for: screen).present(
                 using: viewModel, metrics: metrics)
+            boundScreen = isWindowVisible ? screen : nil
         } else if forceRefresh {
-            if !MusicControlWindowManager.shared.refresh(using: viewModel, metrics: metrics) {
-                MusicControlWindowManager.shared.hide()
+            // The notch can move between displays while the panel is up. Follow
+            // it by tearing the old panel down rather than refreshing a window
+            // that now belongs to a different screen.
+            if boundScreen != viewModel.screen {
+                MusicControlWindowManager.manager(for: boundScreen).hide()
+                let screen = viewModel.screen
+                isWindowVisible = MusicControlWindowManager.manager(for: screen).present(
+                    using: viewModel, metrics: metrics)
+                boundScreen = isWindowVisible ? screen : nil
+            } else if !MusicControlWindowManager.manager(for: boundScreen)
+                .refresh(using: viewModel, metrics: metrics)
+            {
+                MusicControlWindowManager.manager(for: boundScreen).hide()
                 isWindowVisible = false
+                boundScreen = nil
             }
         }
     }

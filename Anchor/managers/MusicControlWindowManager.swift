@@ -33,7 +33,41 @@ struct MusicControlWindowMetrics: Equatable {
 
 @MainActor
 final class MusicControlWindowManager {
-    static let shared = MusicControlWindowManager()
+    /// One manager, and therefore one panel, per display.
+    ///
+    /// This was a single shared instance, which broke as soon as
+    /// `showOnAllDisplays` was on: `ContentView` is built once per screen, so N
+    /// controllers drove one manager. `ensureWindow(on:)` returned the existing
+    /// panel whatever screen it was handed, so presenting just dragged the one
+    /// window onto whichever notch synced last, and a `hide()` from one screen
+    /// tore down a window another screen still wanted — leaving that screen's
+    /// `isWindowVisible` stale-true so it would never re-present.
+    private static var managers: [String: MusicControlWindowManager] = [:]
+
+    /// Keyed by `NSScreen.localizedName`, which is what `AnchorViewModel.screen`
+    /// holds and what the rest of the app identifies displays by.
+    static func manager(for screenName: String?) -> MusicControlWindowManager {
+        let key = screenName ?? NSScreen.main?.localizedName ?? ""
+        if let existing = managers[key] { return existing }
+        let created = MusicControlWindowManager()
+        managers[key] = created
+        return created
+    }
+
+    /// Every display's panel. Used on quit and when the feature is switched off.
+    static func hideAll() {
+        for manager in managers.values { manager.hide() }
+    }
+
+    /// Tears down panels for displays that are no longer attached, so a manager
+    /// does not outlive its screen holding a panel positioned off any display.
+    static func pruneDetachedScreens() {
+        let attached = Set(NSScreen.screens.map(\.localizedName))
+        for (key, manager) in managers where !attached.contains(key) {
+            manager.hide(animated: false)
+            managers.removeValue(forKey: key)
+        }
+    }
 
     private var window: NSPanel?
     private var hostingView: NSHostingView<MusicControlOverlay>?

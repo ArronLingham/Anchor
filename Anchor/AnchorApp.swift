@@ -1324,6 +1324,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     @objc func screenConfigurationDidChange() {
         let currentScreens = NSScreen.screens
 
+        // A music control panel belongs to one display. When that display goes
+        // away its manager would otherwise keep a panel positioned off every
+        // remaining screen.
+        MusicControlWindowManager.pruneDetachedScreens()
+
         let screensChanged =
             currentScreens.count != previousScreens?.count
             || Set(currentScreens.map { $0.localizedName })
@@ -1568,7 +1573,7 @@ final class MediaControlsStateCoordinator {
             Defaults[.musicControlWindowEnabled] = false
         }
 
-        MusicControlWindowManager.shared.hide()
+        MusicControlWindowManager.hideAll()
     }
 
     private func restoreMusicControlWindowIfNeeded() {

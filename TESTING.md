@@ -387,3 +387,12 @@ Each is off by default unless noted — turn it on in Settings first.
     watches the Downloads folder and cannot tell which app started a download.
 92. **Diagnostic log collection** should now actually contain the app's own log
     lines; before this it filtered on a subsystem the logger never used.
+
+93. **Multi-display control window** (needs a second monitor; `showOnAllDisplays`
+    is already on for this profile). With music playing, open the notch on both
+    screens: each should get **its own** floating control bar, not one bar that
+    jumps between them. Close the notch on one screen — the other screen's bar
+    must stay up and must still respond. Drag the notch to the other display
+    while a bar is showing; it should follow. Unplug the second monitor with a
+    bar visible: that bar should disappear rather than reappear stranded on the
+    remaining screen. **This code has never run on two displays.**
