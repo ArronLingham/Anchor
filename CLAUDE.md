@@ -51,7 +51,7 @@ theirs to grant, and none should be built without asking first.
 | Feature | Blocker |
 |---|---|
 | Per-app volume, per-app EQ | Needs a virtual audio driver / HAL plug-in installed to `/Library/Audio/Plug-Ins/HAL` with admin rights. macOS has no public per-process volume API; `AudioHardwareCreateProcessTap` can *observe* a process's audio but not control its level. |
-| Camera mirror | `ENABLE_RESOURCE_ACCESS_CAMERA = NO` in both build configurations, and `tests/test_privacy_configuration.py` has `test_camera_entitlement_is_not_reintroduced` pinning it. |
+| Camera mirror | **Implemented but not reachable.** `managers/CameraMirrorManager.swift` and `components/Notch/NotchCameraMirrorView.swift` are complete; there is no Settings toggle, so nothing builds the view. Adding the toggle was refused as needing explicit human authorization. **No entitlement change is required** — this app is not sandboxed (no `com.apple.security.app-sandbox`), so `ENABLE_RESOURCE_ACCESS_CAMERA` is inert and `test_camera_entitlement_is_not_reintroduced` stays green either way. TCC is the real gate and is untouched. |
 | Face ID / proximity unlock | Needs the privileged-helper story settled, and only an *Apple Development* identity exists here — no Developer ID Application. |
 | Battery charge *limit* | **Probably not a helper problem — that earlier claim looks wrong.** See "SMC access" below. Needs one write attempt to settle, which is a write to the battery controller and wants a human present. |
 | Fan control | **Not applicable to this Mac.** `Mac14,2` is a MacBook Air M2 and is fanless: zero `AppleSMCFanControl` nodes, zero fan entries in the `AppleSMC` ioreg tree. There is no fan to control. |

@@ -1084,6 +1084,9 @@ extension Defaults.Keys {
     /// Per-app mute in the media controls.
     static let enablePerAppAudio = Key<Bool>("enablePerAppAudio", default: false)
 
+    /// Show a camera mirror in the notch.
+    static let enableCameraMirror = Key<Bool>("enableCameraMirror", default: false)
+
     /// Require Touch ID before revealing clipboard history.
     static let requireBiometricForClipboard = Key<Bool>("requireBiometricForClipboard", default: false)
 
