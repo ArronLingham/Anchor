@@ -302,7 +302,12 @@ final class LockScreenTimerWidgetPanelManager {
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            self?.handleScreenGeometryChange(reason: "screen-parameters")
+            // queue: .main / AppKit animation completion both run on the
+            // main thread; assumeIsolated states that and traps if it ever
+            // stops being true, rather than assuming it silently.
+            MainActor.assumeIsolated {
+                self?.handleScreenGeometryChange(reason: "screen-parameters")
+            }
         }
 
         let workspaceCenter = NSWorkspace.shared.notificationCenter
@@ -311,7 +316,12 @@ final class LockScreenTimerWidgetPanelManager {
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            self?.handleScreenGeometryChange(reason: "screens-did-wake")
+            // queue: .main / AppKit animation completion both run on the
+            // main thread; assumeIsolated states that and traps if it ever
+            // stops being true, rather than assuming it silently.
+            MainActor.assumeIsolated {
+                self?.handleScreenGeometryChange(reason: "screens-did-wake")
+            }
         }
 
         workspaceObservers = [wakeObserver]

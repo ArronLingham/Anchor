@@ -450,3 +450,13 @@ Each is off by default unless noted — turn it on in Settings first.
     confirm it appears — without restarting Anchor. The Combine subscription
     watching that setting was discarded at creation, so the toggle previously
     did nothing until relaunch.
+
+99. **Display changes and lock-screen widgets, after the isolation change.**
+    Sixteen notification and animation callbacks were wrapped in
+    `MainActor.assumeIsolated`, which **crashes rather than warns** if one ever
+    arrives off the main thread. The notification ones could not be exercised
+    here. Do each of these and confirm no crash: change display resolution or
+    scaling; plug and unplug an external monitor; sleep and wake the display;
+    lock and unlock; let the music control window animate closed; let a
+    vertical HUD fade out. A crash log naming `assumeIsolated` means one of the
+    sixteen was wrong and should be reverted to `Task { @MainActor in ... }`.

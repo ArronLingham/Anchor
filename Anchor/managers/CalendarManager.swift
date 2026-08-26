@@ -84,7 +84,12 @@ class CalendarManager: ObservableObject {
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            self?.handleEventStoreChanged()
+            // queue: .main / AppKit animation completion both run on the
+            // main thread; assumeIsolated states that and traps if it ever
+            // stops being true, rather than assuming it silently.
+            MainActor.assumeIsolated {
+                self?.handleEventStoreChanged()
+            }
         }
     }
 

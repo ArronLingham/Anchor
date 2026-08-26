@@ -255,7 +255,12 @@ final class VerticalHUDWindowManager {
                 context.duration = animationDuration
                 window.nsWindow.animator().alphaValue = 0
             } completionHandler: { [weak self] in
-                self?.applyInteractivity(window, visibleOverride: false)
+                // queue: .main / AppKit animation completion both run on the
+                // main thread; assumeIsolated states that and traps if it ever
+                // stops being true, rather than assuming it silently.
+                MainActor.assumeIsolated {
+                    self?.applyInteractivity(window, visibleOverride: false)
+                }
             }
         }
     }

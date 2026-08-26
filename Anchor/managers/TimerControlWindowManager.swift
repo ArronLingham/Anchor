@@ -142,7 +142,12 @@ final class TimerControlWindowManager {
             window.orderOut(nil)
             window.alphaValue = 0
             if tearDown {
-                self?.tearDownWindowResources(using: window)
+                // queue: .main / AppKit animation completion both run on the
+                // main thread; assumeIsolated states that and traps if it ever
+                // stops being true, rather than assuming it silently.
+                MainActor.assumeIsolated {
+                    self?.tearDownWindowResources(using: window)
+                }
             }
         }
     }

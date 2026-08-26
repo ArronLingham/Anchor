@@ -506,14 +506,28 @@ xcodebuild -project Anchor.xcodeproj -scheme Anchor \
 
 - The project hardcodes upstream's team `9Y64TRM77N`; ad-hoc (`-`) signing is required until it's changed. A real `Apple Development: arronlingham@icloud.com (Q4FNFX8QSH)` identity exists and should be used once TCC grants matter.
 - SwiftTerm needs the Metal toolchain (`xcodebuild -downloadComponent MetalToolchain`) — already installed. SwiftTerm is a Phase 1 deletion target, which removes this dependency.
-- Build is clean: **0 errors, 37 warnings** in a clean Release build, from 94
-  at the start of this pass (82 → 69 → 58 → 52 → 37). Swift 6 language-mode
+- Build is clean: **0 errors, 21 warnings** in a clean Release build, from 94
+  at the start of this pass (82 → 69 → 58 → 52 → 37 → 21). Swift 6 language-mode
   errors 5 → 1, deprecated `onChange(of:perform:)` 6 → 0, macOS 12 constant
   renames 10 → 0, redundant `await` 5 → 0, unused results 4 → 1.
 - **Reading the warnings was worth it.** Two of them were live bugs: pinned
   clipboard items silently breaking on every restart, and the download
   listener toggle doing nothing until relaunch. Both had been sitting in the
   build output.
+- **Sixteen main-actor isolation warnings are now `MainActor.assumeIsolated`.**
+  Thirteen were `NotificationCenter.addObserver(..., queue: .main)` blocks and
+  three were `NSAnimationContext.runAnimationGroup` completion handlers. Both
+  are main-thread by guarantee — NotificationCenter honours the queue it is
+  given, and AppKit drives animation completions on the main run loop — so
+  `assumeIsolated` states what was already true instead of assuming it silently.
+  **It traps rather than warns if that ever stops holding**, which is the point:
+  a violated assumption becomes a crash at the site instead of a data race
+  somewhere else.
+  - Verified only that the app runs 45 s without trapping. The geometry
+    observers fire on display changes, which could not be triggered here without
+    altering the user's display settings, so **those paths are unexercised** —
+    TESTING.md item 99 covers them.
+
 - The **five non-Sendable capture warnings are deliberately left**. They are
   Swift 6 annotation friction on callbacks that run *synchronously* —
   `AVAudioConverter.convert`'s input block, `Timer` blocks, CoreAudio

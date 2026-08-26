@@ -101,7 +101,12 @@ final class LockScreenDisplayContextProvider {
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            self?.refresh(reason: "screen-parameters")
+            // queue: .main / AppKit animation completion both run on the
+            // main thread; assumeIsolated states that and traps if it ever
+            // stops being true, rather than assuming it silently.
+            MainActor.assumeIsolated {
+                self?.refresh(reason: "screen-parameters")
+            }
         }
 
         let workspaceCenter = NSWorkspace.shared.notificationCenter
@@ -110,7 +115,12 @@ final class LockScreenDisplayContextProvider {
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            self?.refresh(reason: "screens-did-wake")
+            // queue: .main / AppKit animation completion both run on the
+            // main thread; assumeIsolated states that and traps if it ever
+            // stops being true, rather than assuming it silently.
+            MainActor.assumeIsolated {
+                self?.refresh(reason: "screens-did-wake")
+            }
         }
 
         let spaceObserver = workspaceCenter.addObserver(
@@ -118,7 +128,12 @@ final class LockScreenDisplayContextProvider {
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            self?.refresh(reason: "space-changed")
+            // queue: .main / AppKit animation completion both run on the
+            // main thread; assumeIsolated states that and traps if it ever
+            // stops being true, rather than assuming it silently.
+            MainActor.assumeIsolated {
+                self?.refresh(reason: "space-changed")
+            }
         }
 
         workspaceObservers = [wakeObserver, spaceObserver]
