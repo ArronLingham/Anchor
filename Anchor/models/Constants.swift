@@ -1081,6 +1081,9 @@ extension Defaults.Keys {
     static let lyricsTranslationEnabled = Key<Bool>("lyricsTranslationEnabled", default: false)
 
     // MARK: - Eye break (20-20-20)
+    /// Per-app mute in the media controls.
+    static let enablePerAppAudio = Key<Bool>("enablePerAppAudio", default: false)
+
     /// Require Touch ID before revealing clipboard history.
     static let requireBiometricForClipboard = Key<Bool>("requireBiometricForClipboard", default: false)
 

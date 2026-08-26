@@ -599,6 +599,24 @@ Hold **Cmd+Shift+D**, speak, release → transcript pastes into the focused app.
   `models/PickedColor.swift`, which survived Phase 1 and already carries all
   eight output formats — a first pass here defined a second `PickedColor` and
   `ColorFormat` and collided at build time. Check `models/` before adding a type.
+- **`AudioHardwareCreateProcessTap` returns `noErr` with an invalid tap ID when
+  the caller lacks the audio-capture grant.** A standalone probe got status 0
+  and `tapID == kAudioObjectUnknown` for both itself and Spotify. Status alone
+  is not success — always check the ID too, which `PerAppAudioManager` does. The
+  safe consequence is that a permission failure mutes nothing and marks nothing
+  muted, rather than half-applying.
+- **Per-app audio is mute, not a volume slider, deliberately.** A
+  `CATapDescription` with `muteBehavior = .muted` silences a process outright,
+  which needs no playback path. Arbitrary *gain* would mean muting the app,
+  capturing it through an aggregate device, applying a multiplier and
+  re-rendering to the output device from a real-time IOProc — an audio engine
+  permanently in the path of the user's sound, where a mistake is distortion or
+  silence rather than a visual bug. Not something to land unverified.
+  There is **no per-process volume property** in CoreAudio; `kAudioProcessProperty*`
+  covers PID, bundle ID, devices and is-running only. Re-rendering is the only route.
+- Taps are owned by the creating process, so a muted app un-mutes by itself if
+  Anchor exits or crashes. That is the reason this was safe to build unattended.
+
 - **`LocalAuthentication` needs no entitlement and no privileged helper.** The
   match happens in the Secure Enclave and this process only ever sees a yes or
   no, which is why Touch ID was buildable while charge limiting — also filed

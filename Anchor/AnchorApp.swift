@@ -246,6 +246,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // enableSystemHUD() would not finish before the process dies. Resume it
         // synchronously here so it is never left frozen. (See issue #568.)
         CaffeinateManager.shared.deactivate()
+        // macOS destroys our taps when this process goes, so a muted app
+        // recovers on its own. Releasing explicitly keeps the teardown
+        // deterministic rather than relying on that.
+        PerAppAudioManager.shared.unmuteAll()
         SystemOSDManager.resumeOSDUIHelperForTermination()
 
         // Cancel any pending window size updates

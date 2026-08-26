@@ -77,6 +77,23 @@ struct Media: View {
     var body: some View {
         Form {
             Section {
+                Defaults.Toggle(key: .enablePerAppAudio) {
+                    Text("Per-app mute")
+                }
+                .settingsHighlight(id: highlightID("Per-app mute"))
+
+                if Defaults[.enablePerAppAudio] {
+                    PerAppAudioList()
+                }
+            } header: {
+                Text("Per-app audio")
+            } footer: {
+                Text("Silences one app without touching system volume. Mute is released when you unmute, when the app quits, and if Anchor stops running — macOS owns the tap, so nothing stays muted after Anchor is gone. Volume sliders are not offered: arbitrary gain would mean re-rendering the app's audio through Anchor in real time.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+
+            Section {
                 Picker("Music Source", selection: $mediaController) {
                     ForEach(availableMediaControllers) { controller in
                         Text(controller.localizedName).tag(controller)

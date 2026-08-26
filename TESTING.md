@@ -405,3 +405,14 @@ Each is off by default unless noted — turn it on in Settings first.
     screen and it should ask again. Set "Always ask" and confirm every open
     prompts. **Also confirm the fallback**: three failed fingerprints should
     offer your login password rather than locking you out.
+
+95. **Per-app mute** (Settings → Media → Per-app audio). Turn it on; the list
+    shows apps using audio, with the ones currently playing first and a speaker
+    icon. Play something in Spotify, mute it from the list — audio should stop
+    while system volume is untouched and other apps keep playing. Unmute and it
+    should come back. Quit the muted app and confirm it drops off the list
+    rather than staying stuck as muted. **Then quit Anchor while an app is
+    muted** — that app must go back to normal on its own, because macOS destroys
+    the tap with the process. **This is the one feature verified only by
+    construction**: a standalone probe could not create a real tap (no audio TCC
+    grant), so the mute has never actually been heard to work.
