@@ -200,11 +200,15 @@ final class AudioRouteManager: ObservableObject {
             mElement: kAudioObjectPropertyElementMain
         )
 
-        var name: CFString = "" as CFString
-        var dataSize = UInt32(MemoryLayout<CFString?>.size)
+        // CoreAudio writes a +1-retained CFStringRef here, so this has to be
+        // an Unmanaged reference: pointing a raw pointer at a plain CFString
+        // var and letting the framework overwrite it forms a pointer to an
+        // object reference, and leaks the string it returns.
+        var name: Unmanaged<CFString>?
+        var dataSize = UInt32(MemoryLayout<Unmanaged<CFString>?>.size)
         let status = AudioObjectGetPropertyData(deviceID, &address, 0, nil, &dataSize, &name)
-        guard status == noErr else { return nil }
-        return name as String
+        guard status == noErr, let cfName = name?.takeRetainedValue() else { return nil }
+        return cfName as String
     }
 
     private func transportType(for deviceID: AudioDeviceID) -> UInt32 {

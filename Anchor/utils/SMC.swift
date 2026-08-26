@@ -160,7 +160,18 @@ extension Float {
     }
 }
 
-public class SMC {
+public /// Nothing references this yet, and that is deliberate.
+///
+/// SMC writes are how battery charge limiting and fan control work, both of
+/// which are on the feature list and both of which are blocked on the same
+/// thing: they need a privileged helper, and only an *Apple Development*
+/// identity exists here — no Developer ID Application. Kept rather than
+/// deleted because these are hardware key definitions that would have to be
+/// re-derived, not code that can be rewritten from a description.
+///
+/// If that blocker is ever resolved, this is the starting point. If it is
+/// decided the feature will never be built, delete the file.
+class SMC {
     public static let shared = SMC()
     private var conn: io_connect_t = 0
     

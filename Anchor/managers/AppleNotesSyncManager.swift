@@ -133,7 +133,7 @@ final class AppleNotesSyncManager: ObservableObject {
 
     private func merge(localNotes: [NoteItem], remoteNotes: [RemoteAppleNote]) async throws -> [NoteItem] {
         var notes = localNotes
-        var remoteById = Dictionary(uniqueKeysWithValues: remoteNotes.map { ($0.id, $0) })
+        let remoteById = Dictionary(uniqueKeysWithValues: remoteNotes.map { ($0.id, $0) })
         var linkedRemoteIds = Set<String>()
 
         for index in notes.indices {
