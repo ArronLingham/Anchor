@@ -188,18 +188,39 @@ meaningless.** Everything below was measured after it:
 | Release 2026-08-24, live Claude session, **icon cache v2** | 0.29% | 0.00% | 0.48% | 8.76% | **36 MB** |
 | **Release 2026-08-25, six features added, all off** | **0.100%** | — | — | — | **26 MB** |
 | **Release 2026-08-25, end of the cleanup pass, quiet** | **0.08%** | **0.00%** | 0.48% | 0.48% | **81 MB** |
-| Release 2026-08-25, + Touch ID and per-display control windows | 0.09% | 0.00% | 0.48% | 0.48% | 80 MB |
+| Release 2026-08-25, + Touch ID and per-display control windows | 0.09% | 0.00% | 0.48% | 0.48% | 80 MB (unsettled) |
+| **Release 2026-08-25, fully settled (12+ min), two runs** | **0.30% / 0.35%** | 0.47% | 0.48% | 0.48% | **18.9 / 19.1 MB** |
 
-**The 81 MB in the last row is not a regression, and the 26 MB above it does
-not reproduce.** A same-machine A/B against `7178fbe` — the commit immediately
-before that pass, identical 4-minute settle, both quiet — measured **85.2 MB for
-the baseline and 79.4 MB for the new tip**, with `MALLOC_SMALL` at 56 MB and
-57 MB respectively. The new code is if anything marginally *lower*. So ~80 MB is
-the current steady state of this tree and has been for some time; what the 26 MB
-row measured is unexplained and should not be treated as a target until someone
-reproduces it. RSS was flat across a 70-second watch, so it is an allocation
-profile, not a leak. It is not the launcher icon cache either — that shows up
-under CG image / IOSurface, and those total under 5 MB with the launcher unused.
+**RSS needs ~12 minutes to settle, not 5, and every reading above taken at a
+5-minute settle is of an app that had not finished settling.** Watched on one
+process: **96 -> 80 -> 45 -> 24 -> 19 MB** over roughly twelve minutes. Two
+independent 180 s samples at 12+ minutes both give **~19 MB**, close to the best
+16 MB row this file has ever recorded.
+
+An earlier note here claimed ~80 MB was the steady state and that the 26 MB row
+"does not reproduce". **Both claims were wrong** and are the reason this
+paragraph exists. The A/B behind them — `7178fbe` at 85.2 MB against the new tip
+at 79.4 MB — is still valid as a *comparison*, because both arms were measured
+equally early, and it does show the new code is not heavier. The absolute
+numbers were simply of an unsettled app. **Let it run 12+ minutes before
+believing any RSS figure.**
+
+Not a leak, and not the launcher icon cache — that shows up under CG image /
+IOSurface, which total under 5 MB with the launcher unused.
+
+**The same build measured 0.09%, 0.53%, 0.30% and 0.35% in one afternoon, with
+every thread parked in all four.** The spread between runs is larger than most
+differences this table is used to argue about, so treat a single run as
+approximate and do not read a change of less than roughly 2x as signal. The two
+*settled* runs agree closely (0.30 / 0.35), which is the shape to trust: match
+uptime before comparing anything.
+
+**A measurable part of the floor is the sampler.** Lifetime CPU went from 1.69 s
+at 9 minutes to 4.13 s at 16 — 2.4 s consumed across two 180 s `measure.sh`
+runs, while a 3 s profile showed every thread in a wait state and `__proc_info`
+as the largest non-idle leaf. `__proc_info` is what `ps` triggers by observing
+the process. This is the same ~0.33% floor already documented under lyric
+gating, from the same cause.
 
 **The 0.08% row was measured with me doing nothing.** An earlier attempt in the
 same session read **0.56% mean / 0.48% median** and was discarded: the whole
