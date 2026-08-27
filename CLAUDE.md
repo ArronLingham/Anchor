@@ -192,6 +192,7 @@ meaningless.** Everything below was measured after it:
 | Release 2026-08-25, + Touch ID and per-display control windows | 0.09% | 0.00% | 0.48% | 0.48% | 80 MB (unsettled) |
 | **Release 2026-08-25, fully settled (12+ min), two runs** | **0.30% / 0.35%** | 0.47% | 0.48% | 0.48% | **18.9 / 19.1 MB** |
 | **Release 2026-08-25, end of session, quiet machine** | **0.03%** | **0.00%** | **0.00%** | 0.48% | **21.6 MB** |
+| **Release 2026-08-26, full sweep, all features present** | **0.08%** | **0.00%** | **0.00%** | 2.40% | 42 MB falling to 34 |
 
 **RSS needs ~12 minutes to settle, not 5, and every reading above taken at a
 5-minute settle is of an app that had not finished settling.** Watched on one
