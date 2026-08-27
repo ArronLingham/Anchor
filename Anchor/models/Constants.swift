@@ -637,9 +637,6 @@ extension Defaults.Keys {
         //static let openLastTabByDefault = Key<Bool>("openLastTabByDefault", default: false)
     
         // MARK: Appearance
-    /// Unimplemented — nothing reads this. Kept so the stored value is not
-    /// dropped if the feature is ever built; it has no UI control today.
-    static let showEmojis = Key<Bool>("showEmojis", default: false)
     static let settingsIconInNotch = Key<Bool>("settingsIconInNotch", default: true)
     static let lightingEffect = Key<Bool>("lightingEffect", default: true)
     static let accentColor = Key<Color>("accentColor", default: Color.blue)
@@ -652,7 +649,6 @@ extension Defaults.Keys {
     static let customIdleAnimations = Key<[CustomIdleAnimation]>("customIdleAnimations", default: [])
     static let selectedIdleAnimation = Key<CustomIdleAnimation?>("selectedIdleAnimation", default: nil)
     static let animationTransformOverrides = Key<[String: AnimationTransformConfig]>("animationTransformOverrides", default: [:])
-    static let tileShowLabels = Key<Bool>("tileShowLabels", default: false)
     static let showCalendar = Key<Bool>("showCalendar", default: true)
     static let hideCompletedReminders = Key<Bool>("hideCompletedReminders", default: true)
     static let hideAllDayEvents = Key<Bool>("hideAllDayEvents", default: false)
@@ -961,9 +957,6 @@ extension Defaults.Keys {
     static let enableVolumeHUD = Key<Bool>("enableVolumeHUD", default: true)
     static let enableBrightnessHUD = Key<Bool>("enableBrightnessHUD", default: true)
     static let enableKeyboardBacklightHUD = Key<Bool>("enableKeyboardBacklightHUD", default: true)
-    /// Unimplemented — nothing reads this. The HUD has no sensitivity
-    /// control; kept so a stored value is not dropped.
-    static let systemHUDSensitivity = Key<Int>("systemHUDSensitivity", default: 5)
     static let playVolumeChangeFeedback = Key<Bool>("playVolumeChangeFeedback", default: false)
 
     // Step sizes for hardware media keys (percent of full range, 1-25)

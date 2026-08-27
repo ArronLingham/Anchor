@@ -148,6 +148,9 @@ do not let that graph follow it in.
   grep -oE 'static let [a-zA-Z0-9_]+ = Key<' Anchor/models/Constants.swift |
     awk '{print $3}' | while read -r k; do
       refs=$(grep -rln "\.$k\b" Anchor --include='*.swift' | grep -v models/Constants.swift)
+      # NB: excluding Constants.swift hides keys used by the migration code
+      # *inside* it. Ten of thirteen "orphans" found that way were false —
+      # only the build caught it. Grep for `\.$k` without the exclusion too.
       [ -n "$refs" ] && [ -z "$(echo "$refs" | grep -v components/Settings/)" ] && echo "$k"
     done
   ```
