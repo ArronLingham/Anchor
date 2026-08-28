@@ -204,6 +204,20 @@ meaningless.** Everything below was measured after it:
 | **Release 2026-08-25, fully settled (12+ min), two runs** | **0.30% / 0.35%** | 0.47% | 0.48% | 0.48% | **18.9 / 19.1 MB** |
 | **Release 2026-08-25, end of session, quiet machine** | **0.03%** | **0.00%** | **0.00%** | 0.48% | **21.6 MB** |
 | **Release 2026-08-26, full sweep, all features present** | **0.08%** | **0.00%** | **0.00%** | 2.40% | 42 MB falling to 34 |
+| Release 2026-08-28, seven features added, **all off**, 9 min uptime | 0.03% | 0.00% | 0.00% | 0.48% | 19.4 MB |
+| Release 2026-08-28, the same seven **all on**, 9 min uptime | 0.03% | 0.00% | 0.00% | 0.48% | 82.5 MB (**unsettled**) |
+| **Release 2026-08-28, all on, settled (21 min)** | **0.03%** | **0.00%** | **0.00%** | 0.48% | **18.5 MB** |
+
+**The 2026-08-28 pair is the cleanest evidence yet that the RSS settle is real,
+and it nearly produced a false regression.** Same build, same 6-minute settle,
+same 180 s sample, 87 samples each: seven features off read 19.4 MB, the same
+seven on read **82.5 MB**. That looks like 63 MB of new cost and is not — left
+running to 21 minutes and re-sampled, the "on" arm reads **18.5 MB**, *below*
+the "off" arm. CPU is identical across all three runs: 0.03% mean, 0.00 median,
+0.00 p90. The features cost nothing on either axis. **Do not quote an RSS figure
+from an app that has been up for under about fifteen minutes**, however flat the
+samples look — 82.5 mean against an 83.6 max is as flat as the 18.5 reading is,
+and it is still wrong.
 
 **RSS needs ~12 minutes to settle, not 5, and every reading above taken at a
 5-minute settle is of an app that had not finished settling.** Watched on one
@@ -776,6 +790,12 @@ Verifying these cost several hours of blind alleys, all from one cause.
 - **`pkill` leaves `OSDUIHelper` SIGSTOPped**, which kills the volume and
   brightness HUD system-wide. Run `kill -CONT $(pgrep -x OSDUIHelper)` after
   every force-kill during testing.
+- **A properly launched Release instance behaves normally**, which is the
+  control that makes all of the above an artefact rather than a regression:
+  `tell application id "com.arronlingham.Anchor" to quit` returned it cleanly
+  and `OSDUIHelper` went back to `S`, where the same AppleScript against the
+  headless Debug instance timed out. When something looks broken in a headless
+  Debug run, reproduce it in a Release instance before believing it.
 
 ## Smaller features
 
