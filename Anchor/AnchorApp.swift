@@ -726,6 +726,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             // Arms the daily-commit schedule and catches up if today's is
             // still outstanding. Does nothing at all while disabled.
             GitCommitManager.shared.start()
+            // One NSWorkspace notification, so the ring can open in
+            // most-recently-used order. Nothing else runs until it is opened.
+            if Defaults[.enableAppSwitcher] {
+                AppSwitcherManager.shared.startTracking()
+            }
+            // Creates its divider only when the feature is on; the observer
+            // itself costs nothing.
+            MenuBarShrinkManager.shared.start()
         }
 
         ReminderLiveActivityManager.shared.$activeWindowReminders
@@ -1233,6 +1241,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         KeyboardShortcuts.onKeyDown(for: .startDemoTimer) {
             guard Defaults[.enableShortcuts], Defaults[.enableTimerFeature] else { return }
             TimerManager.shared.startDemoTimer(duration: 300)
+        }
+
+        KeyboardShortcuts.onKeyDown(for: .appSwitcher) {
+            AppSwitcherPanelManager.shared.invoke()
+        }
+
+        KeyboardShortcuts.onKeyDown(for: .toggleMenuBarSection) {
+            MenuBarShrinkManager.shared.toggle()
         }
 
         KeyboardShortcuts.onKeyDown(for: .pickColor) {

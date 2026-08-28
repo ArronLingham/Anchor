@@ -31,6 +31,9 @@ struct LauncherSettings: View {
     @State private var didClearHistory = false
     @State private var didClearIcons = false
 
+    @Default(.enableAppSwitcher) private var enableAppSwitcher
+    @Default(.appSwitcherRingDiameter) private var appSwitcherRingDiameter
+
     private func highlightID(_ title: String) -> String {
         SettingsTab.launcher.highlightID(for: title)
     }
@@ -52,6 +55,42 @@ struct LauncherSettings: View {
                 Text("Press the shortcut, type a few letters, press Return.")
                     .foregroundStyle(.secondary)
                     .font(.caption)
+            }
+
+            Section {
+                Defaults.Toggle(key: .enableAppSwitcher) {
+                    Text("Enable app switcher")
+                }
+                .settingsHighlight(id: highlightID("Enable app switcher"))
+
+                KeyboardShortcuts.Recorder("Open switcher:", name: .appSwitcher)
+                    .disabled(!enableAppSwitcher)
+                    .settingsHighlight(id: highlightID("Open switcher"))
+
+                Slider(value: $appSwitcherRingDiameter, in: 300...640, step: 20) {
+                    Text("Ring size")
+                } minimumValueLabel: {
+                    Text("S").font(.caption)
+                } maximumValueLabel: {
+                    Text("L").font(.caption)
+                }
+                .disabled(!enableAppSwitcher)
+                .settingsHighlight(id: highlightID("Ring size"))
+            } header: {
+                Text("App switcher")
+            } footer: {
+                Text(
+                    "Running apps in a ring, most recently used first — hold the "
+                    + "shortcut and tap Tab to go round, release to switch. Return "
+                    + "confirms, Escape cancels, W closes the highlighted app, and "
+                    + "the pointer can pick any of them directly.\n\n"
+                    + "The system ⌘Tab is left alone: taking it over means "
+                    + "swallowing it with an event tap, and an app that swallows "
+                    + "⌘Tab and then hangs leaves you with no way to switch apps "
+                    + "at all. Keyboard control needs Accessibility; without it the "
+                    + "ring still opens and the pointer still works.")
+                .foregroundStyle(.secondary)
+                .font(.caption)
             }
 
             Section {

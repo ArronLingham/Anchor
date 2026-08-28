@@ -56,6 +56,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
     case calendar
     case hudAndOSD
     case battery
+    case menuBar
     case dictation
     case launcher
     case claudeUsage
@@ -75,7 +76,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         switch self {
         case .general, .appearance:                                          return .core
         case .media, .liveActivities, .lockScreen, .devices:                 return .mediaAndDisplay
-        case .hudAndOSD, .battery:                                           return .system
+        case .hudAndOSD, .battery, .menuBar:                                 return .system
         case .timer, .calendar, .notes, .todo:                               return .productivity
         case .dictation, .launcher, .claudeUsage:                            return .integrations
         case .clipboard, .downloads, .shortcuts:                             return .utilities
@@ -96,6 +97,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         case .calendar: return String(localized: "Calendar")
         case .hudAndOSD: return String(localized: "Controls")
         case .battery: return String(localized: "Battery")
+        case .menuBar: return String(localized: "Menu Bar")
         case .dictation: return String(localized: "Dictation")
         case .launcher: return String(localized: "Launcher")
         case .claudeUsage: return String(localized: "Claude Usage")
@@ -122,6 +124,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         case .calendar: return "calendar"
         case .hudAndOSD: return "dial.medium.fill"
         case .battery: return "battery.100.bolt"
+        case .menuBar: return "menubar.rectangle"
         case .dictation: return "mic.fill"
         case .launcher: return "square.grid.3x3.fill"
         case .claudeUsage: return "hourglass"
@@ -148,6 +151,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         case .calendar: return .cyan
         case .hudAndOSD: return .indigo
         case .battery: return Color(red: 0.202, green: 0.783, blue: 0.348, opacity: 1.000)
+        case .menuBar: return Color(red: 0.45, green: 0.55, blue: 0.95, opacity: 1.000)
         case .dictation: return .teal
         case .launcher: return .blue
         case .claudeUsage: return Color(red: 0.85, green: 0.47, blue: 0.28)
@@ -692,6 +696,8 @@ struct SettingsView: View {
     private var settingsSearchIndex: [SettingsSearchEntry] {
         [
             // General
+            SettingsSearchEntry(tab: .menuBar, title: "Shrink the menu bar", keywords: ["menu bar", "menubar", "ice", "bartender", "hide icons", "status items"], highlightID: SettingsTab.menuBar.highlightID(for: "Shrink the menu bar")),
+            SettingsSearchEntry(tab: .launcher, title: "Enable app switcher", keywords: ["cmd tab", "command tab", "alt tab", "switcher", "ring", "radial"], highlightID: SettingsTab.launcher.highlightID(for: "Enable app switcher")),
             SettingsSearchEntry(tab: .gitCommit, title: "Commit once a day", keywords: ["git", "commit", "daily", "streak", "contribution"], highlightID: SettingsTab.gitCommit.highlightID(for: "Commit once a day")),
             SettingsSearchEntry(tab: .todo, title: "Enable to-do list", keywords: ["todo", "to-do", "task", "checklist"], highlightID: SettingsTab.todo.highlightID(for: "Enable to-do list")),
             SettingsSearchEntry(tab: .todo, title: "Sort by", keywords: ["todo order", "task sort"], highlightID: SettingsTab.todo.highlightID(for: "Sort by")),
@@ -966,6 +972,10 @@ struct SettingsView: View {
         case .battery:
             SettingsForm(tab: .battery) {
                 Charge()
+            }
+        case .menuBar:
+            SettingsForm(tab: .menuBar) {
+                MenuBarSettings()
             }
         case .dictation:
             SettingsForm(tab: .dictation) {

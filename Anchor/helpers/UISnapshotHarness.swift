@@ -149,6 +149,25 @@ enum UISnapshotHarness {
                     scheme: scheme,
                     to: directory.appendingPathComponent("notch-stats-\(suffix).png"))
 
+                // The app-switcher ring, populated from the processes actually
+                // running while the sweep runs — `show()` takes the same
+                // snapshot it takes in earnest, so this renders real icons and
+                // real names rather than a fixture that could drift.
+                Defaults[.appSwitcherRingDiameter] = 420
+                AppSwitcherManager.shared.show()
+                await capture(
+                    AppSwitcherView().background(Color.black.opacity(0.35)),
+                    size: CGSize(width: 460, height: 460),
+                    scheme: scheme,
+                    to: directory.appendingPathComponent("app-switcher-\(suffix).png"))
+
+                // Installs the menu bar divider for real before the Menu Bar
+                // pane is rendered, so that pane reports its true state
+                // ("Collapsed") rather than "Not installed". Status items do
+                // not appear in a CGWindowList query, so this render is the
+                // only headless evidence that the divider was actually created.
+                MenuBarShrinkManager.shared.start()
+
                 // Every remaining settings pane. These were one 7,784-line file
                 // until they were split out, and nothing else exercises them
                 // without opening the window and clicking each tab.
@@ -215,6 +234,7 @@ enum UISnapshotHarness {
             pane("todo", TodoSettings()),
             pane("terminal", TerminalSettings()),
             pane("git-commit", GitCommitSettings()),
+            pane("menu-bar", MenuBarSettings()),
         ]
     }
 

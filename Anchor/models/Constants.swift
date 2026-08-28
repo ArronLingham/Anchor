@@ -1263,4 +1263,18 @@ extension Defaults.Keys {
     /// local and reversible, pushing is neither.
     static let gitDailyCommitPush = Key<Bool>("gitDailyCommitPush", default: false)
     static let gitDailyCommitLastRun = Key<Date?>("gitDailyCommitLastRun", default: nil)
+
+    // MARK: App switcher (ring)
+    /// Option-Tab opens a ring of running apps. Costs one NSWorkspace
+    /// notification while enabled and nothing at all while the ring is closed.
+    static let enableAppSwitcher = Key<Bool>("enableAppSwitcher", default: false)
+    static let appSwitcherRingDiameter = Key<Double>("appSwitcherRingDiameter", default: 420)
+
+    // MARK: Menu bar shrinker
+    /// Adds a divider to the menu bar; items dragged to its left hide.
+    static let enableMenuBarShrink = Key<Bool>("enableMenuBarShrink", default: false)
+    /// Re-hide this many seconds after revealing. 0 keeps it open until clicked.
+    static let menuBarAutoHideSeconds = Key<Int>("menuBarAutoHideSeconds", default: 0)
+    /// A second divider whose left-hand items never show.
+    static let menuBarAlwaysHiddenSection = Key<Bool>("menuBarAlwaysHiddenSection", default: false)
 }

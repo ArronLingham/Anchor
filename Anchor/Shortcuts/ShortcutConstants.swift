@@ -36,4 +36,13 @@ extension KeyboardShortcuts.Name {
     static let startDemoTimer = Self("startDemoTimer", default: .init(.t, modifiers: [.command, .shift]))
     /// Opens the system eyedropper and copies the picked colour.
     static let pickColor = Self("pickColor", default: .init(.p, modifiers: [.command, .shift]))
+    /// Opens the ring-shaped application switcher.
+    ///
+    /// Option-Tab rather than Command-Tab: taking over ⌘Tab means swallowing it
+    /// with an event tap, and an app that swallows ⌘Tab and then hangs leaves
+    /// the user with no way to switch apps at all. The system switcher stays
+    /// where it is and this sits beside it.
+    static let appSwitcher = Self("appSwitcher", default: .init(.tab, modifiers: [.option]))
+    /// Shows or hides the menu bar items behind Anchor's divider.
+    static let toggleMenuBarSection = Self("toggleMenuBarSection", default: .init(.m, modifiers: [.option, .command]))
 }
