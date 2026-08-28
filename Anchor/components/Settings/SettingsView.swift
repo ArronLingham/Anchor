@@ -494,28 +494,45 @@ struct SettingsView: View {
             .appearance,
             // Media & Display
             .media,
+            .vinyl,
             .liveActivities,
             .lockScreen,
             .devices,
             // System
             .hudAndOSD,
             .battery,
+            .menuBar,
             // Productivity
             .timer,
             .calendar,
             .notes,
+            .todo,
             // Utilities
             .clipboard,
             .downloads,
             .shortcuts,
+            .gitCommit,
             // Developer
             .terminal,
             // Integrations
             .dictation,
             .launcher,
+            .claudeUsage,
             // Info
             .about
         ]
+
+        // This array is what draws the sidebar. Adding a `SettingsTab` case
+        // with a view, an icon and a tint is *not* enough — a tab missing from
+        // here is invisible, with no build error and no other symptom. Five had
+        // gone missing that way, including Claude Usage, which had never been
+        // reachable at all.
+        assert(
+            Set(SettingsTab.allCases).subtracting(ordered).isEmpty,
+            """
+            SettingsTab cases missing from availableTabs: \
+            \(Set(SettingsTab.allCases).subtracting(ordered).map(\.rawValue).sorted())
+            """)
 
         return ordered.filter { isTabVisible($0) }
     }

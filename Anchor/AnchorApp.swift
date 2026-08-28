@@ -741,6 +741,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             // rotation is a CABasicAnimation, so a spinning record costs this
             // process nothing per frame.
             VinylWidgetWindowManager.shared.start()
+            // Watches the audio process list through CoreAudio property
+            // listeners — no timer — and re-applies any stored per-app volume,
+            // mute or EQ as apps appear.
+            if Defaults[.enablePerAppAudio] {
+                PerAppAudioManager.shared.start()
+            }
         }
 
         ReminderLiveActivityManager.shared.$activeWindowReminders

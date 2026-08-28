@@ -1,6 +1,5 @@
 /*
  * Anchor
- * Derived from Atoll (DynamicIsland), itself derived from boring.notch.
  * Copyright (C) 2024-2026 Atoll Contributors
  *
  * This program is free software: you can redistribute it and/or modify
@@ -19,16 +18,26 @@
 
 import SwiftUI
 
-/// Apps currently producing audio, each with a volume slider and a mute button.
+/// Apps currently producing audio, each with mute, volume and a 10-band EQ.
 ///
-/// A leaf view observing `PerAppAudioManager` directly. It refreshes on appear
-/// and then only when CoreAudio reports the process list changed — there is no
-/// timer behind this list.
+/// Built in Anchor's own settings idiom rather than porting FineTune's glass
+/// components, which carry their own design system and would read as a
+/// different app bolted into this pane. The behaviour is FineTune's; the look
+/// is Anchor's.
 struct PerAppAudioList: View {
     @ObservedObject private var manager = PerAppAudioManager.shared
+    @State private var expanded: Set<pid_t> = []
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 10) {
+            if manager.permission == .denied {
+                permissionNotice
+            }
+
+            if let failure = manager.lastFailure {
+                failureNotice(failure)
+            }
+
             if manager.apps.isEmpty {
                 Text("No apps are using audio.")
                     .font(.caption)
@@ -36,64 +45,123 @@ struct PerAppAudioList: View {
             } else {
                 ForEach(manager.apps) { app in
                     row(for: app)
-                    if app.id != manager.apps.last?.id { Divider() }
+                    if app.id != manager.apps.last?.id {
+                        Divider()
+                    }
                 }
             }
         }
         .onAppear { manager.refresh() }
     }
 
+    // MARK: - Notices
+
+    private var permissionNotice: some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(.orange)
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Anchor needs permission to capture audio.")
+                    .font(.callout)
+                Text("Without it a tap is created but produces nothing, so volume and EQ do nothing at all.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Button("Grant Permission") { manager.requestPermission() }
+                    .controlSize(.small)
+            }
+        }
+        .padding(9)
+        .background(Color.orange.opacity(0.10), in: RoundedRectangle(cornerRadius: 6))
+    }
+
+    private func failureNotice(_ message: String) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: "waveform.badge.exclamationmark")
+                .foregroundStyle(.red)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("The audio engine could not start.")
+                    .font(.callout)
+                Text(message)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Text("The app is playing at normal volume — nothing is left muted.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(9)
+        .background(Color.red.opacity(0.09), in: RoundedRectangle(cornerRadius: 6))
+    }
+
+    // MARK: - Rows
+
     private func row(for app: AudioApp) -> some View {
-        let muted = manager.isMuted(app.pid)
-        return VStack(alignment: .leading, spacing: 4) {
-            header(for: app, muted: muted)
-            slider(for: app, muted: muted)
+        let state = manager.state(for: app)
+        let isOpen = expanded.contains(app.id)
+
+        return VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                Image(nsImage: app.icon)
+                    .resizable()
+                    .frame(width: 17, height: 17)
+
+                Text(app.name).lineLimit(1)
+
+                if app.isHelperBacked {
+                    Image(systemName: "square.stack.3d.up")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                        .help("Plays through helper processes — all of them are tapped")
+                }
+
+                if manager.isEngaged(app.id) {
+                    Image(systemName: "waveform")
+                        .font(.caption2)
+                        .foregroundStyle(.blue)
+                        .help("Anchor is re-rendering this app's audio")
+                }
+
+                Spacer()
+
+                Button {
+                    withAnimation(.easeInOut(duration: 0.15)) {
+                        if isOpen { expanded.remove(app.id) } else { expanded.insert(app.id) }
+                    }
+                } label: {
+                    Image(systemName: "slider.horizontal.3")
+                        .foregroundStyle(state.eqEnabled ? Color.accentColor : Color.secondary)
+                }
+                .buttonStyle(.borderless)
+                .help("Equaliser")
+
+                Button {
+                    manager.toggleMute(app)
+                } label: {
+                    Image(systemName: state.isMuted ? "speaker.slash.fill" : "speaker.fill")
+                        .foregroundStyle(state.isMuted ? Color.orange : Color.secondary)
+                }
+                .buttonStyle(.borderless)
+                .help(state.isMuted ? "Unmute \(app.name)" : "Mute \(app.name)")
+            }
+
+            volumeRow(for: app, state: state)
+
+            if isOpen {
+                equaliser(for: app, state: state)
+            }
         }
+        .padding(.vertical, 2)
     }
 
-    private func header(for app: AudioApp, muted: Bool) -> some View {
-        HStack(spacing: 8) {
-            if let bundleID = app.bundleID, let icon = AppIconAsNSImage(for: bundleID) {
-                Image(nsImage: icon).resizable().frame(width: 16, height: 16)
-            } else {
-                Image(systemName: "app.dashed")
-                    .frame(width: 16, height: 16)
-                    .foregroundStyle(.secondary)
-            }
-
-            Text(app.name)
-                .lineLimit(1)
-
-            if app.isPlaying {
-                Image(systemName: "speaker.wave.2.fill")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .help("Currently playing")
-            }
-
-            Spacer()
-
-            Button {
-                manager.toggleMute(app)
-            } label: {
-                Image(systemName: muted ? "speaker.slash.fill" : "speaker.fill")
-                    .foregroundStyle(muted ? Color.orange : Color.secondary)
-            }
-            .buttonStyle(.borderless)
-            .help(muted ? "Unmute \(app.name)" : "Mute \(app.name)")
-        }
-    }
-
-    /// The gain slider.
+    /// 0–200%, resting at 100%.
     ///
-    /// 0–200%, with 100% as the resting point. Anything other than 100% builds
-    /// a real audio path — a tap, a private aggregate device and an IOProc — so
-    /// the slider snapping back to exactly 100% is what tears all of that down
-    /// again rather than leaving a no-op multiply running.
-    private func slider(for app: AudioApp, muted: Bool) -> some View {
+    /// Anything off 100% builds a real audio path — a tap, a private aggregate
+    /// device and an IOProc — so the slider snapping back to exactly 100% is
+    /// what tears that down again.
+    private func volumeRow(for app: AudioApp, state: PerAppAudioState) -> some View {
         let binding = Binding<Double>(
-            get: { manager.gain(for: app) },
-            set: { manager.setGain(snapped($0), for: app) })
+            get: { Double(manager.volume(for: app)) },
+            set: { manager.setVolume(Float(snapped($0)), for: app) })
 
         return HStack(spacing: 8) {
             Image(systemName: "speaker.fill")
@@ -102,26 +170,103 @@ struct PerAppAudioList: View {
 
             Slider(value: binding, in: 0...2)
                 .controlSize(.small)
-                .disabled(muted || app.bundleID == nil)
+                .disabled(state.isMuted)
 
-            Text("\(Int(manager.gain(for: app) * 100))%")
+            Text("\(Int(state.volume * 100))%")
                 .font(.caption2)
                 .monospacedDigit()
                 .foregroundStyle(.secondary)
                 .frame(width: 38, alignment: .trailing)
-
-            if manager.isVolumeEngaged(app.pid) {
-                Image(systemName: "waveform.badge.magnifyingglass")
-                    .font(.caption2)
-                    .foregroundStyle(.blue)
-                    .help("Anchor is re-rendering this app's audio")
-            }
         }
-        .padding(.leading, 24)
+        .padding(.leading, 25)
     }
 
-    /// Snaps near 100% so the resting point is reachable by dragging.
     private func snapped(_ value: Double) -> Double {
         abs(value - 1) < 0.04 ? 1 : value
+    }
+
+    // MARK: - Equaliser
+
+    private func equaliser(for app: AudioApp, state: PerAppAudioState) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Toggle("Equaliser", isOn: Binding(
+                    get: { state.eqEnabled },
+                    set: { on in
+                        var next = state.eqSettings
+                        next.isEnabled = on
+                        manager.setEQ(next, for: app)
+                    }))
+                .toggleStyle(.switch)
+                .controlSize(.mini)
+
+                Spacer()
+
+                Menu {
+                    ForEach(EQPreset.Category.allCases) { category in
+                        Section(category.rawValue) {
+                            ForEach(EQPreset.presets(for: category)) { preset in
+                                Button(preset.name) { manager.applyPreset(preset, to: app) }
+                            }
+                        }
+                    }
+                } label: {
+                    Text("Presets")
+                }
+                .menuStyle(.borderlessButton)
+                .fixedSize()
+                .disabled(!state.eqEnabled)
+            }
+
+            HStack(alignment: .bottom, spacing: 4) {
+                ForEach(Array(EQSettings.frequencies.enumerated()), id: \.offset) { index, frequency in
+                    band(index: index, frequency: frequency, app: app, state: state)
+                }
+            }
+            .disabled(!state.eqEnabled)
+            .opacity(state.eqEnabled ? 1 : 0.4)
+
+            Text("Ten bands, −12 to +12 dB. Stereo only — a multichannel stream bypasses it.")
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+        }
+        .padding(.leading, 25)
+        .padding(.top, 2)
+        .transition(.opacity)
+    }
+
+    private func band(index: Int, frequency: Double, app: AudioApp, state: PerAppAudioState) -> some View {
+        let binding = Binding<Double>(
+            get: { Double(state.eqBandGains.indices.contains(index) ? state.eqBandGains[index] : 0) },
+            set: { value in
+                var next = state.eqSettings
+                var gains = next.bandGains
+                if gains.indices.contains(index) { gains[index] = Float(value) }
+                next.bandGains = gains
+                manager.setEQ(next, for: app)
+            })
+
+        return VStack(spacing: 3) {
+            Text(String(format: "%+.0f", binding.wrappedValue))
+                .font(.system(size: 8))
+                .monospacedDigit()
+                .foregroundStyle(.tertiary)
+
+            Slider(value: binding, in: -12...12)
+                .controlSize(.mini)
+                .frame(height: 74)
+                .rotationEffect(.degrees(-90))
+                .frame(width: 22, height: 74)
+
+            Text(label(for: frequency))
+                .font(.system(size: 8))
+                .foregroundStyle(.tertiary)
+        }
+    }
+
+    private func label(for frequency: Double) -> String {
+        frequency >= 1000
+            ? "\(Int(frequency / 1000))k"
+            : "\(Int(frequency))"
     }
 }

@@ -153,6 +153,9 @@ enum UISnapshotHarness {
                 // running while the sweep runs — `show()` takes the same
                 // snapshot it takes in earnest, so this renders real icons and
                 // real names rather than a fixture that could drift.
+                // The per-app audio list only renders when the feature is on,
+                // and it is the pane most worth seeing.
+                Defaults[.enablePerAppAudio] = true
                 Defaults[.appSwitcherRingDiameter] = 420
                 AppSwitcherManager.shared.show()
                 await capture(

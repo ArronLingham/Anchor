@@ -1,7 +1,9 @@
 /*
  * Anchor
- * Derived from Atoll (DynamicIsland), itself derived from boring.notch.
  * Copyright (C) 2024-2026 Atoll Contributors
+ *
+ * The per-app audio engine this drives is derived from FineTune
+ * (github.com/ronitsingh10/FineTune), Copyright (C) 2026 Ronit Singh.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -18,266 +20,292 @@
  */
 
 import AppKit
-import CoreAudio
+import AudioToolbox
+import Combine
 import Defaults
 import Foundation
 
-/// One app that is currently producing audio.
-struct AudioApp: Identifiable, Equatable {
-    var id: pid_t { pid }
-    let pid: pid_t
-    let objectID: AudioObjectID
-    let name: String
-    let bundleID: String?
-    let isPlaying: Bool
+/// What Anchor is doing to one app's audio.
+///
+/// Keyed by bundle identifier rather than PID so it survives the app being
+/// relaunched, which a PID does not.
+struct PerAppAudioState: Codable, Equatable, Defaults.Serializable {
+    var volume: Float = 1
+    var isMuted: Bool = false
+    var eqBandGains: [Float] = Array(repeating: 0, count: EQSettings.bandCount)
+    var eqEnabled: Bool = false
+
+    var eqSettings: EQSettings {
+        EQSettings(bandGains: eqBandGains, isEnabled: eqEnabled)
+    }
+
+    /// Whether this state needs the engine at all.
+    ///
+    /// Anything that is exactly default is not worth a tap, an aggregate device
+    /// and a real-time thread, so the engine is torn down rather than left
+    /// running a no-op multiply.
+    var needsProcessing: Bool {
+        isMuted
+            || abs(volume - 1) > 0.001
+            || (eqEnabled && eqBandGains.contains { abs($0) > 0.01 })
+    }
 }
 
-/// Per-app mute. Part of category 5.
+/// Per-app volume, mute and EQ.
 ///
-/// **This is mute, not a volume slider, and the difference is deliberate.**
-/// A `CATapDescription` with `muteBehavior = .muted` silences a process's
-/// output, which is all that is needed here. Arbitrary *gain* would mean
-/// muting the app, capturing its stream through an aggregate device, applying
-/// a multiplier and re-rendering it to the output device from a real-time
-/// IOProc — an audio engine sitting permanently in the path of the user's
-/// sound, where a mistake is distortion or silence rather than a visual bug.
-/// That is not something to land unverified.
+/// ## How this works
 ///
-/// Nothing runs until the user mutes something. A tap is created on mute and
-/// destroyed on unmute, and taps are owned by this process — if Anchor exits or
-/// crashes, the OS tears them down and audio comes back on its own.
+/// CoreAudio has no per-process volume — `kAudioProcessProperty*` covers a
+/// process's PID, bundle identifier, devices and whether it is running, and
+/// nothing else. Gain therefore means: tap the process with
+/// `muteBehavior = .mutedWhenTapped` so its audio stops reaching the device but
+/// still reaches us, build a private aggregate device out of the real output
+/// plus that tap, and run an IOProc that reads the tap and re-renders it.
+///
+/// The engine that does this is `ProcessTapController`, ported from FineTune.
+/// An earlier hand-written attempt lived here and did not work; what it got
+/// wrong is worth recording, because each mistake looked reasonable:
+///
+/// - **It tapped one process object, not all of them.** `AudioApp` carries
+///   `processObjectIDs` — *plural*. Spotify and Chrome route audio through
+///   helper processes, so a tap on the main process's single object taps a
+///   process that is not making any sound.
+/// - **It started the IOProc immediately.** An aggregate device is not ready
+///   when `AudioHardwareCreateAggregateDevice` returns; the engine waits on
+///   `waitUntilReady(timeout:)` first.
+/// - **It omitted `kAudioAggregateDeviceTapAutoStartKey` and
+///   `kAudioAggregateDeviceClockDeviceKey`.**
+/// - **It applied gain instantly**, where the engine ramps over 30 ms — an
+///   instant change on a live buffer is an audible click.
+/// - **It ignored drift compensation.** The engine turns sub-tap drift
+///   compensation *off* for Bluetooth outputs, where tap and output share a
+///   clock; leaving it on makes the HAL insert or delete a sample every ~0.7 s,
+///   which is the rhythmic crackle on calls.
+///
+/// ## Cost
+///
+/// Nothing runs until an app is muted, moved off 100%, or given an EQ curve.
+/// Taps and aggregate devices are owned by this process, so if Anchor exits or
+/// crashes every app returns to normal on its own.
 @MainActor
 final class PerAppAudioManager: ObservableObject {
     static let shared = PerAppAudioManager()
 
+    /// Apps currently producing audio.
     @Published private(set) var apps: [AudioApp] = []
 
-    /// PIDs currently muted, each with the tap holding it muted.
-    @Published private(set) var mutedPIDs: Set<pid_t> = []
-    private var taps: [pid_t: AudioObjectID] = [:]
+    /// What we are doing to each of them, keyed by `persistenceIdentifier`.
+    @Published private(set) var states: [String: PerAppAudioState] = [:]
 
-    /// Per-app gain, keyed by bundle identifier so it survives a relaunch of
-    /// the app being adjusted — a PID does not.
-    @Published private(set) var gains: [String: Double] = Defaults[.perAppVolumeGains]
-
-    /// True once a gain has failed to engage, so the UI can say so rather than
+    /// Set when the engine could not start, so the UI can say so rather than
     /// showing a slider that silently does nothing.
-    @Published private(set) var volumeEngineFailed = false
+    @Published private(set) var lastFailure: String?
 
-    private let volumeEngine = PerAppVolumeEngine()
+    /// Whether macOS has granted audio capture. Without it a tap is created
+    /// with `noErr` and an unusable ID, so this must be checked, not assumed.
+    @Published private(set) var permission: AudioCapturePermissionStatus = .unknown
 
-    private var listenerInstalled = false
+    private let processMonitor = AudioProcessMonitor()
+    private let deviceMonitor = AudioDeviceMonitor()
+    private let permissionChecker = AudioRecordingPermission()
 
-    private init() {}
+    private var controllers: [pid_t: ProcessTapController] = [:]
+    private var started = false
 
-    // MARK: - Enumeration
+    private init() {
+        states = Defaults[.perAppAudioStates]
+    }
 
-    /// Refreshes the app list. Called when the picker opens and when CoreAudio
-    /// says the process list changed — never on a timer.
+    // MARK: - Lifecycle
+
+    /// Starts watching the audio process list. Cheap: CoreAudio property
+    /// listeners, no timer.
+    func start() {
+        guard !started else { return }
+        started = true
+
+        deviceMonitor.start()
+
+        processMonitor.onAppsChanged = { [weak self] apps in
+            MainActor.assumeIsolated { self?.appsChanged(apps) }
+        }
+        processMonitor.start()
+
+        permissionChecker.refreshStatus()
+        permission = permissionChecker.status
+
+        // A device change invalidates every aggregate device, since each was
+        // built around whichever output was default at the time.
+        deviceMonitor.onDeviceDisconnected = { [weak self] _, _ in
+            MainActor.assumeIsolated { self?.rebuildAll() }
+        }
+        deviceMonitor.onDeviceConnected = { [weak self] _, _ in
+            MainActor.assumeIsolated { self?.rebuildAll() }
+        }
+    }
+
     func refresh() {
-        var address = AudioObjectPropertyAddress(
-            mSelector: kAudioHardwarePropertyProcessObjectList,
-            mScope: kAudioObjectPropertyScopeGlobal,
-            mElement: kAudioObjectPropertyElementMain
-        )
-
-        var size: UInt32 = 0
-        guard AudioObjectGetPropertyDataSize(
-            AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &size) == noErr
-        else { return }
-
-        let count = Int(size) / MemoryLayout<AudioObjectID>.size
-        guard count > 0 else { apps = []; return }
-
-        var ids = [AudioObjectID](repeating: 0, count: count)
-        guard AudioObjectGetPropertyData(
-            AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &size, &ids) == noErr
-        else { return }
-
-        var found: [AudioApp] = []
-        for object in ids {
-            guard let pid = Self.pid(of: object),
-                  let app = NSRunningApplication(processIdentifier: pid),
-                  let name = app.localizedName
-            else { continue }
-
-            // Helper processes share their parent's name and would appear as
-            // duplicates; the audio object for the helper is the one that
-            // actually plays, so keep whichever is currently outputting.
-            let playing = Self.isRunningOutput(object)
-            if let existing = found.firstIndex(where: { $0.name == name }) {
-                if playing && !found[existing].isPlaying {
-                    found[existing] = AudioApp(
-                        pid: pid, objectID: object, name: name,
-                        bundleID: app.bundleIdentifier, isPlaying: true)
-                }
-                continue
-            }
-            found.append(AudioApp(
-                pid: pid, objectID: object, name: name,
-                bundleID: app.bundleIdentifier, isPlaying: playing))
-        }
-
-        // Playing first, then alphabetical — the thing you want to mute is
-        // almost always the thing making noise.
-        apps = found.sorted {
-            $0.isPlaying == $1.isPlaying
-                ? $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
-                : $0.isPlaying
-        }
-
-        reconcileMutes()
-        reconcileGains()
-        installListenerIfNeeded()
+        start()
+        permissionChecker.refreshStatus()
+        permission = permissionChecker.status
     }
 
-    /// Drops taps whose app has exited, so a quit app does not leak a tap or
-    /// stay listed as muted for ever.
-    private func reconcileMutes() {
-        let live = Set(apps.map(\.pid))
-        for pid in mutedPIDs where !live.contains(pid) {
-            destroyTap(for: pid)
+    func requestPermission() {
+        permissionChecker.request()
+    }
+
+    private func appsChanged(_ newApps: [AudioApp]) {
+        apps = newApps.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+
+        let live = Set(newApps.map(\.id))
+        for pid in controllers.keys where !live.contains(pid) {
+            controllers.removeValue(forKey: pid)?.invalidate()
+        }
+
+        // An app that has just appeared and has stored settings gets them back.
+        for app in newApps where state(for: app).needsProcessing {
+            syncController(for: app)
         }
     }
 
-    private func installListenerIfNeeded() {
-        guard !listenerInstalled else { return }
-        listenerInstalled = true
-        var address = AudioObjectPropertyAddress(
-            mSelector: kAudioHardwarePropertyProcessObjectList,
-            mScope: kAudioObjectPropertyScopeGlobal,
-            mElement: kAudioObjectPropertyElementMain
-        )
-        AudioObjectAddPropertyListenerBlock(
-            AudioObjectID(kAudioObjectSystemObject), &address, DispatchQueue.main
-        ) { [weak self] _, _ in
-            Task { @MainActor in self?.refresh() }
-        }
+    // MARK: - Reading state
+
+    func state(for app: AudioApp) -> PerAppAudioState {
+        states[app.persistenceIdentifier] ?? PerAppAudioState()
     }
 
-    // MARK: - Muting
+    func isMuted(_ pid: pid_t) -> Bool {
+        guard let app = apps.first(where: { $0.id == pid }) else { return false }
+        return state(for: app).isMuted
+    }
 
-    func isMuted(_ pid: pid_t) -> Bool { mutedPIDs.contains(pid) }
+    func volume(for app: AudioApp) -> Float { state(for: app).volume }
+
+    func eq(for app: AudioApp) -> EQSettings { state(for: app).eqSettings }
+
+    /// True while the engine is actually running for this app.
+    func isEngaged(_ pid: pid_t) -> Bool { controllers[pid] != nil }
+
+    /// Live output level, for the meter. Zero when nothing is engaged.
+    func audioLevel(_ pid: pid_t) -> Float { controllers[pid]?.audioLevel ?? 0 }
+
+    // MARK: - Writing state
+
+    func setVolume(_ volume: Float, for app: AudioApp) {
+        mutate(app) { $0.volume = max(0, min(2, volume)) }
+    }
 
     func toggleMute(_ app: AudioApp) {
-        if mutedPIDs.contains(app.pid) {
-            destroyTap(for: app.pid)
+        mutate(app) { $0.isMuted.toggle() }
+    }
+
+    func setMuted(_ muted: Bool, for app: AudioApp) {
+        mutate(app) { $0.isMuted = muted }
+    }
+
+    func setEQ(_ settings: EQSettings, for app: AudioApp) {
+        mutate(app) {
+            $0.eqBandGains = settings.bandGains
+            $0.eqEnabled = settings.isEnabled
+        }
+    }
+
+    func applyPreset(_ preset: EQPreset, to app: AudioApp) {
+        mutate(app) {
+            $0.eqBandGains = preset.settings.bandGains
+            $0.eqEnabled = true
+        }
+    }
+
+    /// Returns every app to normal. Called on quit — belt and braces, since
+    /// macOS destroys our taps with the process anyway.
+    func resetAll() {
+        for (pid, controller) in controllers {
+            controller.invalidate()
+            controllers.removeValue(forKey: pid)
+        }
+    }
+
+    /// Kept for the termination handler's existing call site.
+    func unmuteAll() { resetAll() }
+
+    private func mutate(_ app: AudioApp, _ change: (inout PerAppAudioState) -> Void) {
+        var current = state(for: app)
+        change(&current)
+
+        if current == PerAppAudioState() {
+            states.removeValue(forKey: app.persistenceIdentifier)
         } else {
-            createMuteTap(for: app)
+            states[app.persistenceIdentifier] = current
         }
+        Defaults[.perAppAudioStates] = states
+
+        syncController(for: app)
     }
 
-    /// Releases every mute. Called on quit — belt and braces, since the OS
-    /// destroys our taps anyway when the process goes.
-    func unmuteAll() {
-        for pid in mutedPIDs { destroyTap(for: pid) }
-        volumeEngine.stopAll()
-    }
+    // MARK: - Engine
 
-    // MARK: - Volume
+    /// Brings the engine into line with the stored state for one app: starts
+    /// it, updates it, or tears it down.
+    private func syncController(for app: AudioApp) {
+        let wanted = state(for: app)
 
-    /// Gain for an app, 1 meaning untouched.
-    func gain(for app: AudioApp) -> Double {
-        guard let bundleID = app.bundleID else { return 1 }
-        return gains[bundleID] ?? 1
-    }
-
-    /// Sets an app's gain, 0…2.
-    ///
-    /// Muting and gain are separate mechanisms and do not stack: a muted app
-    /// has no output to scale, so setting a gain clears the mute first. That is
-    /// less surprising than a slider that appears to do nothing.
-    func setGain(_ gain: Double, for app: AudioApp) {
-        guard let bundleID = app.bundleID else { return }
-
-        if mutedPIDs.contains(app.pid), gain > 0 {
-            destroyTap(for: app.pid)
-        }
-
-        let clamped = max(0, min(2, gain))
-        if abs(clamped - 1) < 0.001 {
-            gains.removeValue(forKey: bundleID)
-        } else {
-            gains[bundleID] = clamped
-        }
-        Defaults[.perAppVolumeGains] = gains
-
-        let engaged = volumeEngine.setGain(Float(clamped), for: app)
-        volumeEngineFailed = !engaged
-    }
-
-    /// True while the re-render engine is actually running for this app.
-    func isVolumeEngaged(_ pid: pid_t) -> Bool {
-        volumeEngine.isActive(pid: pid)
-    }
-
-    /// Re-applies stored gains to apps that have just appeared, and drops
-    /// engines whose process has gone.
-    private func reconcileGains() {
-        volumeEngine.reconcile(livePIDs: Set(apps.map(\.pid)))
-
-        for app in apps {
-            guard let bundleID = app.bundleID,
-                  let stored = gains[bundleID],
-                  abs(stored - 1) > 0.001,
-                  !volumeEngine.isActive(pid: app.pid)
-            else { continue }
-            _ = volumeEngine.setGain(Float(stored), for: app)
-        }
-    }
-
-    private func createMuteTap(for app: AudioApp) {
-        let description = CATapDescription()
-        description.processes = [app.objectID]
-        description.muteBehavior = .muted
-        description.isPrivate = true
-        description.name = "Anchor mute — \(app.name)"
-
-        var tapID = AudioObjectID(kAudioObjectUnknown)
-        let status = AudioHardwareCreateProcessTap(description, &tapID)
-        guard status == noErr, tapID != AudioObjectID(kAudioObjectUnknown) else {
-            Logger.log(
-                "Per-app mute failed for \(app.name): OSStatus \(status)", category: .lifecycle)
+        guard wanted.needsProcessing else {
+            controllers.removeValue(forKey: app.id)?.invalidate()
             return
         }
-        taps[app.pid] = tapID
-        mutedPIDs.insert(app.pid)
-    }
 
-    private func destroyTap(for pid: pid_t) {
-        if let tapID = taps[pid] {
-            let status = AudioHardwareDestroyProcessTap(tapID)
-            if status != noErr {
-                Logger.log("Per-app unmute failed: OSStatus \(status)", category: .lifecycle)
-            }
+        if let existing = controllers[app.id] {
+            existing.volume = wanted.volume
+            existing.isMuted = wanted.isMuted
+            existing.updateEQSettings(wanted.eqSettings)
+            return
         }
-        taps.removeValue(forKey: pid)
-        mutedPIDs.remove(pid)
+
+        guard let outputUID = currentOutputUID() else {
+            lastFailure = String(localized: "No output device available")
+            return
+        }
+
+        let controller = ProcessTapController(
+            app: app,
+            targetDeviceUID: outputUID,
+            deviceMonitor: deviceMonitor,
+            preferredTapSourceDeviceUID: outputUID)
+
+        do {
+            try controller.activate(initial: TapInitialState(eqSettings: wanted.eqSettings))
+            controller.volume = wanted.volume
+            controller.isMuted = wanted.isMuted
+            controllers[app.id] = controller
+            lastFailure = nil
+        } catch {
+            // Failing leaves the app on normal system audio at full volume.
+            // Muted-with-nothing-replacing-it is the one outcome that would
+            // read as broken hardware, so it is never a failure mode here.
+            controller.invalidate()
+            lastFailure = error.localizedDescription
+            Logger.log(
+                "Per-app audio engine failed for \(app.name): \(error.localizedDescription)",
+                category: .error)
+        }
     }
 
-    // MARK: - CoreAudio helpers
+    /// Rebuilds every engaged app against the current output device.
+    private func rebuildAll() {
+        let engaged = Array(controllers.keys)
+        for pid in engaged {
+            controllers.removeValue(forKey: pid)?.invalidate()
+        }
+        for app in apps where state(for: app).needsProcessing {
+            syncController(for: app)
+        }
+    }
 
-    private static func pid(of object: AudioObjectID) -> pid_t? {
-        var address = AudioObjectPropertyAddress(
-            mSelector: kAudioProcessPropertyPID,
-            mScope: kAudioObjectPropertyScopeGlobal,
-            mElement: kAudioObjectPropertyElementMain)
-        var value: pid_t = 0
-        var size = UInt32(MemoryLayout<pid_t>.size)
-        guard AudioObjectGetPropertyData(object, &address, 0, nil, &size, &value) == noErr
+    private func currentOutputUID() -> String? {
+        guard let deviceID = try? AudioObjectID.readDefaultOutputDevice(),
+              let uid = try? deviceID.readDeviceUID()
         else { return nil }
-        return value
-    }
-
-    private static func isRunningOutput(_ object: AudioObjectID) -> Bool {
-        var address = AudioObjectPropertyAddress(
-            mSelector: kAudioProcessPropertyIsRunningOutput,
-            mScope: kAudioObjectPropertyScopeGlobal,
-            mElement: kAudioObjectPropertyElementMain)
-        var value: UInt32 = 0
-        var size = UInt32(MemoryLayout<UInt32>.size)
-        guard AudioObjectGetPropertyData(object, &address, 0, nil, &size, &value) == noErr
-        else { return false }
-        return value != 0
+        return uid
     }
 }

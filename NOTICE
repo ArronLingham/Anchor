@@ -11,3 +11,17 @@ modified and adapted for Atoll (DynamicIsland). The boring.notch project
 is licensed under the GNU General Public License v3.0.
 
 See the LICENSE file for the full GPL v3 text.
+
+---
+
+Anchor's per-app audio engine (Anchor/audio/perapp/) is derived from FineTune:
+
+    FineTune
+    Copyright (C) 2026 Ronit Singh
+    https://github.com/ronitsingh10/FineTune
+    Licensed under the GNU General Public License v3.0
+
+The process-tap, aggregate-device, EQ, AutoEQ and loudness code in that
+directory is FineTune's work, renamed to Anchor's conventions and re-headered.
+The coordinator above it (audio/PerAppAudioManager.swift) and the settings UI
+are Anchor's own.

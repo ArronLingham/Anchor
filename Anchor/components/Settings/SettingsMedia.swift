@@ -78,7 +78,7 @@ struct Media: View {
         Form {
             Section {
                 Defaults.Toggle(key: .enablePerAppAudio) {
-                    Text("Per-app mute")
+                    Text("Per-app volume, mute and EQ")
                 }
                 .settingsHighlight(id: highlightID("Per-app mute"))
 

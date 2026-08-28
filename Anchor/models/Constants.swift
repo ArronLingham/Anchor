@@ -1292,5 +1292,7 @@ extension Defaults.Keys {
     // MARK: Per-app volume
     /// Gain per bundle identifier, 1 meaning untouched. Keyed by bundle id
     /// rather than PID so it survives the app being relaunched.
-    static let perAppVolumeGains = Key<[String: Double]>("perAppVolumeGains", default: [:])
+    /// Volume, mute and EQ per bundle identifier. Keyed that way rather than by
+    /// PID so it survives the app being relaunched.
+    static let perAppAudioStates = Key<[String: PerAppAudioState]>("perAppAudioStates", default: [:])
 }
