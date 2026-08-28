@@ -51,6 +51,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
     case appearance
     case lockScreen
     case media
+    case vinyl
     case devices
     case timer
     case calendar
@@ -75,7 +76,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
     var group: SettingsTabGroup {
         switch self {
         case .general, .appearance:                                          return .core
-        case .media, .liveActivities, .lockScreen, .devices:                 return .mediaAndDisplay
+        case .media, .liveActivities, .lockScreen, .devices, .vinyl:         return .mediaAndDisplay
         case .hudAndOSD, .battery, .menuBar:                                 return .system
         case .timer, .calendar, .notes, .todo:                               return .productivity
         case .dictation, .launcher, .claudeUsage:                            return .integrations
@@ -92,6 +93,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         case .appearance: return String(localized: "Appearance")
         case .lockScreen: return String(localized: "Lock Screen")
         case .media: return String(localized: "Media")
+        case .vinyl: return String(localized: "Vinyl")
         case .devices: return String(localized: "Devices")
         case .timer: return String(localized: "Timer")
         case .calendar: return String(localized: "Calendar")
@@ -119,6 +121,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         case .appearance: return "paintpalette"
         case .lockScreen: return "lock.laptopcomputer"
         case .media: return "play.laptopcomputer"
+        case .vinyl: return "opticaldisc"
         case .devices: return "headphones"
         case .timer: return "timer"
         case .calendar: return "calendar"
@@ -146,6 +149,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         case .appearance: return .purple
         case .lockScreen: return .orange
         case .media: return .green
+        case .vinyl: return Color(red: 0.86, green: 0.32, blue: 0.55, opacity: 1.000)
         case .devices: return Color(red: 0.1, green: 0.11, blue: 0.12)
         case .timer: return .red
         case .calendar: return .cyan
@@ -696,6 +700,7 @@ struct SettingsView: View {
     private var settingsSearchIndex: [SettingsSearchEntry] {
         [
             // General
+            SettingsSearchEntry(tab: .vinyl, title: "Show the vinyl widget", keywords: ["vinyl", "record", "turntable", "desktop widget", "album art"], highlightID: SettingsTab.vinyl.highlightID(for: "Show the vinyl widget")),
             SettingsSearchEntry(tab: .menuBar, title: "Shrink the menu bar", keywords: ["menu bar", "menubar", "ice", "bartender", "hide icons", "status items"], highlightID: SettingsTab.menuBar.highlightID(for: "Shrink the menu bar")),
             SettingsSearchEntry(tab: .launcher, title: "Enable app switcher", keywords: ["cmd tab", "command tab", "alt tab", "switcher", "ring", "radial"], highlightID: SettingsTab.launcher.highlightID(for: "Enable app switcher")),
             SettingsSearchEntry(tab: .gitCommit, title: "Commit once a day", keywords: ["git", "commit", "daily", "streak", "contribution"], highlightID: SettingsTab.gitCommit.highlightID(for: "Commit once a day")),
@@ -952,6 +957,10 @@ struct SettingsView: View {
         case .media:
             SettingsForm(tab: .media) {
                 Media()
+            }
+        case .vinyl:
+            SettingsForm(tab: .vinyl) {
+                VinylSettings()
             }
         case .devices:
             SettingsForm(tab: .devices) {

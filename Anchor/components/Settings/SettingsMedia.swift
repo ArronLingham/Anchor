@@ -88,7 +88,7 @@ struct Media: View {
             } header: {
                 Text("Per-app audio")
             } footer: {
-                Text("Silences one app without touching system volume. Mute is released when you unmute, when the app quits, and if Anchor stops running — macOS owns the tap, so nothing stays muted after Anchor is gone. Volume sliders are not offered: arbitrary gain would mean re-rendering the app's audio through Anchor in real time.")
+                Text("Mute or set the volume of one app without touching system volume. Both are released when you undo them, when the app quits, and if Anchor stops running — macOS owns the tap, so nothing stays muted or quietened after Anchor is gone.\n\nA volume other than 100% is not a property write: CoreAudio has no per-process volume, so Anchor taps the app, mutes it at the device, and re-renders its audio at the level you chose through a private aggregate device. That path only runs while a slider is away from 100%, and if any part of it fails to start the app is left at normal volume rather than muted with nothing replacing it.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }

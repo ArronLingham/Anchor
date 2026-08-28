@@ -19,6 +19,7 @@
 
 import AppKit
 import CoreAudio
+import Defaults
 import Foundation
 
 /// One app that is currently producing audio.
@@ -54,6 +55,16 @@ final class PerAppAudioManager: ObservableObject {
     /// PIDs currently muted, each with the tap holding it muted.
     @Published private(set) var mutedPIDs: Set<pid_t> = []
     private var taps: [pid_t: AudioObjectID] = [:]
+
+    /// Per-app gain, keyed by bundle identifier so it survives a relaunch of
+    /// the app being adjusted — a PID does not.
+    @Published private(set) var gains: [String: Double] = Defaults[.perAppVolumeGains]
+
+    /// True once a gain has failed to engage, so the UI can say so rather than
+    /// showing a slider that silently does nothing.
+    @Published private(set) var volumeEngineFailed = false
+
+    private let volumeEngine = PerAppVolumeEngine()
 
     private var listenerInstalled = false
 
@@ -116,6 +127,7 @@ final class PerAppAudioManager: ObservableObject {
         }
 
         reconcileMutes()
+        reconcileGains()
         installListenerIfNeeded()
     }
 
@@ -159,6 +171,59 @@ final class PerAppAudioManager: ObservableObject {
     /// destroys our taps anyway when the process goes.
     func unmuteAll() {
         for pid in mutedPIDs { destroyTap(for: pid) }
+        volumeEngine.stopAll()
+    }
+
+    // MARK: - Volume
+
+    /// Gain for an app, 1 meaning untouched.
+    func gain(for app: AudioApp) -> Double {
+        guard let bundleID = app.bundleID else { return 1 }
+        return gains[bundleID] ?? 1
+    }
+
+    /// Sets an app's gain, 0…2.
+    ///
+    /// Muting and gain are separate mechanisms and do not stack: a muted app
+    /// has no output to scale, so setting a gain clears the mute first. That is
+    /// less surprising than a slider that appears to do nothing.
+    func setGain(_ gain: Double, for app: AudioApp) {
+        guard let bundleID = app.bundleID else { return }
+
+        if mutedPIDs.contains(app.pid), gain > 0 {
+            destroyTap(for: app.pid)
+        }
+
+        let clamped = max(0, min(2, gain))
+        if abs(clamped - 1) < 0.001 {
+            gains.removeValue(forKey: bundleID)
+        } else {
+            gains[bundleID] = clamped
+        }
+        Defaults[.perAppVolumeGains] = gains
+
+        let engaged = volumeEngine.setGain(Float(clamped), for: app)
+        volumeEngineFailed = !engaged
+    }
+
+    /// True while the re-render engine is actually running for this app.
+    func isVolumeEngaged(_ pid: pid_t) -> Bool {
+        volumeEngine.isActive(pid: pid)
+    }
+
+    /// Re-applies stored gains to apps that have just appeared, and drops
+    /// engines whose process has gone.
+    private func reconcileGains() {
+        volumeEngine.reconcile(livePIDs: Set(apps.map(\.pid)))
+
+        for app in apps {
+            guard let bundleID = app.bundleID,
+                  let stored = gains[bundleID],
+                  abs(stored - 1) > 0.001,
+                  !volumeEngine.isActive(pid: app.pid)
+            else { continue }
+            _ = volumeEngine.setGain(Float(stored), for: app)
+        }
     }
 
     private func createMuteTap(for app: AudioApp) {

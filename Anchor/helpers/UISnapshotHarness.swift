@@ -161,6 +161,16 @@ enum UISnapshotHarness {
                     scheme: scheme,
                     to: directory.appendingPathComponent("app-switcher-\(suffix).png"))
 
+                // The vinyl widget, at its Regular size. The record is drawn
+                // in CALayers, so this render proves the layer tree lays out —
+                // the spin itself is a render-server animation and cannot show
+                // in a still.
+                await capture(
+                    VinylWidgetView(),
+                    size: CGSize(width: 300, height: 300),
+                    scheme: scheme,
+                    to: directory.appendingPathComponent("vinyl-widget-\(suffix).png"))
+
                 // Installs the menu bar divider for real before the Menu Bar
                 // pane is rendered, so that pane reports its true state
                 // ("Collapsed") rather than "Not installed". Status items do
@@ -235,6 +245,7 @@ enum UISnapshotHarness {
             pane("terminal", TerminalSettings()),
             pane("git-commit", GitCommitSettings()),
             pane("menu-bar", MenuBarSettings()),
+            pane("vinyl", VinylSettings()),
         ]
     }
 

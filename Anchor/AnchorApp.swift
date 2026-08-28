@@ -250,6 +250,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // recovers on its own. Releasing explicitly keeps the teardown
         // deterministic rather than relying on that.
         PerAppAudioManager.shared.unmuteAll()
+        // Saves where the user dragged the record to; the panel is torn down
+        // before AppKit would autosave it.
+        VinylWidgetWindowManager.shared.persistFrame()
         SystemOSDManager.resumeOSDUIHelperForTermination()
 
         // Cancel any pending window size updates
@@ -734,6 +737,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             // Creates its divider only when the feature is on; the observer
             // itself costs nothing.
             MenuBarShrinkManager.shared.start()
+            // Creates its window only when the feature is on. The record's
+            // rotation is a CABasicAnimation, so a spinning record costs this
+            // process nothing per frame.
+            VinylWidgetWindowManager.shared.start()
         }
 
         ReminderLiveActivityManager.shared.$activeWindowReminders

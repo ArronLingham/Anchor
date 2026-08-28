@@ -1277,4 +1277,20 @@ extension Defaults.Keys {
     static let menuBarAutoHideSeconds = Key<Int>("menuBarAutoHideSeconds", default: 0)
     /// A second divider whose left-hand items never show.
     static let menuBarAlwaysHiddenSection = Key<Bool>("menuBarAlwaysHiddenSection", default: false)
+
+    // MARK: Vinyl widget
+    /// A spinning record on the desktop showing what is playing.
+    static let enableVinylWidget = Key<Bool>("enableVinylWidget", default: false)
+    static let vinylWidgetSize = Key<VinylWidgetSize>("vinylWidgetSize", default: .regular)
+    static let vinylWindowLevel = Key<VinylWindowLevel>("vinylWindowLevel", default: .desktop)
+    static let vinylShowStylus = Key<Bool>("vinylShowStylus", default: true)
+    static let vinylShowProgress = Key<Bool>("vinylShowProgress", default: true)
+    static let vinylShowTitle = Key<Bool>("vinylShowTitle", default: false)
+    static let vinylUseAlbumColor = Key<Bool>("vinylUseAlbumColor", default: true)
+    static let vinylBackgroundOpacity = Key<Double>("vinylBackgroundOpacity", default: 0)
+
+    // MARK: Per-app volume
+    /// Gain per bundle identifier, 1 meaning untouched. Keyed by bundle id
+    /// rather than PID so it survives the app being relaunched.
+    static let perAppVolumeGains = Key<[String: Double]>("perAppVolumeGains", default: [:])
 }

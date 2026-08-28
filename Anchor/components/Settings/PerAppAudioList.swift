@@ -19,7 +19,7 @@
 
 import SwiftUI
 
-/// Apps currently producing audio, each with a mute toggle.
+/// Apps currently producing audio, each with a volume slider and a mute button.
 ///
 /// A leaf view observing `PerAppAudioManager` directly. It refreshes on appear
 /// and then only when CoreAudio reports the process list changed — there is no
@@ -45,7 +45,14 @@ struct PerAppAudioList: View {
 
     private func row(for app: AudioApp) -> some View {
         let muted = manager.isMuted(app.pid)
-        return HStack(spacing: 8) {
+        return VStack(alignment: .leading, spacing: 4) {
+            header(for: app, muted: muted)
+            slider(for: app, muted: muted)
+        }
+    }
+
+    private func header(for app: AudioApp, muted: Bool) -> some View {
+        HStack(spacing: 8) {
             if let bundleID = app.bundleID, let icon = AppIconAsNSImage(for: bundleID) {
                 Image(nsImage: icon).resizable().frame(width: 16, height: 16)
             } else {
@@ -75,5 +82,46 @@ struct PerAppAudioList: View {
             .buttonStyle(.borderless)
             .help(muted ? "Unmute \(app.name)" : "Mute \(app.name)")
         }
+    }
+
+    /// The gain slider.
+    ///
+    /// 0–200%, with 100% as the resting point. Anything other than 100% builds
+    /// a real audio path — a tap, a private aggregate device and an IOProc — so
+    /// the slider snapping back to exactly 100% is what tears all of that down
+    /// again rather than leaving a no-op multiply running.
+    private func slider(for app: AudioApp, muted: Bool) -> some View {
+        let binding = Binding<Double>(
+            get: { manager.gain(for: app) },
+            set: { manager.setGain(snapped($0), for: app) })
+
+        return HStack(spacing: 8) {
+            Image(systemName: "speaker.fill")
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+
+            Slider(value: binding, in: 0...2)
+                .controlSize(.small)
+                .disabled(muted || app.bundleID == nil)
+
+            Text("\(Int(manager.gain(for: app) * 100))%")
+                .font(.caption2)
+                .monospacedDigit()
+                .foregroundStyle(.secondary)
+                .frame(width: 38, alignment: .trailing)
+
+            if manager.isVolumeEngaged(app.pid) {
+                Image(systemName: "waveform.badge.magnifyingglass")
+                    .font(.caption2)
+                    .foregroundStyle(.blue)
+                    .help("Anchor is re-rendering this app's audio")
+            }
+        }
+        .padding(.leading, 24)
+    }
+
+    /// Snaps near 100% so the resting point is reachable by dragging.
+    private func snapped(_ value: Double) -> Double {
+        abs(value - 1) < 0.04 ? 1 : value
     }
 }
