@@ -115,6 +115,43 @@ final class TodoManager: ObservableObject {
         return item
     }
 
+    /// One completion that can still be taken back.
+    ///
+    /// Only the most recent is kept: a deeper stack would mean holding items the
+    /// user has already moved on from, and the point of this is catching the tick
+    /// you did not mean, not browsing history.
+    struct CompletionUndo {
+        let item: TodoItem
+        let index: Int
+    }
+
+    @Published private(set) var lastCompletion: CompletionUndo?
+
+    /// Completes an item and takes it off the list.
+    ///
+    /// The item is not deleted until another completion replaces it in the undo
+    /// slot, so ⌘Z puts it back exactly where it was rather than at the end.
+    func complete(_ item: TodoItem) {
+        guard let index = items.firstIndex(where: { $0.id == item.id }) else { return }
+        var completed = items[index]
+        completed.isDone = true
+        completed.completedAt = Date()
+        lastCompletion = CompletionUndo(item: completed, index: index)
+        items.remove(at: index)
+    }
+
+    /// Puts the last completed item back where it was.
+    @discardableResult
+    func undoLastCompletion() -> Bool {
+        guard let undo = lastCompletion else { return false }
+        var restored = undo.item
+        restored.isDone = false
+        restored.completedAt = nil
+        items.insert(restored, at: min(undo.index, items.count))
+        lastCompletion = nil
+        return true
+    }
+
     func toggle(_ item: TodoItem) {
         guard let index = items.firstIndex(where: { $0.id == item.id }) else { return }
         items[index].isDone.toggle()

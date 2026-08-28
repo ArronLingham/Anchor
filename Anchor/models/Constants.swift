@@ -1054,14 +1054,6 @@ extension Defaults.Keys {
     
     // MARK: Lyrics Feature
     static let enableLyrics = Key<Bool>("enableLyrics", default: false)
-    // MARK: Caffeinate
-    /// Keep the Mac awake. Held as an IOKit power assertion; see CaffeinateManager.
-    static let caffeinateEnabled = Key<Bool>("caffeinateEnabled", default: false)
-    /// Keep the *display* awake too, not just the system. The display assertion
-    /// implies the system one, so this picks which is taken rather than adding.
-    static let caffeinateKeepsDisplayAwake = Key<Bool>("caffeinateKeepsDisplayAwake", default: true)
-    /// Minutes for a timed session. 0 runs until switched off.
-    static let caffeinateDurationMinutes = Key<Int>("caffeinateDurationMinutes", default: 0)
     /// Seconds to lead the lyrics by. Positive shows each line earlier.
     ///
     /// A player reports where its decoder is, which is ahead of what has reached
@@ -1218,20 +1210,6 @@ extension Defaults.Keys {
     }
     static let showSongMetadataInClosedNotch = Key<Bool>("showSongMetadataInClosedNotch", default: false)
 
-    // MARK: Keep awake — triggers
-    /// Hold the keep-awake assertion for as long as the Mac is on mains power.
-    /// Driven by BatteryActivityManager's IOPS notification, not a poll.
-    static let caffeinateTriggerWhileOnPower = Key<Bool>("caffeinateTriggerWhileOnPower", default: false)
-    /// Hold it for as long as any external display is attached. Driven by
-    /// `didChangeScreenParametersNotification`.
-    static let caffeinateTriggerWhileExternalDisplay = Key<Bool>("caffeinateTriggerWhileExternalDisplay", default: false)
-    /// Bundle identifiers that hold it for as long as they are running. Driven
-    /// by NSWorkspace launch/terminate notifications.
-    static let caffeinateTriggerApps = Key<[String]>("caffeinateTriggerApps", default: [])
-    /// Nudge the pointer periodically while awake, to defeat *other* apps'
-    /// idle detection. A power assertion cannot do that — it only speaks to
-    /// the system. Off by default; it moves the user's cursor.
-    static let caffeinateJigglePointer = Key<Bool>("caffeinateJigglePointer", default: false)
 
     // MARK: To-do list
     /// Adds the To-Do tab. Off by default like every other optional tab.
@@ -1277,6 +1255,8 @@ extension Defaults.Keys {
     static let menuBarAutoHideSeconds = Key<Int>("menuBarAutoHideSeconds", default: 0)
     /// A second divider whose left-hand items never show.
     static let menuBarAlwaysHiddenSection = Key<Bool>("menuBarAlwaysHiddenSection", default: false)
+    /// Expand by hovering the chevron rather than clicking it.
+    static let menuBarExpandOnHover = Key<Bool>("menuBarExpandOnHover", default: false)
 
     // MARK: Vinyl widget
     /// A spinning record on the desktop showing what is playing.
@@ -1285,7 +1265,9 @@ extension Defaults.Keys {
     static let vinylWindowLevel = Key<VinylWindowLevel>("vinylWindowLevel", default: .desktop)
     static let vinylShowStylus = Key<Bool>("vinylShowStylus", default: true)
     static let vinylShowProgress = Key<Bool>("vinylShowProgress", default: true)
-    static let vinylShowTitle = Key<Bool>("vinylShowTitle", default: false)
+    /// Ring around the record, or a bar with elapsed and remaining times.
+    static let vinylProgressStyle = Key<VinylProgressStyle>("vinylProgressStyle", default: .bar)
+    static let vinylShowTitle = Key<Bool>("vinylShowTitle", default: true)
     static let vinylUseAlbumColor = Key<Bool>("vinylUseAlbumColor", default: true)
     static let vinylBackgroundOpacity = Key<Double>("vinylBackgroundOpacity", default: 0)
 

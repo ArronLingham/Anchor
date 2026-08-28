@@ -45,28 +45,47 @@ import Foundation
 /// Two status items and, when auto-hide is on, one one-shot timer per reveal.
 /// Nothing polls, and with the feature off nothing is created at all.
 @MainActor
-final class MenuBarShrinkManager: ObservableObject {
+final class MenuBarShrinkManager: NSResponder, ObservableObject {
     static let shared = MenuBarShrinkManager()
 
     /// Wide enough to push anything to its left off any display Anchor
     /// supports, and far short of a value that could overflow layout maths.
     private static let collapsedLength: CGFloat = 10_000
-    private static let expandedLength: CGFloat = 22
+    private static let expandedLength: CGFloat = 0
+    /// The chevron's own width — it is always on screen at this size.
+    private static let chevronLength: CGFloat = 24
 
     @Published private(set) var isCollapsed = true
     @Published private(set) var isActive = false
 
-    /// The main divider. Items dragged to its left hide when collapsed.
-    private var divider: NSStatusItem?
-    /// The optional second divider. Items to *its* left stay hidden even when
-    /// the first is expanded — Ice calls this the "always hidden" section.
+    /// The always-visible chevron. Clicking or hovering it toggles the section.
+    ///
+    /// Separate from the expander below, and that separation is the whole
+    /// trick. A status item that makes itself 10,000 points wide centres its
+    /// own image at ~5,000 points — which is off the screen — so a single item
+    /// doing both jobs disappears exactly when it is collapsed and most needed.
+    private var chevronItem: NSStatusItem?
+
+    /// The item that does the pushing. Carries no image at all; its only job is
+    /// to be wide.
+    private var expanderItem: NSStatusItem?
+
+    /// The optional second expander. Items to *its* left stay hidden even when
+    /// the first section is showing — Ice calls this the "always hidden"
+    /// section.
     private var alwaysHiddenDivider: NSStatusItem?
 
     private var autoHideTimer: DispatchSourceTimer?
+    private var hoverTracking: NSTrackingArea?
     private var cancellables = Set<AnyCancellable>()
     private var started = false
 
-    private init() {}
+    private override init() {
+        super.init()
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError("not used") }
 
     // MARK: - Lifecycle
 
@@ -88,39 +107,55 @@ final class MenuBarShrinkManager: ObservableObject {
             }
             .store(in: &cancellables)
 
+        Defaults.publisher(.menuBarExpandOnHover)
+            .sink { [weak self] _ in
+                Task { @MainActor in self?.syncHoverTracking() }
+            }
+            .store(in: &cancellables)
+
         if Defaults[.enableMenuBarShrink] { activate() }
     }
 
     private func activate() {
-        guard divider == nil else { return }
+        guard chevronItem == nil else { return }
 
-        let item = NSStatusBar.system.statusItem(withLength: Self.expandedLength)
-        // The autosave name is what makes the user's chosen position stick
-        // across restarts. Changing this string moves everyone's divider back
-        // to the default position, so it must not be edited casually.
-        item.autosaveName = "AnchorMenuBarDivider"
-        item.button?.image = Self.chevron(collapsed: true)
-        item.button?.imagePosition = .imageOnly
-        item.button?.target = self
-        item.button?.action = #selector(dividerClicked)
-        item.button?.sendAction(on: [.leftMouseUp, .rightMouseUp])
-        item.button?.toolTip = String(
-            localized: "Click to show or hide menu bar items to the left")
-        divider = item
+        // Order matters: the expander is created first so it sits to the *left*
+        // of the chevron in the menu bar's right-to-left layout, which is what
+        // puts the chevron beside the visible items rather than beyond the
+        // hidden ones.
+        let expander = NSStatusBar.system.statusItem(withLength: Self.collapsedLength)
+        // Changing this string moves everyone's divider back to the default
+        // position, so it must not be edited casually.
+        expander.autosaveName = "AnchorMenuBarDivider"
+        expander.button?.image = nil
+        expanderItem = expander
+
+        let chevron = NSStatusBar.system.statusItem(withLength: Self.chevronLength)
+        chevron.autosaveName = "AnchorMenuBarChevron"
+        chevron.button?.image = Self.chevron(collapsed: true)
+        chevron.button?.imagePosition = .imageOnly
+        chevron.button?.target = self
+        chevron.button?.action = #selector(chevronClicked)
+        chevron.button?.sendAction(on: [.leftMouseUp, .rightMouseUp])
+        chevron.button?.toolTip = String(
+            localized: "Show or hide the menu bar items to the left")
+        chevronItem = chevron
 
         isActive = true
         isCollapsed = true
         applyLengths()
         syncAlwaysHiddenDivider()
+        syncHoverTracking()
     }
 
     private func deactivate() {
         cancelAutoHide()
-        if let divider { NSStatusBar.system.removeStatusItem(divider) }
-        if let alwaysHiddenDivider {
-            NSStatusBar.system.removeStatusItem(alwaysHiddenDivider)
+        removeHoverTracking()
+        for item in [chevronItem, expanderItem, alwaysHiddenDivider].compactMap({ $0 }) {
+            NSStatusBar.system.removeStatusItem(item)
         }
-        divider = nil
+        chevronItem = nil
+        expanderItem = nil
         alwaysHiddenDivider = nil
         isActive = false
     }
@@ -132,8 +167,7 @@ final class MenuBarShrinkManager: ObservableObject {
             guard alwaysHiddenDivider == nil else { return }
             let item = NSStatusBar.system.statusItem(withLength: Self.collapsedLength)
             item.autosaveName = "AnchorMenuBarAlwaysHiddenDivider"
-            item.button?.image = Self.chevron(collapsed: true)
-            item.button?.imagePosition = .imageOnly
+            item.button?.image = nil
             item.button?.toolTip = String(
                 localized: "Items to the left of this are always hidden")
             alwaysHiddenDivider = item
@@ -143,35 +177,73 @@ final class MenuBarShrinkManager: ObservableObject {
         }
     }
 
+    // MARK: - Hover
+
+    /// Hover-to-expand, when the user has asked for it.
+    ///
+    /// `NSStatusItem` has no hover callback, so this is a tracking area on the
+    /// chevron's own button. It is installed only while the setting is on —
+    /// mouse tracking on a menu bar item that does not need it is pure cost.
+    private func syncHoverTracking() {
+        removeHoverTracking()
+        guard isActive, Defaults[.menuBarExpandOnHover],
+              let button = chevronItem?.button
+        else { return }
+
+        let area = NSTrackingArea(
+            rect: button.bounds,
+            options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect],
+            owner: self,
+            userInfo: nil)
+        button.addTrackingArea(area)
+        hoverTracking = area
+    }
+
+    private func removeHoverTracking() {
+        if let hoverTracking, let button = chevronItem?.button {
+            button.removeTrackingArea(hoverTracking)
+        }
+        hoverTracking = nil
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        guard Defaults[.menuBarExpandOnHover], isCollapsed else { return }
+        setCollapsed(false)
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        guard Defaults[.menuBarExpandOnHover] else { return }
+        // The auto-hide timer already handles re-collapsing; leaving on exit
+        // would make the section impossible to click into.
+        scheduleAutoHide()
+    }
+
     // MARK: - Toggling
 
-    @objc private func dividerClicked() {
+    @objc private func chevronClicked() {
         toggle()
     }
 
     func toggle() {
         guard isActive else { return }
-        isCollapsed.toggle()
-        applyLengths()
-
-        if isCollapsed {
-            cancelAutoHide()
-        } else {
-            scheduleAutoHide()
-        }
+        setCollapsed(!isCollapsed)
     }
 
     func collapse() {
         guard isActive, !isCollapsed else { return }
-        isCollapsed = true
-        cancelAutoHide()
+        setCollapsed(true)
+    }
+
+    private func setCollapsed(_ collapsed: Bool) {
+        isCollapsed = collapsed
         applyLengths()
+        if collapsed { cancelAutoHide() } else { scheduleAutoHide() }
     }
 
     private func applyLengths() {
-        divider?.length = isCollapsed ? Self.collapsedLength : Self.expandedLength
-        divider?.button?.image = Self.chevron(collapsed: isCollapsed)
-        // The always-hidden divider never expands from a click; it is only
+        expanderItem?.length = isCollapsed ? Self.collapsedLength : Self.expandedLength
+        chevronItem?.button?.image = Self.chevron(collapsed: isCollapsed)
+        // The always-hidden expander never opens from a click; it is only
         // reachable by turning the section off.
         alwaysHiddenDivider?.length = Self.collapsedLength
     }

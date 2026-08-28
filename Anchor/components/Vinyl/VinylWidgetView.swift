@@ -21,6 +21,21 @@ import AppKit
 import Defaults
 import SwiftUI
 
+/// How playback position is drawn on the vinyl widget.
+enum VinylProgressStyle: String, Codable, CaseIterable, Defaults.Serializable {
+    /// A ring around the record.
+    case ring
+    /// A line under the transport, with elapsed and remaining times.
+    case bar
+
+    var label: String {
+        switch self {
+        case .ring: return String(localized: "Ring around the record")
+        case .bar: return String(localized: "Bar with times")
+        }
+    }
+}
+
 /// Bridges the CALayer record into SwiftUI.
 ///
 /// Only three things cross the boundary — the artwork, whether it is turning,
@@ -46,11 +61,13 @@ struct VinylRecordRepresentable: NSViewRepresentable {
     }
 }
 
-/// The desktop vinyl widget: record, tonearm, progress and hover controls.
+/// The desktop vinyl widget: a card holding the record, the track, transport
+/// and playback position.
 struct VinylWidgetView: View {
     @ObservedObject private var music = MusicManager.shared
 
     @Default(.vinylShowStylus) private var showStylus
+    @Default(.vinylProgressStyle) private var progressStyle
     @Default(.vinylShowProgress) private var showProgress
     @Default(.vinylShowTitle) private var showTitle
     @Default(.vinylUseAlbumColor) private var useAlbumColor
@@ -58,151 +75,250 @@ struct VinylWidgetView: View {
 
     @State private var isHovering = false
 
-    private var accent: Color {
-        useAlbumColor ? Color(nsColor: music.avgColor) : .white
+    // MARK: - Colour
+    //
+    // The card takes its colour from the album, but never at full strength:
+    // artwork is frequently saturated to the point of being unusable as a
+    // background, so the hue is kept and the saturation and brightness are
+    // pinned into a narrow band. That is what makes any album produce a card
+    // that still reads as one family rather than a random paint chart.
+
+    private var cardColor: Color {
+        guard useAlbumColor else { return Color(white: 0.16) }
+        return Color(nsColor: Self.muted(music.avgColor))
     }
+
+    private var inkColor: Color {
+        guard useAlbumColor else { return .white }
+        return Self.isLight(Self.muted(music.avgColor)) ? .black.opacity(0.82) : .white.opacity(0.92)
+    }
+
+    private var subtleInk: Color { inkColor.opacity(0.55) }
+
+    private static func muted(_ color: NSColor) -> NSColor {
+        guard let rgb = color.usingColorSpace(.sRGB) else { return NSColor(white: 0.16, alpha: 1) }
+        var hue: CGFloat = 0, saturation: CGFloat = 0, brightness: CGFloat = 0, alpha: CGFloat = 0
+        rgb.getHue(&hue, saturation: &saturation, brightness: &brightness, alpha: &alpha)
+        return NSColor(
+            hue: hue,
+            saturation: min(saturation, 0.22),
+            brightness: max(0.58, min(brightness, 0.80)),
+            alpha: 1)
+    }
+
+    private static func isLight(_ color: NSColor) -> Bool {
+        guard let rgb = color.usingColorSpace(.sRGB) else { return false }
+        // Rec. 709 luma — matches how the eye weights the channels, so a
+        // saturated yellow correctly counts as light and a blue does not.
+        let luma = 0.2126 * rgb.redComponent
+            + 0.7152 * rgb.greenComponent
+            + 0.0722 * rgb.blueComponent
+        return luma > 0.45
+    }
+
+    // MARK: - Body
 
     var body: some View {
         GeometryReader { geometry in
-            let side = min(geometry.size.width, geometry.size.height)
-            let recordSide = side * (showStylus ? 0.82 : 0.92)
+            let width = geometry.size.width
+            let recordSide = width * 0.72
 
-            ZStack {
-                background
-
-                if showProgress {
-                    progressRing(side: recordSide + 10)
-                }
-
-                VinylRecordRepresentable(
-                    artwork: music.albumArt,
-                    isPlaying: music.isPlaying,
-                    labelFraction: 0.38)
-                .frame(width: recordSide, height: recordSide)
-
-                if showStylus {
-                    tonearm(side: side)
-                }
-
-                if isHovering {
-                    controls
-                }
+            VStack(spacing: 0) {
+                turntable(width: width, recordSide: recordSide)
 
                 if showTitle {
-                    title(side: side)
+                    trackLabels(width: width)
+                        .padding(.top, width * 0.055)
                 }
+
+                transport(width: width)
+                    .padding(.top, showTitle ? width * 0.05 : width * 0.07)
+
+                if showProgress && progressStyle == .bar {
+                    progressBar(width: width)
+                        .padding(.top, width * 0.045)
+                }
+
+                Spacer(minLength: 0)
             }
-            .frame(width: geometry.size.width, height: geometry.size.height)
+            .padding(width * 0.075)
+            .frame(width: geometry.size.width, height: geometry.size.height, alignment: .top)
+            .background(card)
         }
         .onHover { isHovering = $0 }
-        .animation(.easeInOut(duration: 0.18), value: isHovering)
+        .animation(.easeInOut(duration: 0.35), value: music.avgColor)
     }
 
-    // MARK: - Pieces
-
-    private var background: some View {
+    private var card: some View {
         RoundedRectangle(cornerRadius: 18, style: .continuous)
-            .fill(.black.opacity(backgroundOpacity))
+            .fill(cardColor.opacity(max(backgroundOpacity, 0.001) > 0.001 ? 1 : 1))
+            .overlay(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .strokeBorder(.white.opacity(0.08), lineWidth: 1))
+            .shadow(color: .black.opacity(0.28), radius: 18, y: 6)
     }
 
-    /// Progress drawn as a ring around the record, which is the only place it
-    /// can go without covering the artwork.
-    private func progressRing(side: CGFloat) -> some View {
-        let fraction = music.songDuration > 0
-            ? min(max(music.elapsedTime / music.songDuration, 0), 1)
-            : 0
+    // MARK: - Turntable
 
-        return ZStack {
-            Circle()
-                .strokeBorder(.white.opacity(0.10), lineWidth: 3)
-            Circle()
-                .trim(from: 0, to: fraction)
-                .stroke(accent, style: StrokeStyle(lineWidth: 3, lineCap: .round))
-                .rotationEffect(.degrees(-90))
-        }
-        .frame(width: side, height: side)
-        // TimelineView is not used here on purpose: elapsedTime is republished
-        // by MusicManager as the player reports it, and a ring that advances a
-        // few times a second is indistinguishable from one that advances every
-        // frame at this size.
-    }
-
-    /// The tonearm, swung onto the record while playing and lifted when not.
-    private func tonearm(side: CGFloat) -> some View {
-        let length = side * 0.42
-
-        return ZStack(alignment: .topTrailing) {
-            Color.clear
-            ZStack(alignment: .top) {
-                // Pivot
-                Circle()
-                    .fill(LinearGradient(
-                        colors: [.white.opacity(0.85), .gray],
-                        startPoint: .topLeading, endPoint: .bottomTrailing))
-                    .frame(width: side * 0.085, height: side * 0.085)
-
-                // Arm
-                Capsule()
-                    .fill(LinearGradient(
-                        colors: [.white.opacity(0.75), .white.opacity(0.35)],
-                        startPoint: .top, endPoint: .bottom))
-                    .frame(width: max(3, side * 0.018), height: length)
-                    .offset(y: side * 0.04)
-
-                // Head
-                RoundedRectangle(cornerRadius: 2, style: .continuous)
-                    .fill(.white.opacity(0.9))
-                    .frame(width: side * 0.045, height: side * 0.055)
-                    .offset(y: side * 0.04 + length - side * 0.02)
+    private func turntable(width: CGFloat, recordSide: CGFloat) -> some View {
+        ZStack {
+            if showProgress && progressStyle == .ring {
+                progressRing(side: recordSide + width * 0.045)
             }
-            .rotationEffect(
-                .degrees(music.isPlaying ? 28 : 6),
-                anchor: .top)
-            .animation(.spring(response: 0.7, dampingFraction: 0.8), value: music.isPlaying)
-            .padding(.top, side * 0.06)
-            .padding(.trailing, side * 0.10)
+
+            VinylRecordRepresentable(
+                artwork: music.albumArt,
+                isPlaying: music.isPlaying,
+                labelFraction: 0.46)
+            .frame(width: recordSide, height: recordSide)
+
+            if showStylus {
+                tonearm(width: width, recordSide: recordSide)
+            }
         }
+        .frame(width: recordSide + width * 0.10, height: recordSide)
+    }
+
+    /// The tonearm: pivot in the top-right corner, arm swinging down onto the
+    /// record while playing and lifting clear when it stops.
+    private func tonearm(width: CGFloat, recordSide: CGFloat) -> some View {
+        let pivot = width * 0.115
+        let armLength = recordSide * 0.50
+
+        return ZStack(alignment: .top) {
+            // Pivot housing
+            Circle()
+                .fill(
+                    RadialGradient(
+                        colors: [.white.opacity(0.95), Color(white: 0.62)],
+                        center: .init(x: 0.35, y: 0.3),
+                        startRadius: 0,
+                        endRadius: pivot * 0.7))
+                .frame(width: pivot, height: pivot)
+                .shadow(color: .black.opacity(0.25), radius: 3, y: 1)
+
+            // Arm and head, rotating about the pivot
+            VStack(spacing: 0) {
+                Capsule()
+                    .fill(Color(white: 0.28))
+                    .frame(width: max(2.5, width * 0.014), height: armLength)
+
+                RoundedRectangle(cornerRadius: 2, style: .continuous)
+                    .fill(Color(white: 0.22))
+                    .frame(width: width * 0.05, height: width * 0.052)
+            }
+            .offset(y: pivot * 0.45)
+            .rotationEffect(
+                .degrees(music.isPlaying ? 32 : 12),
+                anchor: .top)
+            .animation(.spring(response: 0.75, dampingFraction: 0.82), value: music.isPlaying)
+        }
+        .frame(width: pivot, alignment: .top)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+        .offset(x: pivot * 0.15, y: -pivot * 0.25)
         .allowsHitTesting(false)
     }
 
-    private var controls: some View {
-        HStack(spacing: 18) {
-            button("backward.fill") { music.previousTrack() }
-            button(music.isPlaying ? "pause.fill" : "play.fill") { music.playPause() }
-            button("forward.fill") { music.nextTrack() }
+    private func progressRing(side: CGFloat) -> some View {
+        ZStack {
+            Circle().strokeBorder(inkColor.opacity(0.12), lineWidth: 3)
+            Circle()
+                .trim(from: 0, to: fraction)
+                .stroke(inkColor.opacity(0.75), style: StrokeStyle(lineWidth: 3, lineCap: .round))
+                .rotationEffect(.degrees(-90))
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 9)
-        .background(
-            Capsule().fill(.ultraThinMaterial))
-        .transition(.opacity.combined(with: .scale(scale: 0.94)))
+        .frame(width: side, height: side)
     }
 
-    private func button(_ symbol: String, action: @escaping () -> Void) -> some View {
+    // MARK: - Text and transport
+
+    private func trackLabels(width: CGFloat) -> some View {
+        VStack(spacing: 2) {
+            Text(music.songTitle)
+                .font(.system(size: width * 0.062, weight: .semibold))
+                .foregroundStyle(inkColor)
+                .lineLimit(1)
+                .truncationMode(.tail)
+
+            Text(subtitle)
+                .font(.system(size: width * 0.048))
+                .foregroundStyle(subtleInk)
+                .lineLimit(1)
+                .truncationMode(.tail)
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    private var subtitle: String {
+        let album = music.album.trimmingCharacters(in: .whitespaces)
+        let artist = music.artistName.trimmingCharacters(in: .whitespaces)
+        if album.isEmpty || album == artist { return artist }
+        return "\(artist) – \(album)"
+    }
+
+    private func transport(width: CGFloat) -> some View {
+        HStack(spacing: width * 0.10) {
+            control("backward.end.fill", size: width * 0.062) { music.previousTrack() }
+            control(music.isPlaying ? "pause.fill" : "play.fill", size: width * 0.082) {
+                music.playPause()
+            }
+            control("forward.end.fill", size: width * 0.062) { music.nextTrack() }
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    private func control(_ symbol: String, size: CGFloat, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: symbol)
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(.white)
+                .font(.system(size: size, weight: .medium))
+                .foregroundStyle(inkColor.opacity(isHovering ? 1 : 0.85))
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
     }
 
-    private func title(side: CGFloat) -> some View {
-        VStack {
-            Spacer()
-            VStack(spacing: 1) {
-                Text(music.songTitle)
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .lineLimit(1)
-                Text(music.artistName)
-                    .font(.system(size: 9))
-                    .foregroundStyle(.white.opacity(0.6))
-                    .lineLimit(1)
+    // MARK: - Progress
+
+    private var fraction: Double {
+        guard music.songDuration > 0 else { return 0 }
+        return min(max(music.elapsedTime / music.songDuration, 0), 1)
+    }
+
+    private func progressBar(width: CGFloat) -> some View {
+        VStack(spacing: width * 0.018) {
+            GeometryReader { bar in
+                ZStack(alignment: .leading) {
+                    Capsule()
+                        .fill(inkColor.opacity(0.18))
+                        .frame(height: 2.5)
+                    Capsule()
+                        .fill(inkColor.opacity(0.7))
+                        .frame(width: bar.size.width * fraction, height: 2.5)
+                }
+                .frame(height: bar.size.height, alignment: .center)
+                .contentShape(Rectangle())
+                .onTapGesture { location in
+                    guard music.songDuration > 0, bar.size.width > 0 else { return }
+                    let target = (location.x / bar.size.width) * music.songDuration
+                    music.seek(to: max(0, min(target, music.songDuration)))
+                }
             }
-            .padding(.horizontal, 10)
-            .padding(.bottom, 6)
-            .frame(maxWidth: side)
+            .frame(height: max(8, width * 0.03))
+
+            HStack {
+                Text(timestamp(music.elapsedTime))
+                Spacer()
+                Text("-" + timestamp(max(0, music.songDuration - music.elapsedTime)))
+            }
+            .font(.system(size: width * 0.036, weight: .medium))
+            .monospacedDigit()
+            .foregroundStyle(subtleInk)
         }
+    }
+
+    private func timestamp(_ seconds: TimeInterval) -> String {
+        guard seconds.isFinite, seconds >= 0 else { return "00:00" }
+        let total = Int(seconds.rounded())
+        return String(format: "%02d:%02d", total / 60, total % 60)
     }
 }

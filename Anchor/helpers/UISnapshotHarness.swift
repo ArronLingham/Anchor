@@ -170,7 +170,7 @@ enum UISnapshotHarness {
                 // in a still.
                 await capture(
                     VinylWidgetView(),
-                    size: CGSize(width: 300, height: 300),
+                    size: VinylWidgetSize.regular.size,
                     scheme: scheme,
                     to: directory.appendingPathComponent("vinyl-widget-\(suffix).png"))
 

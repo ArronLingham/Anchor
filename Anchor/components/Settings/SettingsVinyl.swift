@@ -26,6 +26,7 @@ struct VinylSettings: View {
     @Default(.vinylWindowLevel) private var level
     @Default(.vinylShowStylus) private var showStylus
     @Default(.vinylShowProgress) private var showProgress
+    @Default(.vinylProgressStyle) private var progressStyle
     @Default(.vinylShowTitle) private var showTitle
     @Default(.vinylUseAlbumColor) private var useAlbumColor
     @Default(.vinylBackgroundOpacity) private var backgroundOpacity
@@ -83,7 +84,15 @@ struct VinylSettings: View {
                 Toggle("Show progress", isOn: $showProgress)
                     .disabled(!enabled)
                     .settingsHighlight(id: highlightID("Show progress"))
-                    .help("A ring around the record. The only place it can go without covering the art.")
+
+                Picker("Progress style", selection: $progressStyle) {
+                    ForEach(VinylProgressStyle.allCases, id: \.self) { style in
+                        Text(style.label).tag(style)
+                    }
+                }
+                .disabled(!enabled || !showProgress)
+                .settingsHighlight(id: highlightID("Progress style"))
+                .help("The ring hugs the record and covers nothing. The bar sits under the transport with elapsed and remaining times, and can be clicked to seek.")
 
                 Toggle("Show title and artist", isOn: $showTitle)
                     .disabled(!enabled)

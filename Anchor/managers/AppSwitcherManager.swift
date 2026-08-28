@@ -18,6 +18,7 @@
  */
 
 import AppKit
+import ApplicationServices
 import Combine
 import Defaults
 import Foundation
@@ -168,13 +169,52 @@ final class AppSwitcherManager: ObservableObject {
     }
 
     /// Brings the highlighted app forward and closes the ring.
+    ///
+    /// Three separate things can be standing between the user and the window
+    /// they picked, and `activate` alone only fixes the first:
+    ///
+    /// - it is behind other windows — `activate` handles that;
+    /// - the whole app is hidden with ⌘H — `unhide()` handles that;
+    /// - its windows are minimised to the Dock — nothing public handles that,
+    ///   so `deminiaturise` goes through the accessibility API.
     func activateSelection() {
         defer { hide() }
         guard apps.indices.contains(selectedIndex) else { return }
         let target = apps[selectedIndex]
         guard let app = NSRunningApplication(processIdentifier: target.pid) else { return }
+
+        if app.isHidden { app.unhide() }
         app.activate(options: [.activateAllWindows])
+        deminiaturise(pid: target.pid)
         noteActivation(target.pid)
+    }
+
+    /// Restores minimised windows.
+    ///
+    /// There is no public API for un-minimising *another* app's window, so this
+    /// sets `AXMinimized` to false on each of its windows. That needs
+    /// Accessibility; without it the call quietly does nothing and the app is
+    /// still brought forward, just with its windows left in the Dock.
+    private func deminiaturise(pid: pid_t) {
+        guard AXIsProcessTrusted() else { return }
+
+        let element = AXUIElementCreateApplication(pid)
+        var value: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(
+            element, kAXWindowsAttribute as CFString, &value) == .success,
+            let windows = value as? [AXUIElement]
+        else { return }
+
+        for window in windows {
+            var minimised: CFTypeRef?
+            guard AXUIElementCopyAttributeValue(
+                window, kAXMinimizedAttribute as CFString, &minimised) == .success,
+                (minimised as? Bool) == true
+            else { continue }
+
+            AXUIElementSetAttributeValue(
+                window, kAXMinimizedAttribute as CFString, kCFBooleanFalse)
+        }
     }
 
     /// Closes the highlighted app. Bound to W, matching the convention the ⌘Tab

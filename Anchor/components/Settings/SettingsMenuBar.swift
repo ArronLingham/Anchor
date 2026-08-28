@@ -25,6 +25,7 @@ struct MenuBarSettings: View {
     @Default(.enableMenuBarShrink) private var enabled
     @Default(.menuBarAutoHideSeconds) private var autoHideSeconds
     @Default(.menuBarAlwaysHiddenSection) private var alwaysHidden
+    @Default(.menuBarExpandOnHover) private var expandOnHover
 
     @ObservedObject private var manager = MenuBarShrinkManager.shared
 
@@ -69,6 +70,11 @@ struct MenuBarSettings: View {
                 .disabled(!enabled)
                 .settingsHighlight(id: highlightID("Hide again after"))
                 .help("A one-shot timer, armed only while the items are showing.")
+
+                Toggle("Expand on hover", isOn: $expandOnHover)
+                    .disabled(!enabled)
+                    .settingsHighlight(id: highlightID("Expand on hover"))
+                    .help("Point at the chevron instead of clicking it. The chevron stays on screen either way.")
 
                 Toggle("Add an always-hidden section", isOn: $alwaysHidden)
                     .disabled(!enabled)

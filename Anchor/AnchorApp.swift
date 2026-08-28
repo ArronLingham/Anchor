@@ -245,7 +245,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // suppressing it, OSDUIHelper is SIGSTOP-frozen and the async restore in
         // enableSystemHUD() would not finish before the process dies. Resume it
         // synchronously here so it is never left frozen. (See issue #568.)
-        CaffeinateManager.shared.deactivate()
         // macOS destroys our taps when this process goes, so a muted app
         // recovers on its own. Releasing explicitly keeps the teardown
         // deterministic rather than relying on that.
@@ -697,15 +696,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             self?.debouncedUpdateWindowSize()
         }.store(in: &cancellables)
 
-        // Re-take the power assertion if the setting was left on. Assertions
-        // die with the process, so without this "keep awake" silently lapses
-        // across a restart while the switch still reads as on.
-        if Defaults[.caffeinateEnabled] {
-            let minutes = Defaults[.caffeinateDurationMinutes]
-            CaffeinateManager.shared.activate(
-                for: minutes > 0 ? TimeInterval(minutes) * 60 : nil)
-        }
-
         MemoryUsageMonitor.shared.startMonitoring()
 
         // Deferred a tick: `start()` stats ~/.claude and opens an FSEvents
@@ -721,11 +711,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             _ = SpaceIndicatorManager.shared
             _ = BatteryHistoryManager.shared
             _ = NotificationMirrorManager.shared
-            // Installs the keep-awake triggers. Deferred with the rest because
-            // it reads the power source and touches BatteryActivityManager,
-            // both of which are filesystem/IOKit work that must not run while
-            // the delegate is still being built.
-            CaffeinateManager.shared.startTriggerMonitoring()
             // Arms the daily-commit schedule and catches up if today's is
             // still outstanding. Does nothing at all while disabled.
             GitCommitManager.shared.start()

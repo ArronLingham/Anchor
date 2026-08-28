@@ -64,14 +64,21 @@ enum VinylWidgetSize: String, Codable, CaseIterable, Defaults.Serializable {
         }
     }
 
-    var side: CGFloat {
+    var width: CGFloat {
         switch self {
-        case .small: return 160
-        case .medium: return 220
-        case .regular: return 300
-        case .large: return 400
+        case .small: return 190
+        case .medium: return 250
+        case .regular: return 320
+        case .large: return 420
         }
     }
+
+    /// The card is portrait: record, then title, transport and progress under
+    /// it. 1.33 is the ratio that leaves the record square with the text block
+    /// beneath it rather than crowding either.
+    var height: CGFloat { (width * 1.36).rounded() }
+
+    var size: CGSize { CGSize(width: width, height: height) }
 }
 
 /// A draggable panel holding the record.
@@ -83,9 +90,9 @@ final class VinylWidgetPanel: NSPanel {
     /// matching `LauncherPanel`. A borderless panel given its content later can
     /// end up with no backing store and never reach the window server — it
     /// reports `isVisible == true` and simply does not appear.
-    init(contentView: NSView, size: CGFloat) {
+    init(contentView: NSView, size: CGSize) {
         super.init(
-            contentRect: NSRect(x: 0, y: 0, width: size, height: size),
+            contentRect: NSRect(origin: .zero, size: size),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false)
@@ -162,13 +169,13 @@ final class VinylWidgetWindowManager: ObservableObject {
             return
         }
 
-        let side = Defaults[.vinylWidgetSize].side
+        let size = Defaults[.vinylWidgetSize].size
         let level = Defaults[.vinylWindowLevel].windowLevel
 
         if let panel {
-            if panel.frame.width != side {
+            if panel.frame.size != size {
                 var frame = panel.frame
-                frame.size = CGSize(width: side, height: side)
+                frame.size = size
                 panel.setFrame(frame, display: true)
             }
             panel.level = level
@@ -176,12 +183,12 @@ final class VinylWidgetWindowManager: ObservableObject {
         }
 
         let host = NSHostingView(rootView: VinylWidgetView())
-        host.frame = NSRect(x: 0, y: 0, width: side, height: side)
+        host.frame = NSRect(origin: .zero, size: size)
 
-        let panel = VinylWidgetPanel(contentView: host, size: side)
+        let panel = VinylWidgetPanel(contentView: host, size: size)
         panel.level = level
         panel.setFrameAutosaveName(Self.frameAutosaveName)
-        if panel.frame.origin == .zero { positionDefault(panel, side: side) }
+        if panel.frame.origin == .zero { positionDefault(panel, size: size) }
         panel.setIsVisible(true)
         panel.orderFrontRegardless()
         panel.displayIfNeeded()
@@ -195,10 +202,10 @@ final class VinylWidgetWindowManager: ObservableObject {
     }
 
     /// Bottom-right of the main screen, inset from the corner.
-    private func positionDefault(_ panel: NSPanel, side: CGFloat) {
+    private func positionDefault(_ panel: NSPanel, size: CGSize) {
         guard let visible = NSScreen.main?.visibleFrame else { return }
         panel.setFrameOrigin(NSPoint(
-            x: visible.maxX - side - 40,
+            x: visible.maxX - size.width - 40,
             y: visible.minY + 40))
     }
 

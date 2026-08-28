@@ -18,6 +18,7 @@
  */
 
 import Defaults
+import AppKit
 import SwiftUI
 
 /// The to-do tab: type a line, tick it off.
@@ -30,6 +31,8 @@ struct NotchTodoView: View {
     @State private var editingText = ""
     @FocusState private var draftFocused: Bool
 
+    @State private var undoMonitor: Any?
+
     var body: some View {
         VStack(spacing: 6) {
             entryField
@@ -39,10 +42,63 @@ struct NotchTodoView: View {
             } else {
                 list
             }
+
+            if todo.lastCompletion != nil {
+                undoBar
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
+        .animation(.easeInOut(duration: 0.16), value: todo.lastCompletion?.item.id)
+        .onAppear(perform: installUndoMonitor)
+        .onDisappear(perform: removeUndoMonitor)
+    }
+
+    /// Shown only while something can actually be taken back.
+    private var undoBar: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "arrow.uturn.backward")
+                .font(.system(size: 10))
+            Text(todo.lastCompletion.map { "Completed \"\($0.item.title)\"" } ?? "")
+                .font(.system(size: 10))
+                .lineLimit(1)
+            Spacer(minLength: 4)
+            Button("Undo") { todo.undoLastCompletion() }
+                .buttonStyle(.plain)
+                .font(.system(size: 10, weight: .semibold))
+        }
+        .foregroundStyle(.white.opacity(0.6))
+        .padding(.horizontal, 8)
+        .padding(.vertical, 5)
+        .background(
+            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                .fill(.white.opacity(0.06)))
+        .transition(.opacity.combined(with: .move(edge: .bottom)))
+    }
+
+    /// ⌘Z while the tab is on screen.
+    ///
+    /// A local monitor rather than `.keyboardShortcut`: the notch is a
+    /// non-activating panel, so SwiftUI's shortcut plumbing never sees the
+    /// event. ⌃Z is accepted too, since that is what the request asked for.
+    private func installUndoMonitor() {
+        guard undoMonitor == nil else { return }
+        undoMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown]) { event in
+            guard event.charactersIgnoringModifiers?.lowercased() == "z",
+                  event.modifierFlags.contains(.command) || event.modifierFlags.contains(.control),
+                  !event.modifierFlags.contains(.shift)
+            else { return event }
+
+            return MainActor.assumeIsolated {
+                todo.undoLastCompletion() ? nil : event
+            }
+        }
+    }
+
+    private func removeUndoMonitor() {
+        if let undoMonitor { NSEvent.removeMonitor(undoMonitor) }
+        undoMonitor = nil
     }
 
     // MARK: - Entry
@@ -125,7 +181,7 @@ struct NotchTodoView: View {
     private func row(_ item: TodoItem) -> some View {
         HStack(spacing: 8) {
             Button {
-                todo.toggle(item)
+                todo.complete(item)
             } label: {
                 Image(systemName: item.isDone ? "checkmark.circle.fill" : "circle")
                     .font(.system(size: 13))
@@ -182,6 +238,11 @@ struct NotchTodoView: View {
         }
         .padding(.horizontal, 6)
         .padding(.vertical, 4)
+        // Without this the row only right-clicks where a label happens to be
+        // drawn — the gaps between the title, the due date and the delete
+        // button hit nothing at all, which reads as "the context menu is
+        // broken".
+        .contentShape(Rectangle())
         .contextMenu {
             Menu("Priority") {
                 ForEach(0...3, id: \.self) { level in

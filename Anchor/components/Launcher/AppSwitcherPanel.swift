@@ -66,6 +66,7 @@ final class AppSwitcherPanelManager {
     private var panel: AppSwitcherPanel?
     private var keyMonitors: [Any] = []
     private var flagsMonitor: Any?
+    private var releaseWatch: Timer?
 
     private var switcher: AppSwitcherManager { .shared }
 
@@ -112,6 +113,9 @@ final class AppSwitcherPanelManager {
     }
 
     func dismiss(activating: Bool) {
+        // Both the flags monitor and the release watch can land on the same
+        // release; whichever gets here first wins and the other no-ops.
+        guard panel != nil else { return }
         removeMonitors()
         panel?.orderOut(nil)
         panel = nil
@@ -153,6 +157,42 @@ final class AppSwitcherPanelManager {
         }
         flagsMonitor = NSEvent.addGlobalMonitorForEvents(
             matching: [.flagsChanged], handler: flags)
+
+        startReleaseWatch()
+    }
+
+    /// Watches for the shortcut's modifiers being let go.
+    ///
+    /// This exists because the `.flagsChanged` monitor above needs
+    /// Accessibility, and without that grant it never fires — so the ring would
+    /// open, the user would release ⌥, and nothing whatsoever would happen.
+    /// That is exactly what "option-tab doesn't open the app" looks like.
+    ///
+    /// `NSEvent.modifierFlags` is a static read of the current keyboard state
+    /// and needs no grant at all, so polling it is the one reliable route. It
+    /// runs only while the ring is on screen — a second or two — and stops the
+    /// moment the ring closes.
+    private func startReleaseWatch() {
+        releaseWatch?.invalidate()
+        let timer = Timer(timeInterval: 0.05, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self, self.panel != nil else { return }
+                guard let shortcut = KeyboardShortcuts.getShortcut(for: .appSwitcher) else { return }
+
+                let required = shortcut.modifiers.intersection(
+                    [.command, .option, .control, .shift])
+                // No modifier to release: the ring waits for Return or Escape.
+                guard !required.isEmpty else { return }
+
+                let held = NSEvent.modifierFlags.intersection(
+                    [.command, .option, .control, .shift])
+                if held.intersection(required).isEmpty {
+                    self.dismiss(activating: true)
+                }
+            }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        releaseWatch = timer
     }
 
     private func removeMonitors() {
@@ -160,6 +200,8 @@ final class AppSwitcherPanelManager {
         keyMonitors.removeAll()
         if let flagsMonitor { NSEvent.removeMonitor(flagsMonitor) }
         flagsMonitor = nil
+        releaseWatch?.invalidate()
+        releaseWatch = nil
     }
 
     private func handle(_ event: NSEvent) {
