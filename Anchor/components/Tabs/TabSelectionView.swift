@@ -81,6 +81,9 @@ struct TabSelectionView: View {
         if Defaults[.enableNotificationMirroring] {
             tabsArray.append(TabModel(label: "Alerts", icon: "bell.badge", view: .notifications))
         }
+        if Defaults[.enableTodoFeature] {
+            tabsArray.append(TabModel(label: "To-Do", icon: "checklist", view: .todo))
+        }
         return tabsArray
     }
     var body: some View {

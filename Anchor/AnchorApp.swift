@@ -718,6 +718,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             _ = SpaceIndicatorManager.shared
             _ = BatteryHistoryManager.shared
             _ = NotificationMirrorManager.shared
+            // Installs the keep-awake triggers. Deferred with the rest because
+            // it reads the power source and touches BatteryActivityManager,
+            // both of which are filesystem/IOKit work that must not run while
+            // the delegate is still being built.
+            CaffeinateManager.shared.startTriggerMonitoring()
+            // Arms the daily-commit schedule and catches up if today's is
+            // still outstanding. Does nothing at all while disabled.
+            GitCommitManager.shared.start()
         }
 
         ReminderLiveActivityManager.shared.$activeWindowReminders
@@ -1598,3 +1606,4 @@ private func isAnchorLog(_ url: URL) -> Bool {
     let name = url.lastPathComponent
     return name.contains("Anchor") || name.contains("Atoll")
 }
+

@@ -1217,4 +1217,50 @@ extension Defaults.Keys {
         Defaults[.musicAuxRightControl] = fallback
     }
     static let showSongMetadataInClosedNotch = Key<Bool>("showSongMetadataInClosedNotch", default: false)
+
+    // MARK: Keep awake — triggers
+    /// Hold the keep-awake assertion for as long as the Mac is on mains power.
+    /// Driven by BatteryActivityManager's IOPS notification, not a poll.
+    static let caffeinateTriggerWhileOnPower = Key<Bool>("caffeinateTriggerWhileOnPower", default: false)
+    /// Hold it for as long as any external display is attached. Driven by
+    /// `didChangeScreenParametersNotification`.
+    static let caffeinateTriggerWhileExternalDisplay = Key<Bool>("caffeinateTriggerWhileExternalDisplay", default: false)
+    /// Bundle identifiers that hold it for as long as they are running. Driven
+    /// by NSWorkspace launch/terminate notifications.
+    static let caffeinateTriggerApps = Key<[String]>("caffeinateTriggerApps", default: [])
+    /// Nudge the pointer periodically while awake, to defeat *other* apps'
+    /// idle detection. A power assertion cannot do that — it only speaks to
+    /// the system. Off by default; it moves the user's cursor.
+    static let caffeinateJigglePointer = Key<Bool>("caffeinateJigglePointer", default: false)
+
+    // MARK: To-do list
+    /// Adds the To-Do tab. Off by default like every other optional tab.
+    static let enableTodoFeature = Key<Bool>("enableTodoFeature", default: false)
+    static let savedTodos = Key<[TodoItem]>("savedTodos", default: [])
+    static let todoSortOrder = Key<TodoSortOrder>("todoSortOrder", default: .manual)
+    /// Show ticked items under a divider rather than hiding them outright.
+    static let todoShowCompleted = Key<Bool>("todoShowCompleted", default: true)
+
+    // MARK: Daily git commit
+    static let gitDailyCommitEnabled = Key<Bool>("gitDailyCommitEnabled", default: false)
+    /// Absolute paths to work trees. Empty means the feature does nothing.
+    static let gitDailyCommitRepos = Key<[String]>("gitDailyCommitRepos", default: [])
+    /// 21:07 rather than 21:00 — a round minute is where every other scheduled
+    /// job on the machine already is.
+    static let gitDailyCommitHour = Key<Int>("gitDailyCommitHour", default: 21)
+    static let gitDailyCommitMinute = Key<Int>("gitDailyCommitMinute", default: 7)
+    /// `{date}` and `{time}` are substituted. No co-author trailer, ever.
+    static let gitDailyCommitMessage = Key<String>(
+        "gitDailyCommitMessage", default: "chore: daily checkpoint {date}")
+    /// Stage and commit real working-tree changes as well.
+    ///
+    /// Off by design. `git add -A` running unattended will eventually sweep in
+    /// a half-finished edit or a secret, with nobody at the keyboard.
+    static let gitDailyCommitStageChanges = Key<Bool>("gitDailyCommitStageChanges", default: false)
+    /// Push after committing.
+    ///
+    /// Off by design, and it should stay a deliberate choice: committing is
+    /// local and reversible, pushing is neither.
+    static let gitDailyCommitPush = Key<Bool>("gitDailyCommitPush", default: false)
+    static let gitDailyCommitLastRun = Key<Date?>("gitDailyCommitLastRun", default: nil)
 }

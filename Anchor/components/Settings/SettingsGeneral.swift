@@ -411,8 +411,14 @@ struct GeneralSettings: View {
                 .settingsHighlight(id: highlightID("Prevent this Mac from sleeping"))
                 .help("Held as a power assertion, the same mechanism the caffeinate command uses. Nothing runs in the background while it is on.")
 
-                Toggle("Keep the display on too", isOn: $caffeinateKeepsDisplayAwake)
-                    .disabled(!caffeinateEnabled)
+                Toggle("Keep the display on too", isOn: Binding(
+                    get: { caffeinateKeepsDisplayAwake },
+                    set: { on in
+                        caffeinateKeepsDisplayAwake = on
+                        // The assertion type is chosen when it is taken, so an
+                        // already-held one has to be swapped in place.
+                        CaffeinateManager.shared.refreshAssertionType()
+                    }))
                     .help("Off keeps the Mac running but lets the screen sleep.")
 
                 Picker("Turn off after", selection: $caffeinateDurationMinutes) {
@@ -424,6 +430,8 @@ struct GeneralSettings: View {
                     Text("4 hours").tag(240)
                 }
                 .disabled(!caffeinateEnabled)
+
+                CaffeinateTriggersSection(highlightID: highlightID)
             }
 
             Defaults.Toggle(key: .extendHoverArea) {

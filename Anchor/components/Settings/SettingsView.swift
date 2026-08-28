@@ -63,7 +63,9 @@ enum SettingsTab: String, CaseIterable, Identifiable {
     case downloads
     case shortcuts
     case notes
+    case todo
     case terminal
+    case gitCommit
     case about
 
     var id: String { rawValue }
@@ -74,10 +76,10 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         case .general, .appearance:                                          return .core
         case .media, .liveActivities, .lockScreen, .devices:                 return .mediaAndDisplay
         case .hudAndOSD, .battery:                                           return .system
-        case .timer, .calendar, .notes:                                      return .productivity
+        case .timer, .calendar, .notes, .todo:                               return .productivity
         case .dictation, .launcher, .claudeUsage:                            return .integrations
         case .clipboard, .downloads, .shortcuts:                             return .utilities
-        case .terminal:                                                      return .developer
+        case .terminal, .gitCommit:                                          return .developer
         case .about:                                                         return .info
         }
     }
@@ -101,7 +103,9 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         case .downloads: return String(localized: "Downloads")
         case .shortcuts: return String(localized: "Shortcuts")
         case .notes: return String(localized: "Notes")
+        case .todo: return String(localized: "To-Do")
         case .terminal: return String(localized: "Terminal")
+        case .gitCommit: return String(localized: "Daily Commit")
         case .about: return String(localized: "About")
         }
     }
@@ -125,7 +129,9 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         case .downloads: return "square.and.arrow.down"
         case .shortcuts: return "keyboard"
         case .notes: return "note.text"
+        case .todo: return "checklist"
         case .terminal: return "apple.terminal"
+        case .gitCommit: return "arrow.triangle.branch"
         case .about: return "info.circle"
         }
     }
@@ -149,7 +155,9 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         case .downloads: return .gray
         case .shortcuts: return .orange
         case .notes: return Color(red: 0.979, green: 0.716, blue: 0.153, opacity: 1.000)
+        case .todo: return Color(red: 0.30, green: 0.72, blue: 0.45, opacity: 1.000)
         case .terminal: return Color(red: 0.2, green: 0.8, blue: 0.4)
+        case .gitCommit: return Color(red: 0.95, green: 0.45, blue: 0.25, opacity: 1.000)
         case .about: return .secondary
         }
     }
@@ -684,6 +692,9 @@ struct SettingsView: View {
     private var settingsSearchIndex: [SettingsSearchEntry] {
         [
             // General
+            SettingsSearchEntry(tab: .gitCommit, title: "Commit once a day", keywords: ["git", "commit", "daily", "streak", "contribution"], highlightID: SettingsTab.gitCommit.highlightID(for: "Commit once a day")),
+            SettingsSearchEntry(tab: .todo, title: "Enable to-do list", keywords: ["todo", "to-do", "task", "checklist"], highlightID: SettingsTab.todo.highlightID(for: "Enable to-do list")),
+            SettingsSearchEntry(tab: .todo, title: "Sort by", keywords: ["todo order", "task sort"], highlightID: SettingsTab.todo.highlightID(for: "Sort by")),
             SettingsSearchEntry(tab: .general, title: "Enable Minimalistic UI", keywords: ["minimalistic", "ui mode", "general"], highlightID: SettingsTab.general.highlightID(for: "Enable Minimalistic UI")),
             SettingsSearchEntry(tab: .general, title: "Menubar icon", keywords: ["menu bar", "status bar", "icon"], highlightID: SettingsTab.general.highlightID(for: "Menubar icon")),
             SettingsSearchEntry(tab: .general, title: "Launch at login", keywords: ["autostart", "startup"], highlightID: SettingsTab.general.highlightID(for: "Launch at login")),
@@ -984,9 +995,17 @@ struct SettingsView: View {
             SettingsForm(tab: .notes) {
                 NotesSettingsView()
             }
+        case .todo:
+            SettingsForm(tab: .todo) {
+                TodoSettings()
+            }
         case .terminal:
             SettingsForm(tab: .terminal) {
                 TerminalSettings()
+            }
+        case .gitCommit:
+            SettingsForm(tab: .gitCommit) {
+                GitCommitSettings()
             }
         case .about:
             if let controller = updaterController {

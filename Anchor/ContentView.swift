@@ -1011,6 +1011,8 @@ struct ContentView: View {
                                 NotchStatsView()
                             case .notifications:
                                 NotchNotificationsView()
+                            case .todo:
+                                NotchTodoView()
                           }
                       }
                       .id(coordinator.currentView)

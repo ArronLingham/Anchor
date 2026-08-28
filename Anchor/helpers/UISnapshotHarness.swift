@@ -181,7 +181,7 @@ enum UISnapshotHarness {
         highlight: SettingsHighlightCoordinator,
         viewModel: AnchorViewModel
     ) -> [(name: String, size: CGSize, view: AnyView)] {
-        let size = CGSize(width: 720, height: 1800)
+        let size = CGSize(width: 720, height: 2400)
 
         func pane<V: View>(_ name: String, _ view: V) -> (String, CGSize, AnyView) {
             (name, size, AnyView(
@@ -212,7 +212,9 @@ enum UISnapshotHarness {
             pane("clipboard", ClipboardSettings()),
             pane("custom-osd", CustomOSDSettings()),
             pane("notes", NotesSettingsView()),
+            pane("todo", TodoSettings()),
             pane("terminal", TerminalSettings()),
+            pane("git-commit", GitCommitSettings()),
         ]
     }
 
