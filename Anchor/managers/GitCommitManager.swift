@@ -138,44 +138,148 @@ final class GitCommitManager: ObservableObject {
         source.resume()
     }
 
+    /// When the next commit is due.
+    ///
+    /// Three cases, in order of how much the user asked for:
+    ///
+    /// - **Fixed time, one a day** — the original behaviour, the scheduled
+    ///   hour and minute.
+    /// - **More than one a day** — the remaining commits are spread evenly
+    ///   through what is left of the window, so a count of four does not fire
+    ///   four times in the same minute.
+    /// - **Randomised** — a time drawn inside the window. Drawn once per slot
+    ///   rather than re-rolled on every reschedule, or the target would move
+    ///   every time anything touched the settings.
     private func nextFireDate(after date: Date) -> Date? {
+        let calendar = Calendar.current
+        let perDay = max(1, Defaults[.gitDailyCommitCount])
+        let doneToday = commitsDoneToday()
+
+        guard doneToday < perDay else {
+            // Everything for today is done; the next one is tomorrow's first.
+            guard let tomorrow = calendar.date(
+                byAdding: .day, value: 1, to: calendar.startOfDay(for: date))
+            else { return nil }
+            return firstSlot(on: tomorrow)
+        }
+
+        if Defaults[.gitDailyCommitRandomTime] || perDay > 1 {
+            return slot(index: doneToday, of: perDay, on: date) ?? {
+                guard let tomorrow = calendar.date(
+                    byAdding: .day, value: 1, to: calendar.startOfDay(for: date))
+                else { return nil }
+                return firstSlot(on: tomorrow)
+            }()
+        }
+
         var components = DateComponents()
         components.hour = Defaults[.gitDailyCommitHour]
         components.minute = Defaults[.gitDailyCommitMinute]
         components.second = 0
-        return Calendar.current.nextDate(
+        return calendar.nextDate(
             after: date, matching: components, matchingPolicy: .nextTime)
     }
 
-    /// Runs now when today's commit is still outstanding and its time has passed.
+    /// The `index`-th of `count` slots on the day containing `reference`,
+    /// or nil when that slot has already passed.
+    private func slot(index: Int, of count: Int, on reference: Date) -> Date? {
+        let calendar = Calendar.current
+        let day = calendar.startOfDay(for: reference)
+        let (start, end) = window()
+
+        guard end > start else { return nil }
+        let span = end - start
+        // Evenly spaced, offset by half a step so the first is not exactly at
+        // the window's edge.
+        let step = span / Double(count)
+        var offset = start + step * (Double(index) + 0.5)
+
+        if Defaults[.gitDailyCommitRandomTime] {
+            // Jitter inside this slot only, so the ordering of slots holds and
+            // two commits cannot swap places.
+            let jitter = Double(deterministicJitter(day: day, index: index)) / 1000.0
+            offset = start + step * (Double(index) + jitter)
+        }
+
+        let candidate = day.addingTimeInterval(offset)
+        return candidate > reference ? candidate : nil
+    }
+
+    private func firstSlot(on day: Date) -> Date? {
+        let perDay = max(1, Defaults[.gitDailyCommitCount])
+        return slot(index: 0, of: perDay, on: day.addingTimeInterval(-1))
+    }
+
+    /// Seconds from midnight for the start and end of the allowed window.
+    private func window() -> (Double, Double) {
+        if Defaults[.gitDailyCommitRandomTime] {
+            let startHour = min(Defaults[.gitDailyCommitWindowStartHour],
+                                Defaults[.gitDailyCommitWindowEndHour])
+            let endHour = max(Defaults[.gitDailyCommitWindowStartHour],
+                              Defaults[.gitDailyCommitWindowEndHour])
+            return (Double(startHour) * 3600, Double(endHour) * 3600)
+        }
+        // Fixed time with several commits: start at the scheduled time and run
+        // to the end of the day.
+        let start = Double(Defaults[.gitDailyCommitHour]) * 3600
+            + Double(Defaults[.gitDailyCommitMinute]) * 60
+        return (start, min(start + 4 * 3600, 24 * 3600 - 60))
+    }
+
+    /// A jitter in [0, 1) that is stable for a given day and slot.
+    ///
+    /// Stable on purpose: `Double.random` would redraw the target every time
+    /// anything rescheduled, so the commit time would drift all day and could
+    /// be skipped entirely by landing behind `now` each time.
+    private func deterministicJitter(day: Date, index: Int) -> Int {
+        var hasher = Hasher()
+        hasher.combine(Int(day.timeIntervalSince1970))
+        hasher.combine(index)
+        return abs(hasher.finalize()) % 1000
+    }
+
+    /// How many commits have already happened today.
+    private func commitsDoneToday() -> Int {
+        guard let last = Defaults[.gitDailyCommitLastRun],
+              Calendar.current.isDateInToday(last)
+        else { return 0 }
+        return Defaults[.gitDailyCommitDoneToday]
+    }
+
+    /// Runs now when a commit for today is still outstanding and its time has
+    /// passed.
+    ///
+    /// Uses the same window as the scheduler rather than the raw hour/minute,
+    /// so a randomised or multi-commit day catches up correctly after the Mac
+    /// has been asleep or the app was not running.
     func catchUpIfNeeded() {
         guard Defaults[.gitDailyCommitEnabled] else { return }
-        guard !hasRunToday else { return }
+        guard !Self.quotaUsedForToday() else { return }
 
-        var components = DateComponents()
-        components.hour = Defaults[.gitDailyCommitHour]
-        components.minute = Defaults[.gitDailyCommitMinute]
-        guard let todaysSlot = Calendar.current.nextDate(
-            after: Calendar.current.startOfDay(for: Date()),
-            matching: components,
-            matchingPolicy: .nextTime),
-            todaysSlot <= Date()
-        else { return }
+        let calendar = Calendar.current
+        let day = calendar.startOfDay(for: Date())
+        let (start, _) = window()
+        let earliest = day.addingTimeInterval(start)
+        guard earliest <= Date() else { return }
 
         Task.detached { [weak self] in
             await self?.performRun(trigger: "catch-up")
         }
     }
 
-    /// Reads the stamp out of `Defaults` rather than the published property.
+    /// Whether today's quota of commits is already used up.
     ///
-    /// `performRun` writes the stamp from a background task and only publishes
-    /// `lastRunAt` afterwards, so the published value can lag. Defaults is the
-    /// authority for "has today's commit happened".
-    var hasRunToday: Bool {
-        guard let last = Defaults[.gitDailyCommitLastRun] else { return false }
-        return Calendar.current.isDateInToday(last)
+    /// Reads `Defaults` rather than the published property: `performRun` writes
+    /// from a background task and only publishes afterwards, so the published
+    /// value can lag. Defaults is the authority.
+    nonisolated static func quotaUsedForToday() -> Bool {
+        guard let last = Defaults[.gitDailyCommitLastRun],
+              Calendar.current.isDateInToday(last)
+        else { return false }
+        return Defaults[.gitDailyCommitDoneToday] >= max(1, Defaults[.gitDailyCommitCount])
     }
+
+    var hasRunToday: Bool { Self.quotaUsedForToday() }
 
     // MARK: - Running
 
@@ -198,10 +302,9 @@ final class GitCommitManager: ObservableObject {
     /// does not depend on the main actor being free.
     nonisolated func performRun(trigger: String, force: Bool = false) async {
         // Re-entry is prevented by the day stamp below rather than by a lock:
-        // the stamp is written to Defaults the moment the work finishes, so a
-        // second caller on the same day returns here.
-        if !force, let last = Defaults[.gitDailyCommitLastRun],
-           Calendar.current.isDateInToday(last) {
+        // the counter is written to Defaults the moment the work finishes, so a
+        // caller that would exceed today's quota returns here.
+        if !force, Self.quotaUsedForToday() {
             return
         }
 
@@ -232,6 +335,11 @@ final class GitCommitManager: ObservableObject {
         // main actor that never drains cannot cause the same day to be
         // committed twice on the next launch.
         let now = Date()
+        // Reset the counter when this is the first commit of a new day, so a
+        // quota of four does not carry yesterday's tally into today.
+        let carriedOver = Defaults[.gitDailyCommitLastRun]
+            .map { Calendar.current.isDateInToday($0) } ?? false
+        Defaults[.gitDailyCommitDoneToday] = (carriedOver ? Defaults[.gitDailyCommitDoneToday] : 0) + 1
         Defaults[.gitDailyCommitLastRun] = now
 
         Logger.log(
@@ -335,8 +443,30 @@ final class GitCommitManager: ObservableObject {
     /// Deliberately carries no co-author trailer. Anchor's repository convention
     /// is that commits have none, and a scheduled job is the last place to start
     /// adding one.
+    /// Messages used when "vary the message" is on.
+    ///
+    /// Deliberately dull and repository-agnostic: the commits are empty, so a
+    /// message implying real work would be a small lie in the log for ever.
+    /// These say what actually happened.
+    nonisolated static let messagePool: [String] = [
+        "chore: daily checkpoint",
+        "chore: routine checkpoint",
+        "chore: housekeeping",
+        "chore: keep the lights on",
+        "chore: end-of-day marker",
+        "chore: no changes today",
+        "chore: periodic checkpoint",
+        "chore: daily marker",
+        "chore: nothing to report",
+        "chore: routine sweep",
+        "chore: scheduled checkpoint",
+        "chore: quiet day",
+    ]
+
     nonisolated func renderedMessage(now: Date = Date()) -> String {
-        let template = Defaults[.gitDailyCommitMessage]
+        let template = Defaults[.gitDailyCommitRandomMessage]
+            ? (Self.messagePool.randomElement() ?? Defaults[.gitDailyCommitMessage])
+            : Defaults[.gitDailyCommitMessage]
         let date = now.formatted(.iso8601.year().month().day().dateSeparator(.dash))
         let time = now.formatted(date: .omitted, time: .shortened)
         return template

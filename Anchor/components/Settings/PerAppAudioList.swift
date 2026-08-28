@@ -111,14 +111,14 @@ struct PerAppAudioList: View {
                     Image(systemName: "square.stack.3d.up")
                         .font(.caption2)
                         .foregroundStyle(.tertiary)
-                        .help("Plays through helper processes — all of them are tapped")
+                        .settingsInfo("Plays through helper processes — all of them are tapped")
                 }
 
                 if manager.isEngaged(app.id) {
                     Image(systemName: "waveform")
                         .font(.caption2)
                         .foregroundStyle(.blue)
-                        .help("Anchor is re-rendering this app's audio")
+                        .settingsInfo("Anchor is re-rendering this app's audio")
                 }
 
                 Spacer()
@@ -132,7 +132,7 @@ struct PerAppAudioList: View {
                         .foregroundStyle(state.eqEnabled ? Color.accentColor : Color.secondary)
                 }
                 .buttonStyle(.borderless)
-                .help("Equaliser")
+                .settingsInfo("Equaliser")
 
                 Button {
                     manager.toggleMute(app)

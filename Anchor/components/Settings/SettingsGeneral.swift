@@ -140,7 +140,7 @@ struct GeneralSettings: View {
                     Text("Show desktop number")
                 }
                 .settingsHighlight(id: highlightID("Show desktop number"))
-                .help("Shows which desktop you are on, updated when macOS reports a Space change. Fullscreen apps are not counted as desktops.")
+                .settingsInfo("Shows which desktop you are on, updated when macOS reports a Space change. Fullscreen apps are not counted as desktops.")
             } header: {
                 Text("Desktop")
             }
@@ -150,7 +150,7 @@ struct GeneralSettings: View {
                     Text("Snap windows to screen edges")
                 }
                 .settingsHighlight(id: highlightID("Snap windows to screen edges"))
-                .help("Drag a window against the left or right edge to tile it to that half, or the top edge to fill the screen. Needs Accessibility, which dictation already requires. Nothing is observed until a drag begins.")
+                .settingsInfo("Drag a window against the left or right edge to tile it to that half, or the top edge to fill the screen. Needs Accessibility, which dictation already requires. Nothing is observed until a drag begins.")
             } header: {
                 Text("Window snapping")
             }
@@ -160,7 +160,7 @@ struct GeneralSettings: View {
                     Text("System stats")
                 }
                 .settingsHighlight(id: highlightID("System stats"))
-                .help("Adds a Stats tab showing CPU, memory and network throughput. Sampling only runs while that tab is open — nothing is measured in the background.")
+                .settingsInfo("Adds a Stats tab showing CPU, memory and network throughput. Sampling only runs while that tab is open — nothing is measured in the background.")
             } header: {
                 Text("Stats")
             }
@@ -170,7 +170,7 @@ struct GeneralSettings: View {
                     Text("File shelf")
                 }
                 .settingsHighlight(id: highlightID("File shelf"))
-                .help("Adds a Shelf tab to the notch. Drop files onto it to park them, drag them back out to move them on. Files are referenced, not copied, so a large file costs a bookmark rather than a second copy.")
+                .settingsInfo("Adds a Shelf tab to the notch. Drop files onto it to park them, drag them back out to move them on. Files are referenced, not copied, so a large file costs a bookmark rather than a second copy.")
             } header: {
                 Text("Shelf")
             }
@@ -180,7 +180,7 @@ struct GeneralSettings: View {
                     Text("Eye break reminders")
                 }
                 .settingsHighlight(id: highlightID("Eye break reminders"))
-                .help("The 20-20-20 rule: every twenty minutes, look twenty feet away for twenty seconds. Reminders pause while the display sleeps or the Mac is locked, and the interval restarts when you come back — time away from the screen is not screen time.")
+                .settingsInfo("The 20-20-20 rule: every twenty minutes, look twenty feet away for twenty seconds. Reminders pause while the display sleeps or the Mac is locked, and the interval restarts when you come back — time away from the screen is not screen time.")
 
                 Stepper(value: $eyeBreakWorkMinutes, in: 5...60, step: 5) {
                     HStack {
@@ -392,6 +392,18 @@ struct GeneralSettings: View {
     @ViewBuilder
     func NotchBehaviour() -> some View {
         Section {
+            Defaults.Toggle(key: .notchPinnedOpen) {
+                Text("Keep the notch open")
+            }
+            .settingsHighlight(id: highlightID("Keep the notch open"))
+            .settingsInfo("Stops the notch closing when you click elsewhere, type, or move the pointer away. There is a pin button in the notch itself, and ⌘⇧K toggles it from anywhere.")
+
+            Defaults.Toggle(key: .alwaysShowOnExternalDisplays) {
+                Text("Always show on external displays")
+            }
+            .settingsHighlight(id: highlightID("Always show on external displays"))
+            .settingsInfo("Pins the pill above other windows on displays that have no real notch. Without this it is drawn but sits behind whatever window is in front, which looks like it is missing.")
+
             Defaults.Toggle(key: .extendHoverArea) {
                 Text("Extend hover area")
             }

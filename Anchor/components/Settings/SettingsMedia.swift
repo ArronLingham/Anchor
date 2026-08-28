@@ -173,7 +173,7 @@ struct Media: View {
                         Text("Show \"Change Media Output\" control")
                     }
                     .settingsHighlight(id: highlightID("Show Change Media Output control"))
-                    .help("Adds the AirPlay/route picker button back to the customizable controls palette.")
+                    .settingsInfo("Adds the AirPlay/route picker button back to the customizable controls palette.")
                     MusicSlotConfigurationView()
                 } else {
                     Text("Turn on customizable controls to rearrange media buttons.")
@@ -222,7 +222,7 @@ struct Media: View {
                     Text("Show floating media controls")
                 }
                 .disabled(!coordinator.musicLiveActivityEnabled || standardControlsSuppressed)
-                .help("Displays play/pause and skip buttons beside the notch while music is active. Disabled by default.")
+                .settingsInfo("Displays play/pause and skip buttons beside the notch while music is active. Disabled by default.")
                 Toggle("Enable sneak peek", isOn: $enableSneakPeek)
                 Toggle("Show sneak peek on playback changes", isOn: $showSneakPeekOnTrackChange)
                     .disabled(!enableSneakPeek)
@@ -235,7 +235,7 @@ struct Media: View {
                 }
                 .disabled(!enableLyrics)
                 .settingsHighlight(id: highlightID("Translate lyrics"))
-                .help("Shows a translation beneath the current line, into your Mac's language. Runs on device through Apple's Translation framework — no key, no network, and nothing about what you are listening to leaves the machine. macOS may ask to download a language model the first time.")
+                .settingsInfo("Shows a translation beneath the current line, into your Mac's language. Runs on device through Apple's Translation framework — no key, no network, and nothing about what you are listening to leaves the machine. macOS may ask to download a language model the first time.")
 
                 Slider(value: $lyricsOffsetSeconds, in: -1...1, step: 0.05) {
                     HStack {
@@ -251,12 +251,12 @@ struct Media: View {
                 }
                 .disabled(!enableLyrics)
                 .settingsHighlight(id: highlightID("Lyrics timing"))
-                .help("Nudge lyrics earlier or later. Players report the position their decoder has reached, which runs ahead of what you hear, and that report arrives with its own lag — how much depends on the app and the output device.")
+                .settingsInfo("Nudge lyrics earlier or later. Players report the position their decoder has reached, which runs ahead of what you hear, and that report arrives with its own lag — how much depends on the app and the output device.")
                 Defaults.Toggle(key: .showLiveCanvasInDynamicIsland) {
                     Text("Show live canvas in Dynamic Island")
                 }
                 .settingsHighlight(id: highlightID("Show live canvas in Dynamic Island"))
-                .help("Replaces the artwork tile with the live canvas when the current app provides one, and reuses that moving canvas for the surrounding lighting effect.")
+                .settingsInfo("Replaces the artwork tile with the live canvas when the current app provides one, and reuses that moving canvas for the surrounding lighting effect.")
                 
                 //Parallax Effect Intensity to control how much parallax is wanted
                 Slider(value: $parallaxEffectIntensity, in: 0...12, step: 1.0) {

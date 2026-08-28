@@ -61,7 +61,7 @@ struct ColorPickerHistoryStrip: View {
                                 )
                         }
                         .buttonStyle(.plain)
-                        .help("\(picked.hexString) — click to copy")
+                        .settingsInfo("\(picked.hexString) — click to copy")
                     }
                 }
             }

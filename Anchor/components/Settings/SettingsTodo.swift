@@ -39,7 +39,7 @@ struct TodoSettings: View {
                     Text("Enable to-do list")
                 }
                 .settingsHighlight(id: highlightID("Enable to-do list"))
-                .help("Adds a To-Do tab to the notch.")
+                .settingsInfo("Adds a To-Do tab to the notch.")
             } footer: {
                 Text(
                     "A plain checklist stored on this Mac. Separate from Apple "
@@ -58,12 +58,12 @@ struct TodoSettings: View {
                 }
                 .disabled(!enableTodoFeature)
                 .settingsHighlight(id: highlightID("Sort by"))
-                .help("Manual keeps whatever order you drag things into.")
+                .settingsInfo("Manual keeps whatever order you drag things into.")
 
                 Toggle("Show completed items", isOn: $showCompleted)
                     .disabled(!enableTodoFeature)
                     .settingsHighlight(id: highlightID("Show completed items"))
-                    .help("Off hides ticked items instead of showing them below a divider.")
+                    .settingsInfo("Off hides ticked items instead of showing them below a divider.")
             }
 
             Section("Stored") {

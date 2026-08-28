@@ -140,7 +140,11 @@ final class VerticalHUDWindowManager {
     func show(type: SneakContentType, value: CGFloat, icon: String = "", onScreen targetScreen: NSScreen? = nil) {
         guard Defaults[.enableVerticalHUD] else { return }
         
-        let screens = targetScreen.map { [$0] } ?? NSScreen.screens
+        // No explicit screen means the caller has no opinion, so the user's
+        // placement setting decides. Volume used to land on every display at
+        // once, which is noise on a multi-monitor desk.
+        let resolved = targetScreen ?? Defaults[.hudDisplayPlacement].resolvedScreen
+        let screens = resolved.map { [$0] } ?? NSScreen.screens
         guard !screens.isEmpty else { return }
         
         // Show on target screen(s)

@@ -469,7 +469,7 @@ struct Appearance: View {
                     Text("Screen colour picker")
                 }
                 .settingsHighlight(id: highlightID("Screen colour picker"))
-                .help("Opens the system eyedropper and copies the colour under the cursor.")
+                .settingsInfo("Opens the system eyedropper and copies the colour under the cursor.")
 
                 if Defaults[.enableColorPickerFeature] {
                     Picker("Copy as", selection: colorFormatBinding) {

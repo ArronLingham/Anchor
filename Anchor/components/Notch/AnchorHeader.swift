@@ -21,6 +21,7 @@ import Defaults
 import SwiftUI
 
 struct AnchorHeader: View {
+    @Default(.notchPinnedOpen) private var pinnedOpen
     @EnvironmentObject var vm: AnchorViewModel
     @ObservedObject var batteryModel = BatteryStatusViewModel.shared
     @ObservedObject var coordinator = AnchorViewCoordinator.shared
@@ -145,6 +146,28 @@ struct AnchorHeader: View {
                         }
                     }
                     
+                    // Pin. Always present while the notch is open, because its
+                    // whole purpose is being reachable at the moment the notch
+                    // is about to close under you.
+                    Button {
+                        Defaults[.notchPinnedOpen].toggle()
+                    } label: {
+                        Capsule()
+                            .fill(.black)
+                            .frame(width: 30, height: 30)
+                            .overlay {
+                                Image(systemName: pinnedOpen ? "pin.fill" : "pin")
+                                    .foregroundColor(pinnedOpen ? .accentColor : .white)
+                                    .padding()
+                                    .imageScale(.medium)
+                                    .rotationEffect(.degrees(pinnedOpen ? 0 : 32))
+                            }
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                    .help(pinnedOpen
+                          ? "Unpin — the notch closes normally again (⌘⇧K)"
+                          : "Pin open — stops the notch closing when you click away or type (⌘⇧K)")
+
                     if Defaults[.settingsIconInNotch] {
                         Button(action: {
                             SettingsWindowController.shared.showWindow()

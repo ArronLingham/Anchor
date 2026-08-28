@@ -64,7 +64,7 @@ struct SpotifyLoginSheet: View {
                 } label: {
                     Label("Open in Browser", systemImage: "safari")
                 }
-                .help("Spotify often blocks in-app logins. Sign in via your normal browser, then paste sp_dc in Settings.")
+                .settingsInfo("Spotify often blocks in-app logins. Sign in via your normal browser, then paste sp_dc in Settings.")
                 Button("Reset Session") {
                     NotificationCenter.default.post(name: .spotifyLoginSheetReset, object: nil)
                     statusText = "Session cleared. Sign in again to capture the cookie."

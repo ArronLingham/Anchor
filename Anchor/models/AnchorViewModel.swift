@@ -368,7 +368,15 @@ class AnchorViewModel: NSObject, ObservableObject {
         return adjustedSize
     }
 
-    func close() {
+    /// Closes the notch.
+    ///
+    /// `force` is for the paths that must win regardless of the pin — the lock
+    /// screen and teardown. Everything else (hover-out, clicking elsewhere,
+    /// typing, the auto-close timer) routes through here, which is why one
+    /// guard is enough to implement pinning across all of them.
+    func close(force: Bool = false) {
+        if !force, Defaults[.notchPinnedOpen], notchState == .open { return }
+
         let targetSize = getClosedNotchSize(screen: screen)
         notchSize = targetSize
         closedNotchSize = targetSize

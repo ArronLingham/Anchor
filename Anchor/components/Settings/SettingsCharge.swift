@@ -137,7 +137,7 @@ struct Charge: View {
                         Text("Record battery history")
                     }
                     .settingsHighlight(id: highlightID("Record battery history"))
-                    .help("Records the battery level over the last 24 hours. Samples are taken when macOS reports a power change, not on a timer.")
+                    .settingsInfo("Records the battery level over the last 24 hours. Samples are taken when macOS reports a power change, not on a timer.")
 
                     if Defaults[.enableBatteryHistory] {
                         BatteryHistoryGraph()

@@ -80,7 +80,7 @@ struct Downloads: View {
                 }
                 .disabled(!Defaults[.enableDownloadListener])
                 .settingsHighlight(id: highlightID("Icon"))
-                .help("The app icon is the icon of the file being downloaded — this watches the Downloads folder and cannot tell which app started a download.")
+                .settingsInfo("The app icon is the icon of the file being downloaded — this watches the Downloads folder and cannot tell which app started a download.")
             } header: {
                 Text("Download Detection")
             } footer: {

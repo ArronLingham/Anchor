@@ -114,7 +114,7 @@ struct TimerSettings: View {
                         alphaBadge()
                     }
                 }
-                .help("Shows the system Clock timer in the notch when available. Requires Accessibility permission to read the status item.")
+                .settingsInfo("Shows the system Clock timer in the notch when available. Requires Accessibility permission to read the status item.")
                 .settingsHighlight(id: highlightID("Mirror macOS Clock timers"))
 
                 Picker("Timer controls appear as", selection: $timerDisplayMode) {
@@ -290,7 +290,7 @@ struct TimerSettings: View {
 
             Toggle("Show floating pause/stop controls", isOn: $controlWindowEnabled)
                 .disabled(showsLabel)
-                .help("These controls sit beside the notch while a timer runs. They require the timer name to stay hidden for spacing.")
+                .settingsInfo("These controls sit beside the notch while a timer runs. They require the timer name to stay hidden for spacing.")
 
             Picker("Progress style", selection: $progressStyle) {
                 ForEach(TimerProgressStyle.allCases) { style in

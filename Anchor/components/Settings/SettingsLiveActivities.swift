@@ -104,7 +104,7 @@ struct LiveActivitiesSettings: View {
                 Defaults.Toggle(key: .enableNotificationMirroring) {
                     Text("Mirror notifications")
                 }
-                .help("Shows macOS notifications in the notch as they arrive. Reads Apple's notification database, which is why it needs Full Disk Access — there is no public API for another app's notifications.")
+                .settingsInfo("Shows macOS notifications in the notch as they arrive. Reads Apple's notification database, which is why it needs Full Disk Access — there is no public API for another app's notifications.")
 
                 if Defaults[.enableNotificationMirroring],
                    NotificationMirrorManager.shared.state == .needsPermission
@@ -146,7 +146,7 @@ struct LiveActivitiesSettings: View {
                 }
                 .disabled(!enableDoNotDisturbDetection)
                 .settingsHighlight(id: highlightID("Show Focus as brief toast"))
-                .help("When enabled, Focus appears briefly (on/off) and then collapses instead of staying visible.")
+                .settingsInfo("When enabled, Focus appears briefly (on/off) and then collapses instead of staying visible.")
 
                 if doNotDisturbManager.isMonitoring {
                     HStack {

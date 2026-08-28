@@ -26,6 +26,7 @@ import KeyboardShortcuts
 import LaunchAtLogin
 import LottieUI
 import Sparkle
+import ApplicationServices
 import SwiftUI
 import SwiftUIIntrospect
 import UniformTypeIdentifiers
@@ -538,6 +539,8 @@ struct HUDAndOSDSettingsView: View {
                 }
             }
 
+            HUDPlacementSection()
+
             // Third-party display integrations (shared across all HUD variants)
             ExternalDisplayIntegrationsSection()
         }
@@ -975,7 +978,7 @@ struct HUD: View {
                     Text("Play feedback when volume is changed")
                 }
                 .settingsHighlight(id: highlightID("Play feedback when volume is changed"))
-                .help("Plays the supplied feedback clip whenever you press the hardware volume keys.")
+                .settingsInfo("Plays the supplied feedback clip whenever you press the hardware volume keys.")
             } header: {
                 Text("Audio feedback")
             } footer: {
@@ -1222,3 +1225,48 @@ private final class SettingsLoopingPlayerController {
 
 
 // MARK: - LocalSend Settings Section
+
+/// Which display the HUD appears on, and why brightness may not be appearing
+/// at all.
+private struct HUDPlacementSection: View {
+    @Default(.hudDisplayPlacement) private var placement
+    @State private var accessibilityGranted = AXIsProcessTrusted()
+
+    var body: some View {
+        Section {
+            Picker("Show the HUD on", selection: $placement) {
+                ForEach(HUDDisplayPlacement.allCases, id: \.self) { option in
+                    Text(option.label).tag(option)
+                }
+            }
+            .settingsInfo("Volume used to appear on every screen at once, which is noise on a multi-monitor desk.")
+
+            if !accessibilityGranted {
+                VStack(alignment: .leading, spacing: 6) {
+                    Label("Brightness needs Accessibility", systemImage: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.orange)
+                    Text(
+                        "Volume changes are reported by CoreAudio, so its HUD works "
+                        + "without any permission. Brightness has no such notification — "
+                        + "the only way to know it changed is to intercept the key, and "
+                        + "that needs Accessibility. Without it the brightness HUD "
+                        + "silently never appears.\n\n"
+                        + "The app switcher's keyboard control and dictation's paste "
+                        + "need the same grant.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                    Button("Open Accessibility Settings") {
+                        NSWorkspace.shared.open(URL(
+                            string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!)
+                    }
+                    .controlSize(.small)
+                }
+                .padding(.vertical, 2)
+            }
+        } header: {
+            Text("Placement")
+        }
+        .onAppear { accessibilityGranted = AXIsProcessTrusted() }
+    }
+}

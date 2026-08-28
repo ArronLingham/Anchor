@@ -340,16 +340,27 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     /// CGSSpace diff additions/removals, so this is safe to call on any change.
     @MainActor
     private func syncNotchSpaceMembership() {
+        // Displays with no physical notch are opted in separately. Without
+        // this the window exists but is not pinned above other spaces, so on an
+        // external monitor the pill sits behind whatever is in front — which
+        // reads as the feature simply not working there.
+        var alwaysOn: Set<NSWindow> = []
+        if Defaults[.alwaysShowOnExternalDisplays] {
+            for (screen, window) in windows where screen.safeAreaInsets.top == 0 {
+                alwaysOn.insert(window)
+            }
+        }
+
         guard Defaults[.hideNotchOption] == .never else {
-            NotchSpaceManager.shared.notchSpace.windows = []
+            NotchSpaceManager.shared.notchSpace.windows = alwaysOn
             return
         }
         if Defaults[.showOnAllDisplays] {
-            NotchSpaceManager.shared.notchSpace.windows = Set(windows.values)
+            NotchSpaceManager.shared.notchSpace.windows = Set(windows.values).union(alwaysOn)
         } else if let window = window {
-            NotchSpaceManager.shared.notchSpace.windows = [window]
+            NotchSpaceManager.shared.notchSpace.windows = alwaysOn.union([window])
         } else {
-            NotchSpaceManager.shared.notchSpace.windows = []
+            NotchSpaceManager.shared.notchSpace.windows = alwaysOn
         }
     }
 
@@ -1247,6 +1258,31 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         KeyboardShortcuts.onKeyDown(for: .toggleMenuBarSection) {
             MenuBarShrinkManager.shared.toggle()
+        }
+
+        KeyboardShortcuts.onKeyDown(for: .togglePinNotch) { [weak self] in
+            let pinned = !Defaults[.notchPinnedOpen]
+            Defaults[.notchPinnedOpen] = pinned
+            // Pinning from the keyboard should also open it, or the first
+            // press appears to do nothing at all. Unpinning closes it again.
+            guard let self else { return }
+            let mouse = NSEvent.mouseLocation
+            var viewModel = self.vm
+            if Defaults[.showOnAllDisplays] {
+                for screen in NSScreen.screens where screen.frame.contains(mouse) {
+                    if let screenViewModel = self.viewModels[screen] {
+                        viewModel = screenViewModel
+                        break
+                    }
+                }
+            }
+            self.closeNotchWorkItem?.cancel()
+            self.closeNotchWorkItem = nil
+            if pinned {
+                if viewModel.notchState == .closed { viewModel.open() }
+            } else {
+                viewModel.close(force: true)
+            }
         }
 
         KeyboardShortcuts.onKeyDown(for: .pickColor) {

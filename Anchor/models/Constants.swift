@@ -241,6 +241,38 @@ enum ThirdPartyDDCProvider: String, CaseIterable, Codable, Defaults.Serializable
     }
 }
 
+/// Which screen the HUD is drawn on when the caller has no opinion.
+enum HUDDisplayPlacement: String, CaseIterable, Defaults.Serializable {
+    /// Every screen at once — the original behaviour.
+    case allDisplays
+    /// The screen the pointer is on.
+    case activeDisplay
+    /// The screen holding the menu bar.
+    case mainDisplay
+
+    var label: String {
+        switch self {
+        case .allDisplays: return String(localized: "All displays")
+        case .activeDisplay: return String(localized: "The display I'm using")
+        case .mainDisplay: return String(localized: "Main display only")
+        }
+    }
+
+    /// Nil means "every screen".
+    @MainActor
+    var resolvedScreen: NSScreen? {
+        switch self {
+        case .allDisplays:
+            return nil
+        case .activeDisplay:
+            let mouse = NSEvent.mouseLocation
+            return NSScreen.screens.first { $0.frame.contains(mouse) } ?? NSScreen.main
+        case .mainDisplay:
+            return NSScreen.main
+        }
+    }
+}
+
 enum HideNotchOption: String, Defaults.Serializable {
     case always
     case nowPlayingOnly
@@ -1241,6 +1273,18 @@ extension Defaults.Keys {
     /// local and reversible, pushing is neither.
     static let gitDailyCommitPush = Key<Bool>("gitDailyCommitPush", default: false)
     static let gitDailyCommitLastRun = Key<Date?>("gitDailyCommitLastRun", default: nil)
+    /// Pick each commit's message from a pool instead of using the template.
+    static let gitDailyCommitRandomMessage = Key<Bool>("gitDailyCommitRandomMessage", default: false)
+    /// Fire at an unpredictable time inside a window rather than a fixed one.
+    static let gitDailyCommitRandomTime = Key<Bool>("gitDailyCommitRandomTime", default: false)
+    /// Earliest and latest hour a randomised commit may land on.
+    static let gitDailyCommitWindowStartHour = Key<Int>("gitDailyCommitWindowStartHour", default: 9)
+    static let gitDailyCommitWindowEndHour = Key<Int>("gitDailyCommitWindowEndHour", default: 22)
+    /// How many commits to make per day. Spread across the window when
+    /// randomised, otherwise a few minutes apart from the scheduled time.
+    static let gitDailyCommitCount = Key<Int>("gitDailyCommitCount", default: 1)
+    /// How many of today's commits have already been made — reset each day.
+    static let gitDailyCommitDoneToday = Key<Int>("gitDailyCommitDoneToday", default: 0)
 
     // MARK: App switcher (ring)
     /// Option-Tab opens a ring of running apps. Costs one NSWorkspace
@@ -1257,6 +1301,19 @@ extension Defaults.Keys {
     static let menuBarAlwaysHiddenSection = Key<Bool>("menuBarAlwaysHiddenSection", default: false)
     /// Expand by hovering the chevron rather than clicking it.
     static let menuBarExpandOnHover = Key<Bool>("menuBarExpandOnHover", default: false)
+
+    // MARK: Notch behaviour
+    /// Keeps the notch open until it is unpinned, instead of closing on
+    /// hover-out, a click elsewhere, or typing.
+    static let notchPinnedOpen = Key<Bool>("notchPinnedOpen", default: false)
+    /// Pins the notch window above everything on displays without a real notch,
+    /// so the pill is visible on an external monitor rather than sitting behind
+    /// whatever window is in front.
+    static let alwaysShowOnExternalDisplays = Key<Bool>("alwaysShowOnExternalDisplays", default: false)
+
+    // MARK: HUD placement
+    /// Which display the volume / brightness HUD appears on.
+    static let hudDisplayPlacement = Key<HUDDisplayPlacement>("hudDisplayPlacement", default: .allDisplays)
 
     // MARK: Vinyl widget
     /// A spinning record on the desktop showing what is playing.

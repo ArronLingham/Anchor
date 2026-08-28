@@ -72,14 +72,14 @@ struct VinylSettings: View {
                 }
                 .disabled(!enabled)
                 .settingsHighlight(id: highlightID("Layer"))
-                .help("Below all windows keeps it on the wallpaper, out of the way.")
+                .settingsInfo("Below all windows keeps it on the wallpaper, out of the way.")
             }
 
             Section("Look") {
                 Toggle("Show the tonearm", isOn: $showStylus)
                     .disabled(!enabled)
                     .settingsHighlight(id: highlightID("Show the tonearm"))
-                    .help("Swings onto the record while playing and lifts when it stops.")
+                    .settingsInfo("Swings onto the record while playing and lifts when it stops.")
 
                 Toggle("Show progress", isOn: $showProgress)
                     .disabled(!enabled)
@@ -92,7 +92,7 @@ struct VinylSettings: View {
                 }
                 .disabled(!enabled || !showProgress)
                 .settingsHighlight(id: highlightID("Progress style"))
-                .help("The ring hugs the record and covers nothing. The bar sits under the transport with elapsed and remaining times, and can be clicked to seek.")
+                .settingsInfo("The ring hugs the record and covers nothing. The bar sits under the transport with elapsed and remaining times, and can be clicked to seek.")
 
                 Toggle("Show title and artist", isOn: $showTitle)
                     .disabled(!enabled)
@@ -111,7 +111,7 @@ struct VinylSettings: View {
                 }
                 .disabled(!enabled)
                 .settingsHighlight(id: highlightID("Backing"))
-                .help("A panel behind the record, for wallpapers it would otherwise disappear into.")
+                .settingsInfo("A panel behind the record, for wallpapers it would otherwise disappear into.")
             }
         }
     }

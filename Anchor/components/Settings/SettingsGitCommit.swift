@@ -25,6 +25,7 @@ struct GitCommitSettings: View {
     @Default(.gitDailyCommitEnabled) private var enabled
     @Default(.gitDailyCommitRepos) private var repos
     @Default(.gitDailyCommitHour) private var hour
+    @Default(.gitDailyCommitRandomTime) private var randomTime
     @Default(.gitDailyCommitMinute) private var minute
     @Default(.gitDailyCommitMessage) private var message
     @Default(.gitDailyCommitStageChanges) private var stageChanges
@@ -84,6 +85,8 @@ struct GitCommitSettings: View {
                     .settingsHighlight(id: highlightID("Add Repository…"))
             }
 
+            GitCommitScheduleSection(highlightID: highlightID)
+
             Section("When") {
                 DatePicker(
                     "Time of day",
@@ -96,8 +99,11 @@ struct GitCommitSettings: View {
                             minute = parts.minute ?? 7
                         }),
                     displayedComponents: .hourAndMinute)
-                .disabled(!enabled)
+                .disabled(!enabled || randomTime)
                 .settingsHighlight(id: highlightID("Time of day"))
+                .help(randomTime
+                      ? "Ignored while \"Commit at a random time\" is on — the window above decides."
+                      : "The commit fires at this time each day.")
 
                 if let next = manager.nextRunAt, enabled {
                     LabeledContent("Next") {
@@ -117,7 +123,7 @@ struct GitCommitSettings: View {
                 TextField("Message", text: $message)
                     .disabled(!enabled)
                     .settingsHighlight(id: highlightID("Message"))
-                    .help("{date} and {time} are replaced when the commit is made.")
+                    .settingsInfo("{date} and {time} are replaced when the commit is made.")
 
                 Text("Preview: \(manager.renderedMessage())")
                     .font(.caption)
@@ -140,7 +146,7 @@ struct GitCommitSettings: View {
                     }))
                     .disabled(!enabled)
                     .settingsHighlight(id: highlightID("Push after committing"))
-                    .help("Committing is local and undoable. Pushing is neither.")
+                    .settingsInfo("Committing is local and undoable. Pushing is neither.")
             }
 
             Section("Run now") {
@@ -217,5 +223,71 @@ struct GitCommitSettings: View {
             }
             repos.append(path)
         }
+    }
+}
+
+/// The scheduling options: how many, when, and with what message.
+///
+/// Split out of `GitCommitSettings` so that pane stays readable — it already
+/// carries the repository list, the message template and the push switch.
+struct GitCommitScheduleSection: View {
+    @Default(.gitDailyCommitEnabled) private var enabled
+    @Default(.gitDailyCommitRandomMessage) private var randomMessage
+    @Default(.gitDailyCommitRandomTime) private var randomTime
+    @Default(.gitDailyCommitWindowStartHour) private var windowStart
+    @Default(.gitDailyCommitWindowEndHour) private var windowEnd
+    @Default(.gitDailyCommitCount) private var commitCount
+
+    let highlightID: (String) -> String
+
+    var body: some View {
+        Section("Schedule") {
+            Stepper(value: $commitCount, in: 1...12) {
+                LabeledContent("Commits per day") {
+                    Text("\(commitCount)")
+                        .monospacedDigit()
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .disabled(!enabled)
+            .settingsHighlight(id: highlightID("Commits per day"))
+            .settingsInfo("More than one is spread evenly through the window rather than fired together.")
+
+            Toggle("Commit at a random time", isOn: $randomTime)
+                .disabled(!enabled)
+                .settingsHighlight(id: highlightID("Commit at a random time"))
+                .settingsInfo("Picks a time inside the window below. The draw is stable for a given day, so the target does not drift as the day goes on.")
+
+            if randomTime {
+                Picker("Not before", selection: $windowStart) {
+                    ForEach(0..<24, id: \.self) { hour in
+                        Text(Self.hourLabel(hour)).tag(hour)
+                    }
+                }
+                .disabled(!enabled)
+                .settingsHighlight(id: highlightID("Not before"))
+
+                Picker("Not after", selection: $windowEnd) {
+                    ForEach(0..<24, id: \.self) { hour in
+                        Text(Self.hourLabel(hour)).tag(hour)
+                    }
+                }
+                .disabled(!enabled)
+                .settingsHighlight(id: highlightID("Not after"))
+            }
+
+            Toggle("Vary the commit message", isOn: $randomMessage)
+                .disabled(!enabled)
+                .settingsHighlight(id: highlightID("Vary the commit message"))
+                .settingsInfo("Picks from a pool of plain housekeeping messages instead of the template above. They stay dull on purpose — the commits are empty, so a message implying real work would be a small lie in the log for ever.")
+        }
+    }
+
+    private static func hourLabel(_ hour: Int) -> String {
+        var components = DateComponents()
+        components.hour = hour
+        components.minute = 0
+        let date = Calendar.current.date(from: components) ?? Date()
+        return date.formatted(date: .omitted, time: .shortened)
     }
 }
