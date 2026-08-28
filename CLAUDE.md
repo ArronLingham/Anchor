@@ -50,9 +50,20 @@ theirs to grant, and none should be built without asking first.
 
 | Feature | Blocker |
 |---|---|
-| Per-app volume, per-app EQ | Needs a virtual audio driver / HAL plug-in installed to `/Library/Audio/Plug-Ins/HAL` with admin rights. macOS has no public per-process volume API; `AudioHardwareCreateProcessTap` can *observe* a process's audio but not control its level. |
+| Per-app **EQ** | Would need a filter chain in the same real-time path per-app volume now uses. The path exists; nobody has written the DSP. |
 | Face ID / proximity unlock | Needs the privileged-helper story settled, and only an *Apple Development* identity exists here — no Developer ID Application. |
 | Notification mirroring | Full Disk Access. |
+
+**Per-app volume was on this list and should not have been.** The entry claimed
+it needed a virtual audio driver in `/Library/Audio/Plug-Ins/HAL` and admin
+rights. It does not: a process tap with `muteBehavior = .mutedWhenTapped`, a
+private aggregate device combining that tap with the real output, and an IOProc
+that scales what it reads is the whole mechanism, and it needs only the
+**audio-capture** grant — the same one the existing mute path already uses.
+Vorssaint ships exactly this. It is now implemented in
+`audio/PerAppVolumeEngine.swift`. The lesson is the one this file keeps
+re-learning: a "needs admin/entitlement" claim is worth re-checking against an
+app that actually does the thing.
 
 ## Licensing
 
@@ -394,11 +405,13 @@ and read the topic out of a PNG. See `helpers/UISnapshotHarness.swift`.
   build it with `startingUpdater: false`, never a live one.
 - **The sweep covers every settings pane**, so a pane that renders empty is
   caught here rather than by clicking through 21 sidebar tabs. Add new panes to
-  `settingsPanes`. All panes share one 720x1800 canvas; a pane that outgrows it
+  `settingsPanes`. All panes share one 720x2400 canvas; a pane that outgrows it
   is visibly cut off, which is the signal to raise it rather than a failure.
   (It was 720x1200 until Appearance outgrew it.)
 - **A short sweep means it was killed, not that a pane failed.** The full run
-  writes **50 PNGs — 25 light, 25 dark** — and takes ~85 s at the 1800 canvas.
+  writes **62 PNGs — 31 light, 31 dark** — and takes ~90 s at the 2400 canvas.
+  (It was 1800 until General outgrew it; the keep-awake triggers were the rows
+  that pushed it over.)
   It renders every pane dark first, then every pane light, so a run cut off
   early looks exactly like "all the dark ones worked and the light ones are
   broken". Three runs here returned 37, 33 and 50 PNGs purely from where the
@@ -565,6 +578,7 @@ file-system-synchronized groups. Both compile the *real* source files with
 ./tests/run_watcher_tests.sh    # 7 cases, real FSEventStream over a temp dir
 ./tests/run_launcher_tests.sh   # 25 cases over fuzzy matching and the calculator
 ./tests/run_color_tests.sh      # 24 cases over the eight clipboard colour formats
+./tests/run_gitcommit_tests.sh  # 16 cases over the git contract the daily commit relies on
 python3 tests/test_privacy_configuration.py
 ```
 
@@ -574,6 +588,17 @@ that the acronym bonus makes initials win, that `100/3` is decimal rather than
 integer `33`, that the integer rewrite does not split `7.5`, and that `%` is
 refused. `FuzzyMatcher` and `CalculatorAction` are pure and import only
 Foundation, so this harness needs no stub — unlike the watcher tests.
+
+`run_gitcommit_tests.sh` is a shell harness rather than a Swift one, because
+`GitCommitManager` is `@MainActor` and `Defaults`-backed and cannot be compiled
+standalone the way `FuzzyMatcher` can. What it pins is the thing that would
+actually break: the behaviour of the exact git invocations the manager makes,
+against real repositories in real states. It records that
+`rev-parse --git-dir` returns a *relative* `.git` (the manager joins it onto the
+repo path), that `symbolic-ref` exits non-zero on a detached HEAD, that
+`MERGE_HEAD` exists during a conflicted merge, that an empty commit changes no
+files and carries no co-author trailer, and that a push to an unreachable remote
+fails fast rather than hanging.
 
 `run_color_tests.sh` checks what the colour picker actually pastes. A wrong
 HSL hue sector is invisible in the swatch — that is drawn from RGB — so it would
@@ -672,6 +697,85 @@ Hold **Cmd+Shift+D**, speak, release → transcript pastes into the focused app.
   literals as decimals first. `%` is unsupported on purpose (percent vs modulo).
 - Grid has **no drag-reorder or folders**, deliberately. The old Launchpad
   layout can't be migrated either — macOS 26 removed its database.
+
+## Features added 2026-08-28
+
+Seven asks from the app-parity list. All default **off**.
+
+| Feature | Where | Replaces |
+|---|---|---|
+| Keep-awake triggers | `managers/CaffeinateManager.swift` | Amphetamine |
+| To-do list | `managers/TodoManager.swift`, `models/TodoItem.swift` | — |
+| Daily git commit | `managers/GitCommitManager.swift` | — |
+| Ring app switcher | `managers/AppSwitcherManager.swift`, `components/Launcher/AppSwitcher*.swift` | Launchy |
+| Menu bar shrinker | `managers/MenuBarShrinkManager.swift` | Ice |
+| Vinyl desktop widget | `managers/VinylWidgetWindowManager.swift`, `components/Vinyl/` | VinylPod |
+| Per-app volume | `audio/PerAppVolumeEngine.swift` | Fine Tune |
+
+- **The menu bar shrinker uses no API for hiding other apps' items, because
+  there is none.** The menu bar lays out right to left, so a status item that
+  makes itself 10,000 points wide pushes everything to its left off the screen.
+  That is what Ice, Bartender and Hidden Bar all do. Nothing is injected into
+  another process and no permission is involved; the cost is that the user
+  arranges their own bar by ⌘-dragging. `autosaveName` persists both their
+  positions and the divider's — **changing that string moves everyone's divider
+  back to the default position**, so do not edit it casually.
+- **The vinyl record is CALayers, not SwiftUI.** A record turns for as long as
+  music plays, and a SwiftUI rotation is a per-frame main-thread transaction —
+  the shape removed from the waveform in the AudioTap fix. A `CABasicAnimation`
+  is handed to the render server once. It is *removed* on pause rather than left
+  running at zero speed, and the window is torn down while the display sleeps.
+  - `CALayer.contents` set from an `NSImage` honours neither `contentsGravity`
+    nor the layer's corner radius. The square album cover sat on a round record
+    until it was converted to a `CGImage` and masked with a shape layer.
+  - `layout()` runs inside a `CATransaction` with actions disabled, or the
+    record visibly swells whenever the window moves between displays.
+- **The app switcher's panel never takes key focus.** Taking it would deactivate
+  whatever app the user is in, and on dismissal macOS would hand focus back to
+  *that* app — fighting the activation the switcher exists to perform. Keys come
+  from `NSEvent` monitors, which need Accessibility but leave focus alone.
+- **⌘Tab is deliberately not taken over.** That needs an event tap that swallows
+  it, and an app that swallows ⌘Tab and then hangs leaves the user with no way
+  to switch apps at all.
+- **The daily commit runs entirely off the main actor, and that is
+  load-bearing.** An `await MainActor.run` before the git loop made the commit
+  depend on the UI being free and deadlocked outright in a headless run. A
+  housekeeping job must not miss its day because something upstream is busy. The
+  spinner and the results list are fire-and-forget; the commit is not.
+- **It commits empty by default and does not push.** `git add -A` running
+  unattended at 21:07 will eventually sweep in a half-finished edit or a secret
+  with nobody watching, and a local commit is undoable where a push is not.
+  Pushing is a separate confirmed toggle.
+
+### Testing a GUI build headlessly: what does and does not work
+
+Verifying these cost several hours of blind alleys, all from one cause.
+
+- **`open -n` is required; running the binary from a detached shell exits
+  immediately.** CLAUDE.md already said so. It is still the first thing to get
+  wrong.
+- **In a headless second instance the main *dispatch queue* stops draining
+  shortly after launch, while the main *thread* sits idle in the run loop.**
+  Measured, not guessed: a `DispatchQueue.global` block and a `Task.detached`
+  scheduled at the same moment both fired; a `DispatchQueue.main.asyncAfter` and
+  a `Task { @MainActor }` never did, and `sample` showed the main thread parked
+  in `_DPSNextEvent` the whole time.
+  - Anything `await`ing the main actor hangs for ever. That is what stopped the
+    daily commit, and the fix — doing the work off the main actor — was worth
+    making permanently.
+  - `NSWindow.orderFrontRegardless()` sets `isVisible = true` but the window
+    never reaches the window server, so it is absent from
+    `CGWindowListCopyWindowInfo`. **The vinyl widget's panel could not be
+    verified this way and is the one thing here that needs a real look.**
+- **`log show --predicate 'process == "Anchor"'` returns nothing for an ad-hoc
+  signed Debug build**, and `open --stderr` only catches output from early
+  launch. Writing a marker file is the only diagnostic that reliably works.
+- **Status items do not appear in a `CGWindowList` query at all**, so the menu
+  bar divider is verified by rendering its settings pane, which reports the
+  manager's real state.
+- **`pkill` leaves `OSDUIHelper` SIGSTOPped**, which kills the volume and
+  brightness HUD system-wide. Run `kill -CONT $(pgrep -x OSDUIHelper)` after
+  every force-kill during testing.
 
 ## Smaller features
 

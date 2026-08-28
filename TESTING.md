@@ -4,16 +4,21 @@
 
 Camera mirror, battery charge limiting and fan control were dropped and their
 code removed. The Spotify cookie has been rotated. The old commit trailers are
-left alone. Nothing here is waiting on a decision.
+left alone.
+
+Seven new features landed on 2026-08-28 — §13. All default off. One of them,
+per-app volume, puts Anchor in the real-time path of your audio, so read item
+101 before turning it on.
 
 Worth doing first, because these are the checks I could not run myself:
 
 | | What | Why it needs you |
 |---|---|---|
-| 1 | **Multi-display control windows** (item 93) | Needs a second monitor. This code has never run on two screens, and `showOnAllDisplays` is on for your profile, so it goes live the moment you plug one in. |
-| 2 | **Per-app mute** (item 95) | Verified by construction only — a probe could not create a real tap without the audio grant, so the mute has never been *heard* to work. |
-| 3 | **`assumeIsolated` paths** (item 99) | These crash rather than warn if an assumption is wrong. Triggering them means changing display settings, which I would not do to your machine. |
-| 4 | **The two bugs I fixed** (items 97, 98) | Pinned clipboard items surviving a restart, and the download toggle taking effect without one. Both were broken before this pass. |
+| 1 | **Per-app volume** (item 101) | Anchor now re-renders another app's audio in real time. It has never been *listened to*. Dropouts, crackle or a lag behind video are the failure modes, and this is the only feature that can make your Mac sound wrong. |
+| 2 | **Vinyl widget appears at all** (item 102) | The window is created with the right geometry and reports itself visible, but never reached the window server in a headless test. I could not tell whether that is the code or the test rig. |
+| 3 | **Menu bar shrinker vs the notch** (item 104) | On a notched display the hidden icons are pushed under the notch rather than off the edge. I have no way to see what that looks like. |
+| 4 | **Multi-display control windows** (item 93) | Needs a second monitor. Still never run on two screens, and `showOnAllDisplays` is on for your profile. |
+| 5 | **`assumeIsolated` paths** (item 99) | These crash rather than warn if an assumption is wrong. Triggering them means changing display settings, which I would not do to your machine. |
 
 ---
 
@@ -471,3 +476,90 @@ Each is off by default unless noted — turn it on in Settings first.
      commit fired it, and the record parsed. **It will look broken in a Debug
      build** — TCC grants bind to the code signature, so an ad-hoc signed build
      reports the database as unreadable.
+
+## 13. Added 2026-08-28 — the seven app-parity features, all default OFF
+
+These are the checks I could not run. Everything below builds, renders and
+passes what could be tested headlessly; what is left needs eyes, ears, or a
+second monitor.
+
+**Do 101 first.** It is the only one that puts Anchor in the real-time path of
+your audio.
+
+101. **Per-app volume — needs listening to** (Settings → Media → Per-app audio).
+     Turn per-app audio on, play something in Spotify, and drag its slider.
+     - At **100%** nothing should be engaged: no blue waveform badge on the row,
+       and audio should be bit-identical to the feature being off. Moving away
+       from 100% and back must tear the engine down, not leave it running.
+     - At **50%** that app should get quieter while everything else stays where
+       it was. At **150%** louder. Listen for **dropouts, crackle, stutter or a
+       change in stereo image** — an IOProc sits in the real-time path and those
+       are the failure modes.
+     - Check **latency**: audio should not lag video.
+     - Switch output device (headphones in/out) while a slider is off 100%. The
+       aggregate device is built around the output that was default at the time,
+       so this is the most likely thing to misbehave.
+     - Quit Anchor with a slider off 100%. **Audio must come straight back to
+       normal** — the OS destroys our taps with the process.
+     - If anything sounds wrong, set every slider to 100% and turn per-app audio
+       off; that removes the whole path.
+
+102. **Vinyl widget — does the window actually appear?** (Settings → Vinyl).
+     Turn it on with music playing. A record should appear near the bottom-right
+     of the main screen, turning while playing and stopping when paused, with
+     the album art as a round label and the tonearm swung on.
+     **This is the one thing I could not verify at all.** The panel is created
+     with the right geometry and reports itself visible, but in a headless test
+     instance it never reached the window server, and I could not tell whether
+     that was the code or the test environment. If nothing appears, that is the
+     bug — say so and I will fix it properly.
+     Then: drag it somewhere, quit and relaunch (should return to where you left
+     it); try all four sizes and all three layers; hover for the transport
+     controls; turn the tonearm, progress ring and title on and off.
+
+103. **Ring app switcher** (Settings → Launcher → App switcher). Turn on, then
+     **⌥Tab**. A ring of running apps appears, centred on the screen the pointer
+     is on, with the app you were *last* in highlighted — one press and release
+     should behave like ⌘Tab. Hold ⌥ and tap Tab to go round; release to switch.
+     Check Escape cancels, Return confirms, and the pointer can hover and click
+     any icon. **W** should close the highlighted app.
+     Keyboard control needs Accessibility — if the ring opens but Tab does
+     nothing, that grant is the reason, and the pointer should still work.
+
+104. **Menu bar shrinker** (Settings → Menu Bar). Turn on: a chevron appears in
+     the menu bar. **⌘-drag** some menu bar icons to the *left* of it, then click
+     it — those icons should disappear, and clicking again brings them back.
+     Restart Anchor and confirm both the divider and your icon arrangement come
+     back where you left them.
+     Then try "hide again after" and the always-hidden section.
+     Watch for it fighting the notch: on a notched display the hidden items are
+     pushed under the notch rather than off the screen edge, and I could not
+     check how that looks.
+
+105. **Keep-awake triggers** (Settings → General → Keep awake). Turn on "Also
+     stay awake while plugged in", then unplug and replug. The status line under
+     the toggles should say "Awake: on power" while plugged and disappear when
+     not — **and your own "Prevent this Mac from sleeping" switch must not
+     change state either way**, which is the whole reason they are separate.
+     Same for the external-display trigger. Add an app under "Also stay awake
+     while these apps run", quit it, and confirm the reason drops.
+     `pmset -g assertions` should show the assertion appear and disappear.
+     "Nudge the pointer" needs Accessibility; with it on, the pointer should
+     twitch once a minute *only while the Mac is being kept awake*.
+
+106. **To-do list** (Settings → To-Do). Turn on; a "To-Do" tab appears in the
+     notch. Type a task and press Return — the field should keep focus so you
+     can type several. Tick one: it should move below the divider with a
+     strikethrough. Double-click a title to rename. Right-click for priority and
+     due dates; an overdue item's date should go red. Try each sort order.
+     Quit and relaunch — everything should still be there.
+
+107. **Daily git commit** (Settings → Daily Commit). **Add a throwaway
+     repository first, not one you care about.** Press "Commit Now": the result
+     line should say "Empty commit on <branch>". Check `git log` — one empty
+     commit, your usual author, no co-author trailer.
+     Then set the time a couple of minutes ahead, leave it, and confirm it fires
+     on its own. Relaunching the same day must **not** commit again.
+     Only turn "Push after committing" on if you actually want that; it is
+     confirmed separately because a push cannot be undone.
+     Verified end to end against a scratch repo, including the once-a-day guard.
