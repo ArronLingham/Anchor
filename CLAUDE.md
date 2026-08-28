@@ -144,6 +144,15 @@ do not let that graph follow it in.
     one screen. `showOnAllDisplays` defaults to false but is *on* for this user,
     so these paths go live the moment a monitor is attached. Check it first if
     anything odd shows up around the floating control window.
+- **Adding a `SettingsTab` case does not put it in the sidebar.**
+  `SettingsView.availableTabs` is a *hardcoded ordered array*, not `allCases`,
+  and it is what draws the list. A tab with an enum case, a `detailView`, an
+  icon and a tint but no entry there is invisible, with no build error and no
+  other symptom — the pane renders perfectly in the harness sweep, so even that
+  does not catch it. **Five had gone missing this way**: Vinyl, Menu Bar,
+  To-Do and Daily Commit on the day they were written, and `claudeUsage`, which
+  had never been reachable at all since the usage watcher shipped. There is now
+  an `assert` in `availableTabs` naming any case that is missing.
 - **Settings panes are one file each** under `components/Settings/`.
   `SettingsView.swift` is now the shell — the two tab enums,
   `SettingsHighlightCoordinator`, the search/highlight plumbing, `SettingsForm`
@@ -847,17 +856,35 @@ Verifying these cost several hours of blind alleys, all from one cause.
   is not success — always check the ID too, which `PerAppAudioManager` does. The
   safe consequence is that a permission failure mutes nothing and marks nothing
   muted, rather than half-applying.
-- **Per-app audio is mute, not a volume slider, deliberately.** A
-  `CATapDescription` with `muteBehavior = .muted` silences a process outright,
-  which needs no playback path. Arbitrary *gain* would mean muting the app,
-  capturing it through an aggregate device, applying a multiplier and
-  re-rendering to the output device from a real-time IOProc — an audio engine
-  permanently in the path of the user's sound, where a mistake is distortion or
-  silence rather than a visual bug. Not something to land unverified.
-  There is **no per-process volume property** in CoreAudio; `kAudioProcessProperty*`
-  covers PID, bundle ID, devices and is-running only. Re-rendering is the only route.
-- Taps are owned by the creating process, so a muted app un-mutes by itself if
-  Anchor exits or crashes. That is the reason this was safe to build unattended.
+- **Per-app audio is volume, mute and EQ, and the engine is ported from
+  FineTune** (`audio/perapp/`, GPL-3.0, © 2026 Ronit Singh; see `NOTICE`).
+  There is no per-process volume property in CoreAudio — `kAudioProcessProperty*`
+  covers PID, bundle id, devices and is-running only — so gain means: tap with
+  `muteBehavior = .mutedWhenTapped`, build a private aggregate device from the
+  real output plus that tap, and re-render from an IOProc.
+- **A hand-written version of this shipped first and did not work.** All four
+  mistakes looked reasonable and are worth knowing before touching this again:
+  - It tapped **one** process object. `AudioApp.processObjectIDs` is *plural* —
+    Spotify and Chrome play through helper processes, so tapping the main
+    process's single object taps something making no sound.
+  - It started the IOProc immediately. An aggregate device is not ready when
+    `AudioHardwareCreateAggregateDevice` returns; wait on `waitUntilReady`.
+  - It omitted `kAudioAggregateDeviceTapAutoStartKey` and
+    `kAudioAggregateDeviceClockDeviceKey`.
+  - It applied gain instantly rather than ramping over 30 ms, and ignored drift
+    compensation — which must be **off** for Bluetooth outputs, where tap and
+    output share a clock and leaving it on makes the HAL insert or delete a
+    sample every ~0.7 s. That is the rhythmic crackle on calls.
+- **It was not a permissions problem, which is worth stating** because that was
+  the first guess. `kTCCServiceAudioCapture` reads ALLOWED for
+  `com.arronlingham.Anchor` in the TCC database. The engine was simply wrong.
+- **Anchor declares its own `Logger`, which shadows `os.Logger` inside the
+  module.** Every ported file that logs needs `os.Logger(...)` spelled out, or
+  it fails with "argument passed to call that takes no arguments" — an error
+  that says nothing about the actual cause.
+- What is deliberately **not** ported from FineTune: the HUD, the menu bar
+  shell, media keys, DDC, Bluetooth monitoring and the updater. Anchor has its
+  own of each, and duplicating them would fight the existing code.
 
 - **`LocalAuthentication` needs no entitlement and no privileged helper.** The
   match happens in the Secure Enclave and this process only ever sees a yes or
