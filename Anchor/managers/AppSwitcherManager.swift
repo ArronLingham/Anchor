@@ -171,12 +171,20 @@ final class AppSwitcherManager: ObservableObject {
     /// Brings the highlighted app forward and closes the ring.
     ///
     /// Three separate things can be standing between the user and the window
-    /// they picked, and `activate` alone only fixes the first:
+    /// they picked:
     ///
-    /// - it is behind other windows — `activate` handles that;
-    /// - the whole app is hidden with ⌘H — `unhide()` handles that;
-    /// - its windows are minimised to the Dock — nothing public handles that,
-    ///   so `deminiaturise` goes through the accessibility API.
+    /// - it is behind other windows;
+    /// - the whole app is hidden with ⌘H;
+    /// - its windows are minimised to the Dock.
+    ///
+    /// **Order matters, and getting it wrong is exactly the bug this replaced.**
+    /// Calling `activate()` first, then un-minimising, brought the app forward
+    /// with nothing to show — a running app with zero visible windows does not
+    /// gain focus on the window that then pops out of the Dock, because
+    /// un-minimising through the accessibility API does not raise a window the
+    /// way clicking its Dock icon does. Restoring and raising the window
+    /// *before* activating is what makes the app that comes forward be the one
+    /// with the newly-visible window in it.
     func activateSelection() {
         defer { hide() }
         guard apps.indices.contains(selectedIndex) else { return }
@@ -184,18 +192,23 @@ final class AppSwitcherManager: ObservableObject {
         guard let app = NSRunningApplication(processIdentifier: target.pid) else { return }
 
         if app.isHidden { app.unhide() }
+        deminiaturiseAndRaise(pid: target.pid)
         app.activate(options: [.activateAllWindows])
-        deminiaturise(pid: target.pid)
         noteActivation(target.pid)
     }
 
-    /// Restores minimised windows.
+    /// Restores minimised windows and raises them.
     ///
     /// There is no public API for un-minimising *another* app's window, so this
-    /// sets `AXMinimized` to false on each of its windows. That needs
-    /// Accessibility; without it the call quietly does nothing and the app is
-    /// still brought forward, just with its windows left in the Dock.
-    private func deminiaturise(pid: pid_t) {
+    /// goes through the accessibility API: clear `AXMinimized`, then perform
+    /// `AXRaise` on it. The raise is not optional — clearing `AXMinimized`
+    /// alone animates the window out of the Dock but does not bring it in
+    /// front of whatever else is on screen, which is indistinguishable from
+    /// "nothing happened" if another window is covering it.
+    ///
+    /// Needs Accessibility; without it this quietly does nothing and the app
+    /// still comes forward, just with its windows left in the Dock.
+    private func deminiaturiseAndRaise(pid: pid_t) {
         guard AXIsProcessTrusted() else { return }
 
         let element = AXUIElementCreateApplication(pid)
@@ -205,15 +218,19 @@ final class AppSwitcherManager: ObservableObject {
             let windows = value as? [AXUIElement]
         else { return }
 
-        for window in windows {
+        // AX returns windows front-to-back for the app; raising in reverse
+        // leaves index 0 — the app's own frontmost window — on top at the end,
+        // rather than whichever happened to be raised last.
+        for window in windows.reversed() {
             var minimised: CFTypeRef?
-            guard AXUIElementCopyAttributeValue(
+            if AXUIElementCopyAttributeValue(
                 window, kAXMinimizedAttribute as CFString, &minimised) == .success,
                 (minimised as? Bool) == true
-            else { continue }
-
-            AXUIElementSetAttributeValue(
-                window, kAXMinimizedAttribute as CFString, kCFBooleanFalse)
+            {
+                AXUIElementSetAttributeValue(
+                    window, kAXMinimizedAttribute as CFString, kCFBooleanFalse)
+            }
+            AXUIElementPerformAction(window, kAXRaiseAction as CFString)
         }
     }
 

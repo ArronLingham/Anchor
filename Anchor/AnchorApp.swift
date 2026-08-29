@@ -786,9 +786,21 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }.store(in: &cancellables)
 
-        // Pin/unpin the notch above all spaces when the hide option changes:
-        // "Never hide" joins the max-level CGSSpace, the hide options leave it.
+        // Pin/unpin the notch above all spaces when the hide option, the
+        // external-display setting, or the display arrangement changes.
+        //
+        // This used to have exactly one trigger (hideNotchOption), which meant
+        // "always show on external displays" had correct logic behind it and no
+        // way to ever run it: nothing called `syncNotchSpaceMembership()` at
+        // launch, when the setting itself changed, or when a monitor was
+        // plugged in. The setting looked implemented and did nothing.
         Defaults.publisher(.hideNotchOption, options: []).sink { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.syncNotchSpaceMembership()
+            }
+        }.store(in: &cancellables)
+
+        Defaults.publisher(.alwaysShowOnExternalDisplays, options: []).sink { [weak self] _ in
             Task { @MainActor [weak self] in
                 self?.syncNotchSpaceMembership()
             }
@@ -950,6 +962,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         } else {
             adjustWindowPosition(changeAlpha: true)
         }
+
+        // Every window that will exist for this launch is created above.
+        // Without this call, "always show on external displays" never takes
+        // effect until something else happens to touch hideNotchOption.
+        syncNotchSpaceMembership()
         
         // Skip onboarding window and welcome sound under UI testing.
         if coordinator.firstLaunch && !AppRuntimeEnvironment.isUITesting {
@@ -1407,6 +1424,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             DispatchQueue.main.async { [weak self] in
                 self?.cleanupWindows()
                 self?.adjustWindowPosition()
+                // A newly connected display may now be the one without a real
+                // notch that "always show" is supposed to pin.
+                self?.syncNotchSpaceMembership()
             }
         }
     }

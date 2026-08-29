@@ -174,7 +174,7 @@ final class AppSwitcherPanelManager {
     /// moment the ring closes.
     private func startReleaseWatch() {
         releaseWatch?.invalidate()
-        let timer = Timer(timeInterval: 0.05, repeats: true) { [weak self] _ in
+        let timer = Timer(timeInterval: 0.02, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated {
                 guard let self, self.panel != nil else { return }
                 guard let shortcut = KeyboardShortcuts.getShortcut(for: .appSwitcher) else { return }

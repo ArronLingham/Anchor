@@ -26,6 +26,15 @@ import SwiftUI
 /// A ring rather than a row because the whole point of the shape is that every
 /// entry is the same distance from the pointer, so a mouse can reach any of them
 /// with one flick rather than a horizontal scan.
+///
+/// ## Hit-testing is a pie chart, not per-icon hover
+///
+/// The whole disc is divided into as many wedges as there are apps, and the
+/// pointer anywhere in a wedge — not just on top of the small icon — selects
+/// that app. A per-icon `.onHover` region is a target a few dozen points wide
+/// at the end of a fast mouse flick; a wedge is the entire angular slice from
+/// the centre hole to the outer edge, which is what makes "throw the mouse
+/// roughly at the right app" work reliably.
 struct AppSwitcherView: View {
     @ObservedObject private var switcher = AppSwitcherManager.shared
     @Default(.appSwitcherRingDiameter) private var diameter
@@ -43,6 +52,11 @@ struct AppSwitcherView: View {
 
     private var radius: CGFloat { (diameter / 2) - iconSize * 0.75 }
 
+    /// Radius below which the pointer is over the centre label, not a wedge —
+    /// otherwise a pointer sitting dead-centre while reading the name would
+    /// noisily reassign the selection to whatever the atan2 rounding picks.
+    private var deadZoneRadius: CGFloat { diameter * 0.16 }
+
     var body: some View {
         ZStack {
             backdrop
@@ -54,6 +68,37 @@ struct AppSwitcherView: View {
             centre
         }
         .frame(width: diameter, height: diameter)
+        .contentShape(Circle())
+        .onContinuousHover(coordinateSpace: .local) { phase in
+            guard case .active(let location) = phase else { return }
+            selectWedge(at: location)
+        }
+        .onTapGesture { location in
+            selectWedge(at: location)
+            switcher.activateSelection()
+        }
+    }
+
+    /// Maps a point in the view's own coordinate space to the wedge it falls
+    /// in, and selects it.
+    private func selectWedge(at point: CGPoint) {
+        let count = switcher.apps.count
+        guard count > 0 else { return }
+
+        let centrePoint = CGPoint(x: diameter / 2, y: diameter / 2)
+        let dx = point.x - centrePoint.x
+        let dy = point.y - centrePoint.y
+        guard (dx * dx + dy * dy) > deadZoneRadius * deadZoneRadius else { return }
+
+        // atan2 is 0 at three o'clock, positive going clockwise in SwiftUI's
+        // y-down space. Icons start at twelve o'clock, so rotate the reading by
+        // a quarter turn before dividing into wedges.
+        var angle = atan2(dy, dx) + .pi / 2
+        if angle < 0 { angle += 2 * .pi }
+
+        let wedge = Double(count) * angle / (2 * .pi)
+        let index = Int(wedge.rounded(.down)) % count
+        switcher.select(index)
     }
 
     private var backdrop: some View {
@@ -79,9 +124,12 @@ struct AppSwitcherView: View {
                     .foregroundStyle(.white.opacity(0.45))
             }
             .frame(maxWidth: diameter * 0.42)
+            .allowsHitTesting(false)
         }
     }
 
+    /// Purely decorative now — wedge selection lives on the container, so this
+    /// carries no gesture of its own and never competes with it for the touch.
     private func icon(_ app: SwitchableApp, at index: Int) -> some View {
         let isSelected = index == switcher.selectedIndex
         // Start at twelve o'clock and go clockwise, which is the direction Tab
@@ -114,14 +162,7 @@ struct AppSwitcherView: View {
         .scaleEffect(isSelected ? 1.12 : 1)
         .offset(offset)
         .animation(.spring(response: 0.22, dampingFraction: 0.75), value: switcher.selectedIndex)
-        .onTapGesture {
-            switcher.select(index)
-            switcher.activateSelection()
-        }
-        .onHover { inside in
-            // Hover selects, so a mouse user never has to Tab round the ring.
-            if inside { switcher.select(index) }
-        }
+        .allowsHitTesting(false)
         .help(app.name)
     }
 }

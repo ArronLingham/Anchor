@@ -721,6 +721,27 @@ Hold **Cmd+Shift+D**, speak, release → transcript pastes into the focused app.
 - Grid has **no drag-reorder or folders**, deliberately. The old Launchpad
   layout can't be migrated either — macOS 26 removed its database.
 
+## Fixed 2026-08-29 — two "looks wired, isn't" bugs
+
+- **`syncNotchSpaceMembership()` had exactly one call site.** It was correct —
+  reads `alwaysShowOnExternalDisplays`, pins the right windows — and it never
+  ran, because the only trigger was a `Defaults.publisher(.hideNotchOption)`
+  sink. Nothing called it at launch, when the external-display setting itself
+  changed, or when a monitor was plugged in. The setting existed, had correct
+  logic, and did nothing, which is a worse failure mode than a missing feature
+  because there is no error to find. Now has three triggers: launch (right
+  after every window for the launch is created), its own `Defaults.publisher`,
+  and `screenConfigurationDidChange`.
+- **`activateSelection()` called `activate()` before un-minimising.** A running
+  app with every window minimised has nothing to bring forward, so `activate()`
+  succeeded and did nothing visible; un-minimising afterward animated the
+  window out of the Dock but did not raise it, which reads as "the switcher
+  says it worked and nothing happened." The fix is ordering, not a new API:
+  clear `AXMinimized`, `AXRaise` the window, *then* `activate()`. Windows are
+  raised in reverse of what AX returns, since AX orders them front-to-back and
+  raising in that order would leave whichever was raised last on top rather
+  than the app's own frontmost window.
+
 ## Features added 2026-08-28
 
 Seven asks from the app-parity list. All default **off**.
