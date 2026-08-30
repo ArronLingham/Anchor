@@ -724,6 +724,8 @@ struct SettingsView: View {
             SettingsSearchEntry(tab: .todo, title: "Enable to-do list", keywords: ["todo", "to-do", "task", "checklist"], highlightID: SettingsTab.todo.highlightID(for: "Enable to-do list")),
             SettingsSearchEntry(tab: .todo, title: "Sort by", keywords: ["todo order", "task sort"], highlightID: SettingsTab.todo.highlightID(for: "Sort by")),
             SettingsSearchEntry(tab: .general, title: "Enable Minimalistic UI", keywords: ["minimalistic", "ui mode", "general"], highlightID: SettingsTab.general.highlightID(for: "Enable Minimalistic UI")),
+            SettingsSearchEntry(tab: .general, title: "Keep the notch open", keywords: ["pin", "pinned", "stay open", "notch pin"], highlightID: SettingsTab.general.highlightID(for: "Keep the notch open")),
+            SettingsSearchEntry(tab: .general, title: "Always show on external displays", keywords: ["external display", "pill", "second monitor", "multi-display", "non-notch"], highlightID: SettingsTab.general.highlightID(for: "Always show on external displays")),
             SettingsSearchEntry(tab: .general, title: "Menubar icon", keywords: ["menu bar", "status bar", "icon"], highlightID: SettingsTab.general.highlightID(for: "Menubar icon")),
             SettingsSearchEntry(tab: .general, title: "Launch at login", keywords: ["autostart", "startup"], highlightID: SettingsTab.general.highlightID(for: "Launch at login")),
             SettingsSearchEntry(tab: .general, title: "Show on all displays", keywords: ["multi-display", "external monitor"], highlightID: SettingsTab.general.highlightID(for: "Show on all displays")),

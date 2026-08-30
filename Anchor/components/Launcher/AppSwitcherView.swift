@@ -18,7 +18,6 @@
  */
 
 import AppKit
-import Defaults
 import SwiftUI
 
 /// Running apps arranged in a ring, selected one highlighted in the middle.
@@ -37,7 +36,12 @@ import SwiftUI
 /// roughly at the right app" work reliably.
 struct AppSwitcherView: View {
     @ObservedObject private var switcher = AppSwitcherManager.shared
-    @Default(.appSwitcherRingDiameter) private var diameter
+
+    /// Scales with how many apps are open — see `AppSwitcherManager.ringDiameter`.
+    /// The panel's own NSWindow is sized from the same property at present
+    /// time, so this must stay in lockstep with it rather than reading the
+    /// raw Default directly.
+    private var diameter: CGFloat { switcher.ringDiameter }
 
     /// Icon edge, shrinking as the ring fills up so a busy Mac still fits.
     private var iconSize: CGFloat {
@@ -52,20 +56,19 @@ struct AppSwitcherView: View {
 
     private var radius: CGFloat { (diameter / 2) - iconSize * 0.75 }
 
-    /// Radius below which the pointer is over the centre label, not a wedge —
-    /// otherwise a pointer sitting dead-centre while reading the name would
-    /// noisily reassign the selection to whatever the atan2 rounding picks.
+    /// Radius below which the pointer is treated as dead-centre rather than a
+    /// wedge — otherwise a pointer sitting near the hub would noisily
+    /// reassign the selection to whatever the atan2 rounding picks.
     private var deadZoneRadius: CGFloat { diameter * 0.16 }
 
     var body: some View {
         ZStack {
             backdrop
+            wedgeHighlight
 
             ForEach(Array(switcher.apps.enumerated()), id: \.element.id) { index, app in
                 icon(app, at: index)
             }
-
-            centre
         }
         .frame(width: diameter, height: diameter)
         .contentShape(Circle())
@@ -81,6 +84,16 @@ struct AppSwitcherView: View {
 
     /// Maps a point in the view's own coordinate space to the wedge it falls
     /// in, and selects it.
+    ///
+    /// Wedges are centred on their icon, not started at it: icon `i` sits at
+    /// angle `2πi/count - π/2` (see `icon(_:at:)`), so its wedge spans a half
+    /// step either side of that, and the nearest icon to the pointer's angle
+    /// is found by rounding rather than flooring. Flooring would put the
+    /// wedge boundary *on* each icon instead of the midpoint between two
+    /// icons, silently offsetting every wedge by half a slice from the icon
+    /// it's supposed to belong to — invisible while wedges were undrawn, but
+    /// exactly the mismatch that would make a highlighted wedge visibly not
+    /// line up with its icon.
     private func selectWedge(at point: CGPoint) {
         let count = switcher.apps.count
         guard count > 0 else { return }
@@ -96,34 +109,41 @@ struct AppSwitcherView: View {
         var angle = atan2(dy, dx) + .pi / 2
         if angle < 0 { angle += 2 * .pi }
 
-        let wedge = Double(count) * angle / (2 * .pi)
-        let index = Int(wedge.rounded(.down)) % count
+        let steps = Double(count) * angle / (2 * .pi)
+        let index = Int(steps.rounded()) % count
         switcher.select(index)
+    }
+
+    /// Angle of icon `index`'s wedge centre, in the same atan2-based
+    /// convention `selectWedge` reads from (0 = three o'clock, positive =
+    /// clockwise in this y-down space) rotated so 0 = twelve o'clock.
+    private func wedgeCentreAngle(for index: Int) -> Double {
+        (Double(index) / Double(max(switcher.apps.count, 1))) * 2 * .pi - .pi / 2
     }
 
     private var backdrop: some View {
         Circle()
             .fill(.ultraThinMaterial)
+            .overlay(Circle().fill(.black.opacity(0.38)))
             .overlay(
                 Circle().strokeBorder(.white.opacity(0.12), lineWidth: 1))
-            .shadow(color: .black.opacity(0.35), radius: 24, y: 8)
+            .shadow(color: .black.opacity(0.45), radius: 24, y: 8)
     }
 
-    /// Name of the highlighted app, in the hole in the middle of the ring.
+    /// The selected app's slice of the disc, lit up behind its icon so the
+    /// ring reads as an actual pie chart rather than just a bright dot.
     @ViewBuilder
-    private var centre: some View {
+    private var wedgeHighlight: some View {
         if switcher.apps.indices.contains(switcher.selectedIndex) {
-            let app = switcher.apps[switcher.selectedIndex]
-            VStack(spacing: 3) {
-                Text(app.name)
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .lineLimit(1)
-                Text("\(switcher.selectedIndex + 1) of \(switcher.apps.count)")
-                    .font(.system(size: 10))
-                    .foregroundStyle(.white.opacity(0.45))
-            }
-            .frame(maxWidth: diameter * 0.42)
+            let half = Double.pi / Double(max(switcher.apps.count, 1))
+            let centre = wedgeCentreAngle(for: switcher.selectedIndex)
+            WedgeShape(
+                startAngle: centre - half,
+                endAngle: centre + half,
+                innerRadius: deadZoneRadius,
+                outerRadius: diameter / 2
+            )
+            .fill(.white.opacity(0.14))
             .allowsHitTesting(false)
         }
     }
@@ -135,8 +155,7 @@ struct AppSwitcherView: View {
         // Start at twelve o'clock and go clockwise, which is the direction Tab
         // advances — a ring that advanced anticlockwise would read as going
         // backwards.
-        let angle = (Double(index) / Double(max(switcher.apps.count, 1)))
-            * 2 * .pi - .pi / 2
+        let angle = wedgeCentreAngle(for: index)
         let offset = CGSize(
             width: cos(angle) * radius,
             height: sin(angle) * radius)
@@ -164,5 +183,40 @@ struct AppSwitcherView: View {
         .animation(.spring(response: 0.22, dampingFraction: 0.75), value: switcher.selectedIndex)
         .allowsHitTesting(false)
         .help(app.name)
+    }
+}
+
+/// An annular sector — a donut slice from `innerRadius` to `outerRadius`,
+/// sweeping `startAngle` to `endAngle` in the same y-down, atan2-based angle
+/// convention the rest of this file uses (0 = three o'clock, positive =
+/// clockwise). Built from sampled points along both arcs rather than
+/// `Path.addArc`'s `clockwise` flag, whose sense is easy to get backwards
+/// against that convention — this way the geometry can't disagree with
+/// `selectWedge`'s hit-testing, since both read the same angles the same way.
+private struct WedgeShape: Shape {
+    let startAngle: Double
+    let endAngle: Double
+    let innerRadius: CGFloat
+    let outerRadius: CGFloat
+
+    func path(in rect: CGRect) -> Path {
+        let center = CGPoint(x: rect.midX, y: rect.midY)
+        func point(angle: Double, radius: CGFloat) -> CGPoint {
+            CGPoint(x: center.x + cos(angle) * radius, y: center.y + sin(angle) * radius)
+        }
+
+        let steps = 24
+        var path = Path()
+        path.move(to: point(angle: startAngle, radius: outerRadius))
+        for step in 1...steps {
+            let t = Double(step) / Double(steps)
+            path.addLine(to: point(angle: startAngle + (endAngle - startAngle) * t, radius: outerRadius))
+        }
+        for step in 0...steps {
+            let t = Double(step) / Double(steps)
+            path.addLine(to: point(angle: endAngle - (endAngle - startAngle) * t, radius: innerRadius))
+        }
+        path.closeSubpath()
+        return path
     }
 }

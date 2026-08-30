@@ -89,7 +89,7 @@ final class AppSwitcherPanelManager {
     }
 
     private func present() {
-        let diameter = Defaults[.appSwitcherRingDiameter]
+        let diameter = switcher.ringDiameter
         let host = NSHostingView(rootView: AppSwitcherView())
         host.frame = NSRect(x: 0, y: 0, width: diameter, height: diameter)
 

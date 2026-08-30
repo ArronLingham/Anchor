@@ -65,6 +65,24 @@ final class AppSwitcherManager: ObservableObject {
     private var recency: [pid_t] = []
     private var observersInstalled = false
 
+    /// Whatever was frontmost the moment the ring opened. Reversing back onto
+    /// this entry — e.g. Shift+Tab past your own app — is a dismiss, not a
+    /// switch: see `activateSelection()`.
+    private var originalFrontmostPID: pid_t?
+
+    /// Ring diameter, scaled by how many apps are open. A couple of apps
+    /// don't need a disc that dominates the screen; a busy Mac with a dozen
+    /// running needs the room. `Defaults[.appSwitcherRingDiameter]` is the
+    /// user's configured size at a middling app count, not a fixed size.
+    var ringDiameter: CGFloat {
+        let base = Defaults[.appSwitcherRingDiameter]
+        let count = Double(max(apps.count, 1))
+        let lowCount = 3.0, highCount = 16.0
+        let t = min(max((count - lowCount) / (highCount - lowCount), 0), 1)
+        let scale = 0.8 + t * 0.5   // 0.8x at ≤3 apps, up to 1.3x at 16+
+        return CGFloat(base * scale)
+    }
+
     private init() {}
 
     // MARK: - Recency
@@ -145,6 +163,7 @@ final class AppSwitcherManager: ObservableObject {
     func show() {
         apps = snapshot()
         guard !apps.isEmpty else { return }
+        originalFrontmostPID = recency.first ?? NSWorkspace.shared.frontmostApplication?.processIdentifier
         selectedIndex = apps.count > 1 ? 1 : 0
         isVisible = true
     }
@@ -189,10 +208,26 @@ final class AppSwitcherManager: ObservableObject {
         defer { hide() }
         guard apps.indices.contains(selectedIndex) else { return }
         let target = apps[selectedIndex]
+
+        // Reversing (Shift+Tab) can land back on the app that was already
+        // frontmost when the ring opened — there is nothing to switch to.
+        // Raising and activating it anyway would still reorder its own
+        // windows (deminiaturiseAndRaise runs across all of them), which
+        // disturbs whatever you were doing even though you never left.
+        guard target.pid != originalFrontmostPID else { return }
+
         guard let app = NSRunningApplication(processIdentifier: target.pid) else { return }
 
         if app.isHidden { app.unhide() }
         deminiaturiseAndRaise(pid: target.pid)
+        // A perpetually-background accessory app handing activation straight to
+        // a third app is the unreliable case — the window gets raised but the
+        // previously-focused app stays frontmost. Claiming activation for Anchor
+        // itself first, then immediately handing it to `app`, is the two-hop
+        // pattern that actually works. Anchor draws no visible window during
+        // this — the panel is already ordered out by the time this runs — so
+        // there is nothing to flicker.
+        NSApp.activate()
         app.activate(options: [.activateAllWindows])
         noteActivation(target.pid)
     }

@@ -60,22 +60,30 @@ final class CoreBrightnessDisplayClient {
             return
         }
 
-        var resolvedClass: NSObject.Type?
+        // A class name resolving is not enough — `BrightnessSystemClient` on this
+        // macOS version exists but does not implement either selector this class
+        // needs, which used to leave `available` wrongly true (the guard only
+        // checked `clientInstance != nil`) and made every read/write silently
+        // no-op through `methodIMP()` returning nil. Require both selectors to
+        // actually resolve, and fall through to the next candidate name if not.
         for name in Self.candidateClassNames {
-            if let cls = NSClassFromString(name) as? NSObject.Type {
-                resolvedClass = cls
+            guard let cls = NSClassFromString(name) as? NSObject.Type else { continue }
+            guard class_getInstanceMethod(cls, getSelector) != nil,
+                  class_getInstanceMethod(cls, setSelector) != nil
+            else {
+                NSLog("⚠️ CoreBrightnessDisplayClient: class '%@' resolved but implements neither expected selector (macOS %@)", name, osVersion)
+                continue
+            }
+            clientInstance = cls.init()
+            available = clientInstance != nil
+            if available {
                 NSLog("✅ CoreBrightnessDisplayClient: Resolved class '%@' (macOS %@)", name, osVersion)
-                break
+                return
             }
         }
 
-        guard let cls = resolvedClass else {
-            NSLog("⚠️ CoreBrightnessDisplayClient: None of the known class names found: %@ (macOS %@)",
-                  Self.candidateClassNames.joined(separator: ", "), osVersion)
-            return
-        }
-        clientInstance = cls.init()
-        available = clientInstance != nil
+        NSLog("⚠️ CoreBrightnessDisplayClient: none of the known class names expose both selectors: %@ (macOS %@)",
+              Self.candidateClassNames.joined(separator: ", "), osVersion)
     }
 
     var isAvailable: Bool { available }
