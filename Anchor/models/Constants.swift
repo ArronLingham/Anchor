@@ -988,6 +988,19 @@ extension Defaults.Keys {
     static let enableSystemHUD = Key<Bool>("enableSystemHUD", default: true)
     static let enableVolumeHUD = Key<Bool>("enableVolumeHUD", default: true)
     static let enableBrightnessHUD = Key<Bool>("enableBrightnessHUD", default: true)
+    /// Drive brightness from plain F1/F2 keypresses.
+    ///
+    /// Many third-party keyboards send F1/F2 as ordinary function keys (HID
+    /// keyboard page 0x07, usages 0x3A/0x3B) rather than as the media keys
+    /// macOS turns into `NX_KEYTYPE_BRIGHTNESS_*`. Measured on a Keychron C1
+    /// here: the keys arrive as plain F1/F2 and macOS emits no media-key event
+    /// at all, so the media-key tap — Anchor's and any other app's — never
+    /// sees them and brightness cannot respond.
+    ///
+    /// Off by default because it takes F1/F2 away from every other app (F1 is
+    /// Help in many of them), which is only worth doing for someone whose
+    /// keyboard leaves those keys inert anyway.
+    static let treatFunctionKeysAsBrightness = Key<Bool>("treatFunctionKeysAsBrightness", default: false)
     static let enableKeyboardBacklightHUD = Key<Bool>("enableKeyboardBacklightHUD", default: true)
     static let playVolumeChangeFeedback = Key<Bool>("playVolumeChangeFeedback", default: false)
 

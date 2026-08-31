@@ -964,6 +964,12 @@ struct HUD: View {
                     Toggle("Keyboard Backlight HUD", isOn: $enableKeyboardBacklightHUD)
                         .disabled(enableThirdPartyDDCIntegration)
                         .help(enableThirdPartyDDCIntegration ? "Disabled while external display integration is active \u{2014} brightness keys are handled by the external app." : "")
+
+                    Defaults.Toggle(key: .treatFunctionKeysAsBrightness) {
+                        Text("Use F1 and F2 for brightness")
+                    }
+                    .settingsHighlight(id: highlightID("Use F1 and F2 for brightness"))
+                    .settingsInfo("For keyboards that send F1/F2 as ordinary function keys instead of brightness keys \u{2014} common on third-party keyboards, where macOS produces no brightness event at all and the keys do nothing. Takes F1/F2 away from other apps; keys pressed with a modifier are left alone.")
                 } header: {
                     Text("Controls")
                 } footer: {

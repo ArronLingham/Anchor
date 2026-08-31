@@ -18,6 +18,7 @@
  */
 
 import AppKit
+import CoreGraphics
 import Defaults
 import KeyboardShortcuts
 import SwiftUI
@@ -57,16 +58,30 @@ final class AppSwitcherPanel: NSPanel {
 /// Taking key focus would deactivate whatever app the user is in, and on
 /// dismissal macOS would hand focus back to *that* app — fighting the
 /// activation the switcher is trying to perform. So the panel stays
-/// non-key and keys are read from a `CGEvent`-free `NSEvent` global monitor
-/// instead, which needs Accessibility but does not disturb focus.
+/// non-key, and navigation keys are read from a `CGEventTap` rather than
+/// an `NSEvent` monitor. That distinction matters: `NSEvent
+/// .addGlobalMonitorForEvents`'s own documentation is explicit that a
+/// global monitor's handler "will not be able to affect event processing
+/// in any way" — it can only observe. Since the panel is never key, the
+/// only monitor that ever actually fires while the ring is open is the
+/// global one, so Tab/Shift+Tab used to *also* reach whatever app was still
+/// focused underneath on every cycle — a held Tab in a text field types a
+/// tab character into it once per press. Only a tap can drop the event
+/// before it gets there, the same reason `MediaKeyInterceptor` uses one.
 @MainActor
 final class AppSwitcherPanelManager {
     static let shared = AppSwitcherPanelManager()
 
     private var panel: AppSwitcherPanel?
-    private var keyMonitors: [Any] = []
+    private var keyTap: CFMachPort?
+    private var keyTapRunLoopSource: CFRunLoopSource?
     private var flagsMonitor: Any?
     private var releaseWatch: Timer?
+
+    /// The ring's own navigation keys — everything else passes through the
+    /// tap untouched, so ordinary typing elsewhere is unaffected by the tap
+    /// merely being installed.
+    private static let handledKeyCodes: Set<UInt16> = [48, 53, 36, 76, 124, 125, 123, 126, 13]
 
     private var switcher: AppSwitcherManager { .shared }
 
@@ -80,7 +95,7 @@ final class AppSwitcherPanelManager {
         guard Defaults[.enableAppSwitcher] else { return }
 
         if panel == nil {
-            switcher.show()
+            switcher.show(startingReversed: reverse)
             guard !switcher.apps.isEmpty else { return }
             present()
         } else {
@@ -128,30 +143,15 @@ final class AppSwitcherPanelManager {
 
     // MARK: - Keys
 
-    /// Watches for the keys that drive the ring while it is up.
-    ///
-    /// Both a local and a global monitor: the local one catches events when
-    /// Anchor happens to be frontmost, the global one covers the normal case
-    /// where it is not. The global monitor needs Accessibility; without it the
-    /// ring still opens and the pointer still works, it just cannot be driven
-    /// from the keyboard.
+    /// Installs the key tap and the modifier-release watch that drive the
+    /// ring while it is up.
     private func installMonitors() {
-        let handler: (NSEvent) -> Void = { [weak self] event in
-            MainActor.assumeIsolated { self?.handle(event) }
-        }
-
-        if let global = NSEvent.addGlobalMonitorForEvents(
-            matching: [.keyDown], handler: handler) {
-            keyMonitors.append(global)
-        }
-        if let local = NSEvent.addLocalMonitorForEvents(matching: [.keyDown], handler: {
-            handler($0)
-            return nil
-        }) {
-            keyMonitors.append(local)
-        }
+        installKeyTap()
 
         // Releasing the shortcut's modifiers commits, the way ⌘Tab does.
+        // Modifier-only changes don't type anything into a focused text
+        // field, so this stays a plain observing monitor — only the actual
+        // navigation keys need the tap's ability to swallow.
         let flags: (NSEvent) -> Void = { [weak self] event in
             MainActor.assumeIsolated { self?.handleFlags(event) }
         }
@@ -159,6 +159,63 @@ final class AppSwitcherPanelManager {
             matching: [.flagsChanged], handler: flags)
 
         startReleaseWatch()
+    }
+
+    /// Taps `.keyDown` at the HID level so the ring's navigation keys can
+    /// actually be dropped rather than merely observed. Needs Accessibility,
+    /// same as `MediaKeyInterceptor`'s tap; without it the ring still opens
+    /// and the pointer still works, it just cannot be driven from the
+    /// keyboard — same fallback behaviour the old monitor-based version had.
+    private func installKeyTap() {
+        guard keyTap == nil else { return }
+
+        let mask = CGEventMask(1) << CGEventType.keyDown.rawValue
+        let callback: CGEventTapCallBack = { _, _, cgEvent, userInfo in
+            guard let userInfo else { return Unmanaged.passUnretained(cgEvent) }
+            let manager = Unmanaged<AppSwitcherPanelManager>.fromOpaque(userInfo).takeUnretainedValue()
+            return MainActor.assumeIsolated { manager.handleTappedKeyDown(cgEvent) }
+        }
+
+        guard let tap = CGEvent.tapCreate(
+            tap: .cghidEventTap,
+            place: .headInsertEventTap,
+            options: .defaultTap,
+            eventsOfInterest: mask,
+            callback: callback,
+            userInfo: UnsafeMutableRawPointer(Unmanaged.passUnretained(self).toOpaque())
+        ) else { return }
+
+        keyTap = tap
+        keyTapRunLoopSource = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
+        if let source = keyTapRunLoopSource {
+            CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
+        }
+        CGEvent.tapEnable(tap: tap, enable: true)
+    }
+
+    /// Swallows the ring's own navigation keys; everything else passes
+    /// through unmodified.
+    private func handleTappedKeyDown(_ cgEvent: CGEvent) -> Unmanaged<CGEvent>? {
+        guard panel != nil,
+              let nsEvent = NSEvent(cgEvent: cgEvent),
+              Self.handledKeyCodes.contains(nsEvent.keyCode)
+        else {
+            return Unmanaged.passUnretained(cgEvent)
+        }
+        handle(nsEvent)
+        return nil
+    }
+
+    private func removeKeyTap() {
+        if let tap = keyTap {
+            CGEvent.tapEnable(tap: tap, enable: false)
+            CFMachPortInvalidate(tap)
+        }
+        if let source = keyTapRunLoopSource {
+            CFRunLoopRemoveSource(CFRunLoopGetMain(), source, .commonModes)
+        }
+        keyTap = nil
+        keyTapRunLoopSource = nil
     }
 
     /// Watches for the shortcut's modifiers being let go.
@@ -176,11 +233,10 @@ final class AppSwitcherPanelManager {
         releaseWatch?.invalidate()
         let timer = Timer(timeInterval: 0.02, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated {
-                guard let self, self.panel != nil else { return }
-                guard let shortcut = KeyboardShortcuts.getShortcut(for: .appSwitcher) else { return }
+                guard let self else { return }
+                guard self.panel != nil else { return }
 
-                let required = shortcut.modifiers.intersection(
-                    [.command, .option, .control, .shift])
+                let required = Self.holdModifiers()
                 // No modifier to release: the ring waits for Return or Escape.
                 guard !required.isEmpty else { return }
 
@@ -195,9 +251,22 @@ final class AppSwitcherPanelManager {
         releaseWatch = timer
     }
 
+    /// The modifiers whose release commits the ring.
+    ///
+    /// Shift is deliberately excluded. It is the *direction* modifier — held
+    /// to step backwards and let go to step forwards again, exactly as ⌘⇧Tab
+    /// works — so treating it as a hold modifier would commit the ring the
+    /// instant the user let go of Shift while still holding Option, halfway
+    /// through cycling backwards.
+    private static func holdModifiers() -> NSEvent.ModifierFlags {
+        let shortcut = KeyboardShortcuts.getShortcut(for: .appSwitcher)
+            ?? KeyboardShortcuts.getShortcut(for: .appSwitcherReverse)
+        guard let shortcut else { return [] }
+        return shortcut.modifiers.intersection([.command, .option, .control])
+    }
+
     private func removeMonitors() {
-        for monitor in keyMonitors { NSEvent.removeMonitor(monitor) }
-        keyMonitors.removeAll()
+        removeKeyTap()
         if let flagsMonitor { NSEvent.removeMonitor(flagsMonitor) }
         flagsMonitor = nil
         releaseWatch?.invalidate()
@@ -235,10 +304,8 @@ final class AppSwitcherPanelManager {
     /// to release, this never fires and the ring waits for Return or Escape.
     private func handleFlags(_ event: NSEvent) {
         guard panel != nil else { return }
-        guard let shortcut = KeyboardShortcuts.getShortcut(for: .appSwitcher) else { return }
 
-        let required = shortcut.modifiers.intersection(
-            [.command, .option, .control, .shift])
+        let required = Self.holdModifiers()
         guard !required.isEmpty else { return }
 
         let held = event.modifierFlags.intersection([.command, .option, .control, .shift])

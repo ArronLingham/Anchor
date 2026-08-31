@@ -121,13 +121,22 @@ struct AppSwitcherView: View {
         (Double(index) / Double(max(switcher.apps.count, 1))) * 2 * .pi - .pi / 2
     }
 
+    /// A ring, not a disc — `strokeBorder` draws entirely inside the circle's
+    /// bounds, so a line width equal to the gap between the dead zone and the
+    /// outer edge leaves the centre genuinely hollow (the panel behind it is
+    /// transparent) rather than merely reserving an untappable middle on an
+    /// otherwise-solid backdrop.
     private var backdrop: some View {
-        Circle()
-            .fill(.ultraThinMaterial)
-            .overlay(Circle().fill(.black.opacity(0.38)))
-            .overlay(
-                Circle().strokeBorder(.white.opacity(0.12), lineWidth: 1))
-            .shadow(color: .black.opacity(0.45), radius: 24, y: 8)
+        let ringWidth = diameter / 2 - deadZoneRadius
+        return ZStack {
+            Circle().strokeBorder(.ultraThinMaterial, lineWidth: ringWidth)
+            Circle().strokeBorder(.black.opacity(0.38), lineWidth: ringWidth)
+            Circle().strokeBorder(.white.opacity(0.12), lineWidth: 1)
+            Circle()
+                .stroke(.white.opacity(0.12), lineWidth: 1)
+                .frame(width: deadZoneRadius * 2, height: deadZoneRadius * 2)
+        }
+        .shadow(color: .black.opacity(0.45), radius: 24, y: 8)
     }
 
     /// The selected app's slice of the disc, lit up behind its icon so the

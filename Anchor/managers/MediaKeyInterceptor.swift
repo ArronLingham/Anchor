@@ -36,6 +36,11 @@ private let NX_KEYTYPE_BRIGHTNESS_UP: Int32 = 2
 private let NX_KEYTYPE_BRIGHTNESS_DOWN: Int32 = 3
 private let NX_KEYTYPE_MUTE: Int32 = 7
 
+/// Virtual keycodes for the plain function keys (`kVK_F1` / `kVK_F2`), used
+/// when a keyboard sends F1/F2 instead of brightness media keys.
+private let kVirtualKeyF1: Int64 = 122
+private let kVirtualKeyF2: Int64 = 120
+
 enum MediaKeyDirection {
     case up
     case down
@@ -50,11 +55,15 @@ struct MediaKeyConfiguration {
     var interceptVolume: Bool
     var interceptBrightness: Bool
     var interceptCommandModifiedBrightness: Bool
+    /// Treat plain F1/F2 as brightness down/up — see
+    /// `Defaults.Keys.treatFunctionKeysAsBrightness`.
+    var interceptFunctionKeysAsBrightness: Bool = false
 
     static let disabled = MediaKeyConfiguration(
         interceptVolume: false,
         interceptBrightness: false,
-        interceptCommandModifiedBrightness: false
+        interceptCommandModifiedBrightness: false,
+        interceptFunctionKeysAsBrightness: false
     )
 }
 
@@ -198,7 +207,11 @@ final class MediaKeyInterceptor {
             NSLog("❌ Unable to resolve system-defined event type")
             return false
         }
-        let mask = CGEventMask(1) << systemDefinedType.rawValue
+        // Also tap plain key-downs, so F1/F2 can drive brightness on keyboards
+        // that never produce media keys. Non-F1/F2 key-downs are passed through
+        // untouched in `handleEvent`.
+        let mask = (CGEventMask(1) << systemDefinedType.rawValue)
+            | (CGEventMask(1) << CGEventType.keyDown.rawValue)
         let callback: CGEventTapCallBack = { _, type, cgEvent, userInfo in
             guard let userInfo else { return Unmanaged.passUnretained(cgEvent) }
             let interceptor = Unmanaged<MediaKeyInterceptor>.fromOpaque(userInfo).takeUnretainedValue()
@@ -351,6 +364,10 @@ final class MediaKeyInterceptor {
             return Unmanaged.passUnretained(cgEvent)
         }
 
+        if type == .keyDown {
+            return handleFunctionKeyDown(cgEvent)
+        }
+
         guard let systemDefinedType = systemDefinedEventType,
               type == systemDefinedType,
               let nsEvent = NSEvent(cgEvent: cgEvent),
@@ -464,6 +481,34 @@ final class MediaKeyInterceptor {
         return configuration.interceptCommandModifiedBrightness && modifiers.contains(.command)
     }
 
+    /// Maps plain F1/F2 to brightness when the user has opted in.
+    ///
+    /// Only bare presses are claimed: any modifier (⌘F1, ⌥F2, …) passes
+    /// through, so app shortcuts built on modified function keys keep working.
+    private func handleFunctionKeyDown(_ cgEvent: CGEvent) -> Unmanaged<CGEvent>? {
+        guard configuration.interceptFunctionKeysAsBrightness,
+              configuration.interceptBrightness
+        else { return Unmanaged.passUnretained(cgEvent) }
+
+        let keyCode = cgEvent.getIntegerValueField(.keyboardEventKeycode)
+        guard keyCode == kVirtualKeyF1 || keyCode == kVirtualKeyF2 else {
+            return Unmanaged.passUnretained(cgEvent)
+        }
+
+        let modifiers = NSEvent(cgEvent: cgEvent)?.modifierFlags ?? []
+        guard modifiers.intersection([.command, .option, .control, .shift, .function]).isEmpty else {
+            return Unmanaged.passUnretained(cgEvent)
+        }
+
+        let isRepeat = cgEvent.getIntegerValueField(.keyboardEventAutorepeat) != 0
+        dispatchBrightnessCommand(
+            keyCode == kVirtualKeyF2 ? .up : .down,
+            step: .standard,
+            isRepeat: isRepeat,
+            modifiers: modifiers)
+        return nil
+    }
+
     private func step(for event: NSEvent) -> MediaKeyStep {
         let modifiers = event.modifierFlags
         if modifiers.contains(.option) && modifiers.contains(.shift) {
@@ -471,6 +516,7 @@ final class MediaKeyInterceptor {
         }
         return .standard
     }
+
 
     /// Whether Anchor has Input Monitoring — a TCC permission separate from
     /// Accessibility that a HID-level `CGEventTap` needs before it actually

@@ -100,7 +100,8 @@ final class SystemChangesObserver: MediaKeyInterceptorDelegate {
         mediaKeyInterceptor.configuration = MediaKeyConfiguration(
             interceptVolume: volumeEnabled,
             interceptBrightness: brightnessEnabled,
-            interceptCommandModifiedBrightness: keyboardBacklightEnabled
+            interceptCommandModifiedBrightness: keyboardBacklightEnabled,
+            interceptFunctionKeysAsBrightness: Defaults[.treatFunctionKeysAsBrightness]
         )
     }
 
@@ -127,7 +128,8 @@ final class SystemChangesObserver: MediaKeyInterceptorDelegate {
         mediaKeyInterceptor.configuration = MediaKeyConfiguration(
             interceptVolume: volumeEnabled,
             interceptBrightness: brightnessEnabled,
-            interceptCommandModifiedBrightness: keyboardBacklightEnabled
+            interceptCommandModifiedBrightness: keyboardBacklightEnabled,
+            interceptFunctionKeysAsBrightness: Defaults[.treatFunctionKeysAsBrightness]
         )
     }
 

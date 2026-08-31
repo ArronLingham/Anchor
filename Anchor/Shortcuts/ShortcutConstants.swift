@@ -43,6 +43,19 @@ extension KeyboardShortcuts.Name {
     /// the user with no way to switch apps at all. The system switcher stays
     /// where it is and this sits beside it.
     static let appSwitcher = Self("appSwitcher", default: .init(.tab, modifiers: [.option]))
+    /// Opens the ring going *backwards*, and steps backwards while it is open —
+    /// ⌥⇧Tab, mirroring ⌘⇧Tab in the system switcher.
+    ///
+    /// This has to be its own registered shortcut rather than falling out of
+    /// the Shift modifier on `appSwitcher`. `KeyboardShortcuts` matches an
+    /// exact modifier set, so ⌥⇧Tab is simply not ⌥Tab and never fired it:
+    /// with the ring closed, pressing ⌥⇧Tab did nothing in Anchor at all and
+    /// the keystroke fell through to whatever app was focused, where ⇧Tab
+    /// moves focus backwards — which is what "reversing affects the window I
+    /// am working on" actually was. `AppSwitcherPanelManager.invoke(reverse:)`
+    /// had supported this from the start; nothing ever passed `true`.
+    static let appSwitcherReverse = Self(
+        "appSwitcherReverse", default: .init(.tab, modifiers: [.option, .shift]))
     /// Shows or hides the menu bar items behind Anchor's divider.
     static let toggleMenuBarSection = Self("toggleMenuBarSection", default: .init(.m, modifiers: [.option, .command]))
     /// Pins the notch open, so it stops closing on hover-out or a click

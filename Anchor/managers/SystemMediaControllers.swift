@@ -537,12 +537,17 @@ final class SystemBrightnessController {
             NSLog("⚠️ SystemBrightnessController: CoreBrightnessDisplayClient unavailable; will rely on DisplayServices / IODisplay + polling fallback")
         }
         notifyCurrentBrightness()
-        // Only start polling as a fallback when CoreBrightness notifications
-        // are unavailable.  When CoreBrightness IS available the distributed
-        // notifications (registerExternalNotifications) handle detection.
-        if !coreBrightnessClient.isAvailable {
-            startPolling()
-        }
+        // Polling is NOT started here. It used to be, whenever CoreBrightness
+        // was unavailable — which on macOS 26 is always, since
+        // `BrightnessSystemClient` resolves as a class but implements neither
+        // selector. That left a 0.15s repeating timer running for the whole
+        // session, ungated, each tick doing a DisplayServices read.
+        //
+        // The loop only does anything useful while `userInitiatedBrightnessChange`
+        // is set: its own `else` branch absorbs non-user changes silently. So
+        // it now runs only for the ~1.5s window after a brightness key is
+        // pressed — see `markUserInitiated()`. "A loop that no-ops is still a
+        // loop", per CLAUDE.md.
     }
 
     func stop() {
@@ -589,9 +594,20 @@ final class SystemBrightnessController {
     /// Automatically resets after `userInitiatedWindow` seconds.
     private func markUserInitiated() {
         userInitiatedBrightnessChange = true
+
+        // Poll only while a user-initiated change is in flight, and only when
+        // CoreBrightness cannot report changes for us. This is the whole
+        // window in which the poll can do anything.
+        if !coreBrightnessClient.isAvailable {
+            startPolling()
+        }
+
         userInitiatedResetTimer?.invalidate()
         userInitiatedResetTimer = Timer.scheduledTimer(withTimeInterval: userInitiatedWindow, repeats: false) { [weak self] _ in
-            self?.userInitiatedBrightnessChange = false
+            guard let self else { return }
+            self.userInitiatedBrightnessChange = false
+            self.pollTimer?.invalidate()
+            self.pollTimer = nil
         }
     }
 
@@ -697,6 +713,7 @@ final class SystemBrightnessController {
             NSLog("⚠️ Failed to set brightness via IODisplay: \(status)")
         }
     }
+
 
     private func emitBrightnessChange(value: Float, force: Bool = false) {
         let clamped = max(0, min(1, value))

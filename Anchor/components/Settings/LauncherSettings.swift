@@ -67,6 +67,11 @@ struct LauncherSettings: View {
                     .disabled(!enableAppSwitcher)
                     .settingsHighlight(id: highlightID("Open switcher"))
 
+                KeyboardShortcuts.Recorder("Open switcher backwards:", name: .appSwitcherReverse)
+                    .disabled(!enableAppSwitcher)
+                    .settingsHighlight(id: highlightID("Open switcher backwards"))
+                    .settingsInfo("Steps backwards through the ring, the way ⌘⇧Tab does. Defaults to ⌥⇧Tab.")
+
                 Slider(value: $appSwitcherRingDiameter, in: 300...640, step: 20) {
                     Text("Ring size")
                 } minimumValueLabel: {

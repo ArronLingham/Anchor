@@ -116,6 +116,78 @@ final class MenuBarShrinkManager: NSResponder, ObservableObject {
         if Defaults[.enableMenuBarShrink] { activate() }
     }
 
+    /// Keeps Anchor's own menu bar icon out of the region Anchor's own
+    /// shrinker hides.
+    ///
+    /// The shrinker hides items by making the divider 10,000pt wide so
+    /// everything to its **left** is pushed off the screen edge, and a higher
+    /// saved position sits further left (see `StatusItemDefaults`). Anchor's
+    /// icon read **336** against a divider at **234** — so the shrinker was
+    /// hiding Anchor's own icon, and short of turning the shrinker off there
+    /// was no way for the user to get it back.
+    ///
+    /// Ice avoids this by construction rather than by correction: it seeds its
+    /// own icon at position 0 (the far right) and its hidden divider at 1, so
+    /// the divider is always immediately to the icon's left and can never
+    /// sweep over it (`ControlItem.init`, Ice). Anchor's icon is a SwiftUI
+    /// `MenuBarExtra`, which owns its `NSStatusItem` privately and offers no
+    /// way to set an `autosaveName`, so it persists under AppKit's default
+    /// name for an unnamed item — `Item-0` — and the position has to be
+    /// corrected here instead of chosen at creation.
+    ///
+    /// Only a position that would actually be hidden is rewritten, so a
+    /// placement the user chose themselves is left alone; when it is
+    /// rewritten it goes to 0, Ice's own choice, which is on the visible side
+    /// no matter where the divider currently sits.
+    ///
+    /// Must run *before* the scene builds, so AppKit reads the corrected value
+    /// when it creates the item. Only the icon is ever moved, never the
+    /// divider: moving the divider would change which of the user's *other*
+    /// items are hidden, which is theirs to decide.
+    static func keepOwnIconOnVisibleSide() {
+        guard Defaults[.enableMenuBarShrink] else { return }
+
+        // No saved divider position yet means the user has never dragged it
+        // and there is nothing to be on the wrong side of.
+        guard let divider = StatusItemDefaults[.preferredPosition, Self.dividerAutosaveName]
+        else { return }
+
+        // Anchor's own icon. Fragile by necessity: AppKit names unnamed status
+        // items `Item-N` in creation order, and MenuBarExtra gives us no say.
+        // Stable while Anchor's MenuBarExtra is its only status item without an
+        // explicit autosaveName — every item this manager creates sets one.
+        if Defaults[.menubarIcon] {
+            pinToVisibleSide(autosaveName: "Item-0", divider: divider, position: 0)
+        }
+
+        // The chevron, which is worse to lose than the icon: it *is* the
+        // control that expands and collapses the section, so once it is on the
+        // hidden side the feature cannot be operated at all. Measured here at
+        // 497 against a divider at 242 — i.e. hidden — even though
+        // `activate()`'s own comment says the expander is created first so it
+        // ends up to the chevron's left. Creation order evidently does not
+        // survive whatever AppKit last persisted, so the invariant is enforced
+        // rather than assumed.
+        pinToVisibleSide(autosaveName: Self.chevronAutosaveName, divider: divider, position: 1)
+    }
+
+    /// Moves a status item to `position` when it would otherwise sit on the
+    /// hidden side of the divider. A position the user chose that already
+    /// works is left alone.
+    private static func pinToVisibleSide(
+        autosaveName: String, divider: CGFloat, position: CGFloat
+    ) {
+        if let current = StatusItemDefaults[.preferredPosition, autosaveName], current < divider {
+            return
+        }
+        StatusItemDefaults[.preferredPosition, autosaveName] = position
+    }
+
+    /// Changing this string moves everyone's divider back to the default
+    /// position, so it must not be edited casually.
+    static let dividerAutosaveName = "AnchorMenuBarDivider"
+    static let chevronAutosaveName = "AnchorMenuBarChevron"
+
     private func activate() {
         guard chevronItem == nil else { return }
 
@@ -124,14 +196,12 @@ final class MenuBarShrinkManager: NSResponder, ObservableObject {
         // puts the chevron beside the visible items rather than beyond the
         // hidden ones.
         let expander = NSStatusBar.system.statusItem(withLength: Self.collapsedLength)
-        // Changing this string moves everyone's divider back to the default
-        // position, so it must not be edited casually.
-        expander.autosaveName = "AnchorMenuBarDivider"
+        expander.autosaveName = Self.dividerAutosaveName
         expander.button?.image = nil
         expanderItem = expander
 
         let chevron = NSStatusBar.system.statusItem(withLength: Self.chevronLength)
-        chevron.autosaveName = "AnchorMenuBarChevron"
+        chevron.autosaveName = Self.chevronAutosaveName
         chevron.button?.image = Self.chevron(collapsed: true)
         chevron.button?.imagePosition = .imageOnly
         chevron.button?.target = self
@@ -151,8 +221,13 @@ final class MenuBarShrinkManager: NSResponder, ObservableObject {
     private func deactivate() {
         cancelAutoHide()
         removeHoverTracking()
+        // `removeStatusItem` deletes the item's stored preferredPosition, so
+        // switching the shrinker off used to discard the user's own divider
+        // placement — it reappeared at the default position next time. Ice hits
+        // the same AppKit behaviour and works around it the same way, in
+        // `ControlItem.deinit`.
         for item in [chevronItem, expanderItem, alwaysHiddenDivider].compactMap({ $0 }) {
-            NSStatusBar.system.removeStatusItem(item)
+            StatusItemDefaults.removeStatusItemPreservingPosition(item)
         }
         chevronItem = nil
         expanderItem = nil
@@ -172,7 +247,7 @@ final class MenuBarShrinkManager: NSResponder, ObservableObject {
                 localized: "Items to the left of this are always hidden")
             alwaysHiddenDivider = item
         } else if let existing = alwaysHiddenDivider {
-            NSStatusBar.system.removeStatusItem(existing)
+            StatusItemDefaults.removeStatusItemPreservingPosition(existing)
             alwaysHiddenDivider = nil
         }
     }

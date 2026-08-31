@@ -121,6 +121,16 @@ class SystemHUDManager {
             )
         }.store(in: &cancellables)
         
+        Defaults.publisher(.treatFunctionKeysAsBrightness, options: []).sink { [weak self] _ in
+            guard let self = self, self.isSetupComplete else { return }
+            let flags = self.resolvedControlFlags()
+            self.changesObserver?.update(
+                volumeEnabled: flags.volume,
+                brightnessEnabled: flags.brightness,
+                keyboardBacklightEnabled: flags.backlight
+            )
+        }.store(in: &cancellables)
+
         Defaults.publisher(.enableBrightnessHUD, options: []).sink { [weak self] _ in
             guard let self = self, self.isSetupComplete, self.requiresSystemToggleHandling else {
                 return

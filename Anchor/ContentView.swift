@@ -1718,11 +1718,38 @@ struct ContentView: View {
             let shouldFocusTimerTab = enableTimerFeature && timerDisplayMode == .tab && timerManager.isTimerActive && !enableMinimalisticUI
 
             guard vm.notchState == .closed,
-                !isSneakPeekVisibleOnCurrentScreen,
                 (Defaults[.openNotchOnHover] || shouldFocusTimerTab) else { return }
 
             hoverTask = Task {
                 try? await Task.sleep(for: .seconds(Defaults[.minimumHoverDuration]))
+                guard !Task.isCancelled else { return }
+
+                // A sneak-peek HUD (volume, brightness, caps lock, music …)
+                // blocks hover-open, and it is transient — so wait it out
+                // rather than giving up. Bailing on it is why hovering
+                // "sometimes" did nothing: change the volume, hover the notch
+                // while that HUD is still on screen, and the whole gesture was
+                // discarded with no retry, so only moving away and hovering
+                // again worked. It was checked twice — once before the task was
+                // even scheduled, once after the dwell — so a HUD appearing at
+                // either moment killed the open.
+                //
+                // `isHoverOpenSuppressed` is deliberately NOT waited out: it is
+                // set when the terminal view closes, precisely to stop the
+                // notch reopening under the pointer, so honouring it means
+                // bailing. The deadline keeps a stuck sneak-peek from leaving
+                // this polling forever while the pointer rests on the notch.
+                let deadline = Date().addingTimeInterval(5)
+                while !Task.isCancelled {
+                    let state = await MainActor.run {
+                        (blocked: self.isSneakPeekVisibleOnCurrentScreen,
+                         canStillOpen: self.isHovering && self.vm.notchState == .closed)
+                    }
+                    guard state.canStillOpen else { return }
+                    if !state.blocked { break }
+                    guard Date() < deadline else { return }
+                    try? await Task.sleep(for: .milliseconds(80))
+                }
                 guard !Task.isCancelled else { return }
 
                 await MainActor.run {

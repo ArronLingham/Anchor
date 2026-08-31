@@ -106,6 +106,18 @@ final class AppSwitcherManager: ObservableObject {
             MainActor.assumeIsolated {
                 guard let app = note.userInfo?[NSWorkspace.applicationUserInfoKey]
                     as? NSRunningApplication else { return }
+                // `activateSelection()` briefly calls `NSApp.activate()` on
+                // Anchor itself before handing off to the target app (the
+                // two-hop pattern a background accessory app needs to reliably
+                // activate a third app) — that also fires this notification
+                // for Anchor's own pid. Left unfiltered, Anchor would insert
+                // itself at the front of `recency`, so the *next* time the
+                // ring opened, `originalFrontmostPID` would be Anchor's pid —
+                // which never appears in `apps` (snapshot() excludes non-.regular
+                // apps) — so the "don't disturb the app I was already in"
+                // guard in `activateSelection()` could never match anything,
+                // silently defeating it every time.
+                guard app.processIdentifier != ProcessInfo.processInfo.processIdentifier else { return }
                 self?.noteActivation(app.processIdentifier)
             }
         }
@@ -159,12 +171,17 @@ final class AppSwitcherManager: ObservableObject {
     // MARK: - Presentation
 
     /// Opens the ring. Starts on the *second* entry — the app you were last in
-    /// — which is what makes a single press behave like ⌘Tab.
-    func show() {
+    /// — which is what makes a single press behave like ⌘Tab. Opening in
+    /// reverse instead starts on the *last* entry, mirroring ⌘⇧Tab.
+    func show(startingReversed: Bool = false) {
         apps = snapshot()
         guard !apps.isEmpty else { return }
         originalFrontmostPID = recency.first ?? NSWorkspace.shared.frontmostApplication?.processIdentifier
-        selectedIndex = apps.count > 1 ? 1 : 0
+        if apps.count > 1 {
+            selectedIndex = startingReversed ? apps.count - 1 : 1
+        } else {
+            selectedIndex = 0
+        }
         isVisible = true
     }
 

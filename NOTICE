@@ -25,3 +25,15 @@ The process-tap, aggregate-device, EQ, AutoEQ and loudness code in that
 directory is FineTune's work, renamed to Anchor's conventions and re-headered.
 The coordinator above it (audio/PerAppAudioManager.swift) and the settings UI
 are Anchor's own.
+
+---
+
+Portions of the menu bar code are derived from Ice
+(https://github.com/jordanbaird/Ice), Copyright (c) Jordan Baird,
+licensed under the GNU General Public License v3.0.
+
+Specifically: Anchor/helpers/StatusItemDefaults.swift is ported from Ice's
+Ice/Utilities/StatusItemDefaults.swift, and the position-preserving status
+item removal plus the "seed the app's own icon at the rightmost position so
+its own divider can never hide it" approach in
+Anchor/managers/MenuBarShrinkManager.swift follow Ice's ControlItem.

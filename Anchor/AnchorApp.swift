@@ -49,6 +49,11 @@ struct AnchorApp: App {
 
         // Initialize the settings window controller with the updater controller
         SettingsWindowController.shared.setUpdaterController(updaterController)
+
+        // Before the scene builds, so AppKit reads the corrected position when
+        // it creates the MenuBarExtra's status item. A plain UserDefaults
+        // read/write — nothing that can block the main thread at launch.
+        MenuBarShrinkManager.keepOwnIconOnVisibleSide()
     }
 
     var body: some Scene {
@@ -1271,6 +1276,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         KeyboardShortcuts.onKeyDown(for: .appSwitcher) {
             AppSwitcherPanelManager.shared.invoke()
+        }
+
+        KeyboardShortcuts.onKeyDown(for: .appSwitcherReverse) {
+            AppSwitcherPanelManager.shared.invoke(reverse: true)
         }
 
         KeyboardShortcuts.onKeyDown(for: .toggleMenuBarSection) {
