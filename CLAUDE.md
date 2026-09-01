@@ -441,6 +441,32 @@ and read the topic out of a PNG. See `Helpers/UISnapshotHarness.swift`.
   kill landed. Count the PNGs and check for both appearances before reading
   anything into a missing pane.
 
+## TESTING.md
+
+Rewritten 2026-09-01. It had grown chronologically — "Added 2026-08-25", "Added
+since the checklist was written", "Waves 12–16" — so finding whether a feature
+was covered meant reading 770 lines of archaeology, and several entries were
+flatly wrong (it still said the camera mirror had been removed, and that there
+were 14 settings panes rather than 33).
+
+It is now **375 lines, 19 sections, 83 checkpoints**, organised by *what you
+need in order to run it* rather than by when it was written:
+
+- What is **already proven** by the 30 harnesses, so it is not re-tested by hand.
+- Which **permissions gate which sections** — Screen Recording blocks §11
+  entirely, Full Disk Access blocks notification mirroring.
+- **Six things only a human can check**, ordered by what would be worst if
+  broken.
+- Then feature areas, each stating what to do and what correct looks like.
+
+**Keep it that shape.** The reason it silted up is that every session appended a
+dated section rather than filing items where they belonged. New tests go in the
+relevant section; if a section does not exist, add one — do not add another
+date.
+
+Cross-references from this file use section numbers (`§1.4`), not item numbers,
+because renumbering is what broke them last time.
+
 ## Source layout
 
 Reorganised 2026-09-01. The Xcode project uses **file-system-synchronized root
@@ -582,7 +608,7 @@ xcodebuild -project Anchor.xcodeproj -scheme Anchor \
 
 Anchor SIGSTOPs `OSDUIHelper` to suppress the native HUD, so a build that dies
 without running its termination handler leaves the volume and brightness keys
-showing nothing at all until reboot. TESTING.md §5 item 43 is the check, and it
+showing nothing at all until reboot. TESTING.md §1.4 is the check, and it
 **passes** as of 2026-08-24: `OSDUIHelper` sat in state `T` while Anchor ran and
 returned to `S` after `tell application "Anchor" to quit`.
 
@@ -630,7 +656,7 @@ xcodebuild -project Anchor.xcodeproj -scheme Anchor \
   - Verified only that the app runs 45 s without trapping. The geometry
     observers fire on display changes, which could not be triggered here without
     altering the user's display settings, so **those paths are unexercised** —
-    TESTING.md item 99 covers them.
+    TESTING.md §13.5 covers them.
 
 - The **five non-Sendable capture warnings are deliberately left**. They are
   Swift 6 annotation friction on callbacks that run *synchronously* —
