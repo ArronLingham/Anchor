@@ -63,17 +63,15 @@ struct LauncherView: View {
                 resultList
             }
         }
-        .frame(width: 860, height: 560)
-        .background(.ultraThickMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .strokeBorder(Color.primary.opacity(0.12), lineWidth: 1)
-        )
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .padding(.top, 100)
+        .padding(.horizontal, 100)
         .onAppear {
             index.refreshIfNeeded()
             recompute()
-            queryFocused = true
+            DispatchQueue.main.async {
+                queryFocused = true
+            }
         }
         .onChange(of: query) { _, _ in recompute() }
         .onChange(of: index.apps) { _, _ in recompute(resetSelection: false) }
@@ -104,8 +102,9 @@ struct LauncherView: View {
                 ProgressView().controlSize(.small)
             }
         }
-        .padding(.horizontal, 20)
+        .frame(maxWidth: 680)
         .frame(height: 62)
+        .padding(.horizontal, 24)
     }
 
     /// In the grid, ↑/↓ move a whole row; in the list they move one item.
@@ -144,7 +143,7 @@ struct LauncherView: View {
                     ForEach(Array(commands.enumerated()), id: \.element.id) { position, scored in
                         LauncherCommandRow(scored: scored, isSelected: position == selection)
                             .frame(height: Self.rowHeight)
-                            .id(position)
+                            .id(scored.id)
                             .contentShape(Rectangle())
                             .onTapGesture {
                                 selection = position
@@ -155,7 +154,7 @@ struct LauncherView: View {
                         let position = offset + commands.count
                         LauncherRow(result: result, isSelected: position == selection)
                             .frame(height: Self.rowHeight)
-                            .id(position)
+                            .id(result.id)
                             .contentShape(Rectangle())
                             .onTapGesture {
                                 selection = position
@@ -165,8 +164,22 @@ struct LauncherView: View {
                 }
                 .padding(.vertical, 8)
             }
+            .scrollIndicators(.never)
             .onChange(of: selection) { _, new in
-                withAnimation(.easeOut(duration: 0.12)) { proxy.scrollTo(new, anchor: .center) }
+                let targetId: AnyHashable?
+                if new < commands.count {
+                    targetId = commands[new].id
+                } else {
+                    let idx = new - commands.count
+                    if idx >= 0 && idx < results.count {
+                        targetId = results[idx].id
+                    } else {
+                        targetId = nil
+                    }
+                }
+                if let targetId {
+                    withAnimation(.easeOut(duration: 0.12)) { proxy.scrollTo(targetId, anchor: .center) }
+                }
             }
         }
     }

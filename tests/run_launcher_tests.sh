@@ -1,14 +1,9 @@
 #!/usr/bin/env bash
-#
-# Compiles the real FuzzyMatcher and CalculatorAction and runs assertions
-# against them. Both are pure and import only Foundation, so no stubs are
-# needed — unlike the watcher tests, which need LoggerStub.
-#
 set -euo pipefail
 
 repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-matcher="$repo/Anchor/managers/Launcher/FuzzyMatcher.swift"
-calculator="$repo/Anchor/managers/Launcher/CalculatorAction.swift"
+matcher="$repo/Anchor/Managers/Launcher/FuzzyMatcher.swift"
+calculator="$repo/Anchor/Managers/Launcher/CalculatorAction.swift"
 test_src="$repo/tests/LauncherTests.swift"
 
 for f in "$matcher" "$calculator" "$test_src"; do
@@ -18,5 +13,23 @@ done
 out="$(mktemp -d)"
 trap 'rm -rf "$out"' EXIT
 
-swiftc -O "$matcher" "$calculator" "$test_src" -o "$out/launchertests"
+# Create ExceptionCatcher for the tests
+cat << 'OBJC' > "$out/ExceptionCatcher.m"
+#import <Foundation/Foundation.h>
+@interface AudioBridge : NSObject
++ (BOOL)catchException:(void(^)(void))tryBlock error:(__autoreleasing NSError **)error;
+@end
+@implementation AudioBridge
++ (BOOL)catchException:(void(^)(void))tryBlock error:(__autoreleasing NSError **)error {
+    @try { tryBlock(); return YES; }
+    @catch (NSException *exception) {
+        if (error) *error = [NSError errorWithDomain:exception.name code:0 userInfo:exception.userInfo];
+        return NO;
+    }
+}
+@end
+OBJC
+
+clang -c "$out/ExceptionCatcher.m" -o "$out/ExceptionCatcher.o"
+swiftc -O "$matcher" "$calculator" "$test_src" -import-objc-header "$out/ExceptionCatcher.m" "$out/ExceptionCatcher.o" -o "$out/launchertests"
 "$out/launchertests"

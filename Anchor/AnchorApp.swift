@@ -92,6 +92,7 @@ struct AnchorApp: App {
             Button("Settings…") {
                 SettingsWindowController.shared.showWindow()
             }
+            .keyboardShortcut(",", modifiers: .command)
         }
     }
 }
@@ -109,6 +110,7 @@ extension AppDelegate {
 }
 
 class AppDelegate: NSObject, NSApplicationDelegate {
+    var shouldUseMultiWindow: Bool { Defaults[.showOnAllDisplays] || Defaults[.alwaysShowOnExternalDisplays] }
     var statusItem: NSStatusItem?
     var windows: [NSScreen: NSWindow] = [:]
     var viewModels: [NSScreen: AnchorViewModel] = [:]
@@ -291,7 +293,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         guard !windowsHiddenForLock else { return }
         windowsHiddenForLock = true
 
-        if Defaults[.showOnAllDisplays] {
+        if shouldUseMultiWindow {
             for window in windows.values {
                 window.alphaValue = 0
                 window.orderOut(nil)
@@ -306,7 +308,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         guard windowsHiddenForLock else { return }
         windowsHiddenForLock = false
 
-        if Defaults[.showOnAllDisplays] {
+        if shouldUseMultiWindow {
             for window in windows.values {
                 window.orderFrontRegardless()
                 window.alphaValue = 1
@@ -318,7 +320,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
     
     private func cleanupWindows(shouldInvert: Bool = false) {
-        if shouldInvert ? !Defaults[.showOnAllDisplays] : Defaults[.showOnAllDisplays] {
+        if shouldInvert ? !shouldUseMultiWindow : shouldUseMultiWindow {
             for (screen, window) in windows {
                 // Tear down the hosted ContentView before dropping the window
                 // (`.onDisappear` is unreliable for borderless panels).
@@ -360,7 +362,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             NotchSpaceManager.shared.notchSpace.windows = alwaysOn
             return
         }
-        if Defaults[.showOnAllDisplays] {
+        if shouldUseMultiWindow {
             NotchSpaceManager.shared.notchSpace.windows = Set(windows.values).union(alwaysOn)
         } else if let window = window {
             NotchSpaceManager.shared.notchSpace.windows = alwaysOn.union([window])
@@ -548,7 +550,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private func resizeWindows(to size: CGSize, animated: Bool, force: Bool) {
         guard size.width > 0, size.height > 0 else { return }
 
-        if Defaults[.showOnAllDisplays] {
+        if shouldUseMultiWindow {
             for (screen, window) in windows {
                 let screenSize = adjustedSizeForScreen(size, screen: screen)
                 if force || window.frame.size != screenSize {
@@ -575,7 +577,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let newY = (screenFrame.origin.y + screenFrame.height - clampedHeight).rounded()
         let targetFrame = NSRect(x: newX, y: newY, width: clampedWidth, height: clampedHeight)
 
-        window.setFrame(targetFrame, display: true)
+        if window.frame != targetFrame {
+            window.setFrame(targetFrame, display: true)
+        }
     }
 
     private func shouldAnimateResize(for newSize: CGSize) -> Bool {
@@ -586,6 +590,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
     
     func applicationDidFinishLaunching(_ notification: Notification) {
+        NotchHoverManager.shared.start()
+        
         // Before anything reads Defaults: the bundle identifier changed with the
         // rename, which starts UserDefaults from empty unless we carry it over.
         PreferencesMigration.runIfNeeded()
@@ -762,7 +768,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
             CameraMirrorManager.shared.start()
 
-            GeminiManager.shared.start()
+            AIAssistantManager.shared.start()
             MenuBarShrinkManager.shared.start()
             // Creates its window only when the feature is on. The record's
             // rotation is a CABasicAnimation, so a spinning record costs this
@@ -899,7 +905,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             guard let self = self else { return }
             self.cleanupWindows(shouldInvert: true)
 
-            if !Defaults[.showOnAllDisplays] {
+            if !shouldUseMultiWindow {
                 let viewModel = self.vm
                 let window = self.createDynamicIslandWindow(
                     for: NSScreen.main ?? NSScreen.screens.first!, with: viewModel)
@@ -951,7 +957,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
             var viewModel = self.vm
 
-            if Defaults[.showOnAllDisplays] {
+            if shouldUseMultiWindow {
                 for screen in NSScreen.screens {
                     if screen.frame.contains(mouseLocation) {
                         if let screenViewModel = self.viewModels[screen] {
@@ -984,7 +990,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         registerOptionalShortcutHandlers()
         updateFeatureShortcutAvailability()
 
-        if !Defaults[.showOnAllDisplays] {
+        if !shouldUseMultiWindow {
             let viewModel = self.vm
             let window = createDynamicIslandWindow(
                 for: NSScreen.main ?? NSScreen.screens.first!, with: viewModel)
@@ -1368,7 +1374,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             guard let self else { return }
             let mouse = NSEvent.mouseLocation
             var viewModel = self.vm
-            if Defaults[.showOnAllDisplays] {
+            if shouldUseMultiWindow {
                 for screen in NSScreen.screens where screen.frame.contains(mouse) {
                     if let screenViewModel = self.viewModels[screen] {
                         viewModel = screenViewModel
@@ -1515,7 +1521,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
     
     @objc func adjustWindowPosition(changeAlpha: Bool = false) {
-        if Defaults[.showOnAllDisplays] {
+        if shouldUseMultiWindow {
             let currentScreens = Set(NSScreen.screens)
             
             for screen in windows.keys where !currentScreens.contains(screen) {

@@ -121,6 +121,8 @@ struct LauncherTests {
         check(CalculatorAction.evaluate("1+") == nil, "an incomplete expression is refused")
         check(CalculatorAction.evaluate("12") == nil, "a bare number is not an expression")
         check(CalculatorAction.evaluate("") == nil, "empty input is refused")
+        check(CalculatorAction.evaluate("1+*2") == nil, "malformed adjacent operators do not crash and return nil")
+        check(CalculatorAction.evaluate("1.0/0.0") == nil, "division by zero (inf) returns nil")
 
         // MARK: - Calculator: ordinary arithmetic still works
 

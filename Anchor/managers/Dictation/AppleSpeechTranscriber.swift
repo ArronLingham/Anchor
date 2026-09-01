@@ -62,13 +62,12 @@ final class AppleSpeechTranscriber: SpeechTranscribing {
             throw SpeechTranscribingError.localeUnsupported(preferred.identifier)
         }
 
-        let transcriber = SpeechTranscriber(locale: locale, preset: .progressiveTranscription)
-        self.transcriber = transcriber
+        let tempTranscriber = SpeechTranscriber(locale: locale, preset: .progressiveTranscription)
 
-        if await AssetInventory.status(forModules: [transcriber]) != .installed {
+        if await AssetInventory.status(forModules: [tempTranscriber]) != .installed {
             do {
                 let request = try await AssetInventory.assetInstallationRequest(
-                    supporting: [transcriber])
+                    supporting: [tempTranscriber])
                 try await request?.downloadAndInstall()
             } catch {
                 throw SpeechTranscribingError.assetInstallationFailed(error.localizedDescription)
@@ -90,7 +89,12 @@ final class AppleSpeechTranscriber: SpeechTranscribing {
     }
 
     func start(onUpdate: @escaping @Sendable (TranscriptUpdate) -> Void) async throws {
-        guard let transcriber else { throw SpeechTranscribingError.notPrepared }
+        let preferred = Locale.current
+        guard let locale = await Self.resolveLocale(preferred) else {
+            throw SpeechTranscribingError.localeUnsupported(preferred.identifier)
+        }
+        let transcriber = SpeechTranscriber(locale: locale, preset: .progressiveTranscription)
+        self.transcriber = transcriber
 
         await state.reset()
 
@@ -161,6 +165,7 @@ final class AppleSpeechTranscriber: SpeechTranscribing {
         resultsTask = nil
         analyzer = nil
         inputStream = nil
+        transcriber = nil
     }
 }
 

@@ -25,6 +25,8 @@ NS_ASSUME_NONNULL_BEGIN
 
 @interface AudioBridge : NSObject
 
++ (BOOL)catchException:(void(^)(void))tryBlock error:(__autoreleasing NSError **)error;
+
 - (void)processBuffer:(const float *)buffer count:(int)count;
 - (NSArray<NSNumber *> *)getSmoothedMagnitudes;
 - (int)getBandCount;

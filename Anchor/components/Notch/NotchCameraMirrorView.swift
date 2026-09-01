@@ -28,36 +28,48 @@ import SwiftUI
 /// `AVCaptureVideoPreviewLayer` is a CALayer the render server drives directly
 /// — no per-frame SwiftUI transaction, which is the cost the vinyl widget and
 /// the waveform both had to avoid.
+private class CameraHostView: NSView {
+    var previewLayer: AVCaptureVideoPreviewLayer? {
+        didSet {
+            guard oldValue !== previewLayer else { return }
+            oldValue?.removeFromSuperlayer()
+            if let previewLayer {
+                layer?.addSublayer(previewLayer)
+                needsLayout = true
+            }
+        }
+    }
+
+    override func layout() {
+        super.layout()
+        guard let preview = previewLayer, let host = layer else { return }
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        preview.frame = host.bounds
+        CATransaction.commit()
+    }
+}
+
 private struct CameraPreview: NSViewRepresentable {
     @Default(.cameraMirrorFlipped) private var flipped
 
-    func makeNSView(context: Context) -> NSView {
-        let view = NSView()
+    func makeNSView(context: Context) -> CameraHostView {
+        let view = CameraHostView()
         view.wantsLayer = true
         view.layer = CALayer()
         view.layer?.backgroundColor = NSColor.black.cgColor
         return view
     }
 
-    func updateNSView(_ view: NSView, context: Context) {
-        guard let host = view.layer else { return }
-        guard let preview = CameraMirrorManager.shared.previewLayer else {
-            host.sublayers?.forEach { $0.removeFromSuperlayer() }
-            return
+    func updateNSView(_ view: CameraHostView, context: Context) {
+        view.previewLayer = CameraMirrorManager.shared.previewLayer
+        
+        if let preview = view.previewLayer {
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            preview.setAffineTransform(flipped ? CGAffineTransform(scaleX: -1, y: 1) : .identity)
+            CATransaction.commit()
         }
-        if preview.superlayer !== host {
-            host.sublayers?.forEach { $0.removeFromSuperlayer() }
-            host.addSublayer(preview)
-        }
-        // Inside a transaction with actions disabled, or the layer visibly
-        // animates its bounds every time the notch resizes.
-        CATransaction.begin()
-        CATransaction.setDisableActions(true)
-        preview.frame = host.bounds
-        // A mirror should behave like a mirror: raising your right hand should
-        // raise the right hand of the image. The raw feed does the opposite.
-        preview.setAffineTransform(flipped ? CGAffineTransform(scaleX: -1, y: 1) : .identity)
-        CATransaction.commit()
     }
 }
 

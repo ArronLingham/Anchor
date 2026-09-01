@@ -2,34 +2,17 @@
  * Anchor
  * Derived from Atoll (DynamicIsland), itself derived from boring.notch.
  * Copyright (C) 2024-2026 Atoll Contributors
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
 import Defaults
 import SwiftUI
 
-/// Settings for the Gemini assistant.
-///
-/// The key field is a `SecureField` deliberately. `ANCHOR_RENDER_UI` renders
-/// every settings pane to a PNG, and the ntfy topic was readable out of one of
-/// those before the harness was made Debug-only — an API key is the same class
-/// of mistake waiting to be repeated.
-struct GeminiSettings: View {
-    @ObservedObject private var manager = GeminiManager.shared
+struct AIAssistantSettings: View {
+    @ObservedObject private var manager = AIAssistantManager.shared
     @State private var keyDraft = ""
     @State private var saveResult: String?
+    @Default(.aiProvider) private var aiProvider
+    @Default(.aiModel) private var aiModel
 
     private func highlightID(_ title: String) -> String {
         SettingsTab.gemini.highlightID(for: title)
@@ -38,88 +21,103 @@ struct GeminiSettings: View {
     var body: some View {
         Form {
             Section {
-                Defaults.Toggle(key: .enableGeminiAssistant) {
-                    Text("Gemini assistant")
+                Defaults.Toggle(key: .enableAIAssistant) {
+                    Text("AI Assistant")
                 }
-                .settingsHighlight(id: highlightID("Gemini assistant"))
+                .settingsHighlight(id: highlightID("AI Assistant"))
             } header: {
                 Text("Assistant")
-            } footer: {
-                Text("Adds a Gemini tab to the open notch. Nothing is sent anywhere until you type a message.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
+            }
+
+            Section {
+                Picker("Provider", selection: $aiProvider) {
+                    ForEach(AIProvider.allCases, id: \.self) { p in
+                        Text(p.rawValue).tag(p)
+                    }
+                }
+                
+                Picker("Model", selection: $aiModel) {
+                    if aiProvider == .gemini {
+                        Text("Flash 2.5").tag("gemini-2.5-flash")
+                        Text("Pro 1.5").tag("gemini-1.5-pro-latest")
+                        Text("Flash 2.0").tag("gemini-2.0-flash")
+                    } else if aiProvider == .openai {
+                        Text("GPT-4o").tag("gpt-4o")
+                        Text("GPT-4o mini").tag("gpt-4o-mini")
+                        Text("o1-preview").tag("o1-preview")
+                    } else if aiProvider == .anthropic {
+                        Text("Claude 3.5 Sonnet").tag("claude-3-5-sonnet-latest")
+                        Text("Claude 3.5 Haiku").tag("claude-3-5-haiku-latest")
+                    }
+                }
+                .onChange(of: aiProvider) { newProvider in
+                    if newProvider == .gemini { aiModel = "gemini-2.5-flash" }
+                    else if newProvider == .openai { aiModel = "gpt-4o-mini" }
+                    else if newProvider == .anthropic { aiModel = "claude-3-5-sonnet-latest" }
+                }
+            } header: {
+                Text("AI Provider & Model")
             }
 
             Section {
                 HStack {
-                    SecureField("API key", text: $keyDraft,
-                                prompt: Text(manager.hasAPIKey ? "Stored in your Keychain" : "AIza…"))
-                    Button("Save") {
-                        guard GeminiProtocol.looksLikeAPIKey(keyDraft) else {
-                            saveResult = "That does not look like an API key."
-                            return
-                        }
-                        saveResult = manager.setAPIKey(keyDraft)
-                            ? "Saved to the Keychain."
-                            : "Could not write to the Keychain."
+                    SecureField("Add API key", text: $keyDraft,
+                                prompt: Text("Add a key for \(aiProvider.rawValue)…"))
+                    Button("Add") {
+                        let existing = manager.keys(for: aiProvider)
+                        var updated = existing
+                        updated.append(keyDraft)
+                        let ok = manager.setKeys(updated, for: aiProvider)
+                        saveResult = ok ? "Key added for \(aiProvider.rawValue)." : "Could not write key."
                         keyDraft = ""
                     }
                     .disabled(keyDraft.isEmpty)
                 }
-                .settingsHighlight(id: highlightID("API key"))
-
-                if manager.hasAPIKey {
-                    Button("Remove stored key", role: .destructive) {
-                        manager.clearAPIKey()
-                        saveResult = "Key removed."
+                
+                let keys = manager.keys(for: aiProvider)
+                if !keys.isEmpty {
+                    List {
+                        ForEach(keys.indices, id: \.self) { idx in
+                            HStack {
+                                Text("Key \(idx + 1): ••••••••••")
+                                Spacer()
+                                Button(role: .destructive) {
+                                    var updated = keys
+                                    updated.remove(at: idx)
+                                    _ = manager.setKeys(updated, for: aiProvider)
+                                } label: {
+                                    Image(systemName: "trash")
+                                }
+                                .buttonStyle(.borderless)
+                            }
+                        }
                     }
+                    .frame(height: max(CGFloat(keys.count * 35), 40))
                 }
+
                 if let saveResult {
                     Text(saveResult).font(.footnote).foregroundStyle(.secondary)
                 }
             } header: {
-                Text("API key")
+                Text("API Keys")
             } footer: {
-                Text("Get a key from Google AI Studio. It is stored in your **Keychain**, never in Anchor's preferences file — that file is world-readable and the key is billable.\n\nRequests send it in a header rather than the URL, so it does not end up in proxy logs or crash reports.")
+                Text("Add multiple keys for failover if one gets rate limited.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }
 
             Section {
-                Picker("Model", selection: Binding(
-                    get: { Defaults[.geminiModel] },
-                    set: { Defaults[.geminiModel] = $0 })) {
-                    Text("Flash (fast, cheap)").tag("gemini-2.0-flash")
-                    Text("Flash Lite").tag("gemini-2.0-flash-lite")
-                    Text("Pro (slower, stronger)").tag("gemini-1.5-pro")
-                }
-
-                Defaults.Toggle(key: .geminiRememberConversation) {
+                Defaults.Toggle(key: .aiRememberConversation) {
                     Text("Remember the conversation")
                 }
-                .settingsInfo("Keeps your chat between launches so the assistant has context. Turning this off clears what is stored.")
-
                 Picker("Turns of context", selection: Binding(
-                    get: { Defaults[.geminiHistoryTurns] },
-                    set: { Defaults[.geminiHistoryTurns] = $0 })) {
+                    get: { Defaults[.aiHistoryTurns] },
+                    set: { Defaults[.aiHistoryTurns] = $0 })) {
                     ForEach([6, 12, 20, 40], id: \.self) { Text("\($0)").tag($0) }
                 }
-
                 Button("Clear conversation") { manager.clearConversation() }
             } header: {
                 Text("Behaviour")
-            } footer: {
-                Text("More turns of context give better answers and cost more per request, because the whole history is sent each time.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-            }
-
-            Section {
-                Text("Sapphire's version also does screen awareness and direct computer use. Neither is built here.\n\n**Screen awareness** needs Screen Recording, which is not granted to this build.\n\n**Tool execution** is left out on purpose: an assistant that turns model output into actions on your Mac can be steered by anything it reads. If you want it, it should ask before each action rather than act on its own — say so and it can be built that way.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-            } header: {
-                Text("What this does not do")
             }
         }
         .formStyle(.grouped)

@@ -81,8 +81,12 @@ enum CalculatorAction {
     }
 
     private static func evaluateExpression(_ string: String) throws -> Any? {
-        let expression = NSExpression(format: string)
-        return expression.expressionValue(with: nil, context: nil)
+        var value: Any? = nil
+        try AudioBridge.catchException {
+            let expression = NSExpression(format: string)
+            value = expression.expressionValue(with: nil, context: nil)
+        }
+        return value
     }
 
     private static func format(_ value: Double) -> String {

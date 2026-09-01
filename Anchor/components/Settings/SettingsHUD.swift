@@ -106,7 +106,7 @@ struct HUDAndOSDSettingsView: View {
         if Defaults[.enableCustomOSD] { return .osd }
         if Defaults[.enableVerticalHUD] { return .vertical }
         if Defaults[.enableCircularHUD] { return .circular }
-        return .hud
+        return .none
     }()
     @Default(.enableSystemHUD) var enableSystemHUD
     @Default(.enableCustomOSD) var enableCustomOSD
@@ -140,6 +140,7 @@ struct HUDAndOSDSettingsView: View {
         case osd = "Custom OSD"
         case vertical = "Vertical Bar"
         case circular = "Circular"
+        case none = "None"
 
         var id: String { rawValue }
     }
@@ -324,10 +325,38 @@ struct HUDAndOSDSettingsView: View {
                     }
                     .frame(width: 44, height: 44)
                 }
+
+                HUDSelectionCard(
+                    title: String(localized: "None"),
+                    isSelected: selectedTab == .none,
+                    action: {
+                        selectedTab = .none
+                        enableSystemHUD = false
+                        enableCustomOSD = false
+                        enableVerticalHUD = false
+                        enableCircularHUD = false
+                    }
+                ) {
+                    Image(systemName: "slash.circle")
+                        .font(.system(size: 24))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 44, height: 44)
+                }
             }
             .padding(.top, 8)
 
             switch selectedTab {
+            case .none:
+                VStack(spacing: 16) {
+                    Image(systemName: "slash.circle")
+                        .font(.system(size: 48))
+                        .foregroundStyle(.secondary)
+                    Text("All HUDs disabled")
+                        .font(.headline)
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .padding(.top, 40)
             case .hud:
                 HUD()
             case .osd:

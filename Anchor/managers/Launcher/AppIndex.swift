@@ -52,11 +52,7 @@ final class AppIndex: ObservableObject {
     @Published private(set) var apps: [LauncherApp] = []
     @Published private(set) var isIndexing = false
 
-    private var lastScan: Date = .distantPast
-    private var directoryWatchers: [DispatchSourceFileSystemObject] = []
-
-    /// Re-scan if the index is older than this when the panel opens.
-    private static let staleAfter: TimeInterval = 300
+    private var rootMTimes: [URL: TimeInterval] = [:]
 
     private nonisolated static let searchRoots: [URL] = {
         var roots = [
@@ -82,7 +78,17 @@ final class AppIndex: ObservableObject {
 
     /// Rebuilds the index if it is stale. Cheap to call on every panel open.
     func refreshIfNeeded() {
-        guard Date().timeIntervalSince(lastScan) > Self.staleAfter || apps.isEmpty else { return }
+        var stale = apps.isEmpty
+        
+        for root in Self.searchRoots {
+            let mtime = (try? root.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate?.timeIntervalSince1970 ?? 0
+            if rootMTimes[root] != mtime {
+                stale = true
+                break
+            }
+        }
+        
+        guard stale else { return }
         refresh()
     }
 
@@ -92,12 +98,17 @@ final class AppIndex: ObservableObject {
 
         Task.detached(priority: .userInitiated) {
             let found = Self.scan()
+            var newMTimes: [URL: TimeInterval] = [:]
+            for root in Self.searchRoots {
+                let mtime = (try? root.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate?.timeIntervalSince1970 ?? 0
+                newMTimes[root] = mtime
+            }
+            
             await MainActor.run { [weak self] in
                 guard let self else { return }
                 self.apps = found
-                self.lastScan = Date()
+                self.rootMTimes = newMTimes
                 self.isIndexing = false
-                self.startWatchingIfNeeded()
                 // Rasterising icons is the slow part of showing the grid; do it
                 // now rather than when the user is waiting on it.
                 AppIconCache.shared.warm(found)
@@ -113,21 +124,32 @@ final class AppIndex: ObservableObject {
         for root in searchRoots {
             guard let entries = try? fm.contentsOfDirectory(
                 at: root,
-                includingPropertiesForKeys: [.isApplicationKey, .isDirectoryKey],
+                includingPropertiesForKeys: [.isApplicationKey, .isDirectoryKey, .isSymbolicLinkKey],
                 options: [.skipsHiddenFiles, .skipsPackageDescendants]
             ) else { continue }
 
             for entry in entries {
-                if entry.pathExtension == "app" {
-                    insert(entry, into: &results, seen: &seen)
-                } else if (try? entry.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true {
+                let isSymlink = (try? entry.resourceValues(forKeys: [.isSymbolicLinkKey]))?.isSymbolicLink == true
+                let urlToTest = isSymlink ? entry.resolvingSymlinksInPath() : entry
+                
+                let isApp = (try? urlToTest.resourceValues(forKeys: [.isApplicationKey]))?.isApplication == true
+                
+                if urlToTest.pathExtension == "app" || isApp {
+                    insert(urlToTest, into: &results, seen: &seen)
+                } else if (try? urlToTest.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true {
                     // One level down only — catches /Applications/Adobe/Foo.app
                     // without walking deep trees on every scan.
                     let nested = (try? fm.contentsOfDirectory(
-                        at: entry, includingPropertiesForKeys: nil,
+                        at: urlToTest, includingPropertiesForKeys: [.isApplicationKey, .isSymbolicLinkKey],
                         options: [.skipsHiddenFiles, .skipsPackageDescendants])) ?? []
-                    for child in nested where child.pathExtension == "app" {
-                        insert(child, into: &results, seen: &seen)
+                    for child in nested {
+                        let childSym = (try? child.resourceValues(forKeys: [.isSymbolicLinkKey]))?.isSymbolicLink == true
+                        let childToTest = childSym ? child.resolvingSymlinksInPath() : child
+                        let childIsApp = (try? childToTest.resourceValues(forKeys: [.isApplicationKey]))?.isApplication == true
+                        
+                        if childToTest.pathExtension == "app" || childIsApp {
+                            insert(childToTest, into: &results, seen: &seen)
+                        }
                     }
                 }
             }
@@ -155,27 +177,6 @@ final class AppIndex: ObservableObject {
                 name: name,
                 bundleIdentifier: bundle?.bundleIdentifier
             ))
-    }
-
-    /// Watches the application directories so a newly installed app appears
-    /// without waiting for the staleness timer. Event-driven, no polling.
-    private func startWatchingIfNeeded() {
-        guard directoryWatchers.isEmpty else { return }
-
-        for root in Self.searchRoots {
-            let descriptor = open(root.path, O_EVTONLY)
-            guard descriptor >= 0 else { continue }
-
-            let source = DispatchSource.makeFileSystemObjectSource(
-                fileDescriptor: descriptor, eventMask: [.write], queue: .main)
-            source.setEventHandler { [weak self] in
-                // Debounce: installers touch the directory repeatedly.
-                self?.lastScan = .distantPast
-            }
-            source.setCancelHandler { close(descriptor) }
-            source.resume()
-            directoryWatchers.append(source)
-        }
     }
 
     // MARK: - Search

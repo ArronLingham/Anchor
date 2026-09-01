@@ -274,7 +274,7 @@ class AnchorViewCoordinator: ObservableObject {
         let bypassedTypes: [SneakContentType] = [.music, .timer, .reminder, .bluetoothAudio, .claudeUsage, .eyeBreak]
         
         
-        if !bypassedTypes.contains(type) && !Defaults[.enableSystemHUD] {
+        if status && !bypassedTypes.contains(type) && !Defaults[.enableSystemHUD] {
             return
         }
         DispatchQueue.main.async {

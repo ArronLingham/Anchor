@@ -26,6 +26,18 @@
     AudioProcessor *processor;
 }
 
++ (BOOL)catchException:(void(^)(void))tryBlock error:(__autoreleasing NSError **)error {
+    @try {
+        tryBlock();
+        return YES;
+    } @catch (NSException *exception) {
+        if (error) {
+            *error = [NSError errorWithDomain:exception.name code:0 userInfo:exception.userInfo];
+        }
+        return NO;
+    }
+}
+
 - (instancetype)init {
     self = [super init];
     if (self) {

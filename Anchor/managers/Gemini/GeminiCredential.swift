@@ -2,36 +2,17 @@
  * Anchor
  * Derived from Atoll (DynamicIsland), itself derived from boring.notch.
  * Copyright (C) 2024-2026 Atoll Contributors
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
 import Foundation
 import Security
 
-/// The Gemini API key, in the Keychain.
-///
-/// Deliberately **not** in `Defaults`, for the same reason the ntfy topic is
-/// not: `Defaults` lands in a world-readable plist, and an API key is a
-/// billable credential. Anything that can read the plist could spend the user's
-/// quota.
-enum GeminiCredential {
-    private static let service = "com.arronlingham.Anchor.gemini"
-    private static let account = "apiKey"
+/// The API keys, in the Keychain.
+enum AIAssistantCredential {
+    private static let service = "com.arronlingham.Anchor.ai"
 
-    static func read() -> String? {
-        var query = baseQuery()
+    static func read(provider: AIProvider) -> [String] {
+        var query = baseQuery(provider: provider)
         query[kSecReturnData as String] = true
         query[kSecMatchLimit as String] = kSecMatchLimitOne
 
@@ -39,23 +20,21 @@ enum GeminiCredential {
         let status = SecItemCopyMatching(query as CFDictionary, &item)
         guard status == errSecSuccess,
               let data = item as? Data,
-              let key = String(data: data, encoding: .utf8),
-              !key.isEmpty
-        else { return nil }
-        return key
+              let keyString = String(data: data, encoding: .utf8),
+              !keyString.isEmpty
+        else { return [] }
+        return keyString.components(separatedBy: "\n").filter { !$0.isEmpty }
     }
 
     @discardableResult
-    static func write(_ key: String) -> Bool {
-        let trimmed = key.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return delete() }
-        guard let data = trimmed.data(using: .utf8) else { return false }
+    static func write(_ keys: [String], provider: AIProvider) -> Bool {
+        let filtered = keys.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+        guard !filtered.isEmpty else { return delete(provider: provider) }
+        let joined = filtered.joined(separator: "\n")
+        guard let data = joined.data(using: .utf8) else { return false }
 
-        var attributes = baseQuery()
+        var attributes = baseQuery(provider: provider)
         attributes[kSecValueData as String] = data
-        // Available after first unlock rather than always: the key is only
-        // needed while the user is actually using the assistant, and this
-        // keeps it out of reach of anything running before login.
         attributes[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
 
         let added = SecItemAdd(attributes as CFDictionary, nil)
@@ -63,21 +42,21 @@ enum GeminiCredential {
         guard added == errSecDuplicateItem else { return false }
 
         return SecItemUpdate(
-            baseQuery() as CFDictionary,
+            baseQuery(provider: provider) as CFDictionary,
             [kSecValueData as String: data] as CFDictionary) == errSecSuccess
     }
 
     @discardableResult
-    static func delete() -> Bool {
-        let status = SecItemDelete(baseQuery() as CFDictionary)
+    static func delete(provider: AIProvider) -> Bool {
+        let status = SecItemDelete(baseQuery(provider: provider) as CFDictionary)
         return status == errSecSuccess || status == errSecItemNotFound
     }
 
-    private static func baseQuery() -> [String: Any] {
+    private static func baseQuery(provider: AIProvider) -> [String: Any] {
         [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
-            kSecAttrAccount as String: account,
+            kSecAttrAccount as String: "apiKeys_\(provider.rawValue)",
         ]
     }
 }

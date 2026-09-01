@@ -207,6 +207,8 @@ struct ClipboardPopoverItemRow: View {
     let onHover: (UUID?) -> Void
     @ObservedObject var clipboardManager = ClipboardManager.shared
     
+    @State private var isExpanded = false
+    
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
             // Type icon
@@ -220,7 +222,7 @@ struct ClipboardPopoverItemRow: View {
                 Text(item.preview)
                     .font(.system(size: 11))
                     .foregroundColor(.primary)
-                    .lineLimit(2)
+                    .lineLimit(isExpanded ? nil : 2)
                     .multilineTextAlignment(.leading)
                 
                 HStack {
@@ -293,7 +295,9 @@ struct ClipboardPopoverItemRow: View {
             }
         }
         .onTapGesture {
-            clipboardManager.copyToClipboard(item)
+            withAnimation(.easeInOut(duration: 0.15)) {
+                isExpanded.toggle()
+            }
         }
     }
     

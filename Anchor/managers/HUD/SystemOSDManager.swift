@@ -27,7 +27,7 @@ class SystemOSDManager {
 
     // Tracks the PID we most recently suspended. macOS jetsam-exits OSDUIHelper
     // when idle and launchd respawns it on the next media-key press as a fresh
-    // process, so we need to re-SIGSTOP every new incarnation.
+    // process, so we need to re-SIGKILL every new incarnation.
     private struct SuppressionState {
         var task: Task<Void, Never>?
         var lastSuspendedPID: Int32 = -1
@@ -179,7 +179,7 @@ class SystemOSDManager {
     ///
     /// `enableSystemHUD()` restarts the helper on a detached background `Task`,
     /// which never runs to completion when the process is already terminating —
-    /// so a SIGSTOP-frozen OSDUIHelper stays frozen after Atoll quits, breaking
+    /// so a SIGKILL-frozen OSDUIHelper stays frozen after Atoll quits, breaking
     /// every native OSD Atoll does not replace (keyboard backlight,
     /// external-display brightness, …) and leaving a stuck HUD on screen. This
     /// sends SIGCONT inline and blocks until it lands, guaranteeing the helper
@@ -193,7 +193,7 @@ class SystemOSDManager {
 
         // Cancel the watcher and wait for it to fully exit before resuming. A
         // bare cancel is cooperative, so an in-flight suspendOSDUIHelper() could
-        // otherwise land its SIGSTOP after our SIGCONT and re-freeze the helper.
+        // otherwise land its SIGKILL after our SIGCONT and re-freeze the helper.
         // Bridge the async drain to this synchronous path with a bounded wait.
         if let watcher = stopSuppressionWatcher() {
             let drained = DispatchSemaphore(value: 0)
@@ -224,7 +224,7 @@ class SystemOSDManager {
         startSuppressionWatcher()
     }
 
-    /// Immediately SIGSTOPs OSDUIHelper, bypassing the 150ms watcher poll. The
+    /// Immediately SIGKILLs OSDUIHelper, bypassing the 150ms watcher poll. The
     /// CoreAudio volume write wakes/respawns the helper to draw the native OSD
     /// (brightness's private APIs never do), and the watcher can lose that race.
     /// No-op unless suppression is active.
@@ -252,7 +252,7 @@ class SystemOSDManager {
             guard isCurrentTransition(generation, active: true) else { return }
             suspendOSDUIHelper()
 
-            // If the user disabled Atoll's HUD replacement while SIGSTOP was in
+            // If the user disabled Atoll's HUD replacement while SIGKILL was in
             // flight, undo that stale suppression immediately. The current
             // restoration transition will still perform its clean restart.
             guard isCurrentTransition(generation, active: true) else {
@@ -283,10 +283,10 @@ class SystemOSDManager {
 
             // launchctl kickstart returns once the request is queued, not after
             // OSDUIHelper has actually forked. At cold boot the helper can take
-            // a while to appear — a fixed sleep races and the SIGSTOP misses,
+            // a while to appear — a fixed sleep races and the SIGKILL misses,
             // letting the native OSD render on the first volume/brightness key.
             // Poll for the PID up to ~5s, then suspend, and retry if launchd
-            // respawned a fresh copy between kickstart and SIGSTOP.
+            // respawned a fresh copy between kickstart and SIGKILL.
             var attempts = 0
             while attempts < 3 {
                 guard isCurrentTransition(generation, active: true) else { return }
@@ -294,7 +294,7 @@ class SystemOSDManager {
                 guard isCurrentTransition(generation, active: true) else { return }
                 if !appeared {
                     await MainActor.run {
-                        NSLog("⚠️ OSDUIHelper did not appear within timeout; retrying SIGSTOP anyway")
+                        NSLog("⚠️ OSDUIHelper did not appear within timeout; retrying SIGKILL anyway")
                     }
                 }
 
@@ -349,7 +349,7 @@ class SystemOSDManager {
     /// helper after a short idle period (JETSAM_REASON_MEMORY_IDLE_EXIT) and
     /// launchd spins up a brand-new process on the next volume/brightness
     /// keypress — that fresh PID renders the native OSD before any one-shot
-    /// SIGSTOP can hit it. Polling every 150ms is cheap (a single pgrep per
+    /// SIGKILL can hit it. Polling every 150ms is cheap (a single pgrep per
     /// tick when nothing changed) and shrinks the visible-OSD window enough
     /// to feel instant.
     ///
@@ -460,9 +460,15 @@ class SystemOSDManager {
         }
     }
 
-    private static func suspendOSDUIHelper() { signalOSDUIHelper(SIGSTOP) }
+    private static func suspendOSDUIHelper() { signalOSDUIHelper(SIGKILL) }
 
-    private static func resumeOSDUIHelperProcess() { signalOSDUIHelper(SIGCONT) }
+    private static func resumeOSDUIHelperProcess() {
+        let kickstart = Process()
+        kickstart.executableURL = URL(fileURLWithPath: "/bin/launchctl")
+        kickstart.arguments = ["kickstart", "gui/\(getuid())/com.apple.OSDUIHelper"]
+        try? kickstart.run()
+        kickstart.waitUntilExit()
+    }
 
     /// Check if OSDUIHelper is currently running
     public static func isOSDUIHelperRunning() -> Bool {
@@ -471,7 +477,7 @@ class SystemOSDManager {
 
     /// Suspends the caller until `pid` exits, or `timeoutSeconds` elapses.
     ///
-    /// Backed by a GCD process source, so a live (and SIGSTOP'd) helper costs
+    /// Backed by a GCD process source, so a live (and SIGKILL'd) helper costs
     /// nothing while we wait — this is what replaces the 150ms poll. The
     /// timeout is a safety net so a missed event cannot wedge the watcher.
     /// Resumes its continuation exactly once, from whichever of the process

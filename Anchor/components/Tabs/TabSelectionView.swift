@@ -87,7 +87,7 @@ struct TabSelectionView: View {
         if Defaults[.enableCameraMirror] {
             tabsArray.append(TabModel(label: "Mirror", icon: "video.fill", view: .cameraMirror))
         }
-        if Defaults[.enableGeminiAssistant] {
+        if Defaults[.enableAIAssistant] {
             tabsArray.append(TabModel(label: "Gemini", icon: "sparkles", view: .gemini))
         }
         return tabsArray

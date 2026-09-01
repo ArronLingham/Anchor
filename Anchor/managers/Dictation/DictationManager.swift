@@ -74,6 +74,7 @@ final class DictationManager: ObservableObject {
     private var targetFormat: AVAudioFormat?
     private var isPrepared = false
     private var errorResetTask: Task<Void, Never>?
+    private var sessionToken = 0
 
     private init(backend: SpeechTranscribing = AppleSpeechTranscriber()) {
         self.backend = backend
@@ -88,13 +89,17 @@ final class DictationManager: ObservableObject {
 
         errorResetTask?.cancel()
         live.transcript = ""
+        sessionToken += 1
+        let token = sessionToken
         state = .preparing
 
         Task { [weak self] in
             guard let self else { return }
             do {
-                try await self.startSession()
-                self.state = .listening
+                try await self.startSession(token: token)
+                if self.sessionToken == token {
+                    self.state = .listening
+                }
             } catch {
                 self.fail(error.localizedDescription)
             }
@@ -103,7 +108,12 @@ final class DictationManager: ObservableObject {
 
     /// Called on hotkey release.
     func endDictation() {
-        guard state == .listening || state == .preparing else { return }
+        if state == .preparing {
+            sessionToken += 1
+            state = .idle
+            return
+        }
+        guard state == .listening else { return }
         state = .transcribing
         stopEngine()
 
@@ -121,6 +131,7 @@ final class DictationManager: ObservableObject {
     /// Abandons an in-flight dictation without pasting.
     func cancelDictation() {
         guard state.isActive else { return }
+        sessionToken += 1
         stopEngine()
         Task { [weak self] in
             await self?.backend.cancel()
@@ -130,9 +141,10 @@ final class DictationManager: ObservableObject {
 
     // MARK: - Session
 
-    private func startSession() async throws {
+    private func startSession(token: Int) async throws {
         if !isPrepared {
             try await backend.prepare()
+            guard sessionToken == token else { return }
             isPrepared = true
         }
 
@@ -140,6 +152,11 @@ final class DictationManager: ObservableObject {
             Task { @MainActor in
                 self?.live.transcript = update.combined
             }
+        }
+        
+        guard sessionToken == token else {
+            await backend.cancel()
+            return
         }
 
         targetFormat = await backend.preferredFormat
@@ -298,6 +315,7 @@ final class DictationManager: ObservableObject {
 
     private func fail(_ message: String) {
         NSLog("DictationManager: \(message)")
+        sessionToken += 1
         stopEngine()
         state = .failed(message)
         live.transcript = ""

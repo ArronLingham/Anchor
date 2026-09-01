@@ -1074,7 +1074,7 @@ struct SettingsView: View {
         case .cleanup:
             SettingsCleanup()
         case .gemini:
-            GeminiSettings()
+            AIAssistantSettings()
         case .todo:
             SettingsForm(tab: .todo) {
                 TodoSettings()

@@ -20,67 +20,65 @@
 import AppKit
 import SwiftUI
 
-/// Spotlight-style floating search panel.
-///
-/// The awkward part of this window class is focus. A borderless `NSPanel` does
-/// not take key status by default, so the search field would never receive
-/// typing; `canBecomeKey` has to be overridden. `.nonactivatingPanel` keeps the
-/// rest of Atoll from being brought forward, so dismissing the panel returns the
-/// user to whatever app they were in — which is the whole point of a launcher.
+/// Fullscreen launcher overlay.
 final class LauncherPanel: NSPanel {
-    /// Called when the panel loses key status, so the manager can tear it down.
     var onResignKey: (() -> Void)?
 
     init(contentView: NSView) {
+        let screen = NSScreen.screens.first { $0.frame.contains(NSEvent.mouseLocation) } ?? NSScreen.main
+        let frame = screen?.frame ?? NSRect(x: 0, y: 0, width: 860, height: 560)
+        
         super.init(
-            contentRect: NSRect(x: 0, y: 0, width: 860, height: 560),
+            contentRect: frame,
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
         )
 
-        self.contentView = contentView
+        // Wrap the content view in a visual effect view to get a native blur background
+        let effectView = NSVisualEffectView(frame: frame)
+        effectView.material = .hudWindow
+        effectView.blendingMode = .behindWindow
+        effectView.state = .active
+        
+        contentView.frame = frame
+        contentView.autoresizingMask = [.width, .height]
+        effectView.addSubview(contentView)
+        
+        self.contentView = effectView
 
         isOpaque = false
         backgroundColor = .clear
-        hasShadow = true
-        level = .floating
+        hasShadow = false
+        level = .screenSaver // High enough to cover menu bar and everything
         isMovableByWindowBackground = false
         hidesOnDeactivate = false
-        animationBehavior = .utilityWindow
-        // Follow the user across spaces, and show over full-screen apps.
-        collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .transient]
+        animationBehavior = .none
+        collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .transient, .ignoresCycle]
     }
 
-    /// Required for the search field to receive keystrokes.
     override var canBecomeKey: Bool { true }
-    /// Borderless panels cannot be main; keeping this false avoids stealing
-    /// main-window status from the app the user is actually working in.
-    override var canBecomeMain: Bool { false }
+    override var canBecomeMain: Bool { true }
 
     override func resignKey() {
         super.resignKey()
         onResignKey?()
     }
 
-    /// Esc closes the panel. `cancelOperation` is what AppKit routes Esc to.
     override func cancelOperation(_ sender: Any?) {
         onResignKey?()
     }
 
-    /// Centres horizontally and sits slightly above centre vertically, which
-    /// reads better than dead-centre and matches Spotlight.
     func positionOnActiveScreen() {
-        let screen =
-            NSScreen.screens.first { $0.frame.contains(NSEvent.mouseLocation) }
-            ?? NSScreen.main
-        guard let visible = screen?.visibleFrame else { return }
-
-        let size = frame.size
-        let origin = NSPoint(
-            x: visible.midX - size.width / 2,
-            y: visible.midY - size.height / 2 + visible.height * 0.12
-        )
-        setFrameOrigin(origin)
+        let screen = NSScreen.screens.first { $0.frame.contains(NSEvent.mouseLocation) } ?? NSScreen.main
+        guard let screenFrame = screen?.frame else { return }
+        setFrame(screenFrame, display: true)
+        
+        // Add a slight fade-in effect when positioning (which usually happens on show)
+        self.alphaValue = 0
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.2
+            self.animator().alphaValue = 1.0
+        }
     }
 }

@@ -90,24 +90,30 @@ final class SpaceIndicatorManager: ObservableObject {
 
         var index = 0
         var total = 0
-        var found = 0
+        var targetDisplayIdentifier: String?
+
+        if let screenNumber = NSScreen.main?.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber {
+            let displayID = CGDirectDisplayID(screenNumber.uint32Value)
+            if let uuid = CGDisplayCreateUUIDFromDisplayID(displayID)?.takeRetainedValue() {
+                targetDisplayIdentifier = CFUUIDCreateString(nil, uuid) as String
+            }
+        }
 
         for display in displays {
             guard let spaces = display["Spaces"] as? [[String: Any]] else { continue }
             let currentID = (display["Current Space"] as? [String: Any])?["ManagedSpaceID"] as? Int
+            let isTargetDisplay = (display["Display Identifier"] as? String) == targetDisplayIdentifier
 
             for space in spaces {
-                // Fullscreen apps occupy their own space and are not desktops;
-                // counting them makes the number jump when you fullscreen
-                // something, which is not what anyone means by "desktop 3".
                 let type = space["type"] as? Int ?? 0
                 guard type == 0 else { continue }
                 total += 1
                 if let id = space["ManagedSpaceID"] as? Int, id == currentID {
-                    index = total
+                    if isTargetDisplay || targetDisplayIdentifier == nil {
+                        index = total
+                    }
                 }
             }
-            if index != 0 && found == 0 { found = index }
         }
 
         if currentSpace != index { currentSpace = index }

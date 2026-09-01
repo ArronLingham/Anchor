@@ -1403,15 +1403,16 @@ extension Defaults.Keys {
     /// (`com.arronlingham.Anchor.gemini` / `apiKey`), because `Defaults` is a
     /// world-readable plist and the key is billable. Only non-secret settings
     /// belong in this file.
-    static let enableGeminiAssistant = Key<Bool>("enableGeminiAssistant", default: false)
-    static let geminiModel = Key<String>("geminiModel", default: "gemini-2.0-flash")
+    static let enableAIAssistant = Key<Bool>("enableAIAssistant", default: false)
+    static let aiProvider = Key<AIProvider>("aiProvider", default: .gemini)
+    static let aiModel = Key<String>("aiModel", default: "gemini-2.0-flash")
     /// How many prior turns to send. More context costs more per request.
-    static let geminiHistoryTurns = Key<Int>("geminiHistoryTurns", default: 20)
-    static let geminiRememberConversation = Key<Bool>("geminiRememberConversation", default: true)
+    static let aiHistoryTurns = Key<Int>("aiHistoryTurns", default: 20)
+    static let aiRememberConversation = Key<Bool>("aiRememberConversation", default: true)
     /// The stored conversation, as JSON. The user's own words, not a secret.
-    static let geminiHistory = Key<String>("geminiHistory", default: "")
-    static let geminiSystemInstruction = Key<String>(
-        "geminiSystemInstruction",
+    static let aiHistory = Key<String>("aiHistory", default: "")
+    static let aiSystemInstruction = Key<String>(
+        "aiSystemInstruction",
         default: "You are a concise assistant embedded in a macOS menu bar app. Keep answers short unless asked for detail.")
 
 

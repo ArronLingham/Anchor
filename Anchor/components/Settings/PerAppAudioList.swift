@@ -1,3 +1,4 @@
+import SwiftUI
 /*
  * Anchor
  * Copyright (C) 2024-2026 Atoll Contributors
@@ -16,7 +17,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-import SwiftUI
+
 
 /// Apps currently producing audio, each with mute, volume and a 10-band EQ.
 ///
@@ -45,9 +46,6 @@ struct PerAppAudioList: View {
             } else {
                 ForEach(manager.apps) { app in
                     row(for: app)
-                    if app.id != manager.apps.last?.id {
-                        Divider()
-                    }
                 }
             }
         }
@@ -148,8 +146,11 @@ struct PerAppAudioList: View {
 
             if isOpen {
                 equaliser(for: app, state: state)
+                    .padding(.top, 4)
             }
         }
+        .padding(12)
+        .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
         .padding(.vertical, 2)
     }
 
@@ -252,10 +253,7 @@ struct PerAppAudioList: View {
                 .monospacedDigit()
                 .foregroundStyle(.tertiary)
 
-            Slider(value: binding, in: -12...12)
-                .controlSize(.mini)
-                .frame(height: 74)
-                .rotationEffect(.degrees(-90))
+            EQSlider(value: binding)
                 .frame(width: 22, height: 74)
 
             Text(label(for: frequency))
@@ -268,5 +266,51 @@ struct PerAppAudioList: View {
         frequency >= 1000
             ? "\(Int(frequency / 1000))k"
             : "\(Int(frequency))"
+    }
+}
+
+
+struct EQSlider: View {
+    @Binding var value: Double // -12 to 12
+    let range: ClosedRange<Double> = -12...12
+    
+    var body: some View {
+        GeometryReader { geo in
+            let height = geo.size.height
+            let percentage = (value - range.lowerBound) / (range.upperBound - range.lowerBound)
+            
+            ZStack(alignment: .bottom) {
+                RoundedRectangle(cornerRadius: 4)
+                    .fill(Color.secondary.opacity(0.15))
+                    .frame(width: 12)
+                
+                RoundedRectangle(cornerRadius: 4)
+                    .fill(value == 0 ? Color.secondary : Color.accentColor)
+                    .frame(width: 12, height: max(0, height * CGFloat(percentage)))
+                    
+                // Thumb
+                Circle()
+                    .fill(Color.white)
+                    .shadow(radius: 1)
+                    .frame(width: 16, height: 16)
+                    .offset(y: -height * CGFloat(percentage) + 8)
+            }
+            .frame(maxWidth: .infinity)
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { drag in
+                        let y = height - drag.location.y
+                        let p = max(0, min(1, y / height))
+                        let v = range.lowerBound + Double(p) * (range.upperBound - range.lowerBound)
+                        // Snap to 0 if close
+                        if abs(v) < 0.5 {
+                            value = 0
+                        } else {
+                            value = v
+                        }
+                    }
+            )
+        }
     }
 }

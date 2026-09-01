@@ -1,32 +1,16 @@
 /*
+
  * Anchor
  * Derived from Atoll (DynamicIsland), itself derived from boring.notch.
  * Copyright (C) 2024-2026 Atoll Contributors
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
 import SwiftUI
+import ScreenCaptureKit
+import CoreGraphics
 
-/// The Gemini assistant tab.
-///
-/// Replies are rendered as **text**. They are never parsed for commands, never
-/// matched against an action table and never executed — the model's output is
-/// data here, which is what makes an assistant that reads arbitrary content
-/// safe to have in a menu bar app.
-struct NotchGeminiView: View {
-    @ObservedObject private var manager = GeminiManager.shared
+struct NotchAIAssistantView: View {
+    @ObservedObject private var manager = AIAssistantManager.shared
     @State private var draft = ""
     @FocusState private var isComposerFocused: Bool
 
@@ -48,7 +32,7 @@ struct NotchGeminiView: View {
             Image(systemName: "key")
                 .font(.system(size: 18))
                 .foregroundStyle(.secondary)
-            Text("Add a Gemini API key in Settings › Gemini to use the assistant.")
+            Text("Add an API key in Settings › Gemini to use the assistant.")
                 .font(.caption)
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)
@@ -66,17 +50,28 @@ struct NotchGeminiView: View {
                     ForEach(manager.messages) { message in
                         HStack {
                             if message.role == .user { Spacer(minLength: 40) }
-                            Text(message.text)
-                                .font(.system(size: 11))
-                                .textSelection(.enabled)
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 5)
-                                .background(
-                                    RoundedRectangle(cornerRadius: 9, style: .continuous)
-                                        .fill(message.role == .user
-                                              ? Color.accentColor.opacity(0.28)
-                                              : Color.white.opacity(0.10)))
-                                .foregroundStyle(.white)
+                            VStack(alignment: message.role == .user ? .trailing : .leading) {
+                                if let img = message.imageData, let nsImg = NSImage(data: img) {
+                                    Image(nsImage: nsImg)
+                                        .resizable()
+                                        .scaledToFit()
+                                        .frame(maxHeight: 150)
+                                        .cornerRadius(6)
+                                }
+                                if !message.text.isEmpty {
+                                    Text(message.text)
+                                        .font(.system(size: 11))
+                                        .textSelection(.enabled)
+                                }
+                            }
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 5)
+                            .background(
+                                RoundedRectangle(cornerRadius: 9, style: .continuous)
+                                    .fill(message.role == .user
+                                          ? Color.accentColor.opacity(0.28)
+                                          : Color.white.opacity(0.10)))
+                            .foregroundStyle(.white)
                             if message.role == .model { Spacer(minLength: 40) }
                         }
                         .id(message.id)
@@ -107,19 +102,27 @@ struct NotchGeminiView: View {
 
     private var composer: some View {
         HStack(spacing: 6) {
-            TextField("Ask Gemini\u{2026}", text: $draft, axis: .vertical)
+            Button(action: sendWithScreenshot) {
+                Image(systemName: "camera.viewfinder")
+                    .font(.system(size: 14))
+            }
+            .buttonStyle(.plain)
+            .disabled(manager.isSending)
+            .help("Send Screen")
+
+            TextField("Ask AI\u{2026}", text: $draft, axis: .vertical)
                 .textFieldStyle(.plain)
                 .font(.system(size: 11))
                 .lineLimit(1...3)
                 .focused($isComposerFocused)
-                .onSubmit(send)
+                .onSubmit(sendText)
                 .padding(.horizontal, 8)
                 .padding(.vertical, 5)
                 .background(
                     RoundedRectangle(cornerRadius: 9, style: .continuous)
                         .fill(Color.white.opacity(0.08)))
 
-            Button(action: send) {
+            Button(action: sendText) {
                 Image(systemName: "arrow.up.circle.fill")
                     .font(.system(size: 16))
             }
@@ -129,7 +132,32 @@ struct NotchGeminiView: View {
         }
     }
 
-    private func send() {
+    private func captureScreen() async -> Data? {
+        do {
+            let content = try await SCShareableContent.current
+            guard let display = content.displays.first else { return nil }
+            let filter = SCContentFilter(display: display, excludingApplications: [], exceptingWindows: [])
+            let config = SCStreamConfiguration()
+            config.width = display.width
+            config.height = display.height
+            let image = try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: config)
+            let bitmap = NSBitmapImageRep(cgImage: image)
+            return bitmap.representation(using: .jpeg, properties: [.compressionFactor: 0.6])
+        } catch {
+            return nil
+        }
+    }
+
+    private func sendWithScreenshot() {
+        let text = draft
+        draft = ""
+        Task {
+            let img = await captureScreen()
+            await manager.send(text, screenshot: img)
+        }
+    }
+
+    private func sendText() {
         let text = draft
         draft = ""
         Task { await manager.send(text) }

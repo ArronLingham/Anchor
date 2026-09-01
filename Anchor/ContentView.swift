@@ -175,6 +175,7 @@ struct ContentView: View {
     
 
     @State private var hoverTask: Task<Void, Never>?
+    @State private var isHoveringInsideNotch: Bool = false
     @State private var isHovering: Bool = false
     @State private var lastHapticTime: Date = Date()
     @State private var hoverClickMonitor: Any?
@@ -281,11 +282,8 @@ struct ContentView: View {
     /// the bare physical notch, and `minimumHoverDuration` requires holding the
     /// cursor inside it for the whole dwell, so a small drift cancels the open.
     ///
-    /// This is applied *before* `.contentShape` and subtracted from the padding
-    /// applied after it, so the hit area grows while the layout does not move.
     private var closedHoverExtension: CGFloat {
-        guard Defaults[.extendHoverArea], vm.notchState == .closed else { return 0 }
-        return 12
+        return 0
     }
 
     private var pillTopOffset: CGFloat {
@@ -531,15 +529,17 @@ struct ContentView: View {
             }
             .conditionalModifier(interactionsEnabled) { view in
                 view
-                    .padding(.bottom, closedHoverExtension)
                     // A rect, not the notch outline: the outline's curved
                     // corners cut hittable area out of the very box we just
                     // grew. Only when extending — otherwise hover stays tight
                     // to the visible shape.
-                    .contentShape(
-                        closedHoverExtension > 0 ? AnyShape(Rectangle()) : resolvedClipShape)
+                    .contentShape(resolvedClipShape)
                     .onHover { hovering in
-                        handleHover(hovering)
+                        isHoveringInsideNotch = hovering
+                        handleHover(hovering || NotchHoverManager.shared.isHoveringExtendedArea)
+                    }
+                    .onReceive(NotchHoverManager.shared.$isHoveringExtendedArea) { hoveringExtended in
+                        handleHover(isHoveringInsideNotch || hoveringExtended)
                     }
                     .onTapGesture {
                         if handleClosedMusicWaveformTapIfNeeded() {
@@ -572,7 +572,7 @@ struct ContentView: View {
             // Shadow bottom padding and hide-until-hover offset applied AFTER
             // interaction modifiers so .contentShape / .onHover only covers
             // the actual notch content, not the shadow clearance below it.
-            .padding(.bottom, notchBottomPadding - closedHoverExtension)
+            .padding(.bottom, notchBottomPadding)
             .offset(y: shouldHideUntilHover && !isHovering
                 ? -(vm.closedNotchSize.height + pillTopOffset + currentShadowPadding + 10)
                 : 0
@@ -1026,7 +1026,7 @@ struct ContentView: View {
                             case .cameraMirror:
                                 NotchCameraMirrorView()
                             case .gemini:
-                                NotchGeminiView()
+                                NotchAIAssistantView()
                           }
                       }
                       .id(coordinator.currentView)
