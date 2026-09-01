@@ -704,3 +704,67 @@ mounted DMG reports.
      *Wire format verified by 44 assertions including the trim property at every
      cut point. No live API call has been made — there is no key on this
      machine, so nothing has been sent to Google.*
+
+## Audio engine (harness-covered as of 2026-09-01)
+
+The per-app EQ and loudness engine now has 153 assertions across four harnesses.
+What those cannot check is how it **sounds**, so these are the manual passes
+that matter. Do them with headphones, on material you know well.
+
+121. **Per-app EQ.** Enable per-app audio, pick a running app, apply a strong
+     preset. Verify the change is audible and in the right direction — a bass
+     boost should add bass. Then set every band to 0 dB and confirm the audio is
+     **indistinguishable from bypass**; the harness proves the coefficients are
+     mathematically flat, but a wiring bug upstream of them would not show there.
+     Sweep one band from -12 to +12 dB while music plays: it should be smooth,
+     with no clicks, and no ringing or whistling at extreme Q.
+
+122. **Limiter.** Set a large boost on a loud track. It should get louder and
+     then stop getting louder — never crackle. Crackle means the limiter is
+     being bypassed; the harness proves it never exceeds the ceiling
+     mathematically, so a crackle points at the signal path, not the maths.
+
+123. **Loudness leveler.** Play something with a wide dynamic range (a film
+     score, a live recording). Quiet passages should come up without the loud
+     ones distorting.
+     **Known rough edge:** the gain curve has a hard 5.5 dB step at -40 dB with
+     no hysteresis. Material that sits right around -40 dB may audibly pump. The
+     smoother turns it into a swell rather than a click, so it should not tick.
+     If you hear a *click* there, the smoother is not being applied.
+
+124. **Device crossfade.** With per-app volume active on a playing app, switch
+     the system output device. The handover should be seamless — no gap, no
+     dip in the middle, no double-audio. A dip at the halfway point means the
+     crossfade has gone linear instead of equal-power.
+
+125. **AutoEQ import.** Import a real profile for headphones you own. Check the
+     preamp is negative (they almost always are) and that the filter count and
+     frequencies match the file. Then import a deliberately broken file — a
+     truncated one, one with every filter `OFF` — and confirm it is rejected
+     rather than half-applied.
+
+## Stress and edge cases (automated, 2026-09-01)
+
+These are run by script, not by hand. Recorded here so the manual passes below
+do not duplicate them, and so anyone reading knows what is already covered.
+
+126. **Every feature on at once.** 226 boolean flags enabled simultaneously,
+     settled thirteen minutes. Result: one process, zero crash reports, 14
+     threads, 89 file descriptors, still responsive, `OSDUIHelper` still
+     suppressed. **2.59% mean / 2.40% median / 49.7 MB**, against 0.38% / 15.6 MB
+     with everything off.
+     *No real configuration looks like this — it bounds the total, nothing more.*
+
+127. **Hostile Defaults values.** 128 extreme integers (`INT_MIN`, -1, 0,
+     `INT_MAX`) across 32 `Int` keys; 126 hostile strings across 21 `String`
+     keys — empty, whitespace-only, emoji, 500 characters, `../../etc/passwd`,
+     `'; DROP TABLE --`; a 200-flip toggle storm; and type confusion (strings
+     written where an `Int` is expected). **Zero crashes, still responsive.**
+
+128. **What is still only checked by hand.** Anything needing eyes, ears or a
+     second device: the notch's appearance and animations, dictation accuracy,
+     the camera preview, multi-display behaviour, audio quality (items 121-125),
+     and every permission-gated path that is not granted on this machine.
+
+     A harness cannot tell you the notch looks right. It can only tell you the
+     numbers behind it are.

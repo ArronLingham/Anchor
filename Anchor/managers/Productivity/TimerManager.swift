@@ -453,6 +453,12 @@ class TimerManager: ObservableObject {
     }
     
     private func timeString(from seconds: TimeInterval) -> String {
+        // `Int(someDouble)` TRAPS on NaN and infinity — not an exception, a
+        // SIGTRAP that takes the app down. Live streams report a NaN duration
+        // routinely (that is what LiveStreamProgressIndicator exists for), so
+        // this is reachable from ordinary playback, not just corrupt input.
+        guard seconds.isFinite, seconds >= 0 else { return "--:--" }
+
         let totalMinutes = Int(seconds) / 60
         let remainingSeconds = Int(seconds) % 60
         let hours = totalMinutes / 60

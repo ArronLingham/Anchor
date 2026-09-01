@@ -678,11 +678,24 @@ file-system-synchronized groups. Both compile the *real* source files with
 ./tests/run_version_tests.sh      # 60  version ordering and brew outdated parsing
 ./tests/run_ddc_tests.sh          # 74  the DDC/CI wire format
 ./tests/run_shortcuts_tests.sh    # 50  Apple Shortcuts argv safety
-./tests/run_gemini_tests.sh       # 44  Gemini request/response wire format
+./tests/run_dsp_tests.sh          # 55  biquad coefficients, limiter, dB maths
+./tests/run_autoeq_tests.sh       # 30  AutoEQ profile parsing
+./tests/run_loudness_tests.sh     # 23  the leveler's gain curve and smoother
+./tests/run_crossfade_tests.sh    # 45  equal-power device crossfade
+./tests/run_todo_tests.sh         # 38  to-do ordering, including the nil-due-date case
+./tests/run_frecency_tests.sh     # 25  launcher decay, ntfy delay window
+./tests/run_sessionrecord_tests.sh # 29 Claude session JSON version tolerance
+./tests/run_batteryhistory_tests.sh # 16 battery sample coalescing and pruning
+./tests/run_netrate_tests.sh      # 12  network rate deltas and counter resets
 python3 tests/test_privacy_configuration.py
+
+# LIVE suites — these drive the running app and are NOT part of the unit run:
+./tests/run_functional_live.sh    #  5  clipboard URL cleaning, end to end
+./tests/run_runtime_stress.sh     #     hostile Defaults values (see Stress results)
+./tests/run_gemini_tests.sh       # 44  Gemini request/response wire format
 ```
 
-**710 assertions across 22 harnesses.** Every one of the later harnesses was
+**983 assertions across 30 harnesses.** Every one of the later harnesses was
 proven non-vacuous by deliberately breaking the guard it covers and checking the
 harness went red — the `ignoredNames` set in `DiskImageInstaller` is what
 happens when that step is skipped: it survived review looking like a safety
@@ -1292,6 +1305,144 @@ newline (impossible in a real name) are rejected.
 
 Verified against the 8 real shortcuts on this machine: all parse, all produce
 correct argv, none listed-but-unrunnable.
+
+### The per-app audio engine had no tests at all
+
+~1,800 lines of pure DSP ported from FineTune, untested until 2026-09-01. It is
+the worst thing in the repo to leave uncovered, because every failure is
+**audible rather than visible**: a wrong biquad coefficient is distortion, a
+missing limiter guard is clipping, a mis-parsed AutoEQ line is the wrong
+equalisation applied silently. None of it crashes, and none of it looks wrong in
+review.
+
+Four harnesses now cover it, and the useful pattern is that they test
+**properties, not values**:
+
+- `run_dsp_tests.sh` evaluates the actual frequency response `H(e^jw)` from the
+  returned coefficients and checks it against the requested gain. That is what
+  catches a bad normalisation — reading the formula does not. It also asserts
+  **pole stability across 105 frequency/gain/Q combinations**, because an
+  unstable biquad does not sound wrong, it screams.
+- `run_crossfade_tests.sh` asserts **equal power**: `primary² + secondary² == 1`
+  at every point. A linear fade instead of `cos/sin` gives 0.5 at the midpoint
+  instead of 0.707 — the "hole in the middle" you hear when a crossfade dips.
+- `run_loudness_tests.sh` sweeps 561 input levels asserting the gain never
+  exceeds `maxBoostDb`, never cuts past `maxCutDb`, and never amplifies digital
+  silence into hiss.
+- `run_autoeq_tests.sh` uses real oratory1990-format fixtures and pins the sign
+  of every gain, because a dropped minus turns a -6 dB cut into a +6 dB boost.
+
+### Finding: the loudness leveler has a hard knee at the noise floor
+
+Not fixed, deliberately. `GainComputer`'s curve is monotonic everywhere except
+**one 5.5 dB step at exactly -40 dB**, where the low-level boost cap is
+released. It is a threshold with no hysteresis, so material sitting near -40 dB
+crosses back and forth and the desired gain flaps between 0.5 dB and 6 dB — the
+same shape as an alert threshold that pumps.
+
+`GainSmoother` absorbs it: the 250 ms attack turns the step into a swell rather
+than a click, and a test asserts the smoother takes more than five hops to
+cross it. So it is a rough edge, not a defect.
+
+It was left alone because **this is ported DSP and it cannot be verified by
+listening from here**. Changing a gain curve blind is how audio gets quietly
+worse. The tests pin the current shape — one discontinuity, at the threshold,
+exactly the size of the cap being released — so anyone who soft-knees it later
+can see what the old behaviour was.
+
+### `Int(someDouble)` traps on NaN, and live streams report NaN
+
+Same class as the stats bug below, found by auditing for the pattern after it.
+`timeString(from:)` — in **both** `NotchHomeView` and `TimerManager` — did:
+
+```swift
+let totalMinutes = Int(seconds) / 60      // SIGTRAP if seconds is NaN or ±inf
+```
+
+This is not a theoretical input. A live stream reports a NaN duration as a
+matter of course — the repo has a `LiveStreamProgressIndicator` precisely
+because live content is handled — so playing one could take the app down while
+simply drawing the elapsed time. Both now guard with
+`seconds.isFinite, seconds >= 0` and render `--:--` otherwise.
+
+The audit that found it, worth re-running after adding numeric formatting:
+
+```bash
+# floating-point values converted to Int/UInt without exactly:/clamping:
+```
+
+Fifteen sites matched; **thirteen were safe** because their inputs are bounded
+(battery percentage comes from IOPS as an integer, EQ frequencies come from a
+fixed table, timer durations are user-set). Only the two `timeString` sites took
+an unbounded value. Checking where the value comes from is the whole job — the
+grep is the easy half.
+
+### A trapping conversion in the stats path, found by stress testing
+
+`SystemStatsManager.readNetworkRates` accumulated its session totals as:
+
+```swift
+sessionInBytes &+= UInt64(dIn)   // &+= is wrapping; UInt64(someDouble) TRAPS
+```
+
+The wrapping `&+=` shows overflow was thought about. The **conversion** was not:
+`UInt64(aDouble)` traps when the value does not fit, so a byte-counter delta
+large enough to exceed `UInt64.max` as a `Double` took the entire app down with
+SIGTRAP — not an exception, a hard crash.
+
+Reachable only from a garbage counter read, which is unlikely. But the same
+function already handles a counter going *backwards*, so the code's own premise
+is that these counters cannot be trusted. It now uses
+`UInt64(exactly:) ?? 0`, matching what the reset branch above it already does.
+
+`run_netrate_tests.sh` pins it: with the old line restored the harness exits
+**133** (SIGTRAP) instead of failing an assertion, which is worth knowing —
+a crashing test looks like a broken harness rather than a caught bug.
+
+### Stress results, 2026-09-01 — every feature on at once
+
+**226 boolean flags enabled simultaneously**, which no real configuration would
+be. The app survived it: one process, **zero crash reports**, 14 threads, 89 file
+descriptors, still answering AppleScript, `OSDUIHelper` still suppressed. RSS
+settled 170 -> 50 MB over thirteen minutes, which is the usual curve.
+
+| Configuration | mean | median | p90 | RSS |
+|---|---|---|---|---|
+| everything **off**, settled | 0.38% | 0.47% | 0.96% | 15.6 MB |
+| all **226 on**, settled | **2.59%** | **2.40%** | 3.36% | 49.7 MB |
+
+The median of 2.40 matters more than the mean: that is steady-state cost, not
+bursts. Nobody will run this configuration, but it bounds the total.
+
+**Hostile input, all survived with zero crashes:** 128 extreme integers
+(`INT_MIN`, -1, 0, `INT_MAX`) across 32 `Int` keys; 126 hostile strings across
+21 `String` keys (empty, whitespace-only, emoji, 500 characters, `../../etc/passwd`,
+`'; DROP TABLE --`); a 200-flip toggle storm; and type confusion (strings
+written into `Int` keys).
+
+**One A/B was thrown away and must not be quoted.** Turning the menu bar readout
+*off* appeared to make CPU six times worse (14.70% mean, RSS spiking to 125 MB).
+It was sampled 25 seconds after flipping three keys — manager churn, not steady
+state. A measurement taken during reconfiguration measures the reconfiguration.
+
+### The Bluetooth poll still polls
+
+`BluetoothAudioManager.schedulePollingTimer` is the **largest non-idle
+main-thread leaf** in a 5-second profile of the all-features-on build — 36 of
+3,952 samples, against 3,845 parked in `mach_msg2_trap`. The main thread is 97%
+idle; this is what the other 3% mostly is.
+
+It calls `IOBluetoothDevice.pairedDevices()` every **15 s idle / 3 s while a
+Bluetooth audio device is connected**. It *is* gated on `SystemActivityGate` so
+it parks on display sleep, and it has 50% timer tolerance for coalescing — so it
+is much better than the "ungated 3 s poll" this file records as fixed in Phase
+0.5. But it is still a poll, and it is not gated on any feature flag: the
+manager polls whenever it is alive, whether or not anything uses the result.
+
+Not changed. `IOBluetoothDevice` has delegate callbacks that would remove the
+poll entirely, but CLAUDE.md's own warning applies — IOBluetooth blocks on a
+main-queue semaphore during `init`, which is what deadlocked the whole app once
+before. Rewiring it needs a real Bluetooth device to test against.
 
 ### Screen Recording is stranded on the old bundle id
 

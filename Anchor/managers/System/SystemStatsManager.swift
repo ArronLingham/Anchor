@@ -232,8 +232,14 @@ final class SystemStatsManager: ObservableObject {
         // Accumulate the same deltas the rate is derived from, so the session
         // total cannot disagree with what was reported moment to moment. A
         // wrapped counter contributes 0 rather than a spurious jump.
-        sessionInBytes &+= UInt64(dIn)
-        sessionOutBytes &+= UInt64(dOut)
+        // `UInt64(someDouble)` TRAPS when the value does not fit, and the
+        // wrapping `&+=` below guards the addition but not the conversion — so
+        // a counter reading garbage large enough took the whole app down with
+        // SIGTRAP. `UInt64(exactly:)` returns nil instead, and a delta that
+        // cannot be represented contributes nothing, which is the same thing
+        // the reset case above already does.
+        sessionInBytes &+= UInt64(exactly: dIn.rounded(.down)) ?? 0
+        sessionOutBytes &+= UInt64(exactly: dOut.rounded(.down)) ?? 0
 
         return (dIn / seconds, dOut / seconds)
     }
