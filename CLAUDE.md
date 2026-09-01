@@ -50,7 +50,7 @@ theirs to grant, and none should be built without asking first.
 
 | Feature | Blocker |
 |---|---|
-| Per-app **EQ** | Would need a filter chain in the same real-time path per-app volume now uses. The path exists; nobody has written the DSP. |
+| ~~Per-app **EQ**~~ | **Built** — `Audio/PerApp/`, ported from FineTune. This row was stale. |
 | Face ID / proximity unlock | Needs the privileged-helper story settled, and only an *Apple Development* identity exists here — no Developer ID Application. |
 | Notification mirroring | Full Disk Access. |
 
@@ -61,7 +61,7 @@ private aggregate device combining that tap with the real output, and an IOProc
 that scales what it reads is the whole mechanism, and it needs only the
 **audio-capture** grant — the same one the existing mute path already uses.
 Vorssaint ships exactly this. It is now implemented in
-`audio/PerAppVolumeEngine.swift`. The lesson is the one this file keeps
+`Audio/PerApp/` (the FineTune-derived engine). The lesson is the one this file keeps
 re-learning: a "needs admin/entitlement" claim is worth re-checking against an
 app that actually does the thing.
 
@@ -93,8 +93,8 @@ do not let that graph follow it in.
   `ps -o state= -p $(pgrep -x OSDUIHelper)` should print `T`.
 
 - ~93 `static let shared` singletons; no central store.
-- ~350 `Defaults` keys in `models/Constants.swift:833+` — the de-facto feature-flag registry. Flip switches before deleting code.
-- `ContentView.swift` (1,887 lines) observes 12 `ObservableObject`s and ~34
+- ~350 `Defaults` keys in `Models/Models/Constants.swift:833+` — the de-facto feature-flag registry. Flip switches before deleting code.
+- `ContentView.swift` observes **14** `ObservableObject`s and ~34
   `@Default` keys. **`@ObservedObject` has no per-property granularity** — any
   `objectWillChange` from any of them re-renders the whole view, even for
   properties this view never reads. Split it before adding to it.
@@ -153,22 +153,22 @@ do not let that graph follow it in.
   To-Do and Daily Commit on the day they were written, and `claudeUsage`, which
   had never been reachable at all since the usage watcher shipped. There is now
   an `assert` in `availableTabs` naming any case that is missing.
-- **Settings panes are one file each** under `components/Settings/`.
-  `SettingsView.swift` is now the shell — the two tab enums,
+- **Settings panes are one file each** under `Components/Settings/`.
+  `Components/Settings/SettingsView.swift` is now the shell — the two tab enums,
   `SettingsHighlightCoordinator`, the search/highlight plumbing, `SettingsForm`
   and the container. It was 7,784 lines holding eighteen panes; it is 1,062.
   Add a new pane as its own file and register it in `SettingsTab`, and add it to
   `UISnapshotHarness.settingsPanes` so it is covered by the render sweep.
-- `StatsManager.swift:514-548` is the one good throttling pattern in the repo. Copy it.
-- **A `Defaults` key referenced only inside `components/Settings/` is a dead
+- `Managers/System/SystemStatsManager.swift` is the one good throttling pattern in the repo — reference-counted `acquire()`/`release()` so nothing samples unless a view is watching. Copy it. (This entry used to name `StatsManager.swift:514-548`; that file no longer exists and the line numbers were stale long before it went.)
+- **A `Defaults` key referenced only inside `Components/Settings/` is a dead
   switch.** This repo produces them steadily — Phase 1 alone left several
   behind. The audit that finds them:
   ```bash
   # keys whose only references live in the settings panes
-  grep -oE 'static let [a-zA-Z0-9_]+ = Key<' Anchor/models/Constants.swift |
+  grep -oE 'static let [a-zA-Z0-9_]+ = Key<' Anchor/Models/Models/Constants.swift |
     awk '{print $3}' | while read -r k; do
-      refs=$(grep -rln "\.$k\b" Anchor --include='*.swift' | grep -v models/Constants.swift)
-      # NB: excluding Constants.swift hides keys used by the migration code
+      refs=$(grep -rln "\.$k\b" Anchor --include='*.swift' | Models/Models/Constants.swift)
+      # NB: excluding Models/Constants.swift hides keys used by the migration code
       # *inside* it. Ten of thirteen "orphans" found that way were false —
       # only the build caught it. Grep for `\.$k` without the exclusion too.
       [ -n "$refs" ] && [ -z "$(echo "$refs" | grep -v components/Settings/)" ] && echo "$k"
@@ -414,7 +414,7 @@ exits before any manager starts — it returns early from
 the variable is set. **Debug only**, deliberately: it renders the settings pane
 that displays the ntfy topic read from the Keychain, so in a Release build
 anyone could `open -n /Applications/Anchor.app --env ANCHOR_RENDER_UI=/tmp/x`
-and read the topic out of a PNG. See `helpers/UISnapshotHarness.swift`.
+and read the topic out of a PNG. See `Helpers/UISnapshotHarness.swift`.
 
 - Do **not** use `ImageRenderer` — it draws AppKit-backed controls as a yellow
   placeholder (`TextField`) and never materialises lazy containers, so the app
@@ -441,6 +441,67 @@ and read the topic out of a PNG. See `helpers/UISnapshotHarness.swift`.
   kill landed. Count the PNGs and check for both appearances before reading
   anything into a missing pane.
 
+## Source layout
+
+Reorganised 2026-09-01. The Xcode project uses **file-system-synchronized root
+groups**, so the folder tree *is* the project structure — moving a file on disk
+is all that is needed, and there is no `.pbxproj` surgery to do. There is
+exactly one explicit `.swift` file reference left in the whole project file.
+
+```
+Anchor/
+  AnchorApp.swift            app entry point, manager start-up
+  ContentView.swift          the notch itself
+  AnchorViewCoordinator.swift  notch state, tabs, sneak peeks
+  Managers/                  all behaviour, grouped by feature
+    Audio/                    7 files
+    Battery/                  3 files
+    ClaudeUsage/              5 files
+    Clipboard/                3 files
+    Dictation/                4 files
+    Display/                  8 files
+    Gemini/                   3 files
+    HUD/                      6 files
+    Input/                    6 files
+    Launcher/                 8 files
+    LockScreen/               9 files
+    Media/                    8 files
+    Productivity/            12 files
+    System/                  13 files
+    Tools/                   10 files
+  Components/                all SwiftUI views
+    Battery/                  2 files
+    Calendar/                 2 files
+    Clipboard/                3 files
+    Downloads/                2 files
+    Launcher/                 5 files
+    Live activities/         13 files
+    LockScreen/              10 files
+    Music/                    6 files
+    Notch/                   17 files
+    OSD/                      4 files
+    Onboarding/               7 files
+    Settings/                41 files
+    Tabs/                     2 files
+    Timer/                    5 files
+    UI/                       2 files
+    Vinyl/                    2 files
+  Animations/                 2 files
+  Audio/                     50 files
+  Enums/                      2 files
+  Extensions/                12 files
+  Helpers/                   22 files
+  MediaControllers/           9 files
+  Models/                    18 files
+```
+
+Three rules the layout follows, so it does not silt up again:
+
+- **No directory holds one file.** Eleven did before this pass (`strings/`, `sizing/`, `services/`, `private/`, `observers/`, `Shortcuts/`, `Providers/`, and three one-file `components/` folders whose contents were all live activities). A single-file folder is a decision someone deferred.
+- **One name per idea.** `helpers/` and `utils/` were the same thing under two names; `utils/` is gone.
+- **PascalCase throughout.** It was half `managers/` and half `MediaControllers/`.
+
+`Managers/` held **84 files at its top level** before this. It is the directory most likely to become a dumping ground again — put a new manager in the feature folder it belongs to, or add a folder if it genuinely starts a new area.
 ## Naming
 
 The app is **Anchor** throughout: `/Applications/Anchor.app`, bundle id
@@ -468,7 +529,7 @@ Three things keep upstream's name on purpose:
   settings text interpolates the constant rather than hardcoding a name,
   because a cleanup pass here did rename the prose and left it describing a
   folder that does not exist.
-- **`utils/Logger`'s subsystem must match the diagnostic collector's
+- **`Helpers/Logger`'s subsystem must match the diagnostic collector's
   predicate.** It did not: the logger published under `com.ebullioscopic.Atoll`
   while `collectDiagnostics` filtered on `com.arronlingham.Anchor`, so the
   app's own log lines were never collected. Same mismatch as the crash-log
@@ -597,13 +658,40 @@ file-system-synchronized groups. Both compile the *real* source files with
 `swiftc`, so they cannot drift from the implementation.
 
 ```bash
-./tests/run_parser_tests.sh     # 19 cases over the banner wordings
-./tests/run_watcher_tests.sh    # 7 cases, real FSEventStream over a temp dir
-./tests/run_launcher_tests.sh   # 25 cases over fuzzy matching and the calculator
-./tests/run_color_tests.sh      # 24 cases over the eight clipboard colour formats
-./tests/run_gitcommit_tests.sh  # 16 cases over the git contract the daily commit relies on
+./tests/run_parser_tests.sh       # 19  banner wordings
+./tests/run_watcher_tests.sh      #  7  real FSEventStream over a temp dir
+./tests/run_launcher_tests.sh     # 25  fuzzy matching and the calculator
+./tests/run_color_tests.sh        # 24  the eight clipboard colour formats
+./tests/run_gitcommit_tests.sh    # 16  the git contract the daily commit relies on
+./tests/run_urlclean_tests.sh     # 19  tracking-parameter stripping
+./tests/run_snippet_tests.sh      # 18  trigger matching and placeholders
+./tests/run_uninstaller_tests.sh  # 16  which files belong to an app
+./tests/run_snapzone_tests.sh     # 68  the 16 zone geometries
+./tests/run_debounce_tests.sh     # 17  keyboard chatter filtering
+./tests/run_focusfollow_tests.sh  # 18  when to raise the window under the pointer
+./tests/run_audiodevice_tests.sh  # 27  output cycling and mic-pin loop guards
+./tests/run_applifecycle_tests.sh # 33  when it is safe to quit someone else's app
+./tests/run_alert_tests.sh        # 26  threshold hysteresis and latching
+./tests/run_menubar_tests.sh      # 28  fixed-width readout formatting
+./tests/run_dmg_tests.sh          # 29  what a mounted volume is offering
+./tests/run_cleanup_tests.sh      # 92  what the cleaner may and may not touch
+./tests/run_version_tests.sh      # 60  version ordering and brew outdated parsing
+./tests/run_ddc_tests.sh          # 74  the DDC/CI wire format
+./tests/run_shortcuts_tests.sh    # 50  Apple Shortcuts argv safety
+./tests/run_gemini_tests.sh       # 44  Gemini request/response wire format
 python3 tests/test_privacy_configuration.py
 ```
+
+**710 assertions across 22 harnesses.** Every one of the later harnesses was
+proven non-vacuous by deliberately breaking the guard it covers and checking the
+harness went red — the `ignoredNames` set in `DiskImageInstaller` is what
+happens when that step is skipped: it survived review looking like a safety
+check while being provably inert.
+
+Three harnesses pin behaviour that was **measured rather than assumed**, and
+each records where the value came from: `run_dmg_tests.sh` (volume properties
+of a real mounted image), `run_audiodevice_tests.sh` (a real device UID) and
+`run_gitcommit_tests.sh` (real repositories in real states).
 
 `run_launcher_tests.sh` pins the behaviours this file records as having been
 wrong: that `ss` ranks *System Settings* above *Chess* (the greedy-vs-DP bug),
@@ -640,7 +728,7 @@ an allowed client — that is only a warning and the binary runs.
 body in a `@main struct` for this reason; a file of bare `check(...)` calls
 fails to compile with "expressions are not allowed at the top level".
 
-`tests/support/LoggerStub.swift` stands in for `utils/Logger.swift`, which drags
+`tests/support/LoggerStub.swift` stands in for `Helpers/Logger.swift`, which drags
 in SwiftUI and the `Defaults` package for a log level the tests do not need.
 
 **Build fixtures the way Claude Code writes them, not the way Foundation does.**
@@ -679,11 +767,11 @@ Hold **Cmd+Shift+D**, speak, release → transcript pastes into the focused app.
 
 | File | Role |
 |---|---|
-| `managers/Dictation/SpeechTranscribing.swift` | Backend protocol — swap engines here |
-| `managers/Dictation/AppleSpeechTranscriber.swift` | macOS 26 `SpeechAnalyzer` impl |
-| `managers/Dictation/DictationManager.swift` | `AVAudioEngine` capture, state machine |
-| `managers/Dictation/TextInjector.swift` | Pasteboard + synthesized ⌘V |
-| `components/Live activities/DictationLiveActivity.swift` | Notch UI |
+| `Managers/Dictation/SpeechTranscribing.swift` | Backend protocol — swap engines here |
+| `Managers/Dictation/AppleSpeechTranscriber.swift` | macOS 26 `SpeechAnalyzer` impl |
+| `Managers/Dictation/DictationManager.swift` | `AVAudioEngine` capture, state machine |
+| `Managers/Dictation/TextInjector.swift` | Pasteboard + synthesized ⌘V |
+| `Components/Live activities/DictationLiveActivity.swift` | Notch UI |
 
 - **Deployment target is now macOS 26.0** (was 14.6) — `SpeechAnalyzer` requires it.
 - Requires **Microphone** and **Accessibility** grants. Without Accessibility, `CGEvent.post` is silently dropped and nothing pastes.
@@ -696,14 +784,14 @@ Hold **Cmd+Shift+D**, speak, release → transcript pastes into the focused app.
 
 | File | Role |
 |---|---|
-| `managers/Launcher/FuzzyMatcher.swift` | DP best-alignment scoring + acronym bonus |
-| `managers/Launcher/AppIndex.swift` | Directory scan, ranking, launching |
-| `managers/Launcher/AppIconCache.swift` | Memory + on-disk icon cache |
-| `managers/Launcher/LaunchHistory.swift` | Frecency, 10-day half-life |
-| `components/Launcher/LauncherPanel.swift` | Non-activating `NSPanel` |
-| `components/Launcher/LauncherView.swift` | Search field, switches grid/list/calc |
-| `components/Launcher/LauncherGridView.swift` | Paged 7x4 Launchpad-style grid |
-| `managers/Launcher/CalculatorAction.swift` | Inline arithmetic |
+| `Managers/Launcher/FuzzyMatcher.swift` | DP best-alignment scoring + acronym bonus |
+| `Managers/Launcher/AppIndex.swift` | Directory scan, ranking, launching |
+| `Managers/Launcher/AppIconCache.swift` | Memory + on-disk icon cache |
+| `Managers/Launcher/LaunchHistory.swift` | Frecency, 10-day half-life |
+| `Components/Launcher/LauncherPanel.swift` | Non-activating `NSPanel` |
+| `Components/Launcher/LauncherView.swift` | Search field, switches grid/list/calc |
+| `Components/Launcher/LauncherGridView.swift` | Paged 7x4 Launchpad-style grid |
+| `Managers/Launcher/CalculatorAction.swift` | Inline arithmetic |
 
 - **Safari lives in a cryptex.** `/Applications/Safari.app` is a symlink and
   `contentsOfDirectory` does not return it, so `/System/Cryptexes/App/System/Applications`
@@ -748,13 +836,13 @@ Seven asks from the app-parity list. All default **off**.
 
 | Feature | Where | Replaces |
 |---|---|---|
-| Keep-awake triggers | `managers/CaffeinateManager.swift` | Amphetamine |
-| To-do list | `managers/TodoManager.swift`, `models/TodoItem.swift` | — |
-| Daily git commit | `managers/GitCommitManager.swift` | — |
-| Ring app switcher | `managers/AppSwitcherManager.swift`, `components/Launcher/AppSwitcher*.swift` | Launchy |
-| Menu bar shrinker | `managers/MenuBarShrinkManager.swift` | Ice |
-| Vinyl desktop widget | `managers/VinylWidgetWindowManager.swift`, `components/Vinyl/` | VinylPod |
-| Per-app volume | `audio/PerAppVolumeEngine.swift` | Fine Tune |
+| ~~Keep-awake triggers~~ | **Removed** in `d4d0228` ("drop keep-awake"). `CaffeinateManager.swift` no longer exists; this row was stale. Sapphire still has it. | Amphetamine |
+| To-do list | `Managers/Productivity/TodoManager.swift`, `Models/TodoItem.swift` | — |
+| Daily git commit | `Managers/Productivity/GitCommitManager.swift` | — |
+| Ring app switcher | `Managers/Input/AppSwitcherManager.swift`, `Components/Launcher/AppSwitcher*.swift` | Launchy |
+| Menu bar shrinker | `Managers/System/MenuBarShrinkManager.swift` | Ice |
+| Vinyl desktop widget | `Managers/Media/VinylWidgetWindowManager.swift`, `Components/Vinyl/` | VinylPod |
+| Per-app volume | `Audio/PerApp/` (the FineTune-derived engine) | Fine Tune |
 
 - **The menu bar shrinker uses no API for hiding other apps' items, because
   there is none.** The menu bar lays out right to left, so a status item that
@@ -827,15 +915,438 @@ Verifying these cost several hours of blind alleys, all from one cause.
   headless Debug instance timed out. When something looks broken in a headless
   Debug run, reproduce it in a Release instance before believing it.
 
+## Features added 2026-08-31
+
+Five waves, all defaulting **off**. Each has a test harness whose guards were
+proven non-vacuous by deliberately breaking them first.
+
+| Feature | Where | Harness |
+|---|---|---|
+| Output cycling, mic pin, mute-all-mics | `Managers/Audio/AudioDeviceToolsManager.swift` | `run_audiodevice_tests.sh` (27) |
+| Quit on last window close, media auto-launch block | `Managers/Tools/AppLifecycleManager.swift` | `run_applifecycle_tests.sh` (33) |
+| Battery / disk / sustained-CPU alerts | `Managers/System/SystemAlertManager.swift` | `run_alert_tests.sh` (26) |
+| Menu bar CPU / RAM / network readout | `Managers/System/MenuBarReadoutManager.swift` | `run_menubar_tests.sh` (28) |
+| Disk image installer | `Managers/Tools/DiskImageInstaller.swift` | `run_dmg_tests.sh` (29) |
+
+### A DMG reports `isInternal == true`, and the unit tests agreed with the bug
+
+`DiskImageContents.isDiskImage` first tested `isRemovable && !isInternal`, which
+is what "disk image" sounds like it should mean. A real mounted DMG on this
+machine reports:
+
+| | removable | internal | ejectable | rootFS | DA protocol |
+|---|---|---|---|---|---|
+| mounted DMG | true | **true** | true | false | `Virtual Interface` |
+| startup disk | false | true | false | true | `Apple Fabric` |
+
+So the gate returned false for every disk image and **the feature could never
+once have fired**. The unit tests passed throughout, because they encoded the
+same assumption the code did — a pure test cannot catch a wrong belief about
+the world, only a wrong transformation of it. Nothing but `hdiutil create` and
+an actual mount found it.
+
+Two things changed as a result, and both are the general lesson:
+
+- The tests now carry the measured values with a `MEASURED:` comment naming
+  where each came from, plus an explicit regression case
+  (`internal=true is not disqualifying`) that fails if anyone reintroduces the
+  term.
+- The protocol string is a **refinement, not the gate**. `Virtual Interface` is
+  undocumented, so it is used only to *reject* known-physical buses (USB, SATA,
+  Thunderbolt…). If Apple renames it, the feature degrades to occasionally
+  offering on a USB stick rather than silently going dead again. Choose the
+  failure direction deliberately when depending on an undocumented value.
+
+Note also that `diskutil` **displays** `Disk Image` where DiskArbitration
+reports `Virtual Interface`; do not grep for the string diskutil shows you.
+
+### A guard that no negative control can break is not a guard
+
+`DiskImageContents` also had an `ignoredNames` set skipping `Applications`,
+`.background`, `.DS_Store` and so on. Deleting it entirely changed **no test
+result**, because every name in it already fails the `.app` suffix check. It
+was dead code wearing the costume of a safety check, and it is gone. Run the
+control before believing a guard does something:
+
+```bash
+# delete the guard, run the harness. If it still passes, the guard is inert.
+```
+
+The two filters that remain are both load-bearing, verified the same way — and
+the symlink one genuinely matters, because most DMGs ship an `Applications`
+alias next to the app and copying *that* into `/Applications` would be a
+catastrophe.
+
+### The features shipped unreachable, twice
+
+Key debounce (wave 10) and focus-follows-mouse (wave 11) were built, tested,
+installed and reported done while having **no settings UI at all**. Their
+`Defaults` keys were referenced only by their own managers, so there was no way
+for a user to switch either on. This is the mirror image of the dead-switch trap
+already documented above — a key referenced *only* by its manager is just as
+broken as one referenced only by its pane, and the existing audit did not look
+for it.
+
+The audit that finds both, and which now also checks the manager is actually
+started:
+
+```bash
+# for each key: is it read outside Settings? exposed in Settings? manager started?
+# read:0 -> nothing consumes it.  ui:0 -> the user cannot reach it.
+```
+
+Beware two known false positives on the "started" column: `SystemStatsManager`
+is reference-counted (`acquire`/`release`) and `SnapZoneManager` self-starts
+from its own `init` via `_ = SnapZoneManager.shared`. Neither has, or needs, a
+`start()`.
+
+Restructuring the panes to fix this also turned up two live UI defects that the
+render sweep shows and no build catches: three unrelated features (scroll
+inversion, side buttons, snippets) had accreted under a single **"Window
+snapping"** header, and `SettingsSnippets` rendered *two* headed sections for
+one feature — a toggle under "Text snippets" and a list under "Snippets" — with
+the list offered even while the feature was off, so snippets could be written
+that silently never fired.
+
+### Two features shipped posting notifications nothing observed
+
+`AudioDeviceToolsManager` and `SystemAlertManager` each ended their work by
+posting a `Notification.Name` — `.anchorAudioDeviceChanged` and
+`.anchorSystemAlert` — that **no part of the app listened for**. The detection
+logic was right, the tests were green, `enableAudioDeviceHUD` defaulted to
+*true*, and every alert the manager correctly raised went nowhere at all.
+
+This is the publisher-side twin of the dead-switch trap, and the audit that
+finds it is one line:
+
+```bash
+# for each posted Notification.Name: is there a matching addObserver / publisher(for:)?
+```
+
+Both were fixed by routing to surfaces that already render:
+
+- **Mic mute** now calls `toggleSneakPeek(type: .mic, value: muted ? 0 : 1)`.
+  `.mic` is one of the eight types `InlineHUD` actually handles, and it already
+  draws a mic glyph that gains a slash at `value <= 0`. Adding a *new*
+  `SneakContentType` case would have been worse than the bug — an unhandled
+  type wins the branch and then draws nothing, which this file already records.
+- **Alerts** got `SystemAlertLiveActivity`, following `EyeBreakLiveActivity`
+  exactly: the manager publishes `visibleAlert`, the view draws it, and
+  `ContentView` picks it in the closed-notch chain below the eye break (a
+  twenty-second ask that must not queue) and above the usage countdown (which
+  sits for hours).
+
+**The output-device HUD was deliberately not built**, and the setting no longer
+claims it. `InlineHUD.Type2Name` derives its label from the sneak-peek *type*,
+ignoring the `title:` passed to `toggleSneakPeek` — `.bluetoothAudio` hardcodes
+`BluetoothAudioManager.shared.lastConnectedDevice?.name ?? "Bluetooth"`, so a
+wired output would announce itself as "Bluetooth". Switching output is audible,
+which is the feedback that matters; a settings row promising a HUD that never
+appears is the exact failure this section is about.
+
+### The menu bar readout is fixed-width on purpose
+
+`MenuBarReadoutFormatter` pads everything: `  5%` and `100%` are both four
+characters, every rate is five. The menu bar is shared, so a readout that grows
+by a character when CPU crosses 10% shoves every icon to its left, once a
+second, for as long as the feature is on. The font is
+`monospacedDigitSystemFont` for the same reason — a proportional `1` is
+narrower than a `0`, so even fixed *character counts* jitter without it. The
+harness asserts character counts and whole-line widths, not just values.
+
+Verified live via the accessibility API rather than a screenshot, since status
+items never appear in `CGWindowListCopyWindowInfo`:
+
+```bash
+# AXExtrasMenuBar on the app element lists the status items and their titles
+```
+
+which read `CPU  41%  ↓   4K ↑   8K` against real load.
+
+### `kAXUIElementDestroyedNotification` on an app element is not "window closed"
+
+`AppLifecycleManager` watches for a window closing so it can quit the app. The
+obvious observer — `kAXUIElementDestroyedNotification` on the *application*
+element — fires for **every** destroyed accessibility element in that process:
+menu items, buttons, sheets, popovers. Closing one window can produce dozens of
+callbacks, and the first version scheduled its own deferred AX window-count
+query from each one.
+
+It now coalesces to one check per app per burst (`pendingCheck`), which is
+sufficient because the check reads the live window list rather than counting
+events. The cost only exists while quit-on-close is enabled, which is off by
+default.
+
+Two other things in that manager are worth not re-deriving:
+
+- The refcon handed to `AXObserverAddNotification` is a manually allocated
+  `UnsafeMutablePointer<pid_t>` and **cannot be freed while the observer is
+  alive** — AX dereferences it on every callback. They are held in `refcons`
+  and released alongside their observer, after the run loop source is removed.
+  Freeing before that races a callback already in flight.
+- `for pid in observers.keys { removeObserver(for: pid) }` mutates the
+  dictionary it is iterating, which is undefined behaviour. It snapshots with
+  `Array(observers.keys)` now.
+
+### Alerts latch, and that is the whole feature
+
+`AlertThreshold` is not `value < threshold`. A battery sitting at 20% crosses
+back and forth on every sample, and a bare comparison notifies each time.
+Hysteresis (recover past a margin, not merely back across), latching (an active
+alert does not re-fire) and a re-arm interval are all pinned, including an
+end-to-end case asserting that ten samples oscillating 19–21% produce exactly
+**one** alert. Sustained-CPU is gated separately so a build or a page load —
+100% for a minute — never reaches the threshold rule at all.
+
+### Microphone and output devices
+
+- Store input devices by **UID, not `AudioDeviceID`**. IDs are assigned per boot
+  and per connection, so a stored ID points at a different device, or nothing,
+  after exactly the reconnect this feature exists to survive. Verified: the
+  built-in mic's UID is the stable `BuiltInMicrophoneDevice`.
+- The pin decision has a settle window because re-asserting in response to the
+  change notification *our own assertion caused* is an infinite loop against the
+  HAL, plus a burst cap for a device that refuses to stay selected.
+- `muteAllInputs` mutes **every** input, not the default one — a call app can
+  hold a non-default device, and a "mute all microphones" that leaves one live
+  is worse than not offering it. It records prior mute state and restores it,
+  so a device the user had muted themselves stays muted. It reports failure
+  rather than claiming success when no device exposes a mute property.
+- Round-trip verified on real hardware: `false → true → false`.
+
+### The cleaner is an allowlist, and never empties the Trash
+
+`CleanupManager` reclaims space from eight named locations. Two rules make it
+safe enough to ship, and both are pinned by 92 assertions with five negative
+controls:
+
+- **It never scans.** Every location is an explicit `CleanupCategory` case. A
+  heuristic that decides what "looks like" a cache is wrong once and has then
+  deleted someone's work. `CleanupSafety.isForbidden` is a second layer:
+  anything outside the home directory, and `Desktop`/`Documents`/`Downloads`/
+  `Pictures`/`Movies`/`Music`/`Public`/`Applications` inside it, is refused
+  whatever a category resolves to.
+- **Everything goes to the Trash**, via `trashItem`, exactly as
+  `AppUninstaller` does. **Emptying the Trash is deliberately not offered** —
+  it is the one irreversible step, and a cleaner that also emptied the Trash
+  would quietly destroy the undo the rest of the design depends on. `~/.Trash`
+  is explicitly in `isForbidden` so no future category can reach it.
+
+The defaults are the cheap choices only: logs, crash reports and simulator
+caches. Application caches (some apps sign you out), Xcode derived data (your
+next build of every project becomes a full build), device support, npm and
+Homebrew all start **unticked**, and every row states its consequence in the
+UI — "caches" sounds free and several of these are not. A negative control
+asserts derived data is not default-selected, because that is the one most
+likely to be flipped by someone tidying the code.
+
+It removes directory *contents*, not the directories: deleting
+`~/Library/Caches` itself makes macOS and several apps recreate it, and some
+handle that badly.
+
+Sizes are decimal (Finder's convention), so they read higher than `du -sh`,
+which is binary — 191.9 MB here is 183 MiB there. Verified against `du` on four
+real directories.
+
+### External display brightness needs DDC — DisplayServices will not do it
+
+Measured on this machine, not assumed:
+
+| | `DisplayServicesGetBrightness` |
+|---|---|
+| built-in panel | status **0**, value readable |
+| attached external (EK271 GD) | status **1000** |
+
+So `DisplayServicesDynamic` covers the built-in screen and nothing else, and an
+external display genuinely needs DDC/CI over `IOAVService` —
+`IOAVServiceCreateWithService`, `ReadI2C` and `WriteI2C` are all present, with a
+`DCPAVServiceProxy` node per display whose `Location` is `Embedded` or
+`External`. That is the same path MonitorControl and Lunar use.
+
+**Also measured: `DisplayServicesGetContrast` and `DisplayServicesSetContrast`
+do not exist.** `dlsym` returns nil for both, so the contrast members of
+`DisplayServicesDynamic` can never do anything on this OS.
+
+**This machine's monitor does not answer DDC.** Twelve read attempts across
+three timing profiles all returned the null message `6E 80 BE`. That is normal:
+DDC/CI is frequently switched off in a monitor's own OSD menu and rarely
+survives a hub or adapter. The consequence for the design is the important
+part — **a display that does not answer a read is never written to**. Without a
+working read there is no way to restore the previous brightness, so a blind
+write would change someone's monitor with nothing able to put it back.
+
+`DDCPacket` is pure and carries 74 assertions, including the real null reply
+from this monitor verbatim. Two things it pins that are easy to get wrong:
+
+- The value is **big-endian across two bytes**. Sending only the low byte works
+  for every value under 256 and then silently fails on a monitor whose range
+  goes to 1000 or 65535.
+- A reply must be checked against the VCP code that was *asked for*. Monitors
+  answer late, and a stale reply for a different code otherwise parses as a
+  plausible brightness.
+
+**A guard no negative control can break is not a guard — again.** The
+`reply[1] != 0x80` null-message check turned out to be redundant: a real null
+message carries its checksum in the opcode position, so the opcode guard
+already rejects it, and removing the length check left every test green. It was
+kept, but the comment now says what it actually does and a crafted case was
+added so it is exercised. This is the second time this pattern appeared in one
+session — run the control before believing a guard does anything.
+
+### Camera mirror — "nothing is recorded" is structural, not a promise
+
+The permission dialog tells the user nothing is recorded, so that has to be
+true by construction. `CameraMirrorManager`'s session has **no output of any
+kind attached** — no `AVCaptureMovieFileOutput`, no photo output, no
+`AVCaptureVideoDataOutput`, no sample-buffer delegate. Its only consumer is an
+`AVCaptureVideoPreviewLayer`, which draws frames and keeps none. There is
+therefore no code path by which a frame could be written anywhere.
+
+`test_camera_mirror_has_no_recording_path` pins that by scanning the source
+with comments stripped — the class documents the APIs it deliberately does not
+use, and matching those would make the test pass for the wrong reason. A
+negative control adding an `AVCaptureMovieFileOutput` fails it.
+
+The session is **built on appear and torn down on disappear**, not paused. The
+green camera indicator is lit for exactly as long as the preview is visible and
+never otherwise, which is the only honest behaviour for a camera feature. This
+is the `AudioTap` pattern: nothing exists while the feature is off.
+
+The preview is horizontally flipped by default, because a mirror in which
+raising your right hand raises the image's left hand is not a mirror.
+
+### Gemini — the key is not in the URL, and the model cannot act
+
+Two decisions worth not re-deriving:
+
+- **The API key travels in the `x-goog-api-key` header**, not as `?key=…`.
+  Google's own examples use the query parameter, and copying that puts a
+  billable credential into every proxy log, crash report and `nettop` line. A
+  test asserts the endpoint has no query string at all.
+- **The key lives in the Keychain** (`com.arronlingham.Anchor.gemini` /
+  `apiKey`), never in `Defaults` — same reasoning as the ntfy topic, and the
+  settings field is a `SecureField` because `ANCHOR_RENDER_UI` renders every
+  pane to a PNG. The conversation history *is* in `Defaults`, which is fine: it
+  is the user's own words, not a secret.
+
+**Trimmed history must never begin with a `model` turn.** Gemini rejects that
+with a 400, so a naive "keep the last N" fails on roughly half of all cut
+points — intermittently, which is the worst way for it to fail.
+`GeminiProtocol.trimmed` drops a leading model turn, and the test asserts the
+property at *every* limit from 1 to the conversation length.
+
+**Tool execution and screen awareness are deliberately not built**, and the
+settings pane says so rather than quietly omitting them:
+
+- *Screen awareness* needs Screen Recording, which is not granted to this
+  bundle id (see the TCC note below).
+- *Tool execution / computer use* turns model output into actions on the
+  machine, which means anything the assistant reads can steer it. The parse
+  path here cannot cause an action at all — replies are appended as text and
+  rendered as text, never matched against a command table. If tool use is
+  wanted, it needs **per-action confirmation rather than autonomy**, and that
+  is a design decision, not a missing afternoon.
+
+### Sapphire audit — 22 of 29, and what the remaining seven are blocked on
+
+Done against Sapphire's own feature list, verified by grep rather than memory.
+**Present: 19.** Notch shapes, live activities, widgets, theming, HUD overlays,
+snap zones, file shelf, clipboard history, quick notes, per-app volume + EQ, now
+playing, system stats, battery monitoring, lock screen widgets, Bluetooth
+manager, notification mirroring, weather, calendar/reminders, eye break.
+
+**Absent: 10**, and the reasons differ in kind — worth keeping straight:
+
+| Missing | Why |
+|---|---|
+| ~~Camera mirror~~ | **Built 2026-09-01** — restored at the user's request; entitlement back to `YES`, privacy test reversed. |
+| Caffeinate | **The user dropped it** in `d4d0228`. Trivial to restore if wanted. |
+| Lid-angle automation | **No sensor on this hardware.** `ioreg -c AppleHIDLidAngle` returns nothing on `Mac14,2`. |
+| Face ID engine | Needs a Developer ID identity and the privileged-helper story; also needs the camera entitlement the user turned off. |
+| Bluetooth proximity unlock | Same blocker family as Face ID. |
+| Nearby Share (NearDrop) | Buildable — reimplementing Google's Nearby protocol. Large, and unverifiable without an Android device. |
+| Sports scores | Buildable; needs a live sports API and a key. |
+| Finance / stocks | Buildable; needs a market data API. |
+| ~~Gemini Live agent~~ | **Built 2026-09-01** — chat, memory and Keychain key. Tool use and screen awareness deliberately excluded; see below. |
+| ~~Shortcuts launcher~~ | **Built** — see below. |
+
+Note the distinction that matters when re-reading this: three of the ten are
+**decisions already made** (camera, caffeinate, and the entitlement behind Face
+ID), one is **hardware** (no lid sensor), and only the rest are unbuilt work.
+
+### Apple Shortcuts run through argv, and must never be "sanitised"
+
+`ShortcutsCatalog.isRunnable` is deliberately permissive: it accepts `;`,
+`$(…)`, backticks, quotes and `rm -rf /` as shortcut names. That looks wrong and
+is not. The name is handed to `Process.arguments` as **one argv element**, so
+there is no shell to escape for and those characters are inert — while
+stripping them would break a shortcut the user genuinely named `Backup; now`.
+
+The real defence is the absence of a shell, and the test that protects it
+asserts a name full of shell syntax stays a **single** argv element. A negative
+control that split on whitespace produced
+`["run", "Backup;", "rm", "-rf", "/", "#now"]`, which is exactly the shape that
+would matter if a shell were ever reintroduced. Only an empty name, a
+whitespace-only name, an embedded NUL (truncates the argument) and an embedded
+newline (impossible in a real name) are rejected.
+
+Verified against the 8 real shortcuts on this machine: all parse, all produce
+correct argv, none listed-but-unrunnable.
+
+### Screen Recording is stranded on the old bundle id
+
+`kTCCServiceScreenCapture` has **no entry at all** for
+`com.arronlingham.Anchor`, so `CGPreflightScreenCaptureAccess()` returns false
+and the wave-6 capture / OCR / QR code has never captured a pixel. The reason is
+not that anyone refused it. The system TCC database still holds:
+
+```
+com.Ebullioscopic.Atoll  | 2   (granted)
+com.arronlingham.Anchor  | (absent)
+```
+
+The grant was made before the rename and is keyed to the dead identifier, which
+is exactly the consequence the Install/signing section already warns about for
+settings. Fix is one line of user action — add Anchor under System Settings ›
+Privacy & Security › Screen Recording — but **nothing built on capture can be
+verified until then**, which is why window thumbnails and Dock Preview are not
+built rather than built-and-untested.
+
+Check it without triggering a prompt:
+
+```bash
+# CGPreflightScreenCaptureAccess() — never prompts. CGRequest… does.
+```
+
+### Two shortcuts had handlers and no way to bind them
+
+`pickColor` and `togglePinNotch` had working `onKeyDown` handlers in
+`AnchorApp` and **no `KeyboardShortcuts.Recorder` row anywhere**, so neither
+could ever be triggered. Same family as the sidebar and dead-switch traps: the
+feature is complete, the wiring is complete, and the user has no route in.
+
+The audit is cheap and worth running after adding any shortcut — note that the
+fourteen `snap*` names are a **false positive**, because they are bound in a
+loop (`for (name, zone) in snapBindings`) so `for: .snapLeft)` never appears
+literally:
+
+```bash
+# for each Self("…") in ShortcutConstants: is there a Recorder row, and a handler?
+```
+
+Settings tabs have an equivalent check already asserted in code
+(`Set(SettingsTab.allCases).subtracting(ordered).isEmpty`), and it currently
+passes for all 23.
+
 ## Smaller features
 
 | Feature | Where | Notes |
 |---|---|---|
-| Desktop number | `managers/SpaceIndicatorManager.swift` | Off by default |
-| Battery history | `managers/BatteryHistoryManager.swift` | Off by default |
-| Colour picker | `managers/ColorPickerManager.swift` | Cmd+Shift+P |
-| Animation profiles | `animations/drop.swift` | Bouncy / smooth / snappy / instant |
-| Touch ID lock | `managers/BiometricAuthManager.swift` | Off by default |
+| Desktop number | `Managers/Display/SpaceIndicatorManager.swift` | Off by default |
+| Battery history | `Managers/Battery/BatteryHistoryManager.swift` | Off by default |
+| Colour picker | `Managers/Tools/ColorPickerManager.swift` | Cmd+Shift+P |
+| Animation profiles | `Animations/drop.swift` | Bouncy / smooth / snappy / instant |
+| Touch ID lock | `Managers/System/BiometricAuthManager.swift` | Off by default |
 
 - **There is no public API for the current Space.** `SpaceIndicatorManager`
   reads SkyLight's `CGSCopyManagedDisplaySpaces`, the same list Mission Control
@@ -852,15 +1363,15 @@ Verifying these cost several hours of blind alleys, all from one cause.
 - **`NSColorSampler` is the system eyedropper.** AppKit owns the magnifier and
   the capture, so the colour picker needs no screen-recording grant and nothing
   of ours runs until the shortcut is pressed. The colour model is
-  `models/PickedColor.swift`, which survived Phase 1 and already carries all
+  `Models/PickedColor.swift`, which survived Phase 1 and already carries all
   eight output formats — a first pass here defined a second `PickedColor` and
-  `ColorFormat` and collided at build time. Check `models/` before adding a type.
+  `ColorFormat` and collided at build time. Check `Models/` before adding a type.
 - **Battery health is read-only and needs no privileges.** The
   `AppleSmartBattery` IORegistry node exposes `CycleCount`, `DesignCapacity`,
   `NominalChargeCapacity`, `Temperature` and `PermanentFailureStatus` to any
   process. `MacBatteryManager.currentHealth()` reads them and
   `BatteryHealthView` shows them. There is deliberately no charge *limit*
-  control — that feature was dropped, and `utils/SMC.swift` with it. Verified against this machine: 386 cycles,
+  control — that feature was dropped, and `utils/SMC.swift` (deleted) with it. Verified against this machine: 386 cycles,
   4077 of 4563 mAh, 89%, 30.0 °C, condition Normal.
   - `Temperature` is in **hundredths of a degree Celsius** — 3004 is 30.04 °C.
     Reading it as Kelvin gives an absurd answer, which is the check that the
@@ -878,7 +1389,7 @@ Verifying these cost several hours of blind alleys, all from one cause.
   safe consequence is that a permission failure mutes nothing and marks nothing
   muted, rather than half-applying.
 - **Per-app audio is volume, mute and EQ, and the engine is ported from
-  FineTune** (`audio/perapp/`, GPL-3.0, © 2026 Ronit Singh; see `NOTICE`).
+  FineTune** (`Audio/PerApp/`, GPL-3.0, © 2026 Ronit Singh; see `NOTICE`).
   There is no per-process volume property in CoreAudio — `kAudioProcessProperty*`
   covers PID, bundle id, devices and is-running only — so gain means: tap with
   `muteBehavior = .mutedWhenTapped`, build a private aggregate device from the
@@ -971,13 +1482,13 @@ reset in the notch, notifies the phone, and resumes the halted session.
 
 | File | Role |
 |---|---|
-| `managers/ClaudeUsage/ClaudeLimitParser.swift` | Banner text → `(resetDate, timeZone)`. Pure, no I/O |
-| `managers/ClaudeUsage/ClaudeTranscriptWatcher.swift` | `FSEventStream` on `~/.claude/projects` |
-| `managers/ClaudeUsage/ClaudeSessionRegistry.swift` | Live sessions from `~/.claude/sessions/<pid>.json` |
-| `managers/ClaudeUsage/ClaudeUsageManager.swift` | State machine, reset timer, resume |
-| `managers/ClaudeUsage/PhonePush.swift` | ntfy POST + Keychain topic |
-| `components/Live activities/ClaudeUsageLiveActivity.swift` | Notch countdown |
-| `components/Settings/ClaudeUsageSettings.swift` | Settings pane |
+| `Managers/ClaudeUsage/ClaudeLimitParser.swift` | Banner text → `(resetDate, timeZone)`. Pure, no I/O |
+| `Managers/ClaudeUsage/ClaudeTranscriptWatcher.swift` | `FSEventStream` on `~/.claude/projects` |
+| `Managers/ClaudeUsage/ClaudeSessionRegistry.swift` | Live sessions from `~/.claude/sessions/<pid>.json` |
+| `Managers/ClaudeUsage/ClaudeUsageManager.swift` | State machine, reset timer, resume |
+| `Managers/ClaudeUsage/PhonePush.swift` | ntfy POST + Keychain topic |
+| `Components/Live activities/ClaudeUsageLiveActivity.swift` | Notch countdown |
+| `Components/Settings/ClaudeUsageSettings.swift` | Settings pane |
 
 - **The reset time exists nowhere on disk except a banner string.** There is no
   API, socket, or daemon — `~/.claude/daemon/` holds only an opaque `control.key`.
@@ -1069,7 +1580,7 @@ the reset is nearer than the minimum: a refused schedule delivers nothing at all
 The topic lives in the **Keychain** (`com.arronlingham.Anchor.claudeUsage` /
 `ntfyTopic`), never in `Defaults`. The topic name *is* the credential — anyone
 holding it can read and publish to the channel — and `Defaults` lands in a
-world-readable plist. `Constants.swift` carries a comment saying so; keep it.
+world-readable plist. `Models/Constants.swift` carries a comment saying so; keep it.
 
 **Not yet measured.** The CPU A/B for this feature has not been re-run, because
 there is no installed build: `/Applications/Anchor.app` is gone. The FSEvents
@@ -1104,12 +1615,17 @@ Three rules these follow, and the next feature should too:
   against paused playback and untimed lyrics for 0.24% of a core. Gate on the
   work existing, not on the feature being on.
 
-**Camera mirror, battery charge limiting and fan control were dropped at the
-user's request** and their code is gone: `CameraMirrorManager`,
-`NotchCameraMirrorView` and `utils/SMC.swift`. `ENABLE_RESOURCE_ACCESS_CAMERA`
-stays `NO` in both configurations and
-`tests/test_privacy_configuration.py::test_camera_entitlement_is_not_reintroduced`
-still pins it. Fan control was never applicable anyway — `Mac14,2` is a
+**Battery charge limiting and fan control were dropped at the user's request**
+and their code is gone, along with `utils/SMC.swift` (deleted). Fan control was never
+applicable anyway — `Mac14,2` is a fanless MacBook Air M2.
+
+**The camera mirror was also dropped, and then restored on 2026-09-01 at the
+user's request.** `CameraMirrorManager` and `NotchCameraMirrorView` are back,
+`ENABLE_RESOURCE_ACCESS_CAMERA` is `YES` in **both** build configurations, and
+the privacy test was **reversed rather than deleted** — see
+`test_camera_access_is_declared_consistently`. What that test protects is not
+the direction of the decision but that the two places declaring camera access
+agree with each other, which is worth pinning either way. Fan control was never applicable anyway — `Mac14,2` is a
 MacBook Air M2 and is fanless.
 
 ## Speech API — verified working (Phase 0 spike)
@@ -1152,7 +1668,7 @@ Fixed since: `ContentView` rendered `NotchNotesView` for the `.clipboard`
 case. `NotchClipboardList` already existed (the notes/clipboard split view
 uses it) and was simply never wired to the tab. Also deleted the unreachable
 stats-sizing block left behind by the Phase 1 removal — `statsRowCount`,
-`enabledStatsGraphCount`, `statsAdditionalRowHeight`, the two `matters.swift`
+`enabledStatsGraphCount`, `statsAdditionalRowHeight`, the two `Models/Sizing.swift`
 constants, 5 dead `@Default` keys in `ContentView`, and 6 `Defaults.publisher`
 subscriptions in `DynamicIslandApp` that debounce-resized the notch for a tab
 that no longer exists.

@@ -36,6 +36,29 @@ struct MenuBarSettings: View {
     var body: some View {
         Form {
             Section {
+                Defaults.Toggle(key: .menuBarShowCPU) {
+                    Text("Show CPU")
+                }
+                .settingsHighlight(id: highlightID("Show CPU"))
+
+                Defaults.Toggle(key: .menuBarShowMemory) {
+                    Text("Show memory")
+                }
+                .settingsHighlight(id: highlightID("Show memory"))
+
+                Defaults.Toggle(key: .menuBarShowNetwork) {
+                    Text("Show network throughput")
+                }
+                .settingsHighlight(id: highlightID("Show network throughput"))
+            } header: {
+                Text("Live readout")
+            } footer: {
+                Text("Adds a CPU, memory and network readout to the menu bar. The text is fixed-width, so nothing to its left shifts as the numbers change. Sampling runs only while at least one of these is on and stops while the display sleeps \u{2014} with all three off nothing is measured.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+
+            Section {
                 Defaults.Toggle(key: .enableMenuBarShrink) {
                     Text("Shrink the menu bar")
                 }

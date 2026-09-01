@@ -39,6 +39,7 @@ enum SneakContentType: Equatable {
     case capsLock
     case claudeUsage
     case eyeBreak
+    case contrast
 }
 
 extension SneakContentType {
@@ -60,7 +61,8 @@ extension SneakContentType {
              (.lockScreen, .lockScreen),
              (.capsLock, .capsLock),
              (.claudeUsage, .claudeUsage),
-             (.eyeBreak, .eyeBreak):
+             (.eyeBreak, .eyeBreak),
+             (.contrast, .contrast):
             return true
         default:
             return false

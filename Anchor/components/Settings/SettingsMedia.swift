@@ -34,6 +34,8 @@ import UniformTypeIdentifiers
 // Richard Kunkli on 07/08/2024. Behaviour unchanged.
 
 struct Media: View {
+    @ObservedObject private var displayManager = ExternalDisplayManager.shared
+    @ObservedObject private var cameraManager = CameraMirrorManager.shared
     @Default(.lyricsOffsetSeconds) var lyricsOffsetSeconds
     @Default(.enableLyrics) var enableLyrics
     @Default(.waitInterval) var waitInterval
@@ -92,6 +94,120 @@ struct Media: View {
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }
+
+            Section {
+                Picker("Hold this microphone as the default", selection: Binding(
+                    get: { Defaults[.pinnedInputDeviceUID] },
+                    set: { Defaults[.pinnedInputDeviceUID] = $0 })) {
+                    Text("Let macOS choose").tag("")
+                    ForEach(AudioDeviceToolsManager.shared.inputDevices, id: \.uid) { device in
+                        Text(device.name).tag(device.uid)
+                    }
+                }
+                .settingsHighlight(id: highlightID("Pin microphone"))
+                .onAppear { AudioDeviceToolsManager.shared.refreshInputDevices() }
+
+                Defaults.Toggle(key: .enableAudioDeviceHUD) {
+                    Text("Show the mic HUD when muting every microphone")
+                }
+                .settingsHighlight(id: highlightID("Audio device HUD"))
+            } header: {
+                Text("Audio devices")
+            } footer: {
+                Text("macOS reassigns the default microphone whenever anything with one appears \u{2014} a monitor, AirPods, a headset. Pinning holds your choice instead. It gives up if the pinned device is unplugged, so macOS takes over again rather than leaving you with no microphone.\n\nShortcuts for cycling the output device and muting every microphone at once are in the Shortcuts pane.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+
+            Section {
+                Defaults.Toggle(key: .enableCameraMirror) {
+                    Text("Camera mirror")
+                }
+                .settingsHighlight(id: highlightID("Camera mirror"))
+
+                if Defaults[.enableCameraMirror] {
+                    Picker("Camera", selection: Binding(
+                        get: { Defaults[.cameraMirrorDeviceID] },
+                        set: { Defaults[.cameraMirrorDeviceID] = $0 })) {
+                        Text("First available").tag("")
+                        ForEach(cameraManager.availableCameras, id: \.uniqueID) { device in
+                            Text(device.localizedName).tag(device.uniqueID)
+                        }
+                    }
+                    .onAppear { cameraManager.refreshDevices() }
+
+                    Defaults.Toggle(key: .cameraMirrorFlipped) {
+                        Text("Flip horizontally")
+                    }
+                    .settingsInfo("On, the preview behaves like a mirror \u{2014} raising your right hand raises the right hand of the image. Off shows the raw camera feed, which is what other people see.")
+                }
+            } header: {
+                Text("Camera")
+            } footer: {
+                Text("Adds a Mirror tab to the open notch showing a live camera preview. **Nothing is recorded, saved or sent anywhere** \u{2014} the capture session has no file, photo or data output at all, which a test enforces rather than a promise.\n\nThe camera runs only while the Mirror tab is on screen, so the green indicator light is lit for exactly as long as you can see the preview, and never otherwise.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+
+            Section {
+                if !ExternalDisplayManager.isAvailable {
+                    Text("This build of macOS does not expose the DDC interface.")
+                        .foregroundStyle(.secondary)
+                } else {
+                    let externals = displayManager.displays.filter { !$0.isBuiltin }
+                    if displayManager.isProbing {
+                        Text("Asking displays\u{2026}").foregroundStyle(.secondary)
+                    } else if externals.isEmpty {
+                        HStack {
+                            Text("No external display attached.").foregroundStyle(.secondary)
+                            Spacer()
+                            Button("Check") { Task { await displayManager.probe() } }
+                                .settingsHighlight(id: highlightID("External display brightness"))
+                        }
+                    } else {
+                        ForEach(externals) { display in
+                            VStack(alignment: .leading, spacing: 2) {
+                                HStack {
+                                    Text(display.name)
+                                    Spacer()
+                                    if display.supportsDDC == true {
+                                        Text("DDC available").font(.caption).foregroundStyle(.secondary)
+                                    } else if display.supportsDDC == false {
+                                        Text("no DDC response").font(.caption).foregroundStyle(.orange)
+                                    }
+                                }
+                                if display.supportsDDC == true, let value = display.currentFraction {
+                                    Slider(value: Binding(
+                                        get: { value },
+                                        set: { displayManager.setBrightness($0, on: display) }),
+                                           in: 0...1)
+                                } else if display.supportsDDC == false {
+                                    Text("This display did not answer. DDC/CI is often switched off in the monitor's own menu, and it rarely survives a hub or an adapter.")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                        }
+                        HStack {
+                            Spacer()
+                            Button("Re-check") { Task { await displayManager.probe() } }
+                        }
+                    }
+                }
+            } header: {
+                Text("External display brightness")
+            } footer: {
+                Text("macOS's own brightness API covers the built-in screen only \u{2014} it returns an error for external displays, which is why this uses DDC/CI over I2C instead, the same channel a monitor's own buttons use.\n\nNothing is sent until you move a slider, and a display that does not answer a read is never written to: without a working read there is no way to put the brightness back.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+            // Listing displays costs nothing — no I2C is sent — so it happens
+            // on appear. Without it the pane said "No external display
+            // attached" while one plainly was: the same false claim the
+            // Homebrew row made before `brewAvailable` moved into init. The
+            // DDC *probe* stays behind the button, because that writes to the
+            // bus.
+            .onAppear { displayManager.refresh() }
 
             Section {
                 Picker("Music Source", selection: $mediaController) {

@@ -563,3 +563,144 @@ your audio.
      Only turn "Push after committing" on if you actually want that; it is
      confirmed separately because a push cannot be undone.
      Verified end to end against a scratch repo, including the once-a-day guard.
+
+## Waves 12–16 (added 2026-08-31)
+
+Everything below defaults **off**. Each has a test harness covering its pure
+logic, so what needs a human is the part a harness cannot reach: whether the
+real device, the real menu bar or the real disk image behaves as the code
+assumes. That distinction matters — the disk image installer's harness passed
+green for its entire first version while the feature could not fire at all,
+because both the code and the test held the same wrong belief about what a
+mounted DMG reports.
+
+108. **Output device cycling** (Settings → Shortcuts → "Next output device").
+     Bind a key. With **only one** output device attached, pressing it should do
+     nothing at all — no HUD, no flicker. That is deliberate: a one-device
+     "cycle" that announces a switch reads as a bug. Attach headphones or a
+     monitor with speakers, then press it repeatedly: output should walk the
+     list and wrap. "Previous output device" should walk back.
+     *Only the single-device case could be checked here — this Mac has one
+     output. The wrap-around is pinned by the harness but unverified on real
+     hardware.*
+
+109. **Pin the microphone** (Settings → Media & Display → Audio devices).
+     Needs a second microphone — AirPods, a headset, a USB mic. Pick your real
+     one in "Hold this microphone as the default", then connect the other
+     device. macOS would normally switch to it; the pinned one should stay
+     selected. Now **unplug the pinned microphone**: Anchor must give up and let
+     macOS choose, rather than leaving you with no input. Plug it back in — the
+     pin should reassert.
+     *Unverified — this Mac has only the built-in microphone, so there is
+     nothing for the default to drift to.*
+
+110. **Mute all microphones** (Settings → Shortcuts). Bind a key, join a call,
+     press it: the call app should show you muted. Press again — a device you
+     had muted yourself beforehand should stay muted.
+     *The mute round-trip is verified on the built-in mic (false → true →
+     false). The multi-device restore path is not.*
+
+111. **Quit on last window close** (Settings → General → Windows). Turn on.
+     Open TextEdit, close its window — TextEdit should quit. Then check the
+     guards, which matter more than the feature: **minimise** a window instead
+     of closing it and confirm the app does *not* quit; launch an app and close
+     its window within ten seconds, and confirm it survives; check Finder never
+     quits. Add an app under "Never quit these apps" and confirm it is spared.
+     **Test with nothing unsaved open.** This terminates other applications.
+
+112. **Stop Music opening itself** (Settings → General → Media apps). Turn on,
+     then connect a Bluetooth headset that sends a play command — Music should
+     open and close again immediately. Then open Music **yourself** from the
+     Dock or the launcher: it must stay open. That second half is the important
+     one.
+
+113. **Alerts** (Settings → General → Alerts). Battery: set the threshold above
+     your current level and unplug — one alert. Leave it hovering at the
+     threshold and confirm you get **one**, not one per sample. Plug in: the
+     alert should clear promptly rather than waiting for the level to climb.
+     CPU: set it low and run a build — nothing should fire for the first five
+     minutes, then one alert.
+     *Note: this Mac's startup disk is genuinely **92% full**, so the disk alert
+     will fire immediately at its 90% default. That is correct behaviour, not a
+     bug.*
+
+114. **Menu bar readout** (Settings → Menu Bar → Live readout). Turn on CPU and
+     network. The readout should appear and — the thing to actually watch —
+     **nothing to its left should shift** as the numbers change. Run a build and
+     watch the icons beside it: any jitter is a failure. Turn all three off and
+     confirm the item disappears entirely rather than leaving a blank gap.
+     *Verified live via the accessibility API: reads `CPU  41%  ↓   4K ↑   8K`.*
+
+115. **Disk image installer** (Settings → General → Disk images). Turn on, then
+     mount a downloaded `.dmg` holding one app: a prompt should offer to install
+     it. Press **Cancel** — nothing should be copied and the image should stay
+     mounted. Mount it again and press Install: the app should land in
+     `/Applications` and the image should eject. Re-run it over an existing copy
+     and confirm the old one goes to the **Trash**, not away.
+     Then the cases that should stay silent: a DMG with several apps (a suite),
+     a plain USB stick with an app on it, and a network share.
+     *Verified end to end against a purpose-built image, including that Cancel
+     copies nothing and leaves the image mounted. The multi-app and USB paths
+     are covered by the harness but not by real media.*
+
+116. **Storage** (Settings → Storage). Press Scan. Sizes should roughly match
+     `du -sh` on the same folders — Anchor uses decimal units and `du` uses
+     binary, so Anchor's number reads *higher* for the same data (183 MiB shows
+     as 191.9 MB). Check the default ticks: logs, crash reports and simulator
+     caches only. Xcode derived data, npm, Homebrew and application caches must
+     all start **unticked**.
+     Tick something small, press "Move to Trash", confirm. Then **open the Trash
+     and check the files are there** — that is the whole safety guarantee. Put
+     them back and confirm the app that owned them still works.
+     There is deliberately no "empty Trash" button. If you find one, that is a
+     bug.
+     *Sizes verified against `du` on four real directories. The Trash round trip
+     has not been exercised on this machine — nothing was actually cleaned.*
+
+117. **Updates** (Settings → Maintenance → Updates). Press Check. Homebrew
+     packages should list with `installed → available`; verify a few against
+     `brew outdated`. A **pinned** formula must show "pinned" and offer no
+     Upgrade button. Press Upgrade on something harmless — Terminal should open
+     showing the command, and nothing should have run before you saw it.
+     *Parser verified against real `brew outdated --json=v2` on this machine:
+     37 formulae, zero false positives, including date-versions with revisions.
+     The Upgrade button itself has not been pressed.*
+
+118. **External display brightness** (Settings → Media & Display). The attached
+     monitor should be listed by name. Press Check: it will say either "DDC
+     available" with a slider, or "no DDC response".
+     *On this Mac it reports **no DDC response** — twelve read attempts across
+     three timings all returned a null message. Before assuming a bug, turn
+     DDC/CI on in the monitor's own OSD menu (it is off by default on many
+     models) and try connecting it directly rather than through a hub.*
+     If it does answer, move the slider and confirm the monitor responds, then
+     confirm the value survives sleep/wake.
+
+119. **Camera mirror** (Settings → Media & Display → Camera). Turn on, open the
+     notch, pick the Mirror tab. macOS should prompt for camera access the
+     first time — read the prompt text and check it describes what actually
+     happens. The preview should be flipped by default; raising your right hand
+     should raise the image's right hand.
+     Then the thing that matters: **switch away from the Mirror tab and watch
+     the green camera indicator go out.** It must be lit only while the preview
+     is visible. If it stays on, the session is not being torn down.
+     Try it with a Continuity Camera (iPhone) as well as the built-in one.
+     *Entitlement verified present in the built app; no recording path exists
+     and a test enforces that. The live preview itself has not been seen —
+     the camera has never been opened on this machine.*
+
+120. **Gemini assistant** (Settings → Gemini). Paste a key from Google AI
+     Studio and press Save; it goes to the Keychain, and the field clears.
+     Confirm with `security find-generic-password -s com.arronlingham.Anchor.gemini`
+     that it is there, and check `defaults read com.arronlingham.Anchor | grep -i
+     gemini` does **not** contain it.
+     Open the notch → Gemini tab and ask something. Then check context works:
+     ask a follow-up that only makes sense given the previous answer.
+     Turn "Remember the conversation" off and relaunch — the history should be
+     gone. Turn context down to 6 turns and confirm long conversations still work
+     (this is the case that 400s if the trim is wrong).
+     Finally, remove the key and confirm the tab explains itself rather than
+     failing silently.
+     *Wire format verified by 44 assertions including the trim property at every
+     cut point. No live API call has been made — there is no key on this
+     machine, so nothing has been sent to Google.*

@@ -245,6 +245,8 @@ enum UISnapshotHarness {
             pane("custom-osd", CustomOSDSettings()),
             pane("notes", NotesSettingsView()),
             pane("todo", TodoSettings()),
+            pane("cleanup", SettingsCleanup()),
+            pane("gemini", GeminiSettings()),
             pane("terminal", TerminalSettings()),
             pane("git-commit", GitCommitSettings()),
             pane("menu-bar", MenuBarSettings()),

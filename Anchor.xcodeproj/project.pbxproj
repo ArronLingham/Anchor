@@ -295,12 +295,7 @@
 			hasScannedForEncodings = 0;
 			knownRegions = (
 				en,
-				tr,
 				Base,
-				hi,
-				ta,
-				gu,
-				nl,
 			);
 			mainGroup = F54406DE2CD4987A00C7AFD9;
 			minimizedProjectReferenceProxies = 1;
@@ -584,7 +579,7 @@
 				ENABLE_PREVIEWS = YES;
 				ENABLE_RESOURCE_ACCESS_AUDIO_INPUT = YES;
 				ENABLE_RESOURCE_ACCESS_CALENDARS = YES;
-				ENABLE_RESOURCE_ACCESS_CAMERA = NO;
+				ENABLE_RESOURCE_ACCESS_CAMERA = YES;
 				ENABLE_RESOURCE_ACCESS_CONTACTS = NO;
 				ENABLE_RESOURCE_ACCESS_LOCATION = YES;
 				ENABLE_RESOURCE_ACCESS_PHOTO_LIBRARY = NO;
@@ -604,7 +599,7 @@
 				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "Anchor needs Bluetooth access to detect when audio devices connect and display their battery status in the HUD.";
 				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "Anchor shows your calendar events inside the notch.";
 				INFOPLIST_KEY_NSCalendarsUsageDescription = "Anchor shows your calendar events inside the notch.";
-				INFOPLIST_KEY_NSCameraUsageDescription = "Anchor does not use the camera. ENABLE_RESOURCE_ACCESS_CAMERA is NO and no code requests it.";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Anchor shows a live camera preview in the notch when you turn the mirror on. Nothing is recorded, saved or sent anywhere, and the camera only runs while the mirror is visible.";
 								INFOPLIST_KEY_NSDocumentsFolderUsageDescription = "Anchor needs access to save and read shelf dragged files.";
 				INFOPLIST_KEY_NSDownloadsFolderUsageDescription = "Anchor needs access to read files in the downloads folder.";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
@@ -657,7 +652,7 @@
 				ENABLE_PREVIEWS = YES;
 				ENABLE_RESOURCE_ACCESS_AUDIO_INPUT = YES;
 				ENABLE_RESOURCE_ACCESS_CALENDARS = YES;
-				ENABLE_RESOURCE_ACCESS_CAMERA = NO;
+				ENABLE_RESOURCE_ACCESS_CAMERA = YES;
 				ENABLE_RESOURCE_ACCESS_CONTACTS = NO;
 				ENABLE_RESOURCE_ACCESS_LOCATION = YES;
 				ENABLE_RESOURCE_ACCESS_PHOTO_LIBRARY = NO;
@@ -677,7 +672,7 @@
 				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "Anchor needs Bluetooth access to detect when audio devices connect and display their battery status in the HUD.";
 				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "Anchor shows your calendar events inside the notch.";
 				INFOPLIST_KEY_NSCalendarsUsageDescription = "Anchor shows your calendar events inside the notch.";
-				INFOPLIST_KEY_NSCameraUsageDescription = "Anchor does not use the camera. ENABLE_RESOURCE_ACCESS_CAMERA is NO and no code requests it.";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Anchor shows a live camera preview in the notch when you turn the mirror on. Nothing is recorded, saved or sent anywhere, and the camera only runs while the mirror is visible.";
 								INFOPLIST_KEY_NSDocumentsFolderUsageDescription = "Anchor needs access to save and read shelf dragged files.";
 				INFOPLIST_KEY_NSDownloadsFolderUsageDescription = "Anchor needs access to read files in the downloads folder.";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";

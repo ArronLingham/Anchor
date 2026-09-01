@@ -576,6 +576,8 @@ struct InlineHUD: View {
                 return String(localized: "Volume")
             case .brightness:
                 return String(localized: "Brightness")
+            case .contrast:
+                return String(localized: "Contrast")
             case .backlight:
                 return String(localized: "Backlight")
             case .mic:

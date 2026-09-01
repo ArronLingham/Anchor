@@ -18,10 +18,63 @@ class PrivacyConfigurationTests(unittest.TestCase):
 
         self.assertTrue(entitlements.get("com.apple.security.device.audio-input"))
 
-    def test_camera_entitlement_is_not_reintroduced(self):
-        entitlements = plistlib.loads(ENTITLEMENTS.read_bytes())
+    def test_camera_access_is_declared_consistently(self):
+        """The camera was removed at the user's request in an earlier pass and
+        this test pinned it OFF. The user asked for the mirror back on
+        2026-09-01, so the pin was REVERSED rather than deleted: what it
+        actually protects is that the two places which declare camera access
+        agree with each other, and that is still worth pinning in either
+        direction.
 
-        self.assertNotIn("com.apple.security.device.camera", entitlements)
+        ENABLE_RESOURCE_ACCESS_CAMERA in project.pbxproj injects the
+        entitlement at build time and silently overrides the .entitlements
+        file. The two disagreed once already — the file said no camera while
+        the built app shipped one — which is invisible from either side alone.
+        """
+        project = PROJECT.read_text()
+
+        self.assertIn("ENABLE_RESOURCE_ACCESS_CAMERA = YES;", project)
+        self.assertNotIn("ENABLE_RESOURCE_ACCESS_CAMERA = NO;", project)
+
+        # Both build configurations, not just one. A Release build that
+        # differs from Debug here is the exact failure that hid last time.
+        self.assertEqual(project.count("ENABLE_RESOURCE_ACCESS_CAMERA = YES;"), 2)
+
+    def test_camera_mirror_has_no_recording_path(self):
+        """The permission dialog tells the user nothing is recorded. That has
+        to be true structurally, not by intention: if the capture session ever
+        gains a movie/photo/data output or a sample-buffer delegate, frames can
+        leave the preview layer and the usage string becomes a lie in a system
+        dialog.
+
+        Comments are stripped first — the class documents the APIs it does NOT
+        use, and matching those would make this test pass for the wrong reason.
+        """
+        source = (ROOT / "Anchor" / "Managers" / "Tools" / "CameraMirrorManager.swift").read_text()
+        code = "\n".join(
+            line for line in source.splitlines()
+            if not line.strip().startswith(("///", "//", "*"))
+        )
+
+        for api in ("AVCaptureMovieFileOutput", "AVCapturePhotoOutput",
+                    "AVCaptureVideoDataOutput", "AVCaptureAudioDataOutput",
+                    "setSampleBufferDelegate", "startRecording"):
+            self.assertNotIn(api, code, f"{api} would let frames leave the preview")
+
+        # No output of any kind is attached to the session.
+        self.assertNotIn("addOutput", code)
+
+    def test_camera_usage_string_describes_the_real_use(self):
+        """The usage string is what the user reads in the permission prompt.
+        It said "Anchor does not use the camera" for as long as that was true;
+        shipping the mirror with that text still in place would be a lie in a
+        system dialog."""
+        project = PROJECT.read_text()
+
+        self.assertNotIn("Anchor does not use the camera", project)
+        self.assertIn("INFOPLIST_KEY_NSCameraUsageDescription", project)
+        # The mirror never records, and the string must say so.
+        self.assertIn("Nothing is recorded, saved or sent anywhere", project)
 
     def test_screen_capture_usage_description_is_not_reintroduced(self):
         """ScreenAssistant was removed in Phase 1 and nothing captures the
@@ -43,8 +96,8 @@ class PrivacyConfigurationTests(unittest.TestCase):
         self.assertIn("ENABLE_RESOURCE_ACCESS_AUDIO_INPUT = YES;", project)
         self.assertNotIn("ENABLE_RESOURCE_ACCESS_AUDIO_INPUT = NO;", project)
 
-        self.assertIn("ENABLE_RESOURCE_ACCESS_CAMERA = NO;", project)
-        self.assertNotIn("ENABLE_RESOURCE_ACCESS_CAMERA = YES;", project)
+        # Camera is asserted by test_camera_access_is_declared_consistently
+        # above, which owns that decision now.
 
     def test_sparkle_cannot_replace_this_build_with_upstream(self):
         # Every channel in UpdateChannel points at Ebullioscopic/Atoll's
@@ -55,7 +108,7 @@ class PrivacyConfigurationTests(unittest.TestCase):
         self.assertFalse(info.get("SUEnableAutomaticChecks", True))
 
         delegate = (
-            ROOT / "Anchor" / "services" / "AnchorUpdaterDelegate.swift"
+            ROOT / "Anchor" / "Helpers" / "AnchorUpdaterDelegate.swift"
         ).read_text()
         self.assertNotIn("feedURL.absoluteString", delegate)
 

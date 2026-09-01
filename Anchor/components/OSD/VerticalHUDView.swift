@@ -30,18 +30,59 @@ struct BumpEvent: Equatable {
 class VerticalHUDState: ObservableObject {
     @Published var type: SneakContentType = .volume
     @Published var value: CGFloat = 0
+    @Published var contrastValue: CGFloat? = nil
     @Published var icon: String = ""
     @Published var bumpEvent: BumpEvent?
+    var screen: NSScreen?
     
-    init(type: SneakContentType = .volume, value: CGFloat = 0, icon: String = "") {
+    init(type: SneakContentType = .volume, value: CGFloat = 0, contrastValue: CGFloat? = nil, icon: String = "", screen: NSScreen? = nil) {
         self.type = type
         self.value = value
+        self.contrastValue = contrastValue
         self.icon = icon
+        self.screen = screen
     }
 }
 
 struct VerticalHUDView: View {
     @ObservedObject var state: VerticalHUDState
+    
+    @Default(.verticalHUDWidth) var hudWidth
+    
+    var body: some View {
+        HStack(spacing: 16) {
+            VerticalHUDPillView(
+                value: $state.value,
+                type: state.type,
+                icon: state.icon,
+                bumpEvent: state.bumpEvent,
+                screen: state.screen
+            )
+            
+            if state.contrastValue != nil {
+                VerticalHUDPillView(
+                    value: Binding(
+                        get: { state.contrastValue ?? 0 },
+                        set: { state.contrastValue = $0 }
+                    ),
+                    type: .contrast,
+                    icon: "circle.lefthalf.filled",
+                    bumpEvent: state.type == .contrast ? state.bumpEvent : nil,
+                    screen: state.screen
+                )
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .edgesIgnoringSafeArea(.all)
+    }
+}
+
+struct VerticalHUDPillView: View {
+    @Binding var value: CGFloat
+    var type: SneakContentType
+    var icon: String
+    var bumpEvent: BumpEvent?
+    var screen: NSScreen?
     
     @Default(.verticalHUDShowValue) var showValue
     @Default(.verticalHUDHeight) var hudHeight
@@ -64,181 +105,185 @@ struct VerticalHUDView: View {
     @Default(.useSmoothColorGradient) var useSmoothGradient
     
     // Constants
-    private let maxStretch: CGFloat = 30 // Reduced max stretch for tighter feel
+    private let maxStretch: CGFloat = 30
     
     var body: some View {
-        // Full Window Container
         ZStack {
-            // The Actual HUD Pill
-            ZStack {
-                // Background
-                verticalBackground
-                    .clipShape(Capsule())
-                    .overlay {
-                        Capsule()
-                            .stroke(.white.opacity(0.1), lineWidth: 1)
-                    }
-
-                // Fill Bar
-                GeometryReader { geo in
-                    VStack(spacing: 0) {
-                        Spacer(minLength: 0)
-                        Rectangle()
-                            .fill(fillStyle)
-                            .frame(height: geo.size.height * state.value)
-                            // Super Smooth Fill
-                            .animation(.interactiveSpring(response: 0.55, dampingFraction: 0.85, blendDuration: 0.3), value: state.value)
-                    }
-                }
+            // Background
+            verticalBackground
                 .clipShape(Capsule())
+                .overlay {
+                    Capsule()
+                        .stroke(.white.opacity(0.1), lineWidth: 1)
+                }
+
+            // Fill Bar
+            GeometryReader { geo in
+                VStack(spacing: 0) {
+                    Spacer(minLength: 0)
+                    Rectangle()
+                        .fill(fillStyle)
+                        .frame(height: geo.size.height * value)
+                        // Super Smooth Fill
+                        .animation(.interactiveSpring(response: 0.55, dampingFraction: 0.85, blendDuration: 0.3), value: value)
+                }
+            }
+            .clipShape(Capsule())
+            
+            // Icon & Text overlay
+            VStack {
+                if showValue {
+                    HUDNumericLabel(
+                        value: value,
+                        font: .system(size: 10, weight: .bold),
+                        color: valueLabelColor,
+                        alignment: .center,
+                        width: hudWidth * 0.8
+                    )
+                    .padding(.top, 8 + (stretchOffset < 0 ? abs(stretchOffset/4) : 0))
+                }
                 
-                // Icon & Text overlay
-                VStack {
-                    if showValue {
-                        HUDNumericLabel(
-                            value: state.value,
-                            font: .system(size: 10, weight: .bold),
-                            color: valueLabelColor,
-                            alignment: .center,
-                            width: hudWidth * 0.8
-                        )
-                        .padding(.top, 8 + (stretchOffset < 0 ? abs(stretchOffset/4) : 0))
+                Spacer()
+                
+                Image(systemName: symbolName)
+                    .font(.system(size: hudWidth * 0.4, weight: .semibold))
+                    .foregroundStyle(value > 0.15 ? (useAccentColor ? .white : .black) : .secondary)
+                    .symbolRenderingMode(.hierarchical)
+                    .padding(.bottom, hudWidth * 0.35)
+                    .offset(y: stretchOffset > 0 ? -stretchOffset/4 : 0)
+            }
+        }
+        .frame(width: currentWidth, height: hudHeight + stretchAmount)
+        .offset(y: stretchOffset)
+        .shadow(color: .black.opacity(0.15), radius: 10, x: 0, y: 4)
+        .onHover { hovering in
+            withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
+                isHovering = hovering
+            }
+            if hovering {
+                VerticalHUDWindowManager.shared.cancelHide()
+            } else {
+                if !isDragging {
+                    VerticalHUDWindowManager.shared.scheduleHide()
+                }
+            }
+        }
+        // Listen for Elastic Bump (Keyboard)
+        .task(id: bumpEvent) {
+            guard let event = bumpEvent else { return }
+            let direction = CGFloat(event.direction)
+            let stretch: CGFloat = 15
+            
+            withAnimation(.interactiveSpring(response: 0.35, dampingFraction: 0.6)) {
+                stretchAmount = stretch
+                stretchOffset = direction * (-stretch / 2)
+            }
+            
+            try? await Task.sleep(nanoseconds: 150 * 1_000_000)
+            
+            withAnimation(.spring(response: 0.55, dampingFraction: 0.65)) {
+                stretchAmount = 0
+                stretchOffset = 0
+            }
+        }
+        .gesture(
+            DragGesture(minimumDistance: 0)
+                .onChanged { gesture in
+                    guard isInteractive else { return }
+                    if !isDragging {
+                        VerticalHUDWindowManager.shared.cancelHide()
+                    }
+                    withAnimation(.spring(response: 0.4, dampingFraction: 0.75)) {
+                        isDragging = true
                     }
                     
-                    Spacer()
+                    let currentY = gesture.startLocation.y + gesture.translation.height
+                    let percentage = 1.0 - (currentY / hudHeight)
                     
-                    Image(systemName: symbolName)
-                        .font(.system(size: hudWidth * 0.4, weight: .semibold))
-                        .foregroundStyle(state.value > 0.15 ? (useAccentColor ? .white : .black) : .secondary)
-                        .symbolRenderingMode(.hierarchical)
-                        .padding(.bottom, hudWidth * 0.35)
-                        .offset(y: stretchOffset > 0 ? -stretchOffset/4 : 0)
-                }
-                // Always visible
-            }
-            .frame(width: currentWidth, height: hudHeight + stretchAmount)
-            .offset(y: stretchOffset)
-            .shadow(color: .black.opacity(0.15), radius: 10, x: 0, y: 4)
-            .onHover { hovering in
-                withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
-                    isHovering = hovering
-                }
-            }
-            // Listen for Elastic Bump (Keyboard) - Debounced via Task cancellation
-            .task(id: state.bumpEvent) {
-                guard let event = state.bumpEvent else { return }
-                
-                let direction = CGFloat(event.direction)
-                let stretch: CGFloat = 15 // Constant stretch while holding
-                
-                // Animate In (Maintain Stretch)
-                // If a new event comes in, this task is cancelled and restarted, keeping it stretched.
-                withAnimation(.interactiveSpring(response: 0.35, dampingFraction: 0.6)) {
-                    stretchAmount = stretch
-                    stretchOffset = direction * (-stretch / 2)
-                }
-                
-                // Wait for key release (Short debounce window)
-                try? await Task.sleep(nanoseconds: 150 * 1_000_000) // 150ms
-                
-                // Animate Back (only if not cancelled)
-                withAnimation(.spring(response: 0.55, dampingFraction: 0.65)) {
-                    stretchAmount = 0
-                    stretchOffset = 0
-                }
-            }
-            .gesture(
-                DragGesture(minimumDistance: 0)
-                    .onChanged { gesture in
-                        guard isInteractive else { return }
-                        
-                        withAnimation(.spring(response: 0.4, dampingFraction: 0.75)) {
-                            isDragging = true
+                    if percentage > 1.0 {
+                        let excess = (percentage - 1.0) * hudHeight
+                        let stretch = min(sqrt(abs(excess)) * 1.5, maxStretch)
+                        value = 1.0
+                        withAnimation(.interactiveSpring(response: 0.4, dampingFraction: 0.65)) {
+                            stretchAmount = stretch
+                            stretchOffset = -stretch / 2
                         }
-                        
-                        let currentY = gesture.startLocation.y + gesture.translation.height
-                        let percentage = 1.0 - (currentY / hudHeight)
-                        
-                        // Elastic Rubber Banding
-                        if percentage > 1.0 {
-                            let excess = (percentage - 1.0) * hudHeight
-                            let stretch = min(sqrt(abs(excess)) * 1.5, maxStretch) // Reduced multiplier (was 3.0)
-                            state.value = 1.0
-                            
-                            withAnimation(.interactiveSpring(response: 0.4, dampingFraction: 0.65)) { // Tighter damping
-                                stretchAmount = stretch
-                                stretchOffset = -stretch / 2
-                            }
-                        } else if percentage < 0.0 {
-                            let excess = abs(percentage) * hudHeight
-                            let stretch = min(sqrt(abs(excess)) * 1.5, maxStretch) // Reduced multiplier
-                            state.value = 0.0
-                            
-                            withAnimation(.interactiveSpring(response: 0.4, dampingFraction: 0.65)) {
-                                stretchAmount = stretch
-                                stretchOffset = stretch / 2
-                            }
-                        } else {
-                            state.value = percentage
-                            withAnimation(.interactiveSpring(response: 0.45, dampingFraction: 0.8)) {
-                                stretchAmount = 0
-                                stretchOffset = 0
-                            }
+                    } else if percentage < 0.0 {
+                        let excess = abs(percentage) * hudHeight
+                        let stretch = min(sqrt(abs(excess)) * 1.5, maxStretch)
+                        value = 0.0
+                        withAnimation(.interactiveSpring(response: 0.4, dampingFraction: 0.65)) {
+                            stretchAmount = stretch
+                            stretchOffset = stretch / 2
                         }
-                        updateSystemLevel(state.value)
-                    }
-                    .onEnded { _ in
-                        withAnimation(.spring(response: 0.55, dampingFraction: 0.7)) { // Tighter release
-                            isDragging = false
+                    } else {
+                        value = percentage
+                        withAnimation(.interactiveSpring(response: 0.45, dampingFraction: 0.8)) {
                             stretchAmount = 0
                             stretchOffset = 0
-                            if state.value > 1.0 { state.value = 1.0 }
-                            if state.value < 0.0 { state.value = 0.0 }
                         }
-                        updateSystemLevel(state.value)
                     }
-            )
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity) 
-        .edgesIgnoringSafeArea(.all)
+                    updateSystemLevel(value)
+                }
+                .onEnded { _ in
+                    withAnimation(.spring(response: 0.55, dampingFraction: 0.7)) {
+                        isDragging = false
+                        stretchAmount = 0
+                        stretchOffset = 0
+                        if value > 1.0 { value = 1.0 }
+                        if value < 0.0 { value = 0.0 }
+                    }
+                    updateSystemLevel(value)
+                    VerticalHUDWindowManager.shared.scheduleHide()
+                }
+        )
     }
     
     private var currentWidth: CGFloat {
-        // Only shrink slightly when dragging, otherwise full size
         return isDragging ? hudWidth * 0.9 : hudWidth
     }
     
     private func updateSystemLevel(_ level: CGFloat) {
-         if state.type == .volume {
+         if type == .volume {
               SystemVolumeController.shared.setVolume(Float(level))
-         } else if state.type == .brightness {
-              SystemBrightnessController.shared.setBrightness(Float(level))
+         } else if type == .brightness {
+              if let scr = screen {
+                  SystemBrightnessController.shared.setBrightnessImmediate(Float(level), for: scr)
+              } else {
+                  SystemBrightnessController.shared.setBrightnessImmediate(Float(level))
+              }
+         } else if type == .contrast {
+              if let scr = screen {
+                  SystemBrightnessController.shared.setContrastImmediate(Float(level), for: scr)
+              } else {
+                  SystemBrightnessController.shared.setContrastImmediate(Float(level))
+              }
          }
     }
     
     private var symbolName: String {
-        if !state.icon.isEmpty { return state.icon }
+        if !icon.isEmpty { return icon }
         
-        switch state.type {
+        switch type {
         case .volume:
-            if state.value < 0.01 { return "speaker.slash.fill" }
-            else if state.value < 0.33 { return "speaker.wave.1.fill" }
-            else if state.value < 0.66 { return "speaker.wave.2.fill" }
+            if value < 0.01 { return "speaker.slash.fill" }
+            else if value < 0.33 { return "speaker.wave.1.fill" }
+            else if value < 0.66 { return "speaker.wave.2.fill" }
             else { return "speaker.wave.3.fill" }
         case .brightness:
             return "sun.max.fill"
+        case .contrast:
+            return "circle.lefthalf.filled"
         case .backlight:
-            return state.value >= 0.5 ? "light.max" : "light.min"
+            return value >= 0.5 ? "light.max" : "light.min"
         default:
             return "questionmark"
         }
     }
     
-    // MARK: - Helper Computing Properties
-    
     private var fillStyle: AnyShapeStyle {
-        if state.type == .volume && useColorCodedVolume {
-            let intensity = state.value
+        if type == .volume && useColorCodedVolume {
+            let intensity = value
             if useSmoothGradient {
                 let endColor = ColorCodedPalette.color(for: intensity, smooth: true)
                 let startColor = ColorCodedPalette.color(for: max(intensity - 0.15, 0), smooth: true)
@@ -247,12 +292,11 @@ struct VerticalHUDView: View {
                 return AnyShapeStyle(ColorCodedPalette.color(for: intensity, smooth: false))
             }
         }
-        
         return AnyShapeStyle(useAccentColor ? Color.accentColor : Color.white)
     }
 
     private var valueLabelColor: Color {
-        if state.value > 0.85 {
+        if value > 0.85 {
             return useAccentColor ? .white : .black
         }
         return .secondary
@@ -275,10 +319,7 @@ struct VerticalHUDView: View {
                 } else {
                     Capsule()
                         .fill(.clear)
-                        .glassEffect(
-                            .clear.interactive(),
-                            in: .capsule
-                        )
+                        .glassEffect(.clear.interactive(), in: .capsule)
                 }
             } else {
                 Capsule().fill(.ultraThinMaterial)

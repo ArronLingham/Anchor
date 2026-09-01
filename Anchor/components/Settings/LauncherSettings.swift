@@ -46,6 +46,12 @@ struct LauncherSettings: View {
                 }
                 .settingsHighlight(id: highlightID("Enable Launcher"))
 
+                Defaults.Toggle(key: .enableShortcutsLauncher) {
+                    Text("Show Apple Shortcuts")
+                }
+                .settingsHighlight(id: highlightID("Show Apple Shortcuts"))
+                .settingsInfo("Adds your Apple Shortcuts to the launcher so you can run one by name. The list is read once from the Shortcuts app and refreshed only when you ask \u{2014} nothing is queried while you type.")
+
                 KeyboardShortcuts.Recorder("Open launcher:", name: .toggleLauncher)
                     .disabled(!enableLauncher)
                     .settingsHighlight(id: highlightID("Open launcher"))

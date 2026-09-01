@@ -1307,6 +1307,135 @@ extension Defaults.Keys {
 
     // MARK: Menu bar shrinker
     /// Adds a divider to the menu bar; items dragged to its left hide.
+    /// Strip tracking parameters from links as they are copied.
+    /// Invert the mouse wheel's vertical direction. Trackpads are untouched —
+    /// macOS's natural scrolling already governs those.
+    /// Expand typed abbreviations into longer text.
+    /// Filter duplicate keystrokes from a worn keyboard.
+    /// Bring the window under the pointer forward after it settles.
+    static let enableFocusFollowsMouse = Key<Bool>("enableFocusFollowsMouse", default: false)
+    /// How long the pointer must rest before raising. Below ~150ms a pointer
+    /// merely crossing the screen raises whatever it passes over.
+    static let focusFollowsMouseDelayMs = Key<Int>("focusFollowsMouseDelayMs", default: 300)
+    static let enableKeyDebounce = Key<Bool>("enableKeyDebounce", default: false)
+    /// Presses of the same key closer together than this are treated as bounce.
+    /// Capped low deliberately — too high and it eats deliberate double-taps.
+    static let keyDebounceMilliseconds = Key<Int>("keyDebounceMilliseconds", default: 25)
+
+    // MARK: Audio device tools
+
+    /// UID of the input device to hold as the system default.
+    ///
+    /// A UID rather than an `AudioDeviceID`: IDs are assigned per boot and per
+    /// connection, so a stored ID points at a different device — or nothing —
+    /// after a reconnect, which is exactly when this feature has to work.
+    /// Empty means the feature is off.
+    static let pinnedInputDeviceUID = Key<String>("pinnedInputDeviceUID", default: "")
+    /// Show the notch mic HUD when every microphone is muted or unmuted.
+    ///
+    /// Mic only, deliberately. `InlineHUD` derives its label from the
+    /// sneak-peek *type*, so it cannot display an arbitrary output-device name,
+    /// and a new type would render blank while still winning the branch.
+    static let enableAudioDeviceHUD = Key<Bool>("enableAudioDeviceHUD", default: true)
+
+    // MARK: App lifecycle
+
+    /// Quit an app when its last window closes.
+    ///
+    /// Off by default and deliberately so: it terminates other people's apps,
+    /// which is the most destructive thing in this codebase short of the
+    /// uninstaller. Every guard in `QuitOnCloseDecision` exists because the
+    /// failure mode is someone losing unsaved work.
+    static let enableQuitOnLastWindowClose = Key<Bool>("enableQuitOnLastWindowClose", default: false)
+    /// Bundle ids the user never wants quit automatically.
+    static let quitOnCloseExcludedApps = Key<[String]>("quitOnCloseExcludedApps", default: [])
+    /// Close Music/TV/Podcasts when they launch themselves.
+    static let blockMediaAppAutoLaunch = Key<Bool>("blockMediaAppAutoLaunch", default: false)
+
+    // MARK: System alerts
+
+    /// Warn when the battery drops below `batteryAlertPercent`.
+    static let enableBatteryAlert = Key<Bool>("enableBatteryAlert", default: false)
+    static let batteryAlertPercent = Key<Int>("batteryAlertPercent", default: 20)
+    /// Warn when the startup disk is more than `diskAlertPercent` full.
+    static let enableDiskAlert = Key<Bool>("enableDiskAlert", default: false)
+    static let diskAlertPercent = Key<Int>("diskAlertPercent", default: 90)
+    /// Warn when CPU stays above `cpuAlertPercent` for five minutes.
+    static let enableCPUAlert = Key<Bool>("enableCPUAlert", default: false)
+    static let cpuAlertPercent = Key<Int>("cpuAlertPercent", default: 85)
+
+    // MARK: Menu bar readout
+
+    /// Live readouts in the menu bar. Each holds the shared stats sampler open
+    /// while visible, so all three off means nothing is sampled.
+    static let menuBarShowCPU = Key<Bool>("menuBarShowCPU", default: false)
+    static let menuBarShowMemory = Key<Bool>("menuBarShowMemory", default: false)
+    static let menuBarShowNetwork = Key<Bool>("menuBarShowNetwork", default: false)
+
+    // MARK: Disk image installer
+
+    /// Offer to copy an app to /Applications when a disk image is mounted.
+    /// The offer is a confirmation dialog — nothing is ever copied unprompted.
+    static let enableDiskImageInstaller = Key<Bool>("enableDiskImageInstaller", default: false)
+
+    /// Show Apple Shortcuts in the launcher (⌥Space).
+    static let enableShortcutsLauncher = Key<Bool>("enableShortcutsLauncher", default: false)
+
+    // MARK: Camera mirror
+
+    /// Live camera preview in the notch.
+    ///
+    /// Restored 2026-09-01 at the user's request, having been removed earlier
+    /// at the user's request. `ENABLE_RESOURCE_ACCESS_CAMERA` went back to YES
+    /// in both build configurations and the privacy test was reversed rather
+    /// than deleted — see `test_camera_access_is_declared_consistently`.
+    static let enableCameraMirror = Key<Bool>("enableCameraMirror", default: false)
+    /// `uniqueID` of the camera to use. Empty means the first one found.
+    static let cameraMirrorDeviceID = Key<String>("cameraMirrorDeviceID", default: "")
+    /// Flip the preview horizontally, so it behaves like a mirror.
+    static let cameraMirrorFlipped = Key<Bool>("cameraMirrorFlipped", default: true)
+
+    // MARK: Gemini assistant
+
+    /// The Gemini assistant tab in the notch.
+    ///
+    /// The API **key** is not here — it lives in the Keychain
+    /// (`com.arronlingham.Anchor.gemini` / `apiKey`), because `Defaults` is a
+    /// world-readable plist and the key is billable. Only non-secret settings
+    /// belong in this file.
+    static let enableGeminiAssistant = Key<Bool>("enableGeminiAssistant", default: false)
+    static let geminiModel = Key<String>("geminiModel", default: "gemini-2.0-flash")
+    /// How many prior turns to send. More context costs more per request.
+    static let geminiHistoryTurns = Key<Int>("geminiHistoryTurns", default: 20)
+    static let geminiRememberConversation = Key<Bool>("geminiRememberConversation", default: true)
+    /// The stored conversation, as JSON. The user's own words, not a secret.
+    static let geminiHistory = Key<String>("geminiHistory", default: "")
+    static let geminiSystemInstruction = Key<String>(
+        "geminiSystemInstruction",
+        default: "You are a concise assistant embedded in a macOS menu bar app. Keep answers short unless asked for detail.")
+
+
+
+
+
+
+
+
+    static let enableTextSnippets = Key<Bool>("enableTextSnippets", default: false)
+    /// The user's snippets.
+    static let textSnippets = Key<[TextSnippet]>("textSnippets", default: [])
+    static let invertScrollVertical = Key<Bool>("invertScrollVertical", default: false)
+    /// Invert the mouse wheel's horizontal direction, independently of vertical.
+    static let invertScrollHorizontal = Key<Bool>("invertScrollHorizontal", default: false)
+    /// Map mouse buttons 3 and 4 to Back and Forward (⌘[ / ⌘]).
+    static let mouseSideButtonNavigation = Key<Bool>("mouseSideButtonNavigation", default: false)
+    static let autoCleanCopiedURLs = Key<Bool>("autoCleanCopiedURLs", default: false)
+    /// Empty the system pasteboard a while after a copy.
+    static let autoClearClipboardEnabled = Key<Bool>("autoClearClipboardEnabled", default: false)
+    /// How long to wait before clearing. Floored at 5s in the manager.
+    static let autoClearClipboardSeconds = Key<Int>("autoClearClipboardSeconds", default: 90)
+    /// Also empty the pasteboard on sleep, display sleep and screen lock.
+    static let autoClearClipboardOnLock = Key<Bool>("autoClearClipboardOnLock", default: false)
     static let enableMenuBarShrink = Key<Bool>("enableMenuBarShrink", default: false)
     /// Re-hide this many seconds after revealing. 0 keeps it open until clicked.
     static let menuBarAutoHideSeconds = Key<Int>("menuBarAutoHideSeconds", default: 0)

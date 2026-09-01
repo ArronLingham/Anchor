@@ -148,6 +148,8 @@ struct CircularHUDView: View {
             }
         case .brightness:
             return "sun.max.fill"
+        case .contrast:
+            return "circle.lefthalf.filled"
         case .backlight:
             return "keyboard"
         default:

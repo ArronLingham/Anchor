@@ -27,9 +27,13 @@ final class DisplayServicesDynamic {
 
     private typealias GetBrightnessFn = @convention(c) (UInt32, UnsafeMutablePointer<Float>) -> Int32
     private typealias SetBrightnessFn = @convention(c) (UInt32, Float) -> Int32
+    private typealias GetContrastFn = @convention(c) (UInt32, UnsafeMutablePointer<Float>) -> Int32
+    private typealias SetContrastFn = @convention(c) (UInt32, Float) -> Int32
 
     private let getBrightnessFn: GetBrightnessFn?
     private let setBrightnessFn: SetBrightnessFn?
+    private let getContrastFn: GetContrastFn?
+    private let setContrastFn: SetContrastFn?
 
     private init() {
         handle = dlopen("/System/Library/PrivateFrameworks/DisplayServices.framework/DisplayServices", RTLD_NOW)
@@ -44,6 +48,12 @@ final class DisplayServicesDynamic {
 
         setBrightnessFn = handle.flatMap { dlsym($0, "DisplayServicesSetBrightness") }
             .map { unsafeBitCast($0, to: SetBrightnessFn.self) }
+
+        getContrastFn = handle.flatMap { dlsym($0, "DisplayServicesGetContrast") }
+            .map { unsafeBitCast($0, to: GetContrastFn.self) }
+
+        setContrastFn = handle.flatMap { dlsym($0, "DisplayServicesSetContrast") }
+            .map { unsafeBitCast($0, to: SetContrastFn.self) }
     }
 
     func setBrightness(displayID: UInt32, value: Float) -> Int32? {
@@ -56,6 +66,18 @@ final class DisplayServicesDynamic {
         var brightness: Float = 0
         let status = fn(displayID, &brightness)
         return (status, brightness)
+    }
+
+    func setContrast(displayID: UInt32, value: Float) -> Int32? {
+        guard let fn = setContrastFn else { return nil }
+        return fn(displayID, value)
+    }
+
+    func getContrast(displayID: UInt32) -> (status: Int32, value: Float)? {
+        guard let fn = getContrastFn else { return nil }
+        var contrast: Float = 0
+        let status = fn(displayID, &contrast)
+        return (status, contrast)
     }
 
     deinit {

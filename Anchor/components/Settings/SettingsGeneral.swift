@@ -150,10 +150,160 @@ struct GeneralSettings: View {
                     Text("Snap windows to screen edges")
                 }
                 .settingsHighlight(id: highlightID("Snap windows to screen edges"))
-                .settingsInfo("Drag a window against the left or right edge to tile it to that half, or the top edge to fill the screen. Needs Accessibility, which dictation already requires. Nothing is observed until a drag begins.")
+                .settingsInfo("Drag a window against the left or right edge to tile it to that half, or the top edge to fill the screen. Sixteen zones are also available as shortcuts in the Shortcuts pane. Needs Accessibility, which dictation already requires. Nothing is observed until a drag begins.")
+
+                Defaults.Toggle(key: .enableQuitOnLastWindowClose) {
+                    Text("Quit apps when their last window closes")
+                }
+                .settingsHighlight(id: highlightID("Quit apps when their last window closes"))
+                .settingsInfo("Windows-style behaviour: closing the last window quits the app instead of leaving it running with no windows. Minimised windows do not count as closed, apps are left alone for ten seconds after launching, and menu bar agents are never touched. Finder, Dock and Anchor are always excluded.")
+
+                if Defaults[.enableQuitOnLastWindowClose] {
+                    QuitOnCloseExclusions()
+                        .settingsHighlight(id: highlightID("Never quit these apps"))
+                }
             } header: {
-                Text("Window snapping")
+                Text("Windows")
             }
+
+            Section {
+                Defaults.Toggle(key: .invertScrollVertical) {
+                    Text("Invert mouse wheel scrolling")
+                }
+                .settingsHighlight(id: highlightID("Invert mouse wheel scrolling"))
+                .settingsInfo("Flips the direction of a mouse wheel only. Trackpads are left alone \u{2014} macOS's own natural scrolling already governs those, and inverting both would cancel out.")
+
+                Defaults.Toggle(key: .invertScrollHorizontal) {
+                    Text("Invert horizontal scrolling")
+                }
+                .settingsHighlight(id: highlightID("Invert horizontal scrolling"))
+
+                Defaults.Toggle(key: .mouseSideButtonNavigation) {
+                    Text("Mouse side buttons go back and forward")
+                }
+                .settingsHighlight(id: highlightID("Mouse side buttons go back and forward"))
+                .settingsInfo("Maps mouse buttons 3 and 4 to \u{2318}[ and \u{2318}], which is Back and Forward in Finder, browsers and most document apps. Needs Accessibility and Input Monitoring.")
+
+                Defaults.Toggle(key: .enableFocusFollowsMouse) {
+                    Text("Focus follows the mouse")
+                }
+                .settingsHighlight(id: highlightID("Focus follows the mouse"))
+                .settingsInfo("Brings the window under the pointer forward once the pointer settles there. Suspended while dragging, while a modifier is held and while a menu is open, so it cannot steal focus mid-action.")
+
+                if Defaults[.enableFocusFollowsMouse] {
+                    Picker("Settle for", selection: Binding(
+                        get: { Defaults[.focusFollowsMouseDelayMs] },
+                        set: { Defaults[.focusFollowsMouseDelayMs] = $0 })) {
+                        Text("Fast (150 ms)").tag(150)
+                        Text("Normal (300 ms)").tag(300)
+                        Text("Relaxed (600 ms)").tag(600)
+                        Text("Slow (1 second)").tag(1000)
+                    }
+                    .settingsHighlight(id: highlightID("Settle for"))
+                }
+            } header: {
+                Text("Pointer")
+            }
+
+            Section {
+                Defaults.Toggle(key: .enableKeyDebounce) {
+                    Text("Filter repeated keystrokes")
+                }
+                .settingsHighlight(id: highlightID("Filter repeated keystrokes"))
+                .settingsInfo("For a worn keyboard that types a letter twice. A second press of the same key sooner than the threshold is dropped; different keys in quick succession are never touched, so ordinary fast typing is unaffected. Needs Accessibility and Input Monitoring.")
+
+                if Defaults[.enableKeyDebounce] {
+                    Picker("Ignore repeats within", selection: Binding(
+                        get: { Defaults[.keyDebounceMilliseconds] },
+                        set: { Defaults[.keyDebounceMilliseconds] = $0 })) {
+                        Text("15 ms").tag(15)
+                        Text("25 ms (default)").tag(25)
+                        Text("40 ms").tag(40)
+                        Text("60 ms").tag(60)
+                    }
+                    .settingsHighlight(id: highlightID("Ignore repeats within"))
+
+                    Text("Filtered so far: \(KeyDebounceManager.shared.suppressedCount)")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+            } header: {
+                Text("Keyboard")
+            } footer: {
+                Text("Raise the threshold only if doubles still get through. Above about 60 ms this starts eating deliberate double-taps, which is a worse problem than the one it solves.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+
+            Section {
+                Defaults.Toggle(key: .blockMediaAppAutoLaunch) {
+                    Text("Stop Music opening itself")
+                }
+                .settingsHighlight(id: highlightID("Stop Music opening itself"))
+                .settingsInfo("Closes Music, TV or Podcasts when they launch on their own \u{2014} which macOS does when a Bluetooth headset sends a play command on connect. An app you open yourself is left alone.")
+            } header: {
+                Text("Media apps")
+            }
+
+            Section {
+                Defaults.Toggle(key: .enableBatteryAlert) {
+                    Text("Warn when the battery is low")
+                }
+                .settingsHighlight(id: highlightID("Warn when the battery is low"))
+                if Defaults[.enableBatteryAlert] {
+                    Picker("Warn below", selection: Binding(
+                        get: { Defaults[.batteryAlertPercent] },
+                        set: { Defaults[.batteryAlertPercent] = $0 })) {
+                        ForEach([10, 15, 20, 25, 30], id: \.self) { Text("\($0)%").tag($0) }
+                    }
+                }
+
+                Defaults.Toggle(key: .enableDiskAlert) {
+                    Text("Warn when the disk is nearly full")
+                }
+                .settingsHighlight(id: highlightID("Warn when the disk is nearly full"))
+                if Defaults[.enableDiskAlert] {
+                    Picker("Warn above", selection: Binding(
+                        get: { Defaults[.diskAlertPercent] },
+                        set: { Defaults[.diskAlertPercent] = $0 })) {
+                        ForEach([80, 85, 90, 95], id: \.self) { Text("\($0)% used").tag($0) }
+                    }
+                }
+
+                Defaults.Toggle(key: .enableCPUAlert) {
+                    Text("Warn when the CPU stays busy")
+                }
+                .settingsHighlight(id: highlightID("Warn when the CPU stays busy"))
+                if Defaults[.enableCPUAlert] {
+                    Picker("Warn above", selection: Binding(
+                        get: { Defaults[.cpuAlertPercent] },
+                        set: { Defaults[.cpuAlertPercent] = $0 })) {
+                        ForEach([70, 80, 85, 90], id: \.self) { Text("\($0)%").tag($0) }
+                    }
+                }
+            } header: {
+                Text("Alerts")
+            } footer: {
+                Text("Each alert fires once and then stays quiet until the value recovers well past its threshold \u{2014} a battery hovering at the warning level does not produce a stream of notifications. The CPU warning needs five sustained minutes, so a build or a page load never triggers it. Battery is event-driven; disk and CPU share one check a minute that stops while the display sleeps.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+
+            Section {
+                Defaults.Toggle(key: .enableDiskImageInstaller) {
+                    Text("Offer to install apps from disk images")
+                }
+                .settingsHighlight(id: highlightID("Offer to install apps from disk images"))
+            } header: {
+                Text("Disk images")
+            } footer: {
+                Text("When you mount a .dmg holding a single app, Anchor asks whether to copy it to Applications and eject the image. It always asks \u{2014} nothing is ever copied on its own. An image with several apps is left alone rather than guessed at, and replacing an existing copy moves the old one to the Trash so you can put it back.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+
+
+            SettingsSnippets()
 
             Section {
                 Defaults.Toggle(key: .enableSystemStats) {

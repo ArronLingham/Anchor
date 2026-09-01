@@ -175,3 +175,6 @@ __pycache__/
 
 # Coverage artifact emitted by instrumented builds.
 default.profraw
+
+# Build/coverage artefacts that kept reappearing at the repo root
+*.profraw

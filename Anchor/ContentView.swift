@@ -54,6 +54,7 @@ struct ContentView: View {
     /// observed by `ClaudeUsageLiveActivity` alone — never from here.
     @ObservedObject var claudeUsageManager = ClaudeUsageManager.shared
     @ObservedObject var eyeBreakManager = EyeBreakManager.shared
+    @ObservedObject var systemAlertManager = SystemAlertManager.shared
     @State private var downloadManager = DownloadManager.shared
     
     @Default(.enableReminderLiveActivity) var enableReminderLiveActivity
@@ -886,6 +887,15 @@ struct ContentView: View {
                           EyeBreakLiveActivity()
                               .id("eye-break-live-activity")
                               .transition(closedLiveActivitySwapTransition)
+                      // Below the eye break, which is a twenty-second ask
+                      // that must not queue; above the usage countdown, which
+                      // sits there for hours. A warning is short-lived and
+                      // worth seeing promptly, so it outranks anything
+                      // long-running but yields to the break prompt.
+                      } else if vm.notchState == .closed && systemAlertManager.visibleAlert != nil && !vm.hideOnClosed {
+                          SystemAlertLiveActivity()
+                              .id("system-alert-live-activity")
+                              .transition(closedLiveActivitySwapTransition)
                       } else if vm.notchState == .closed && claudeUsageManager.isLiveActivityVisible && !vm.hideOnClosed {
                           ClaudeUsageLiveActivity()
                               .id("claude-usage-live-activity")
@@ -1013,6 +1023,10 @@ struct ContentView: View {
                                 NotchNotificationsView()
                             case .todo:
                                 NotchTodoView()
+                            case .cameraMirror:
+                                NotchCameraMirrorView()
+                            case .gemini:
+                                NotchGeminiView()
                           }
                       }
                       .id(coordinator.currentView)

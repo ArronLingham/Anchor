@@ -90,6 +90,9 @@ struct CustomOSDView: View {
         case .brightness:
             return "sun.max.fill"
             
+        case .contrast:
+            return "circle.lefthalf.filled"
+
         case .backlight:
             return value >= 0.5 ? "light.max" : "light.min"
             

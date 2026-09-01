@@ -66,6 +66,8 @@ enum SettingsTab: String, CaseIterable, Identifiable {
     case shortcuts
     case notes
     case todo
+    case cleanup
+    case gemini
     case terminal
     case gitCommit
     case about
@@ -79,6 +81,8 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         case .media, .liveActivities, .lockScreen, .devices, .vinyl:         return .mediaAndDisplay
         case .hudAndOSD, .battery, .menuBar:                                 return .system
         case .timer, .calendar, .notes, .todo:                               return .productivity
+        case .cleanup:                                                       return .utilities
+        case .gemini:                                                        return .integrations
         case .dictation, .launcher, .claudeUsage:                            return .integrations
         case .clipboard, .downloads, .shortcuts:                             return .utilities
         case .terminal, .gitCommit:                                          return .developer
@@ -108,6 +112,8 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         case .shortcuts: return String(localized: "Shortcuts")
         case .notes: return String(localized: "Notes")
         case .todo: return String(localized: "To-Do")
+        case .cleanup: return String(localized: "Maintenance")
+        case .gemini: return String(localized: "Gemini")
         case .terminal: return String(localized: "Terminal")
         case .gitCommit: return String(localized: "Daily Commit")
         case .about: return String(localized: "About")
@@ -136,6 +142,8 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         case .shortcuts: return "keyboard"
         case .notes: return "note.text"
         case .todo: return "checklist"
+        case .cleanup: return "wrench.and.screwdriver"
+        case .gemini: return "sparkles"
         case .terminal: return "apple.terminal"
         case .gitCommit: return "arrow.triangle.branch"
         case .about: return "info.circle"
@@ -164,6 +172,8 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         case .shortcuts: return .orange
         case .notes: return Color(red: 0.979, green: 0.716, blue: 0.153, opacity: 1.000)
         case .todo: return Color(red: 0.30, green: 0.72, blue: 0.45, opacity: 1.000)
+        case .cleanup: return Color(red: 0.42, green: 0.55, blue: 0.68, opacity: 1.000)
+        case .gemini: return Color(red: 0.55, green: 0.44, blue: 0.85, opacity: 1.000)
         case .terminal: return Color(red: 0.2, green: 0.8, blue: 0.4)
         case .gitCommit: return Color(red: 0.95, green: 0.45, blue: 0.25, opacity: 1.000)
         case .about: return .secondary
@@ -507,6 +517,8 @@ struct SettingsView: View {
             .calendar,
             .notes,
             .todo,
+            .cleanup,
+            .gemini,
             // Utilities
             .clipboard,
             .downloads,
@@ -721,11 +733,37 @@ struct SettingsView: View {
             SettingsSearchEntry(tab: .menuBar, title: "Shrink the menu bar", keywords: ["menu bar", "menubar", "ice", "bartender", "hide icons", "status items"], highlightID: SettingsTab.menuBar.highlightID(for: "Shrink the menu bar")),
             SettingsSearchEntry(tab: .launcher, title: "Enable app switcher", keywords: ["cmd tab", "command tab", "alt tab", "switcher", "ring", "radial"], highlightID: SettingsTab.launcher.highlightID(for: "Enable app switcher")),
             SettingsSearchEntry(tab: .gitCommit, title: "Commit once a day", keywords: ["git", "commit", "daily", "streak", "contribution"], highlightID: SettingsTab.gitCommit.highlightID(for: "Commit once a day")),
+            SettingsSearchEntry(tab: .launcher, title: "Show Apple Shortcuts", keywords: ["shortcuts", "apple shortcuts", "workflow", "automation", "run shortcut"], highlightID: SettingsTab.launcher.highlightID(for: "Show Apple Shortcuts")),
+            SettingsSearchEntry(tab: .gemini, title: "Gemini assistant", keywords: ["gemini", "ai", "assistant", "chat", "google ai", "llm"], highlightID: SettingsTab.gemini.highlightID(for: "Gemini assistant")),
+            SettingsSearchEntry(tab: .gemini, title: "API key", keywords: ["gemini key", "api key", "google ai studio"], highlightID: SettingsTab.gemini.highlightID(for: "API key")),
+            SettingsSearchEntry(tab: .cleanup, title: "Scan", keywords: ["clean", "cleaner", "storage", "free space", "disk space", "caches", "reclaim"], highlightID: SettingsTab.cleanup.highlightID(for: "Scan")),
+            SettingsSearchEntry(tab: .cleanup, title: "Move to Trash", keywords: ["clear caches", "derived data", "npm cache", "homebrew cache", "clean up"], highlightID: SettingsTab.cleanup.highlightID(for: "Move to Trash")),
+            SettingsSearchEntry(tab: .cleanup, title: "Check for updates", keywords: ["homebrew", "brew outdated", "app updates", "outdated packages", "upgrade"], highlightID: SettingsTab.cleanup.highlightID(for: "Check for updates")),
             SettingsSearchEntry(tab: .todo, title: "Enable to-do list", keywords: ["todo", "to-do", "task", "checklist"], highlightID: SettingsTab.todo.highlightID(for: "Enable to-do list")),
             SettingsSearchEntry(tab: .todo, title: "Sort by", keywords: ["todo order", "task sort"], highlightID: SettingsTab.todo.highlightID(for: "Sort by")),
             SettingsSearchEntry(tab: .general, title: "Enable Minimalistic UI", keywords: ["minimalistic", "ui mode", "general"], highlightID: SettingsTab.general.highlightID(for: "Enable Minimalistic UI")),
             SettingsSearchEntry(tab: .general, title: "Keep the notch open", keywords: ["pin", "pinned", "stay open", "notch pin"], highlightID: SettingsTab.general.highlightID(for: "Keep the notch open")),
             SettingsSearchEntry(tab: .general, title: "Always show on external displays", keywords: ["external display", "pill", "second monitor", "multi-display", "non-notch"], highlightID: SettingsTab.general.highlightID(for: "Always show on external displays")),
+            SettingsSearchEntry(tab: .shortcuts, title: "Pick a colour", keywords: ["colour picker", "color picker", "eyedropper", "pick colour"], highlightID: SettingsTab.shortcuts.highlightID(for: "Pick a colour")),
+            SettingsSearchEntry(tab: .shortcuts, title: "Keep the notch open", keywords: ["pin notch", "keep open", "notch pin shortcut"], highlightID: SettingsTab.shortcuts.highlightID(for: "Keep the notch open")),
+            SettingsSearchEntry(tab: .general, title: "Offer to install apps from disk images", keywords: ["dmg", "disk image", "install app", "drag to applications"], highlightID: SettingsTab.general.highlightID(for: "Offer to install apps from disk images")),
+            SettingsSearchEntry(tab: .menuBar, title: "Show CPU", keywords: ["menu bar cpu", "cpu readout", "cpu meter", "istat"], highlightID: SettingsTab.menuBar.highlightID(for: "Show CPU")),
+            SettingsSearchEntry(tab: .menuBar, title: "Show memory", keywords: ["menu bar ram", "memory readout", "ram meter"], highlightID: SettingsTab.menuBar.highlightID(for: "Show memory")),
+            SettingsSearchEntry(tab: .menuBar, title: "Show network throughput", keywords: ["menu bar network", "bandwidth", "network speed", "upload download"], highlightID: SettingsTab.menuBar.highlightID(for: "Show network throughput")),
+            SettingsSearchEntry(tab: .general, title: "Warn when the battery is low", keywords: ["battery alert", "low battery", "battery warning"], highlightID: SettingsTab.general.highlightID(for: "Warn when the battery is low")),
+            SettingsSearchEntry(tab: .general, title: "Warn when the disk is nearly full", keywords: ["disk alert", "disk full", "storage warning", "free space"], highlightID: SettingsTab.general.highlightID(for: "Warn when the disk is nearly full")),
+            SettingsSearchEntry(tab: .general, title: "Warn when the CPU stays busy", keywords: ["cpu alert", "high cpu", "cpu warning", "runaway process"], highlightID: SettingsTab.general.highlightID(for: "Warn when the CPU stays busy")),
+            SettingsSearchEntry(tab: .general, title: "Quit apps when their last window closes", keywords: ["quit on close", "close last window", "windows behaviour", "auto quit"], highlightID: SettingsTab.general.highlightID(for: "Quit apps when their last window closes")),
+            SettingsSearchEntry(tab: .general, title: "Never quit these apps", keywords: ["quit exclusion", "exclude app", "protect app"], highlightID: SettingsTab.general.highlightID(for: "Never quit these apps")),
+            SettingsSearchEntry(tab: .general, title: "Focus follows the mouse", keywords: ["focus follows mouse", "hover focus", "x11", "sloppy focus"], highlightID: SettingsTab.general.highlightID(for: "Focus follows the mouse")),
+            SettingsSearchEntry(tab: .general, title: "Filter repeated keystrokes", keywords: ["debounce", "double letters", "chatter", "worn keyboard", "key repeat"], highlightID: SettingsTab.general.highlightID(for: "Filter repeated keystrokes")),
+            SettingsSearchEntry(tab: .general, title: "Stop Music opening itself", keywords: ["music autolaunch", "itunes opens", "bluetooth music", "headphones open music"], highlightID: SettingsTab.general.highlightID(for: "Stop Music opening itself")),
+            SettingsSearchEntry(tab: .media, title: "Camera mirror", keywords: ["camera", "webcam", "mirror", "selfie", "video preview"], highlightID: SettingsTab.media.highlightID(for: "Camera mirror")),
+            SettingsSearchEntry(tab: .media, title: "External display brightness", keywords: ["ddc", "monitor brightness", "external monitor", "second screen brightness", "ddc/ci"], highlightID: SettingsTab.media.highlightID(for: "External display brightness")),
+            SettingsSearchEntry(tab: .media, title: "Pin microphone", keywords: ["microphone", "mic", "input device", "default input", "pin mic", "airpods steal"], highlightID: SettingsTab.media.highlightID(for: "Pin microphone")),
+            SettingsSearchEntry(tab: .media, title: "Audio device HUD", keywords: ["output device", "speaker switch", "audio hud"], highlightID: SettingsTab.media.highlightID(for: "Audio device HUD")),
+            SettingsSearchEntry(tab: .shortcuts, title: "Next output device", keywords: ["cycle output", "switch speakers", "audio output shortcut"], highlightID: SettingsTab.shortcuts.highlightID(for: "Next output device")),
+            SettingsSearchEntry(tab: .shortcuts, title: "Mute all microphones", keywords: ["mute mic", "microphone mute", "mute all"], highlightID: SettingsTab.shortcuts.highlightID(for: "Mute all microphones")),
             SettingsSearchEntry(tab: .general, title: "Menubar icon", keywords: ["menu bar", "status bar", "icon"], highlightID: SettingsTab.general.highlightID(for: "Menubar icon")),
             SettingsSearchEntry(tab: .general, title: "Launch at login", keywords: ["autostart", "startup"], highlightID: SettingsTab.general.highlightID(for: "Launch at login")),
             SettingsSearchEntry(tab: .general, title: "Show on all displays", keywords: ["multi-display", "external monitor"], highlightID: SettingsTab.general.highlightID(for: "Show on all displays")),
@@ -1033,6 +1071,10 @@ struct SettingsView: View {
             SettingsForm(tab: .notes) {
                 NotesSettingsView()
             }
+        case .cleanup:
+            SettingsCleanup()
+        case .gemini:
+            GeminiSettings()
         case .todo:
             SettingsForm(tab: .todo) {
                 TodoSettings()

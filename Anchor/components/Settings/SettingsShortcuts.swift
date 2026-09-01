@@ -110,6 +110,30 @@ struct Shortcuts: View {
                     HStack {
                         VStack(alignment: .leading) {
                             KeyboardShortcuts.Recorder("Clipboard History:", name: .clipboardHistoryPanel)
+                            KeyboardShortcuts.Recorder("Paste as plain text:", name: .pastePlainText)
+                            KeyboardShortcuts.Recorder("Clean link on clipboard:", name: .cleanClipboardURL)
+                            KeyboardShortcuts.Recorder("Pick a colour:", name: .pickColor)
+                            KeyboardShortcuts.Recorder("Keep the notch open:", name: .togglePinNotch)
+                            KeyboardShortcuts.Recorder("Next output device:", name: .cycleOutputDevice)
+                            KeyboardShortcuts.Recorder("Previous output device:", name: .cycleOutputDeviceReverse)
+                            KeyboardShortcuts.Recorder("Mute all microphones:", name: .toggleMuteAllInputs)
+                        }
+
+                        Section {
+                            KeyboardShortcuts.Recorder("Left half:", name: .snapLeft)
+                            KeyboardShortcuts.Recorder("Right half:", name: .snapRight)
+                            KeyboardShortcuts.Recorder("Top half:", name: .snapTopHalf)
+                            KeyboardShortcuts.Recorder("Bottom half:", name: .snapBottomHalf)
+                            KeyboardShortcuts.Recorder("Left third:", name: .snapLeftThird)
+                            KeyboardShortcuts.Recorder("Centre third:", name: .snapCentreThird)
+                            KeyboardShortcuts.Recorder("Right third:", name: .snapRightThird)
+                            KeyboardShortcuts.Recorder("Top left:", name: .snapTopLeft)
+                            KeyboardShortcuts.Recorder("Top right:", name: .snapTopRight)
+                            KeyboardShortcuts.Recorder("Bottom left:", name: .snapBottomLeft)
+                            KeyboardShortcuts.Recorder("Bottom right:", name: .snapBottomRight)
+                            KeyboardShortcuts.Recorder("Maximize:", name: .snapMaximize)
+                            KeyboardShortcuts.Recorder("Maximize with margin:", name: .snapMaximizeMargin)
+                            KeyboardShortcuts.Recorder("Centre:", name: .snapCentre)
                                 .disabled(!enableShortcuts || !enableClipboardManager)
                             if !enableClipboardManager {
                                 Text("Clipboard feature is disabled")

@@ -1,169 +1,72 @@
-<p align="center">
-  <img src=".github/assets/atoll-logo.png" alt="Atoll logo" width="120">
-</p>
-<h1 align="center">Atoll - DynamicIsland for macOS</h1>
-<p align="center">
-<a href="https://trendshift.io/repositories/15291" target="_blank"><img src="https://trendshift.io/api/badge/repositories/15291" alt="Ebullioscopic%2FAtoll | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
-</p>
-<p align="center">
-  <a href="https://github.com/Ebullioscopic/Atoll/stargazers">
-    <img src="https://img.shields.io/github/stars/Ebullioscopic/Atoll?style=social" alt="GitHub stars"/>
-  </a>
-  <a href="https://github.com/Ebullioscopic/Atoll/network/members">
-    <img src="https://img.shields.io/github/forks/Ebullioscopic/Atoll?style=social" alt="GitHub forks"/>
-  </a>
-  <a href="https://github.com/Ebullioscopic/Atoll/releases">
-    <img src="https://img.shields.io/github/downloads/Ebullioscopic/Atoll/total?label=Downloads" alt="GitHub downloads"/>
-  </a>
-  <a href="https://discord.gg/PaqFkRTDF8">
-    <img src="https://dcbadge.limes.pink/api/server/https://discord.gg/PaqFkRTDF8?style=flat" alt="Discord server"/>
-  </a>
-</p>
+# Anchor
 
-<p align="center">
-  <a href="https://github.com/sponsors/Ebullioscopic">
-    <img src="https://img.shields.io/badge/Sponsor-Ebullioscopic-ff69b4?style=for-the-badge&logo=github" alt="Sponsor Ebullioscopic"/>
-  </a>
-  <a href="https://github.com/Ebullioscopic/Atoll/releases/latest">
-    <img src="https://img.shields.io/badge/Download-Atoll%20for%20macOS-0A84FF?style=for-the-badge&logo=apple" alt="Download Atoll for macOS"/>
-  </a>
-  <a href="https://www.buymeacoffee.com/kryoscopic">
-    <img src="https://img.shields.io/badge/Buy%20Me%20A%20Coffee-kryoscopic-FFDD00?style=for-the-badge&logo=buy-me-a-coffee&logoColor=000000" alt="Buy Me a Coffee for kryoscopic"/>
-  </a>
-</p>
+A dynamic notch bar for macOS — media controls, dictation, an app launcher and a
+pile of system utilities, in one native Swift app.
 
-<p align="center">
-  <a href="https://discord.gg/PaqFkRTDF8">Join our Discord community</a>
-</p>
-
-Atoll turns the MacBook notch into a focused command surface for media, system insight, and quick utilities. It stays out of the way until needed, then expands with responsive, native SwiftUI animations.
-
-<p align="center">
-  <img src="https://i.postimg.cc/t49mW5yN/Screenshot-2026-03-02-at-6-00-22-PM.png" alt="Atoll lock screen" width="920">
-</p>
-
-
-
-
-
-## Highlights
-- Media controls for Apple Music, Spotify, Cider, and more with inline previews.
-- Live Activities for media playback, Focus, screen recording, privacy indicators, downloads (beta), and battery/charging.
-- Lock screen widgets for media, timers, charging, Bluetooth devices, and weather.
-- Lightweight system insight for CPU, GPU, memory, network, and disk usage.
-- Productivity tools including timers, clipboard history, color picker, and calendar previews.
-- Customization for layouts, animations, hover behavior, and shortcut remapping.
-
-## Other Features
-- Gesture controls for opening/closing the notch and media navigation.
-- Parallax hover interactions with smooth transitions.
-- Lock screen appearance and positioning controls for panels and widgets.
-
-<p align="center">
-  <img src="https://i.postimg.cc/HkLGn6yH/846F86A4_A2F9_4CD6_BC84_1D720D377728_1_201_a.jpg" alt="Atoll preview" width="920">
-</p>
+Personal project. **Private on purpose** — see [Licensing](#licensing), which is
+a one-way door.
 
 ## Requirements
-- macOS 14.0 or later (optimised for macOS 15+).
-- MacBook with a notch (14/16‑inch MBP across Apple silicon generations).
-- Xcode 15+ to build from source.
-- Permissions as needed: Accessibility, Camera, Calendar, Screen Recording, Music.
 
-## Installation
-1) Download the latest DMG [here](https://github.com/Ebullioscopic/Atoll/releases/latest).
-2) Open the DMG and drag Atoll into Applications.
-3) Launch Atoll and grant the requested permissions.
+macOS 26+, Apple Silicon. `MACOSX_DEPLOYMENT_TARGET = 26.0`, arm64 only.
+Dictation needs macOS 26's `SpeechAnalyzer`, which is why the floor is that high.
 
-## Quick Start
-- Hover near the notch to expand; click to enter controls.
-- Use tabs for Media, Stats, Timers, Clipboard, and more.
-- Adjust layout, appearance, and shortcuts from Settings.
-- Add files to Shelf from Terminal: `open -a Atoll /path/to/file`.
-
-## Settings
-- Choose appearance, animation style, and per‑feature toggles.
-- Remap global shortcuts and adjust hover behaviour.
-- Enable lock screen widgets and select data sources.
-
-## Gesture Controls
-- Two-finger swipe down to open the notch when hover-to-open is disabled; swipe up to close.
-- Enable horizontal media gestures in **Settings → General → Gesture control** to turn the music pane into a trackpad for previous/next or ±10 second seeks.
-- Pick the gesture skip behaviour (track vs ±10s) independently from the skip button configuration so swipes can scrub while buttons change tracks—or vice versa.
-- Horizontal swipes trigger the same haptics and button animations you see in the notch, keeping visual feedback consistent with tap interactions.
-
-## Troubleshooting (Basics)
-- After granting Accessibility or Screen Recording, quit and relaunch the app.
-- If metrics are empty, enable categories in Settings → Stats.
-- Media not responding: verify player is active and Music permission is granted.
-
-## License
-Atoll is released under the GPL v3 License. Refer to [LICENSE](LICENSE) for the full terms.
-
-## Acknowledgments
-
-Atoll builds upon the work of several open-source projects and draws inspiration from innovative macOS applications:
-
-- [**Boring.Notch**](https://github.com/TheBoredTeam/boring.notch) - foundational codebase that provided the initial media player integration, AirDrop surface implementation, file dock functionality, and calendar event display. Major architectural patterns and notch interaction models were adapted from this project.
-
-- [**Alcove**](https://tryalcove.com) - primary inspiration for the Minimalistic Mode interface design and the conceptual framework for lock screen widget integration that informed Atoll's compact layout strategy.
-
-- [**Stats**](https://github.com/exelban/stats) - source implementation for CPU temperature monitoring via SMC (System Management Controller) access, frequency sampling through IOReport bindings, and per-core CPU utilisation tracking. The system metrics collection architecture derives from Stats project readers.
-
-- [**Open Meteo**](https://open-meteo.com) - weather apis for the lock screen widgets
-
-- [**SkyLightWindow**](https://github.com/Lakr233/SkyLightWindow) - window rendering for Lock Screen Widgets
-
-- [**rtaudio**](https://github.com/ZephyrCodesStuff/rtaudio) - Live music visualizer using C++ was adapted from this project
-
-- [**SwiftTerm**](https://github.com/migueldeicaza/SwiftTerm) - Terminal tab implementation in the standard mode was adapted from this project
-
-- [**DynamicNotch**](https://github.com/jackson-storm/DynamicNotch) - thanks DynamicNotch for letting us use their battery huds
-
-- Wick - Thanks Nate for allowing us to replicate the iOS like Timer design for the Lock Screen Widget
-
-- [**OpenUsage**](https://github.com/robinebers/openusage) - LLM Usage Tracking features
-
-- [**OpenRouter**](https://openrouter.ai) - API for getting automated model pricing
-
-## Contributors
-
-<a href="https://github.com/Ebullioscopic/Atoll/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=Ebullioscopic/Atoll" />
-</a>
-
-## Star History
-
-[![Star History Chart](https://api.star-history.com/svg?repos=Ebullioscopic/Atoll&type=timeline&legend=top-left)](https://www.star-history.com/#Ebullioscopic/Atoll&type=timeline&legend=top-left)
-
-## Updating Existing Clones
-If you previously cloned DynamicIsland, update the remote to track the Atoll repository:
+## Build
 
 ```bash
-git remote set-url origin https://github.com/Ebullioscopic/Atoll.git
+xcodebuild -project Anchor.xcodeproj -scheme Anchor \
+  -configuration Release -destination 'platform=macOS,arch=arm64' \
+  CODE_SIGN_IDENTITY="Apple Development: arronlingham@icloud.com (Q4FNFX8QSH)" \
+  CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM=KLWHJX56T3 \
+  PROVISIONING_PROFILE_SPECIFIER="" build
 ```
 
-A heartfelt thanks to [TheBoredTeam](https://github.com/TheBoredTeam) for being supportive and being totally awesome, Atoll would not have been possible without Boring.Notch
+Install with `ditto <built>/Anchor.app /Applications/Anchor.app`, then
+`open -a /Applications/Anchor.app`.
 
----
+**Sparkle is deliberately disabled.** Every channel in `UpdateChannel` points at
+*upstream Atoll's* appcast, so a live updater eventually replaces Anchor with
+upstream — it already did once. Do not re-enable it.
 
-<p align="center">
-  <img src=".github/assets/iosdevcentre.jpeg" alt="iOS Development Centre exterior" width="420">
-  <br>
-  <sub>Backed by</sub>
-  <br>
-  <strong>iOS Development Centre</strong>
-  <br>
-  Powered by Apple and Infosys
-  <br>
-  SRM Institute of Science and Technology, Chennai, India
-</p>
+## Test
 
-<p align="center">
-  <a href="https://buymeacoffee.com/kryoscopic">
-    <img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" width="200" />
-  </a>
-</p>
+```bash
+for t in tests/run_*_tests.sh; do "$t"; done
+python3 tests/test_privacy_configuration.py
+```
 
-<p align="center">
-  Your support helps fund teaching children software development.
-</p>
+22 harnesses, 710 assertions. They compile the **real** source files with
+`swiftc` rather than a copy, so they cannot drift from the implementation.
+No app build or test target is needed.
+
+`scripts/audit_reachability.sh` checks that every feature flag is both acted on
+and reachable from Settings — this repo has shipped features with no way to turn
+them on more than once.
+
+## Where things are
+
+| Path | What |
+|---|---|
+| `Anchor/` | The app. See **Source layout** in `CLAUDE.md` for the full tree. |
+| `Anchor/Managers/` | All behaviour, in 15 feature folders. |
+| `Anchor/Components/` | All SwiftUI views. |
+| `tests/` | Standalone harnesses. |
+| `scripts/` | CPU sampler, reachability audit. |
+| `CLAUDE.md` | The real documentation — architecture, gotchas, measurements. |
+| `TESTING.md` | 120-item manual test checklist. |
+
+Read `CLAUDE.md` before changing anything. It records a long list of mistakes
+that look reasonable and are not, most of which have been made here at least
+once.
+
+## Licensing
+
+Anchor derives from [boring.notch](https://github.com/TheBoredTeam/boring.notch)
+via [Atoll](https://github.com/Ebullioscopic/Atoll), both **GPL-3.0**.
+
+The repository is private, and that is load-bearing rather than incidental:
+publishing it would be distribution and would trigger their copyleft. Settle the
+licence question *before* the repo is ever made public, not after.
+
+`NOTICE` records the fork chain. GPL headers in every source file credit Atoll
+and boring.notch and must keep doing so.

@@ -84,6 +84,12 @@ struct TabSelectionView: View {
         if Defaults[.enableTodoFeature] {
             tabsArray.append(TabModel(label: "To-Do", icon: "checklist", view: .todo))
         }
+        if Defaults[.enableCameraMirror] {
+            tabsArray.append(TabModel(label: "Mirror", icon: "video.fill", view: .cameraMirror))
+        }
+        if Defaults[.enableGeminiAssistant] {
+            tabsArray.append(TabModel(label: "Gemini", icon: "sparkles", view: .gemini))
+        }
         return tabsArray
     }
     var body: some View {

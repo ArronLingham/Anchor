@@ -737,6 +737,32 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             }
             // Creates its divider only when the feature is on; the observer
             // itself costs nothing.
+            // Registers sleep/lock observers only when auto-clear is on;
+            // otherwise it does nothing at all.
+            ClipboardToolsManager.shared.start()
+            // Creates its event tap only when a pointer feature is on; with all
+            // of them off it registers nothing.
+            PointerInputManager.shared.start()
+            // Creates its (listen-only) tap only when snippets are on.
+            TextSnippetManager.shared.start()
+            // Creates its tap only when debounce is on.
+            KeyDebounceManager.shared.start()
+            // Installs its mouse monitor only when enabled.
+            FocusFollowsMouseManager.shared.start()
+
+            AudioDeviceToolsManager.shared.start()
+
+            AppLifecycleManager.shared.start()
+
+            SystemAlertManager.shared.start()
+
+            MenuBarReadoutManager.shared.start()
+
+            DiskImageInstaller.shared.start()
+
+            CameraMirrorManager.shared.start()
+
+            GeminiManager.shared.start()
             MenuBarShrinkManager.shared.start()
             // Creates its window only when the feature is on. The record's
             // rotation is a CABasicAnimation, so a spinning record costs this
@@ -1272,6 +1298,54 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         KeyboardShortcuts.onKeyDown(for: .startDemoTimer) {
             guard Defaults[.enableShortcuts], Defaults[.enableTimerFeature] else { return }
             TimerManager.shared.startDemoTimer(duration: 300)
+        }
+
+        // Window layout. One table rather than fourteen near-identical
+        // registrations, so a zone cannot be wired to the wrong shortcut.
+        let snapBindings: [(KeyboardShortcuts.Name, SnapZoneManager.Zone)] = [
+            (.snapLeft, .left), (.snapRight, .right),
+            (.snapTopHalf, .topHalf), (.snapBottomHalf, .bottomHalf),
+            (.snapLeftThird, .leftThird), (.snapCentreThird, .centreThird),
+            (.snapRightThird, .rightThird),
+            (.snapTopLeft, .topLeft), (.snapTopRight, .topRight),
+            (.snapBottomLeft, .bottomLeft), (.snapBottomRight, .bottomRight),
+            (.snapMaximize, .top), (.snapMaximizeMargin, .maximizeWithMargin),
+            (.snapCentre, .centre),
+        ]
+        for (name, zone) in snapBindings {
+            KeyboardShortcuts.onKeyDown(for: name) {
+                guard Defaults[.enableShortcuts], Defaults[.enableSnapZones] else { return }
+                Task { @MainActor in SnapZoneManager.shared.apply(zone) }
+            }
+        }
+
+        KeyboardShortcuts.onKeyDown(for: .pastePlainText) {
+            guard Defaults[.enableShortcuts] else { return }
+            Task { @MainActor in
+                await ClipboardToolsManager.shared.pasteAsPlainText()
+            }
+        }
+
+        KeyboardShortcuts.onKeyDown(for: .cleanClipboardURL) {
+            guard Defaults[.enableShortcuts] else { return }
+            Task { @MainActor in
+                ClipboardToolsManager.shared.cleanPasteboardURLNow()
+            }
+        }
+
+        KeyboardShortcuts.onKeyDown(for: .cycleOutputDevice) {
+            guard Defaults[.enableShortcuts] else { return }
+            Task { @MainActor in AudioDeviceToolsManager.shared.cycleOutputDevice() }
+        }
+
+        KeyboardShortcuts.onKeyDown(for: .cycleOutputDeviceReverse) {
+            guard Defaults[.enableShortcuts] else { return }
+            Task { @MainActor in AudioDeviceToolsManager.shared.cycleOutputDevice(reverse: true) }
+        }
+
+        KeyboardShortcuts.onKeyDown(for: .toggleMuteAllInputs) {
+            guard Defaults[.enableShortcuts] else { return }
+            Task { @MainActor in AudioDeviceToolsManager.shared.toggleMuteAllInputs() }
         }
 
         KeyboardShortcuts.onKeyDown(for: .appSwitcher) {
