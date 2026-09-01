@@ -108,6 +108,8 @@ struct HUDAndOSDSettingsView: View {
         if Defaults[.enableCircularHUD] { return .circular }
         return .none
     }()
+    @Default(.useColorCodedVolumeDisplay) private var useColorCodedVolumeDisplay
+    @Default(.useSmoothColorGradient) private var useSmoothColorGradient
     @Default(.enableSystemHUD) var enableSystemHUD
     @Default(.enableCustomOSD) var enableCustomOSD
     @Default(.enableVerticalHUD) var enableVerticalHUD
@@ -453,7 +455,7 @@ struct HUDAndOSDSettingsView: View {
                         Defaults.Toggle(key: .useColorCodedVolumeDisplay) {
                             Text("Color-coded Volume")
                         }
-                        if Defaults[.useColorCodedVolumeDisplay] {
+                        if useColorCodedVolumeDisplay {
                             Defaults.Toggle(key: .useSmoothColorGradient) {
                                 Text("Smooth color transitions")
                             }
@@ -540,7 +542,7 @@ struct HUDAndOSDSettingsView: View {
                         Defaults.Toggle(key: .useColorCodedVolumeDisplay) {
                             Text("Color-coded Volume")
                         }
-                        if Defaults[.useColorCodedVolumeDisplay] {
+                        if useColorCodedVolumeDisplay {
                             Defaults.Toggle(key: .useSmoothColorGradient) {
                                 Text("Smooth color transitions")
                             }
@@ -853,6 +855,7 @@ private struct HUDSelectionCard<Preview: View>: View {
 }
 
 struct DevicesSettingsView: View {
+    @Default(.useSmoothColorGradient) private var useSmoothColorGradient
     @Default(.progressBarStyle) var progressBarStyle
     @Default(.useBluetoothHUD3DIcon) private var useBluetoothHUD3DIcon
 
@@ -931,7 +934,7 @@ struct DevicesSettingsView: View {
                     Text("Color-coded fills are unavailable in Segmented mode. Switch to Hierarchical or Gradient inside Controls › Dynamic Island to adjust advanced options.")
                         .foregroundStyle(.secondary)
                         .font(.caption)
-                } else if Defaults[.useSmoothColorGradient] {
+                } else if useSmoothColorGradient {
                     Text("Smooth transitions blend Green (0–60%), Yellow (60–85%), and Red (85–100%) through the entire fill. Adjust gradient behavior from Controls › Dynamic Island.")
                         .foregroundStyle(.secondary)
                         .font(.caption)
@@ -947,6 +950,7 @@ struct DevicesSettingsView: View {
 }
 
 struct HUD: View {
+    @Default(.useSmoothColorGradient) private var useSmoothColorGradient
     @EnvironmentObject var vm: AnchorViewModel
     @Default(.inlineHUD) var inlineHUD
     @Default(.progressBarStyle) var progressBarStyle
@@ -1047,7 +1051,7 @@ struct HUD: View {
                     Text("Color-coded fills and smooth gradients are unavailable in Segmented mode. Switch to Hierarchical or Gradient to adjust these options.")
                         .foregroundStyle(.secondary)
                         .font(.caption)
-                } else if Defaults[.useSmoothColorGradient] {
+                } else if useSmoothColorGradient {
                     Text("Smooth transitions blend Green (0–60%), Yellow (60–85%), and Red (85–100%) through the entire fill.")
                         .foregroundStyle(.secondary)
                         .font(.caption)

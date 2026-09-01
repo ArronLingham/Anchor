@@ -22,6 +22,7 @@ import LottieUI
 import Defaults
 
 struct AnimationEditorView: View {
+    @Default(.selectedIdleAnimation) private var selectedIdleAnimation
     @Environment(\.dismiss) var dismiss
     
     let sourceURL: URL
@@ -485,7 +486,7 @@ struct AnimationEditorView: View {
             print("✅ [AnimationEditor] Override: \(config)")
             
             // Force view refresh by updating selectedIdleAnimation if this is the selected one
-            if Defaults[.selectedIdleAnimation]?.id == existing.id {
+            if selectedIdleAnimation?.id == existing.id {
                 // Trigger refresh by re-setting the same animation
                 let current = Defaults[.selectedIdleAnimation]
                 Defaults[.selectedIdleAnimation] = nil

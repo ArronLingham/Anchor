@@ -34,6 +34,17 @@ import UniformTypeIdentifiers
 // Richard Kunkli on 07/08/2024. Behaviour unchanged.
 
 struct GeneralSettings: View {
+    @Default(.enableBatteryAlert) private var enableBatteryAlert
+    @Default(.enableCPUAlert) private var enableCPUAlert
+    @Default(.enableDiskAlert) private var enableDiskAlert
+    @Default(.enableFocusFollowsMouse) private var enableFocusFollowsMouse
+    @Default(.enableKeyDebounce) private var enableKeyDebounce
+    @Default(.enableQuitOnLastWindowClose) private var enableQuitOnLastWindowClose
+    @Default(.batteryAlertPercent) private var batteryAlertPercent
+    @Default(.cpuAlertPercent) private var cpuAlertPercent
+    @Default(.diskAlertPercent) private var diskAlertPercent
+    @Default(.focusFollowsMouseDelayMs) private var focusFollowsMouseDelayMs
+    @Default(.keyDebounceMilliseconds) private var keyDebounceMilliseconds
     @Default(.enableShelf) var enableShelf
     @Default(.eyeBreakEnabled) var eyeBreakEnabled
     @Default(.eyeBreakWorkMinutes) var eyeBreakWorkMinutes
@@ -62,12 +73,13 @@ struct GeneralSettings: View {
     @Default(.externalDisplayStyle) var externalDisplayStyle
     @Default(.hideNonNotchUntilHover) var hideNonNotchUntilHover
 
-    private var biometricGraceBinding: Binding<Int> {
-        Binding(
-            get: { Defaults[.biometricGraceSeconds] },
-            set: { Defaults[.biometricGraceSeconds] = $0 }
-        )
-    }
+    // Sourced from @Default rather than `Binding(get: { Defaults[...] })`.
+    // An imperative read inside a binding closure records no SwiftUI
+    // dependency, so writing the value never invalidated the view and the
+    // control went on rendering its old selection — the "settings dropdowns
+    // don't update" bug. @Default subscribes to the key and republishes.
+    @Default(.biometricGraceSeconds) private var biometricGrace
+    private var biometricGraceBinding: Binding<Int> { $biometricGrace }
 
     private func highlightID(_ title: String) -> String {
         SettingsTab.general.highlightID(for: title)
@@ -158,7 +170,7 @@ struct GeneralSettings: View {
                 .settingsHighlight(id: highlightID("Quit apps when their last window closes"))
                 .settingsInfo("Windows-style behaviour: closing the last window quits the app instead of leaving it running with no windows. Minimised windows do not count as closed, apps are left alone for ten seconds after launching, and menu bar agents are never touched. Finder, Dock and Anchor are always excluded.")
 
-                if Defaults[.enableQuitOnLastWindowClose] {
+                if enableQuitOnLastWindowClose {
                     QuitOnCloseExclusions()
                         .settingsHighlight(id: highlightID("Never quit these apps"))
                 }
@@ -190,10 +202,8 @@ struct GeneralSettings: View {
                 .settingsHighlight(id: highlightID("Focus follows the mouse"))
                 .settingsInfo("Brings the window under the pointer forward once the pointer settles there. Suspended while dragging, while a modifier is held and while a menu is open, so it cannot steal focus mid-action.")
 
-                if Defaults[.enableFocusFollowsMouse] {
-                    Picker("Settle for", selection: Binding(
-                        get: { Defaults[.focusFollowsMouseDelayMs] },
-                        set: { Defaults[.focusFollowsMouseDelayMs] = $0 })) {
+                if enableFocusFollowsMouse {
+                    Picker("Settle for", selection: $focusFollowsMouseDelayMs) {
                         Text("Fast (150 ms)").tag(150)
                         Text("Normal (300 ms)").tag(300)
                         Text("Relaxed (600 ms)").tag(600)
@@ -212,10 +222,8 @@ struct GeneralSettings: View {
                 .settingsHighlight(id: highlightID("Filter repeated keystrokes"))
                 .settingsInfo("For a worn keyboard that types a letter twice. A second press of the same key sooner than the threshold is dropped; different keys in quick succession are never touched, so ordinary fast typing is unaffected. Needs Accessibility and Input Monitoring.")
 
-                if Defaults[.enableKeyDebounce] {
-                    Picker("Ignore repeats within", selection: Binding(
-                        get: { Defaults[.keyDebounceMilliseconds] },
-                        set: { Defaults[.keyDebounceMilliseconds] = $0 })) {
+                if enableKeyDebounce {
+                    Picker("Ignore repeats within", selection: $keyDebounceMilliseconds) {
                         Text("15 ms").tag(15)
                         Text("25 ms (default)").tag(25)
                         Text("40 ms").tag(40)
@@ -250,10 +258,8 @@ struct GeneralSettings: View {
                     Text("Warn when the battery is low")
                 }
                 .settingsHighlight(id: highlightID("Warn when the battery is low"))
-                if Defaults[.enableBatteryAlert] {
-                    Picker("Warn below", selection: Binding(
-                        get: { Defaults[.batteryAlertPercent] },
-                        set: { Defaults[.batteryAlertPercent] = $0 })) {
+                if enableBatteryAlert {
+                    Picker("Warn below", selection: $batteryAlertPercent) {
                         ForEach([10, 15, 20, 25, 30], id: \.self) { Text("\($0)%").tag($0) }
                     }
                 }
@@ -262,10 +268,8 @@ struct GeneralSettings: View {
                     Text("Warn when the disk is nearly full")
                 }
                 .settingsHighlight(id: highlightID("Warn when the disk is nearly full"))
-                if Defaults[.enableDiskAlert] {
-                    Picker("Warn above", selection: Binding(
-                        get: { Defaults[.diskAlertPercent] },
-                        set: { Defaults[.diskAlertPercent] = $0 })) {
+                if enableDiskAlert {
+                    Picker("Warn above", selection: $diskAlertPercent) {
                         ForEach([80, 85, 90, 95], id: \.self) { Text("\($0)% used").tag($0) }
                     }
                 }
@@ -274,10 +278,8 @@ struct GeneralSettings: View {
                     Text("Warn when the CPU stays busy")
                 }
                 .settingsHighlight(id: highlightID("Warn when the CPU stays busy"))
-                if Defaults[.enableCPUAlert] {
-                    Picker("Warn above", selection: Binding(
-                        get: { Defaults[.cpuAlertPercent] },
-                        set: { Defaults[.cpuAlertPercent] = $0 })) {
+                if enableCPUAlert {
+                    Picker("Warn above", selection: $cpuAlertPercent) {
                         ForEach([70, 80, 85, 90], id: \.self) { Text("\($0)%").tag($0) }
                     }
                 }

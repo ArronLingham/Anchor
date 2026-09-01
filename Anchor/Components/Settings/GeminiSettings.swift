@@ -11,6 +11,7 @@ struct AIAssistantSettings: View {
     @ObservedObject private var manager = AIAssistantManager.shared
     @State private var keyDraft = ""
     @State private var saveResult: String?
+    @Default(.aiHistoryTurns) private var aiHistoryTurns
     @Default(.aiProvider) private var aiProvider
     @Default(.aiModel) private var aiModel
 
@@ -110,9 +111,7 @@ struct AIAssistantSettings: View {
                 Defaults.Toggle(key: .aiRememberConversation) {
                     Text("Remember the conversation")
                 }
-                Picker("Turns of context", selection: Binding(
-                    get: { Defaults[.aiHistoryTurns] },
-                    set: { Defaults[.aiHistoryTurns] = $0 })) {
+                Picker("Turns of context", selection: $aiHistoryTurns) {
                     ForEach([6, 12, 20, 40], id: \.self) { Text("\($0)").tag($0) }
                 }
                 Button("Clear conversation") { manager.clearConversation() }

@@ -84,15 +84,23 @@ struct AnchorApp: App {
             }
             .keyboardShortcut(KeyEquivalent("Q"), modifiers: .command)
         }
-    }
-
-    @CommandsBuilder
-    var commands: some Commands {
-        CommandGroup(replacing: .appSettings) {
-            Button("Settings…") {
-                SettingsWindowController.shared.showWindow()
+        // This `.commands` modifier is load-bearing. The CommandGroup below
+        // used to live in a free-standing `var commands: some Commands` on the
+        // App struct — but `App` has no such requirement, so SwiftUI never read
+        // it and the menu item never existed. That is why ⌘, did nothing.
+        //
+        // Note it only populates a menu bar while the app is `.regular`, which
+        // it becomes when the Settings window takes key
+        // (SettingsWindowController.windowDidBecomeKey). The local monitor in
+        // `installSettingsShortcut()` is what makes ⌘, work the rest of the
+        // time; this gives the action a discoverable, labelled home.
+        .commands {
+            CommandGroup(replacing: .appSettings) {
+                Button("Settings…") {
+                    SettingsWindowController.shared.showWindow()
+                }
+                .keyboardShortcut(",", modifiers: .command)
             }
-            .keyboardShortcut(",", modifiers: .command)
         }
     }
 }
@@ -582,6 +590,31 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    /// Makes ⌘, open Settings.
+    ///
+    /// `LSUIElement` is YES and the app runs `.accessory`, so it has **no menu
+    /// bar** — the `CommandGroup(replacing: .appSettings)` button in `commands`
+    /// can never fire its shortcut, which is why ⌘, did nothing. A *local*
+    /// monitor is the right instrument: it sees the key only while Anchor is
+    /// the active app, so pressing ⌘, in any other app still reaches that app.
+    /// A global monitor would hijack ⌘, everywhere, which is far worse than
+    /// not having the shortcut at all.
+    private func installSettingsShortcut() {
+        settingsShortcutMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            // AppKit dispatches local monitors from -[NSApplication sendEvent:]
+            // on the main thread as part of the run loop, and the handler must
+            // return synchronously — so this states an existing guarantee
+            // rather than hopping. It traps if that ever stops holding.
+            MainActor.assumeIsolated {
+                guard event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command,
+                      event.charactersIgnoringModifiers == ","
+                else { return event }
+                SettingsWindowController.shared.showWindow()
+                return nil  // swallow it; the window is now open
+            }
+        }
+    }
+
     private func shouldAnimateResize(for newSize: CGSize) -> Bool {
         if Defaults[.enableMinimalisticUI] && !ReminderLiveActivityManager.shared.activeWindowReminders.isEmpty {
             return false
@@ -589,8 +622,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         return true
     }
     
+    /// Local monitor for ⌘, — see `installSettingsShortcut()`.
+    private var settingsShortcutMonitor: Any?
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         NotchHoverManager.shared.start()
+        installSettingsShortcut()
         
         // Before anything reads Defaults: the bundle identifier changed with the
         // rename, which starts UserDefaults from empty unless we carry it over.

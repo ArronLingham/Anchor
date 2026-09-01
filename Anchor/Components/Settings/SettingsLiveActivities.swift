@@ -40,6 +40,7 @@ struct LiveActivitiesSettings: View {
     @ObservedObject var doNotDisturbManager = DoNotDisturbManager.shared
     @ObservedObject private var fullDiskAccessPermission = FullDiskAccessPermissionStore.shared
 
+    @Default(.enableNotificationMirroring) private var enableNotificationMirroring
     @Default(.enableScreenRecordingDetection) var enableScreenRecordingDetection
     @Default(.enableDoNotDisturbDetection) var enableDoNotDisturbDetection
     @Default(.focusIndicatorNonPersistent) var focusIndicatorNonPersistent
@@ -106,7 +107,7 @@ struct LiveActivitiesSettings: View {
                 }
                 .settingsInfo("Shows macOS notifications in the notch as they arrive. Reads Apple's notification database, which is why it needs Full Disk Access — there is no public API for another app's notifications.")
 
-                if Defaults[.enableNotificationMirroring],
+                if enableNotificationMirroring,
                    NotificationMirrorManager.shared.state == .needsPermission
                 {
                     HStack(spacing: 8) {

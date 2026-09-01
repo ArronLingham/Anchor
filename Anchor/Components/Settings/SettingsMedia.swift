@@ -36,6 +36,10 @@ import UniformTypeIdentifiers
 struct Media: View {
     @ObservedObject private var displayManager = ExternalDisplayManager.shared
     @ObservedObject private var cameraManager = CameraMirrorManager.shared
+    @Default(.enableCameraMirror) private var enableCameraMirror
+    @Default(.enablePerAppAudio) private var enablePerAppAudio
+    @Default(.cameraMirrorDeviceID) private var cameraMirrorDeviceID
+    @Default(.pinnedInputDeviceUID) private var pinnedInputDeviceUID
     @Default(.lyricsOffsetSeconds) var lyricsOffsetSeconds
     @Default(.enableLyrics) var enableLyrics
     @Default(.waitInterval) var waitInterval
@@ -84,7 +88,7 @@ struct Media: View {
                 }
                 .settingsHighlight(id: highlightID("Per-app mute"))
 
-                if Defaults[.enablePerAppAudio] {
+                if enablePerAppAudio {
                     PerAppAudioList()
                 }
             } header: {
@@ -96,9 +100,7 @@ struct Media: View {
             }
 
             Section {
-                Picker("Hold this microphone as the default", selection: Binding(
-                    get: { Defaults[.pinnedInputDeviceUID] },
-                    set: { Defaults[.pinnedInputDeviceUID] = $0 })) {
+                Picker("Hold this microphone as the default", selection: $pinnedInputDeviceUID) {
                     Text("Let macOS choose").tag("")
                     ForEach(AudioDeviceToolsManager.shared.inputDevices, id: \.uid) { device in
                         Text(device.name).tag(device.uid)
@@ -125,10 +127,8 @@ struct Media: View {
                 }
                 .settingsHighlight(id: highlightID("Camera mirror"))
 
-                if Defaults[.enableCameraMirror] {
-                    Picker("Camera", selection: Binding(
-                        get: { Defaults[.cameraMirrorDeviceID] },
-                        set: { Defaults[.cameraMirrorDeviceID] = $0 })) {
+                if enableCameraMirror {
+                    Picker("Camera", selection: $cameraMirrorDeviceID) {
                         Text("First available").tag("")
                         ForEach(cameraManager.availableCameras, id: \.uniqueID) { device in
                             Text(device.localizedName).tag(device.uniqueID)

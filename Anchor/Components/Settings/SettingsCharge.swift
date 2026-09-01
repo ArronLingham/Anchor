@@ -35,6 +35,7 @@ import UniformTypeIdentifiers
 
 struct Charge: View {
     @ObservedObject private var batteryStatusViewModel = BatteryStatusViewModel.shared
+    @Default(.enableBatteryHistory) private var enableBatteryHistory
     @Default(.showPowerStatusNotifications) private var showPowerStatusNotifications
     @Default(.showChargingBatteryHUD) private var showChargingBatteryHUD
     @Default(.showLowBatteryHUD) private var showLowBatteryHUD
@@ -139,7 +140,7 @@ struct Charge: View {
                     .settingsHighlight(id: highlightID("Record battery history"))
                     .settingsInfo("Records the battery level over the last 24 hours. Samples are taken when macOS reports a power change, not on a timer.")
 
-                    if Defaults[.enableBatteryHistory] {
+                    if enableBatteryHistory {
                         BatteryHistoryGraph()
                     }
                 } header: {

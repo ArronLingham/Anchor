@@ -134,12 +134,13 @@ struct ClaudeUsageSettings: View {
         topic.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    private var resumePromptBinding: Binding<String> {
-        Binding(
-            get: { Defaults[.claudeUsageResumePrompt] },
-            set: { Defaults[.claudeUsageResumePrompt] = $0 }
-        )
-    }
+    // Sourced from @Default rather than `Binding(get: { Defaults[...] })`.
+    // An imperative read inside a binding closure records no SwiftUI
+    // dependency, so writing the value never invalidated the view and the
+    // control went on rendering its old selection — the "settings dropdowns
+    // don't update" bug. @Default subscribes to the key and republishes.
+    @Default(.claudeUsageResumePrompt) private var resumePrompt
+    private var resumePromptBinding: Binding<String> { $resumePrompt }
 
     @ViewBuilder
     private var statusLabel: some View {

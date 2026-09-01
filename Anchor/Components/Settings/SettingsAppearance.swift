@@ -35,6 +35,7 @@ import UniformTypeIdentifiers
 
 struct Appearance: View {
     @ObservedObject var coordinator = AnchorViewCoordinator.shared
+    @Default(.enableColorPickerFeature) private var enableColorPickerFeature
     @Default(.sliderColor) var sliderColor
     @Default(.useMusicVisualizer) var useMusicVisualizer
     @Default(.customVisualizers) var customVisualizers
@@ -81,19 +82,21 @@ struct Appearance: View {
         currentRecommendedMinimumNotchWidth()
     }
 
-    private var animationProfileBinding: Binding<NotchAnimationProfile> {
-        Binding(
-            get: { Defaults[.notchAnimationProfile] },
-            set: { Defaults[.notchAnimationProfile] = $0 }
-        )
-    }
+    // Sourced from @Default rather than `Binding(get: { Defaults[...] })`.
+    // An imperative read inside a binding closure records no SwiftUI
+    // dependency, so writing the value never invalidated the view and the
+    // control went on rendering its old selection — the "settings dropdowns
+    // don't update" bug. @Default subscribes to the key and republishes.
+    @Default(.notchAnimationProfile) private var animationProfile
+    private var animationProfileBinding: Binding<NotchAnimationProfile> { $animationProfile }
 
-    private var colorFormatBinding: Binding<String> {
-        Binding(
-            get: { Defaults[.colorPickerFormat] },
-            set: { Defaults[.colorPickerFormat] = $0 }
-        )
-    }
+    // Sourced from @Default rather than `Binding(get: { Defaults[...] })`.
+    // An imperative read inside a binding closure records no SwiftUI
+    // dependency, so writing the value never invalidated the view and the
+    // control went on rendering its old selection — the "settings dropdowns
+    // don't update" bug. @Default subscribes to the key and republishes.
+    @Default(.colorPickerFormat) private var colorFormat
+    private var colorFormatBinding: Binding<String> { $colorFormat }
 
     private func highlightID(_ title: String) -> String {
         SettingsTab.appearance.highlightID(for: title)
@@ -152,7 +155,7 @@ struct Appearance: View {
                     }
                 }
                 .settingsHighlight(id: highlightID("Open and close"))
-                .help(Defaults[.notchAnimationProfile].detail)
+                .help(animationProfile.detail)
 
                                 Defaults.Toggle(key: .useModernCloseAnimation) {
                     Text("Use simpler close animation")
@@ -471,7 +474,7 @@ struct Appearance: View {
                 .settingsHighlight(id: highlightID("Screen colour picker"))
                 .settingsInfo("Opens the system eyedropper and copies the colour under the cursor.")
 
-                if Defaults[.enableColorPickerFeature] {
+                if enableColorPickerFeature {
                     Picker("Copy as", selection: colorFormatBinding) {
                         ForEach(ColorPickerManager.availableFormats, id: \.self) { name in
                             Text(name).tag(name)
