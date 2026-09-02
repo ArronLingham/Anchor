@@ -52,14 +52,19 @@ correct.** That is what this document is for.
 | Microphone | **granted** | — |
 | Audio capture | **granted** | — |
 | Calendar, Reminders, Bluetooth | **granted** | — |
-| **Screen Recording** | **NOT GRANTED** | §11 entirely |
-| **Full Disk Access** | **NOT GRANTED** | Notification mirroring (§10.4) |
+| **Screen Recording** | **granted** | — |
+| **Full Disk Access** | **granted** | — |
 | **Camera** | never prompted | §12.1 — will ask on first use |
 
-**Screen Recording is stranded on the old bundle id.** The system database holds
-the grant against `com.Ebullioscopic.Atoll`; `com.arronlingham.Anchor` has no
-entry at all. You did grant it — the rename orphaned it. Add Anchor under
-System Settings › Privacy & Security › Screen Recording.
+**Read from the system TCC database 2026-09-02**, current bundle id, all
+`auth_value = 2`: Accessibility, Input Monitoring, Full Disk Access **and
+Screen Recording**. The earlier claim that Screen Recording was stranded on the
+old bundle id is stale — §11 is no longer blocked.
+
+```bash
+sqlite3 "/Library/Application Support/com.apple.TCC/TCC.db" \
+  "select service, client, auth_value from access where client like '%Anchor%';"
+```
 
 ---
 
@@ -334,9 +339,10 @@ notes and Apple Notes sync.
 
 ---
 
-## 11. Screen capture — blocked
+## 11. Screen capture — now testable
 
-Nothing in this section can run until Screen Recording is granted (see above).
+Screen Recording is granted (verified against the TCC database), so this section
+is no longer blocked. It has never been exercised.
 **11.1** ⌥Space → "screenshot". **11.2** → "copy text" (OCR). **11.3** QR decode.
 
 ---
@@ -421,8 +427,8 @@ that sampling from a Claude session measures the session too.
 | Thing | Why |
 |---|---|
 | Bluetooth HUD animations don't render | The 8 `.mov` files are unreachable LFS stubs |
-| Screen capture, OCR, QR | Screen Recording not granted |
-| Notification mirroring | Full Disk Access not granted |
+| ~~Screen capture, OCR, QR~~ | **Unblocked** — Screen Recording is granted; §11 is now testable |
+| ~~Notification mirroring~~ | **Unblocked** — Full Disk Access is granted |
 | Face ID, Bluetooth proximity unlock | Needs a Developer ID identity and a privileged helper |
 | Lid-angle automation | No such sensor on `Mac14,2` |
 | Sports, finance widgets | Not built — need live APIs |
