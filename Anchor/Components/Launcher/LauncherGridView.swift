@@ -31,25 +31,54 @@ import SwiftUI
 /// removed the database it was stored in.
 struct LauncherGridView: View {
     let apps: [LauncherApp]
+    /// Folder name -> its apps, resolved by the caller. Drawn before the loose
+    /// apps, and deliberately NOT part of `selection`: folders are opened with
+    /// the mouse, while the arrow keys and Return continue to address apps, so
+    /// keyboard navigation means the same thing whether or not folders exist.
+    var folders: [(name: String, apps: [LauncherApp])] = []
     @Binding var selection: Int
     @Default(.launcherNavigationStyle) private var navigationStyle
     @Default(.launcherSortMode) private var sortMode
     @State private var draggingID: String?
+    @State private var openFolder: String?
+    @State private var renaming: String = ""
     let onLaunch: (LauncherApp) -> Void
 
     static var columns: Int { max(3, min(12, Defaults[.launcherGridColumns])) }
     static var rows: Int { max(2, min(8, Defaults[.launcherGridRows])) }
     static var perPage: Int { columns * rows }
 
-    private var pages: [[LauncherApp]] {
-        stride(from: 0, to: apps.count, by: Self.perPage).map {
-            Array(apps[$0..<min($0 + Self.perPage, apps.count)])
+    /// One grid slot: a folder tile or an app.
+    private enum Slot: Identifiable {
+        case folder(name: String, apps: [LauncherApp])
+        case app(LauncherApp, index: Int)
+
+        var id: String {
+            switch self {
+            case .folder(let name, _): return "folder:" + name
+            case .app(let app, _): return app.id
+            }
+        }
+    }
+
+    private var slots: [Slot] {
+        folders.map { Slot.folder(name: $0.name, apps: $0.apps) }
+            + apps.enumerated().map { Slot.app($1, index: $0) }
+    }
+
+    private var pages: [[Slot]] {
+        let all = slots
+        guard Self.perPage > 0, !all.isEmpty else { return [] }
+        return stride(from: 0, to: all.count, by: Self.perPage).map {
+            Array(all[$0..<min($0 + Self.perPage, all.count)])
         }
     }
 
     private var currentPage: Int {
         guard Self.perPage > 0 else { return 0 }
-        return selection / Self.perPage
+        // Selection addresses apps; folders occupy slots ahead of them, so the
+        // page has to be computed from the slot position, not the app index.
+        return (selection + folders.count) / Self.perPage
     }
 
     var body: some View {
@@ -87,6 +116,71 @@ struct LauncherGridView: View {
         // nothing and the only way forward was the keyboard or the dots.
         .overlay(alignment: .trailing) { edgeAdvance(forward: true) }
         .overlay(alignment: .leading) { edgeAdvance(forward: false) }
+        .overlay { folderOverlay }
+    }
+
+    @ViewBuilder
+    private var folderOverlay: some View {
+        if let name = openFolder,
+           let members = folders.first(where: { $0.name == name })?.apps {
+            ZStack {
+                Rectangle()
+                    .fill(.black.opacity(0.35))
+                    .ignoresSafeArea()
+                    .onTapGesture { openFolder = nil }
+
+                VStack(spacing: 12) {
+                    TextField("Folder name", text: $renaming)
+                        .textFieldStyle(.plain)
+                        .font(.system(size: 15, weight: .medium))
+                        .multilineTextAlignment(.center)
+                        .frame(maxWidth: 260)
+                        .onSubmit { renameFolder(from: name, to: renaming) }
+
+                    LazyVGrid(
+                        columns: Array(repeating: GridItem(.flexible(), spacing: 4), count: min(5, max(1, members.count))),
+                        spacing: 10
+                    ) {
+                        ForEach(members) { app in
+                            LauncherGridCell(app: app, isSelected: false)
+                                .contentShape(Rectangle())
+                                .onTapGesture { onLaunch(app) }
+                                .contextMenu {
+                                    Button("Move out of folder") {
+                                        removeFromFolder(app.id, folder: name)
+                                    }
+                                }
+                        }
+                    }
+                    .frame(maxWidth: 520)
+
+                    Text("Drag an app onto a folder to file it. ⌥-drag one app onto another to make a new folder.")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(22)
+                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 18)
+                        .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+                }
+                .shadow(radius: 24, y: 8)
+                .frame(maxWidth: 600)
+            }
+            .transition(.opacity)
+            .onAppear { renaming = name }
+        }
+    }
+
+    private func renameFolder(from old: String, to new: String) {
+        let trimmed = new.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty, trimmed != old else { return }
+        var folders = Defaults[.launcherFolders]
+        guard folders[trimmed] == nil, let members = folders[old] else { return }
+        folders[trimmed] = members
+        folders[old] = nil
+        Defaults[.launcherFolders] = folders
+        openFolder = trimmed
     }
 
     /// A narrow hover strip at the screen edge that advances a page.
@@ -138,20 +232,29 @@ struct LauncherGridView: View {
         .padding(.horizontal, 60)
     }
 
-    private func page_(_ page: [LauncherApp], pageIndex: Int) -> some View {
+    private func page_(_ page: [Slot], pageIndex: Int) -> some View {
         LazyVGrid(
             columns: Array(
                 repeating: GridItem(.flexible(), spacing: 4), count: Self.columns),
             spacing: 4
         ) {
-            ForEach(Array(page.enumerated()), id: \.element.id) { offset, app in
-                let absolute = pageIndex * Self.perPage + offset
-                LauncherGridCell(app: app, isSelected: absolute == selection)
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        selection = absolute
-                        onLaunch(app)
-                    }
+            ForEach(page) { slot in
+                switch slot {
+                case .folder(let name, let members):
+                    LauncherFolderCell(name: name, apps: members)
+                        .contentShape(Rectangle())
+                        .onTapGesture { openFolder = name }
+                        // Dropping an app on a folder files it there.
+                        .onDrop(of: [.text], isTargeted: nil) { providers in
+                            accept(providers) { moved in addToFolder(moved, folder: name) }
+                        }
+                case .app(let app, let index):
+                    LauncherGridCell(app: app, isSelected: index == selection)
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            selection = index
+                            onLaunch(app)
+                        }
                     // Dragging only means something when the order is the
                     // user's to set. Under any other sort mode the position is
                     // derived, so letting someone drag would either be ignored
@@ -162,10 +265,72 @@ struct LauncherGridView: View {
                         enabled: sortMode.isReorderable,
                         appID: app.id,
                         draggingID: $draggingID,
-                        onDrop: { moved in reorder(moved, before: app.id) }))
+                        onDrop: { moved in dropped(moved, onto: app.id) }))
+                }
             }
         }
         .padding(.horizontal, 20)
+    }
+
+    /// Reads one dragged app id off the pasteboard and hands it to `action`.
+    private func accept(_ providers: [NSItemProvider], _ action: @escaping (String) -> Void) -> Bool {
+        guard let provider = providers.first else { return false }
+        _ = provider.loadObject(ofClass: NSString.self) { value, _ in
+            guard let moved = value as? String else { return }
+            DispatchQueue.main.async {
+                action(moved)
+                draggingID = nil
+            }
+        }
+        return true
+    }
+
+    /// An app dropped on another app: reorder, or make a folder of the two.
+    ///
+    /// Holding a modifier is what separates them. Dropping one icon onto
+    /// another is far more often a reorder than a filing, and a gesture that
+    /// silently swallowed two apps into a folder would be much harder to undo
+    /// than one that put them in the wrong order.
+    private func dropped(_ moved: String, onto target: String) {
+        if NSEvent.modifierFlags.contains(.option) {
+            makeFolder(moved, target)
+        } else {
+            reorder(moved, before: target)
+        }
+    }
+
+    private func makeFolder(_ a: String, _ b: String) {
+        guard a != b else { return }
+        var folders = Defaults[.launcherFolders]
+        // A name the user will rename; numbered so a second one does not
+        // collide with the first.
+        var name = String(localized: "New Folder")
+        var n = 2
+        while folders[name] != nil { name = String(localized: "New Folder \(n)"); n += 1 }
+        folders[name] = [b, a]
+        Defaults[.launcherFolders] = folders
+    }
+
+    private func addToFolder(_ appID: String, folder: String) {
+        var folders = Defaults[.launcherFolders]
+        // Out of any folder it was already in, so an app is never in two.
+        for (key, value) in folders where value.contains(appID) {
+            folders[key] = value.filter { $0 != appID }
+        }
+        var members = folders[folder] ?? []
+        if !members.contains(appID) { members.append(appID) }
+        folders[folder] = members
+        folders = folders.filter { !$0.value.isEmpty }
+        Defaults[.launcherFolders] = folders
+    }
+
+    private func removeFromFolder(_ appID: String, folder: String) {
+        var folders = Defaults[.launcherFolders]
+        folders[folder] = (folders[folder] ?? []).filter { $0 != appID }
+        // A folder with nothing in it is just a tile in the way.
+        folders = folders.filter { !$0.value.isEmpty }
+        Defaults[.launcherFolders] = folders
+        if folders[folder] == nil { openFolder = nil }
     }
 
     /// Moves `moved` to sit immediately before `target` in the custom order.
@@ -289,6 +454,73 @@ private struct ReorderableCell: ViewModifier {
                 }
         } else {
             content
+        }
+    }
+}
+
+
+/// A folder in the grid: a tile showing the first four icons inside it.
+private struct LauncherFolderCell: View {
+    let name: String
+    let apps: [LauncherApp]
+
+    /// A computed property rather than a `let` inside the ViewBuilder: a
+    /// declaration in there left the element type unresolved and ForEach fell
+    /// through to its Binding overload.
+    private var previewIcons: [LauncherApp] { Array(apps.prefix(4)) }
+
+    var body: some View {
+        VStack(spacing: 6) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 14)
+                    .fill(Color.primary.opacity(0.10))
+                LazyVGrid(columns: Array(repeating: GridItem(.fixed(18), spacing: 3), count: 2), spacing: 3) {
+                    ForEach(previewIcons) { app in
+                        LauncherAppIcon(app: app, size: 18)
+                    }
+                }
+            }
+            .frame(width: 52, height: 52)
+
+            Text(name)
+                .font(.system(size: 11))
+                .lineLimit(1)
+                .truncationMode(.middle)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 6)
+        .help("\(apps.count) apps")
+    }
+}
+
+
+/// One app's icon, loaded through the shared cache.
+///
+/// `LauncherApp` carries no icon of its own — `NSWorkspace.icon(forFile:)` hits
+/// disk on every call, so icons are rendered once and cached by path and mtime.
+/// This is the small reusable form of what `LauncherGridCell` does, for places
+/// that want the icon without the label around it.
+private struct LauncherAppIcon: View {
+    let app: LauncherApp
+    let size: CGFloat
+
+    @State private var icon: NSImage?
+
+    var body: some View {
+        Group {
+            if let icon {
+                Image(nsImage: icon).resizable()
+            } else {
+                RoundedRectangle(cornerRadius: size * 0.22)
+                    .fill(Color.primary.opacity(0.12))
+            }
+        }
+        .frame(width: size, height: size)
+        .onAppear {
+            guard icon == nil else { return }
+            if let cached = AppIconCache.shared.icon(for: app, completion: { icon = $0 }) {
+                icon = cached
+            }
         }
     }
 }

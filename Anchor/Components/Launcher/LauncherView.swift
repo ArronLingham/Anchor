@@ -44,6 +44,7 @@ struct LauncherView: View {
     @Default(.launcherLayoutMode) private var layoutMode
     @Default(.launcherFullScreen) private var fullScreen
     @Default(.launcherRecallSeconds) private var recallSeconds
+    @Default(.launcherFolders) private var folders
     @Default(.launcherEnableCalculator) private var calculatorEnabled
 
     private static let rowHeight: CGFloat = 44
@@ -72,6 +73,29 @@ struct LauncherView: View {
     }
 
 
+    /// Folders, resolved from stored ids to the apps that still exist.
+    ///
+    /// An id for an app that has since been uninstalled is dropped rather than
+    /// leaving a gap, and a folder left with nothing in it is not shown at all
+    /// — a tile you cannot open is worse than no tile.
+    private var resolvedFolders: [(name: String, apps: [LauncherApp])] {
+        let byID = Dictionary(uniqueKeysWithValues: index.apps.map { ($0.id, $0) })
+        return folders
+            .map { (name: $0.key, apps: $0.value.compactMap { byID[$0] }) }
+            .filter { !$0.apps.isEmpty }
+            .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+    }
+
+    /// The apps the grid lays out loose, i.e. everything not filed away.
+    ///
+    /// Selection indexes THIS list, which is why folders are excluded from it:
+    /// the arrow keys and Return keep addressing apps whether or not folders
+    /// exist, and folders are opened with the mouse.
+    private var ungroupedApps: [LauncherApp] {
+        let filed = Set(folders.values.flatMap { $0 })
+        return results.map(\.app).filter { !filed.contains($0.id) }
+    }
+
     private var showingGrid: Bool {
         // `showGridWhenEmpty` is the old switch and still acts as a master off:
         // with it off there is no grid at all, whichever way round the mode is.
@@ -89,7 +113,8 @@ struct LauncherView: View {
                 calculatorRow(calculation)
             } else if showingGrid {
                 LauncherGridView(
-                    apps: results.map(\.app),
+                    apps: ungroupedApps,
+                    folders: resolvedFolders,
                     selection: $selection,
                     onLaunch: onLaunch
                 )
