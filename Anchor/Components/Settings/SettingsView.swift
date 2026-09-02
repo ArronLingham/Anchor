@@ -1161,6 +1161,14 @@ struct SettingsView: View {
             SettingsSearchEntry(tab: .vinyl, title: "Show title and artist", keywords: ["title", "artist", "vinyl"], highlightID: SettingsTab.vinyl.highlightID(for: "Show title and artist")),
             SettingsSearchEntry(tab: .vinyl, title: "Size", keywords: ["size", "vinyl"], highlightID: SettingsTab.vinyl.highlightID(for: "Size")),
             SettingsSearchEntry(tab: .vinyl, title: "Tint with the album colour", keywords: ["tint", "album", "colour", "vinyl"], highlightID: SettingsTab.vinyl.highlightID(for: "Tint with the album colour")),
+            SettingsSearchEntry(tab: .launcher, title: "Clock", keywords: ["clock", "launcher"], highlightID: SettingsTab.launcher.highlightID(for: "Clock")),
+            SettingsSearchEntry(tab: .launcher, title: "Fill the screen", keywords: ["fill", "screen", "launcher"], highlightID: SettingsTab.launcher.highlightID(for: "Fill the screen")),
+            SettingsSearchEntry(tab: .launcher, title: "Now playing", keywords: ["now", "playing", "launcher"], highlightID: SettingsTab.launcher.highlightID(for: "Now playing")),
+            SettingsSearchEntry(tab: .launcher, title: "Order", keywords: ["order", "launcher"], highlightID: SettingsTab.launcher.highlightID(for: "Order")),
+            SettingsSearchEntry(tab: .launcher, title: "Paging", keywords: ["paging", "launcher"], highlightID: SettingsTab.launcher.highlightID(for: "Paging")),
+            SettingsSearchEntry(tab: .launcher, title: "Remember the last search for", keywords: ["remember", "last", "search", "launcher"], highlightID: SettingsTab.launcher.highlightID(for: "Remember the last search for")),
+            SettingsSearchEntry(tab: .launcher, title: "Weather", keywords: ["weather", "launcher"], highlightID: SettingsTab.launcher.highlightID(for: "Weather")),
+            SettingsSearchEntry(tab: .launcher, title: "When typing", keywords: ["typing", "launcher"], highlightID: SettingsTab.launcher.highlightID(for: "When typing")),
         ]
     }
 

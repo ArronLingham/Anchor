@@ -975,6 +975,26 @@ extension Defaults.Keys {
     static let launcherEnableCalculator = Key<Bool>("launcherEnableCalculator", default: true)
     /// Show each result's containing folder under its name.
     static let launcherShowPaths = Key<Bool>("launcherShowPaths", default: true)
+
+    /// Which view the launcher shows for an empty vs a typed query.
+    static let launcherLayoutMode = Key<LauncherLayoutMode>("launcherLayoutMode", default: .gridWhenEmpty)
+    /// Page dots, a scroll bar, or both, under the grid.
+    static let launcherNavigationStyle = Key<LauncherNavigationStyle>("launcherNavigationStyle", default: .pages)
+    /// Grid order.
+    static let launcherSortMode = Key<LauncherSortMode>("launcherSortMode", default: .custom)
+    /// The user's own app order, by app id, for `LauncherSortMode.custom`.
+    static let launcherCustomOrder = Key<[String]>("launcherCustomOrder", default: [])
+    /// Folder name -> app ids. Folders are shown first in the grid.
+    static let launcherFolders = Key<[String: [String]]>("launcherFolders", default: [:])
+    /// Reopen the launcher within this many seconds and the previous search is
+    /// still there. Zero disables it, so the field is always empty.
+    static let launcherRecallSeconds = Key<Double>("launcherRecallSeconds", default: 5)
+    /// Fill the screen with a blurred backdrop rather than floating a panel.
+    static let launcherFullScreen = Key<Bool>("launcherFullScreen", default: true)
+    /// Widgets shown beside the launcher grid.
+    static let launcherShowClockWidget = Key<Bool>("launcherShowClockWidget", default: false)
+    static let launcherShowWeatherWidget = Key<Bool>("launcherShowWeatherWidget", default: false)
+    static let launcherShowVinylWidget = Key<Bool>("launcherShowVinylWidget", default: false)
     static let clipboardHistorySize = Key<Int>("clipboardHistorySize", default: 3)
     static let showClipboardIcon = Key<Bool>("showClipboardIcon", default: true)
     static let clipboardDisplayMode = Key<ClipboardDisplayMode>("clipboardDisplayMode", default: .panel)

@@ -19,6 +19,7 @@
 
 import AppKit
 import Combine
+import Defaults
 import Foundation
 
 struct LauncherApp: Identifiable, Hashable {
@@ -187,16 +188,7 @@ final class AppIndex: ObservableObject {
         let trimmed = query.trimmingCharacters(in: .whitespaces)
 
         guard !trimmed.isEmpty else {
-            var ranked: [(app: LauncherApp, score: Double)] = []
-            ranked.reserveCapacity(apps.count)
-            for app in apps {
-                ranked.append((app: app, score: history.score(for: app.id)))
-            }
-            ranked.sort { lhs, rhs in
-                if lhs.score != rhs.score { return lhs.score > rhs.score }
-                return lhs.app.name.localizedCaseInsensitiveCompare(rhs.app.name) == .orderedAscending
-            }
-            return ranked.prefix(limit).map { LauncherResult(app: $0.app, matchedIndices: []) }
+            return orderedForEmptyQuery(history: history, limit: limit)
         }
 
         var scored: [(app: LauncherApp, score: Double, indices: [Int])] = []
@@ -216,6 +208,53 @@ final class AppIndex: ObservableObject {
         return scored.prefix(limit).map {
             LauncherResult(app: $0.app, matchedIndices: $0.indices)
         }
+    }
+
+    /// The order the grid uses when nothing has been typed.
+    ///
+    /// Frecency is only one of four answers people want here, so it is a
+    /// setting. Every mode falls back to alphabetical for ties, which keeps the
+    /// order stable rather than reshuffling equal-scoring apps on each open.
+    private func orderedForEmptyQuery(history: LaunchHistory, limit: Int) -> [LauncherResult] {
+        let byName: (LauncherApp, LauncherApp) -> Bool = {
+            $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
+        }
+
+        var ordered: [LauncherApp]
+        switch Defaults[.launcherSortMode] {
+        case .alphabetical:
+            ordered = apps.sorted(by: byName)
+
+        case .mostUsed:
+            ordered = apps.sorted { lhs, rhs in
+                let l = history.score(for: lhs.id), r = history.score(for: rhs.id)
+                return l == r ? byName(lhs, rhs) : l > r
+            }
+
+        case .mostRecent:
+            let last = Defaults[.launcherLastLaunched]
+            ordered = apps.sorted { lhs, rhs in
+                let l = last[lhs.id] ?? .distantPast, r = last[rhs.id] ?? .distantPast
+                return l == r ? byName(lhs, rhs) : l > r
+            }
+
+        case .custom:
+            // Placed apps first, in the user's order; everything else keeps its
+            // alphabetical position behind them. A stored id for an app that is
+            // no longer installed is simply skipped rather than leaving a hole.
+            let order = Defaults[.launcherCustomOrder]
+            let rank = Dictionary(uniqueKeysWithValues: order.enumerated().map { ($1, $0) })
+            ordered = apps.sorted { lhs, rhs in
+                switch (rank[lhs.id], rank[rhs.id]) {
+                case let (l?, r?): return l < r
+                case (_?, nil):    return true
+                case (nil, _?):    return false
+                default:           return byName(lhs, rhs)
+                }
+            }
+        }
+
+        return ordered.prefix(limit).map { LauncherResult(app: $0, matchedIndices: []) }
     }
 
     // MARK: - Launching

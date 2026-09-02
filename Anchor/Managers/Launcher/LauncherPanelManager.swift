@@ -53,7 +53,13 @@ final class LauncherPanelManager: ObservableObject {
                 },
                 onDismiss: { [weak self] in self?.hide() }
             ))
-        hosting.frame = NSRect(x: 0, y: 0, width: 860, height: 560)
+        // Fill the panel, which is already the size of the screen. It used to
+        // be pinned to 860x560, so the launcher was a fixed box floating in a
+        // transparent full-screen window — the blurred backdrop had nothing to
+        // cover and the layout could not use the space.
+        let screen = NSScreen.screens.first { $0.frame.contains(NSEvent.mouseLocation) } ?? NSScreen.main
+        hosting.frame = NSRect(origin: .zero, size: screen?.frame.size ?? CGSize(width: 860, height: 560))
+        hosting.autoresizingMask = [.width, .height]
 
         let panel = LauncherPanel(contentView: hosting)
         panel.onResignKey = { [weak self] in self?.hide() }

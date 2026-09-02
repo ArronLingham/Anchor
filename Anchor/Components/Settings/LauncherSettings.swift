@@ -25,6 +25,10 @@ struct LauncherSettings: View {
     @ObservedObject private var index = AppIndex.shared
     @Default(.enableLauncher) private var enableLauncher
     @Default(.launcherShowGridWhenEmpty) private var showGrid
+    @Default(.launcherLayoutMode) private var launcherLayoutMode
+    @Default(.launcherSortMode) private var launcherSortMode
+    @Default(.launcherNavigationStyle) private var launcherNavigationStyle
+    @Default(.launcherRecallSeconds) private var launcherRecallSeconds
     @Default(.launcherGridColumns) private var columns
     @Default(.launcherGridRows) private var rows
 
@@ -127,6 +131,32 @@ struct LauncherSettings: View {
                     .disabled(!enableLauncher)
                     .settingsHighlight(id: highlightID("Rows"))
 
+                    Picker("When typing", selection: $launcherLayoutMode) {
+                        ForEach(LauncherLayoutMode.allCases) { mode in
+                            Text(mode.localizedName).tag(mode)
+                        }
+                    }
+                    .disabled(!enableLauncher)
+                    .settingsHighlight(id: highlightID("When typing"))
+
+                    Picker("Order", selection: $launcherSortMode) {
+                        ForEach(LauncherSortMode.allCases) { mode in
+                            Text(mode.localizedName).tag(mode)
+                        }
+                    }
+                    .disabled(!enableLauncher)
+                    .settingsHighlight(id: highlightID("Order"))
+                    .settingsInfo("Custom is your own order — drag icons in the grid to set it. Dragging does nothing under the other three, because their positions are derived.")
+
+                    Picker("Paging", selection: $launcherNavigationStyle) {
+                        ForEach(LauncherNavigationStyle.allCases) { style in
+                            Text(style.localizedName).tag(style)
+                        }
+                    }
+                    .disabled(!enableLauncher)
+                    .settingsHighlight(id: highlightID("Paging"))
+                    .settingsInfo("Moving the pointer to either edge of the grid always turns the page, whichever of these is shown.")
+
                     Text("\(columns * rows) apps per page.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -137,6 +167,51 @@ struct LauncherSettings: View {
                 }
             } header: {
                 Text("Grid")
+            }
+
+            Section {
+                Defaults.Toggle(key: .launcherFullScreen) {
+                    Text("Fill the screen")
+                }
+                .disabled(!enableLauncher)
+                .settingsHighlight(id: highlightID("Fill the screen"))
+                .settingsInfo("Blurs the whole display behind the launcher and dismisses on a click anywhere outside it. With this off the launcher floats over what is already there.")
+
+                LabeledContent("Remember the last search for") {
+                    Picker("", selection: $launcherRecallSeconds) {
+                        Text("Off").tag(0.0)
+                        Text("3 seconds").tag(3.0)
+                        Text("5 seconds").tag(5.0)
+                        Text("15 seconds").tag(15.0)
+                        Text("1 minute").tag(60.0)
+                    }
+                    .labelsHidden()
+                    .fixedSize()
+                }
+                .disabled(!enableLauncher)
+                .settingsHighlight(id: highlightID("Remember the last search for"))
+                .settingsInfo("Reopen within this long and your previous search is still in the field. After it, the field opens empty.")
+            } header: {
+                Text("Panel")
+            }
+
+            Section {
+                Defaults.Toggle(key: .launcherShowClockWidget) { Text("Clock") }
+                    .disabled(!enableLauncher)
+                    .settingsHighlight(id: highlightID("Clock"))
+                Defaults.Toggle(key: .launcherShowWeatherWidget) { Text("Weather") }
+                    .disabled(!enableLauncher)
+                    .settingsHighlight(id: highlightID("Weather"))
+                Defaults.Toggle(key: .launcherShowVinylWidget) { Text("Now playing") }
+                    .disabled(!enableLauncher)
+                    .settingsHighlight(id: highlightID("Now playing"))
+                    .settingsInfo("A record showing what is playing. Clicking it opens the vinyl player on the desktop.")
+            } header: {
+                Text("Widgets")
+            } footer: {
+                Text("All three are off by default — the launcher's job is finding an app, so anything sitting permanently above the grid has to earn the space.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
 
             Section {

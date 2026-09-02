@@ -41,17 +41,48 @@ struct LauncherView: View {
     @State private var copiedFlash = false
     @FocusState private var queryFocused: Bool
     @Default(.launcherShowGridWhenEmpty) private var showGridWhenEmpty
+    @Default(.launcherLayoutMode) private var layoutMode
+    @Default(.launcherFullScreen) private var fullScreen
+    @Default(.launcherRecallSeconds) private var recallSeconds
     @Default(.launcherEnableCalculator) private var calculatorEnabled
 
     private static let rowHeight: CGFloat = 44
 
+    /// The last search, and when the launcher was closed on it.
+    ///
+    /// Static because the view is rebuilt from scratch every time the panel
+    /// opens — there is no instance to carry it. Reopening within
+    /// `launcherRecallSeconds` puts the text back and selects it, so a second
+    /// look at the same search costs nothing and typing still replaces it.
+    private static var lastQuery = ""
+    private static var lastClosed: Date?
+
+    private func restoreRecalledQuery() {
+        guard recallSeconds > 0,
+              !Self.lastQuery.isEmpty,
+              let closed = Self.lastClosed,
+              Date().timeIntervalSince(closed) <= recallSeconds
+        else { return }
+        query = Self.lastQuery
+    }
+
+    private func rememberQuery() {
+        Self.lastQuery = query
+        Self.lastClosed = Date()
+    }
+
+
     private var showingGrid: Bool {
-        showGridWhenEmpty && query.trimmingCharacters(in: .whitespaces).isEmpty
+        // `showGridWhenEmpty` is the old switch and still acts as a master off:
+        // with it off there is no grid at all, whichever way round the mode is.
+        guard showGridWhenEmpty else { return false }
+        return layoutMode.showsGrid(queryIsEmpty: query.trimmingCharacters(in: .whitespaces).isEmpty)
     }
 
     var body: some View {
         VStack(spacing: 0) {
             searchField
+            LauncherWidgetStrip()
             Divider().opacity(0.5)
 
             if let calculation {
@@ -71,7 +102,25 @@ struct LauncherView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .padding(.top, 100)
         .padding(.horizontal, 100)
+        // The blurred backdrop.
+        //
+        // The panel is already the size of the screen and sits above everything
+        // including full-screen apps; without this it was transparent, so the
+        // launcher read as a floating box rather than taking over the screen.
+        // Clicking the backdrop dismisses, which is the behaviour anyone
+        // expects from a full-screen overlay.
+        .background {
+            if fullScreen {
+                ZStack {
+                    Rectangle().fill(.ultraThinMaterial)
+                    Rectangle().fill(Color.black.opacity(0.28))
+                }
+                .ignoresSafeArea()
+                .onTapGesture { onDismiss() }
+            }
+        }
         .onAppear {
+            restoreRecalledQuery()
             index.refreshIfNeeded()
             // Start the shortcuts subprocess as the panel opens rather than
             // lazily on the first keystroke, so it has a chance to finish
@@ -96,6 +145,7 @@ struct LauncherView: View {
             guard note.object is LauncherPanel else { return }
             queryFocused = true
         }
+        .onDisappear { rememberQuery() }
         .onChange(of: query) { _, _ in recompute() }
         .onChange(of: index.apps) { _, _ in recompute(resetSelection: false) }
         // `loadIfNeeded()` returns before the subprocess does. Without this the

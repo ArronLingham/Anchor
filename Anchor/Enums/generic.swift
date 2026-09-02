@@ -389,3 +389,70 @@ enum PerAppVolumeMode: String, CaseIterable, Defaults.Serializable, Identifiable
         }
     }
 }
+
+
+/// How the launcher grid is paged.
+enum LauncherNavigationStyle: String, CaseIterable, Defaults.Serializable, Identifiable {
+    case pages       = "Page dots"
+    case scrollBar   = "Scroll bar"
+    case both        = "Both"
+
+    var id: String { rawValue }
+    var localizedName: String {
+        switch self {
+        case .pages: return String(localized: "Page dots")
+        case .scrollBar: return String(localized: "Scroll bar")
+        case .both: return String(localized: "Both")
+        }
+    }
+    var showsDots: Bool { self != .scrollBar }
+    var showsBar: Bool { self != .pages }
+}
+
+/// Which view the launcher shows when, relative to what has been typed.
+enum LauncherLayoutMode: String, CaseIterable, Defaults.Serializable, Identifiable {
+    /// Grid of every app with an empty query; a list once you type.
+    case gridWhenEmpty = "Grid when empty"
+    /// The inverse: a list of recents with an empty query, a grid of matches
+    /// once you type.
+    case listWhenEmpty = "List when empty"
+
+    var id: String { rawValue }
+    var localizedName: String {
+        switch self {
+        case .gridWhenEmpty: return String(localized: "Grid when empty, list when typing")
+        case .listWhenEmpty: return String(localized: "List when empty, grid when typing")
+        }
+    }
+
+    /// Whether the grid should be shown for a given query state.
+    func showsGrid(queryIsEmpty: Bool) -> Bool {
+        switch self {
+        case .gridWhenEmpty: return queryIsEmpty
+        case .listWhenEmpty: return !queryIsEmpty
+        }
+    }
+}
+
+/// How apps are ordered in the launcher grid.
+enum LauncherSortMode: String, CaseIterable, Defaults.Serializable, Identifiable {
+    /// The user's own order, set by dragging. Anything not placed keeps its
+    /// alphabetical position after the ones that were.
+    case custom       = "Custom"
+    case alphabetical = "Alphabetical"
+    case mostUsed     = "Most used"
+    case mostRecent   = "Most recent"
+
+    var id: String { rawValue }
+    var localizedName: String {
+        switch self {
+        case .custom: return String(localized: "Custom")
+        case .alphabetical: return String(localized: "Alphabetical")
+        case .mostUsed: return String(localized: "Most used")
+        case .mostRecent: return String(localized: "Most recent")
+        }
+    }
+
+    /// Dragging only means something when the order is the user's to set.
+    var isReorderable: Bool { self == .custom }
+}
