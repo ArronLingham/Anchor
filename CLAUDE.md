@@ -604,6 +604,75 @@ xcodebuild -project Anchor.xcodeproj -scheme Anchor \
   running as the user could `open -n /Applications/Anchor.app --env
   ANCHOR_RENDER_UI=/tmp/x` and read the topic out of a PNG. Keep it `#if DEBUG`.
 
+### OSD suppression must be SIGSTOP, and volume is what proves it
+
+`suspendOSDUIHelper()` was briefly changed to **SIGKILL** (in `4ced65d`, with a
+commit note saying it was unverified). It broke volume suppression specifically,
+and the mechanism is worth not re-deriving:
+
+- OSDUIHelper is **spawned on demand**, not persistent. SIGKILL therefore leaves
+  *no process at all* — `pgrep -x OSDUIHelper` returned nothing with Anchor up
+  seven hours, so TESTING.md §1.4's `ps -o state=` → `T` could not pass.
+- **Volume is the one channel that resurrects it.** Anchor swallows the volume
+  key and then performs its own CoreAudio HAL write
+  (`kAudioDevicePropertyVolumeScalar`), and *that write* is what makes launchd
+  spawn a fresh helper — which draws before the watcher's 1 s no-helper poll.
+  Brightness never showed it because it goes through
+  CoreBrightness/DisplayServices/Lunar, which never wake the helper.
+- Every suppression path is **scan-then-signal**, so with nothing alive it is a
+  no-op. The race cannot be won by killing faster: the helper is created by the
+  write that happens *after* the scan.
+
+SIGSTOP makes it structurally impossible — the helper is always present and
+never able to execute. `resumeOSDUIHelperProcess` had also become a
+`launchctl kickstart`, which this file already records as always failing under
+SIP; it is SIGCONT again.
+
+**Suppression is now derived from the resolved control flags**
+(`SystemHUDManager.applyOSDSuppression`). It used to be an unconditional
+`disableSystemHUD()` in `startSystemObserver`, while the seven per-control
+`Defaults.publisher` sinks only called `changesObserver?.update(...)` — so
+turning every HUD off left Anchor drawing nothing with the native HUD still
+suppressed, i.e. **no HUD at all**, which reads exactly like "the setting is
+ignored".
+
+### A view that reads `Defaults[...]` imperatively never redraws
+
+Twenty-six settings controls wrote their value and kept rendering the old one.
+Two shapes, one cause — an imperative read records no SwiftUI dependency:
+
+```swift
+Binding(get: { Defaults[.key] }, set: { Defaults[.key] = $0 })   // 12 controls
+if Defaults[.key] { …sub-options… }                              // 14 sections
+```
+
+The write always landed; only the invalidation was missing. `@Default`
+subscribes to the key and republishes, so every one of these now reads through a
+declared property. **Four were named `xBinding` properties and eight were inline
+at the call site** — a first pass that grepped only for named properties found
+four of twelve. `tests/run_settingsbinding_tests.sh` found the rest.
+
+Twenty-one other bindings in these panes were fine: they transform a value that
+is itself `@Default`-backed. The rule the harness pins is therefore not "no
+hand-rolled bindings" but "if a pane reads `Defaults[.key]`, that pane must
+declare `@Default(.key)`".
+
+### The settings search index had drifted by a third
+
+`settingsSearchIndex` is hand-written. 317 rows across the panes carry a
+`.settingsHighlight(id:)`; **217 were listed**, so 121 settings could not be
+found by searching for their own name, and four entries named rows that had been
+deleted — switching tab and then scrolling to nothing. Entries are now generated
+from the panes' own highlight ids and pinned by
+`tests/run_settingssearch_tests.sh`.
+
+**That harness's dead-entry check was vacuous on the first attempt** — it matched
+each entry against a corpus that included `SettingsView.swift`, which is the file
+holding the entries, so every entry matched its own text. It passed while unable
+to fail. Excluding the shell is what made it real, and it then found all four.
+**This is the third time in this repo a guard has looked correct while being
+inert**; the negative control is the only thing that catches it.
+
 ### Quitting restores the system OSD — verified
 
 Anchor SIGSTOPs `OSDUIHelper` to suppress the native HUD, so a build that dies
@@ -713,6 +782,8 @@ file-system-synchronized groups. Both compile the *real* source files with
 ./tests/run_sessionrecord_tests.sh # 29 Claude session JSON version tolerance
 ./tests/run_batteryhistory_tests.sh # 16 battery sample coalescing and pruning
 ./tests/run_netrate_tests.sh      # 12  network rate deltas and counter resets
+./tests/run_settingsbinding_tests.sh #  4  settings controls that actually redraw
+./tests/run_settingssearch_tests.sh #  5  every settings row is findable
 python3 tests/test_privacy_configuration.py
 
 # LIVE suites — these drive the running app and are NOT part of the unit run:
@@ -721,7 +792,9 @@ python3 tests/test_privacy_configuration.py
 ./tests/run_gemini_tests.sh       # 44  Gemini request/response wire format
 ```
 
-**983 assertions across 30 harnesses.** Every one of the later harnesses was
+**981 assertions across 32 harnesses** (counted, not estimated — run the
+loop in `Tests` above rather than trusting a number in a commit message; two
+figures in this repo's history were quoted without being measured). Every one of the later harnesses was
 proven non-vacuous by deliberately breaking the guard it covers and checking the
 harness went red — the `ignoredNames` set in `DiskImageInstaller` is what
 happens when that step is skipped: it survived review looking like a safety

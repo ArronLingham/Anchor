@@ -9,7 +9,7 @@ Build under test: the installed signed Release at `/Applications/Anchor.app`.
 
 ---
 
-## Don't re-test these — 30 harnesses, 983 assertions cover them
+## Don't re-test these — 32 harnesses, 981 assertions cover them
 
 ```bash
 for t in tests/run_*_tests.sh; do "$t"; done   # excludes the two LIVE suites
@@ -123,7 +123,14 @@ instant. ✅ Each is visibly different.
 
 **3.1** Opens centred, frosted.
 **3.2** **Type immediately without clicking first.** ❌ Having to click is the
-classic focus bug for this kind of panel.
+classic focus bug for this kind of panel. Activation was being requested
+before the panel was ordered front, so AppKit handed key to a notch window
+instead.
+
+**3.2a Apple Shortcuts.** With Settings › Launcher › "Show Apple Shortcuts" on,
+open the launcher and type the name of one of your shortcuts.
+✅ It appears, labelled "Apple Shortcut". ❌ Never appears — the list is loaded
+by a subprocess and nothing used to recompute when it answered.
 **3.3** Type `term` → Terminal first, matched letters bold.
 **3.4** Arrows move and wrap; Enter launches; Esc returns focus to where you were.
 **3.5** Click away → dismisses.
@@ -151,6 +158,28 @@ grey square.
 do nothing, check Input Monitoring, and note which keyboard you're using.
 **4.4** Sneak peek appears and dismisses on its own.
 **4.5** Caps Lock indicator.
+
+**4.6 The volume HUD — this was the broken one.** Press a volume key.
+✅ Only Anchor's HUD. ❌ macOS's grey square appearing alongside or instead.
+The signal was briefly SIGKILL, which left no OSDUIHelper at all; volume is the
+one key that respawns it (Anchor's own CoreAudio write does), so it drew before
+the watcher could catch it. Confirm the helper is alive and stopped:
+
+```bash
+ps -o state= -p "$(pgrep -x OSDUIHelper)"    # must print T
+```
+
+An empty result means no helper exists and suppression is broken again.
+
+**4.7 Turning the HUDs off must give the system HUD back.** Switch off volume,
+brightness and keyboard-backlight HUDs. ✅ macOS's own HUD returns.
+❌ *No* HUD at all — that was the bug: Anchor stopped drawing while keeping the
+native one suppressed. `pgrep -x OSDUIHelper` should show a process in state `S`.
+
+**4.8 External keyboard brightness.** With Settings › HUD › "Use F1 and F2 for
+brightness" **on**, press F1/F2 on the external keyboard. ✅ Anchor's HUD.
+The guard rejected any event carrying `.function`, and macOS sets that bit on
+every F-key event — so this path could never run.
 
 ---
 
