@@ -1418,6 +1418,12 @@ extension Defaults.Keys {
     /// world-readable plist and the key is billable. Only non-secret settings
     /// belong in this file.
     static let enableAIAssistant = Key<Bool>("enableAIAssistant", default: false)
+    /// Which shape the per-app volume control takes. See `PerAppVolumeMode`.
+    static let perAppVolumeMode = Key<PerAppVolumeMode>("perAppVolumeMode", default: .presets)
+    /// Show the per-app volume control at all. EQ and output routing stay
+    /// available with it off, for anyone who only wants those.
+    static let showPerAppVolumeControl = Key<Bool>("showPerAppVolumeControl", default: true)
+
     static let aiProvider = Key<AIProvider>("aiProvider", default: .gemini)
     /// Default model.
     ///

@@ -341,3 +341,51 @@ enum TimerInputStyle: String, CaseIterable, Defaults.Serializable, Identifiable 
         }
     }
 }
+
+
+/// How the per-app volume control behaves.
+///
+/// Two shapes for the same underlying gain, because they answer different
+/// questions: "how loud should this app be relative to the others" versus
+/// "make this quiet app louder than the system can".
+enum PerAppVolumeMode: String, CaseIterable, Defaults.Serializable, Identifiable {
+    /// Four steps including silence: muted, regular, loud, louder. Silence is a
+    /// step, so there is no separate mute button.
+    case presets = "Preset volumes"
+    /// Three steps, all at or above normal, with mute as its own control.
+    case booster = "Volume booster"
+
+    var id: String { rawValue }
+
+    var localizedName: String {
+        switch self {
+        case .presets: return String(localized: "Preset volumes")
+        case .booster: return String(localized: "Volume booster")
+        }
+    }
+
+    var detail: String {
+        switch self {
+        case .presets:
+            return String(localized: "Four steps: muted, regular, loud, louder. Clicking through them includes silence, so no separate mute button is shown.")
+        case .booster:
+            return String(localized: "Three steps, none below normal, for making a quiet app louder. Mute is a separate button.")
+        }
+    }
+
+    /// Gain for each step, in order.
+    var levels: [Float] {
+        switch self {
+        case .presets: return [0.0, 1.0, 1.5, 2.0]
+        case .booster: return [1.0, 1.5, 2.0]
+        }
+    }
+
+    /// Icon for each step. Index 0 of `.presets` is silence.
+    var symbols: [String] {
+        switch self {
+        case .presets: return ["speaker.slash.fill", "speaker.wave.1.fill", "speaker.wave.2.fill", "speaker.wave.3.fill"]
+        case .booster: return ["speaker.wave.1.fill", "speaker.wave.2.fill", "speaker.wave.3.fill"]
+        }
+    }
+}

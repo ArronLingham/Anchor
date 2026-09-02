@@ -38,6 +38,8 @@ struct Media: View {
     @ObservedObject private var cameraManager = CameraMirrorManager.shared
     @Default(.enableCameraMirror) private var enableCameraMirror
     @Default(.enablePerAppAudio) private var enablePerAppAudio
+    @Default(.perAppVolumeMode) private var perAppVolumeMode
+    @Default(.showPerAppVolumeControl) private var showPerAppVolumeControl
     @Default(.cameraMirrorDeviceID) private var cameraMirrorDeviceID
     @Default(.pinnedInputDeviceUID) private var pinnedInputDeviceUID
     @Default(.lyricsOffsetSeconds) var lyricsOffsetSeconds
@@ -89,6 +91,22 @@ struct Media: View {
                 .settingsHighlight(id: highlightID("Per-app mute"))
 
                 if enablePerAppAudio {
+                    Defaults.Toggle(key: .showPerAppVolumeControl) {
+                        Text("Show the volume control")
+                    }
+                    .settingsHighlight(id: highlightID("Show the volume control"))
+                    .settingsInfo("Turn this off to keep the equaliser and output routing without the per-app volume stepper.")
+
+                    if showPerAppVolumeControl {
+                        Picker("Volume control", selection: $perAppVolumeMode) {
+                            ForEach(PerAppVolumeMode.allCases) { mode in
+                                Text(mode.localizedName).tag(mode)
+                            }
+                        }
+                        .settingsHighlight(id: highlightID("Volume control"))
+                        .settingsInfo(perAppVolumeMode.detail)
+                    }
+
                     PerAppAudioList()
                 }
             } header: {

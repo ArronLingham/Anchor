@@ -787,6 +787,8 @@ struct SettingsView: View {
             SettingsSearchEntry(tab: .gemini, title: "AI Assistant", keywords: ["gemini", "ai", "assistant", "chat", "google ai", "llm"], highlightID: SettingsTab.gemini.highlightID(for: "AI Assistant")),
             SettingsSearchEntry(tab: .gemini, title: "API key", keywords: ["gemini key", "api key", "google ai studio"], highlightID: SettingsTab.gemini.highlightID(for: "API key")),
             SettingsSearchEntry(tab: .gemini, title: "Model", keywords: ["model", "gemini", "gpt", "claude", "llm", "which model", "model list"], highlightID: SettingsTab.gemini.highlightID(for: "Model")),
+            SettingsSearchEntry(tab: .media, title: "Show the volume control", keywords: ["per-app volume", "app volume", "volume stepper", "hide volume"], highlightID: SettingsTab.media.highlightID(for: "Show the volume control")),
+            SettingsSearchEntry(tab: .media, title: "Volume control", keywords: ["preset volumes", "volume booster", "boost", "louder", "per-app volume mode"], highlightID: SettingsTab.media.highlightID(for: "Volume control")),
             SettingsSearchEntry(tab: .cleanup, title: "Scan", keywords: ["clean", "cleaner", "storage", "free space", "disk space", "caches", "reclaim"], highlightID: SettingsTab.cleanup.highlightID(for: "Scan")),
             SettingsSearchEntry(tab: .cleanup, title: "Move to Trash", keywords: ["clear caches", "derived data", "npm cache", "homebrew cache", "clean up"], highlightID: SettingsTab.cleanup.highlightID(for: "Move to Trash")),
             SettingsSearchEntry(tab: .cleanup, title: "Check for updates", keywords: ["homebrew", "brew outdated", "app updates", "outdated packages", "upgrade"], highlightID: SettingsTab.cleanup.highlightID(for: "Check for updates")),
