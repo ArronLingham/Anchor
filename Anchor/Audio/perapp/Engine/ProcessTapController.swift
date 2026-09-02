@@ -155,7 +155,10 @@ final class ProcessTapController: ProcessTapControlling {
     private nonisolated(unsafe) var secondaryLoudnessEqualizerProcessor: LoudnessEqualizer?
 
     // Target device UIDs for synchronized multi-output (first is clock source)
-    private var targetDeviceUIDs: [String]
+    /// Readable so the manager can tell whether a rebuild is needed: the output
+    /// device is baked into the aggregate at activation and cannot be changed
+    /// on a running controller.
+    private(set) var targetDeviceUIDs: [String]
     // Current active device UIDs
     private(set) var currentDeviceUIDs: [String] = []
 

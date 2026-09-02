@@ -218,6 +218,24 @@ final class PerAppAudioManager: ObservableObject {
         mutate(app) { $0.isMuted = muted }
     }
 
+    /// Sends one app's audio to `uid`, or back to the system default with `nil`.
+    ///
+    /// Rebuilds that app's controller: the output device is part of the
+    /// aggregate description, not a live parameter.
+    func setOutputDevice(_ uid: String?, for app: AudioApp) {
+        mutate(app) { $0.outputDeviceUID = uid }
+    }
+
+    /// Where this app is routed, or `nil` when it follows the system default.
+    func outputDevice(for app: AudioApp) -> String? { state(for: app).outputDeviceUID }
+
+    /// Output devices this app can be routed to.
+    var availableOutputDevices: [AudioDevice] { deviceMonitor.outputDevices }
+
+    private func outputUIDFor(_ state: PerAppAudioState) -> String {
+        state.outputDeviceUID ?? currentOutputUID() ?? ""
+    }
+
     func setEQ(_ settings: EQSettings, for app: AudioApp) {
         mutate(app) {
             $0.eqBandGains = settings.bandGains
@@ -271,13 +289,24 @@ final class PerAppAudioManager: ObservableObject {
         }
 
         if let existing = controllers[app.id] {
-            existing.volume = wanted.volume
-            existing.isMuted = wanted.isMuted
-            existing.updateEQSettings(wanted.eqSettings)
-            return
+            // Volume, mute and EQ are live parameters on the running IOProc.
+            // The output device is not: it is baked into the aggregate device
+            // built at activation, so changing it means tearing the controller
+            // down and building a new one.
+            if existing.targetDeviceUIDs != [outputUIDFor(wanted)] {
+                controllers.removeValue(forKey: app.id)?.invalidate()
+            } else {
+                existing.volume = wanted.volume
+                existing.isMuted = wanted.isMuted
+                existing.updateEQSettings(wanted.eqSettings)
+                return
+            }
         }
 
-        guard let outputUID = currentOutputUID() else {
+        // The per-app override wins over the system default. Routing is done by
+        // building the aggregate against that device — there is no CoreAudio
+        // property that moves a process's audio.
+        guard let outputUID = wanted.outputDeviceUID ?? currentOutputUID() else {
             lastFailure = String(localized: "No output device available")
             return
         }
