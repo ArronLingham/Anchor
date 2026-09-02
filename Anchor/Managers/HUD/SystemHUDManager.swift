@@ -132,6 +132,17 @@ class SystemHUDManager {
             )
             self.applyOSDSuppression(flags)
         }.store(in: &cancellables)
+        
+                Defaults.publisher(.treatFunctionKeysAsVolume, options: []).sink { [weak self] _ in
+            guard let self = self, self.isSetupComplete else { return }
+            let flags = self.resolvedControlFlags()
+            self.changesObserver?.update(
+                volumeEnabled: flags.volume,
+                brightnessEnabled: flags.brightness,
+                keyboardBacklightEnabled: flags.backlight
+            )
+            self.applyOSDSuppression(flags)
+        }.store(in: &cancellables)
 
         Defaults.publisher(.enableBrightnessHUD, options: []).sink { [weak self] _ in
             guard let self = self, self.isSetupComplete, self.requiresSystemToggleHandling else {

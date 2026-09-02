@@ -1003,6 +1003,11 @@ struct HUD: View {
                     }
                     .settingsHighlight(id: highlightID("Use F1 and F2 for brightness"))
                     .settingsInfo("For keyboards that send F1/F2 as ordinary function keys instead of brightness keys \u{2014} common on third-party keyboards, where macOS produces no brightness event at all and the keys do nothing. Takes F1/F2 away from other apps; keys pressed with a modifier are left alone.")
+                    Defaults.Toggle(key: .treatFunctionKeysAsVolume) {
+                        Text("Use F10, F11 and F12 for volume")
+                    }
+                    .settingsHighlight(id: highlightID("Use F10, F11 and F12 for volume"))
+                    .settingsInfo("The volume counterpart, and the fix for an external keyboard showing macOS's own volume HUD. Such a keyboard sends plain function keys rather than media keys, so Anchor never sees the press, macOS services it and draws its own HUD \u{2014} which no amount of suppression can prevent, because the key was never intercepted. F10 mutes, F11 and F12 change the volume. Keys pressed with a modifier are left alone.")
                 } header: {
                     Text("Controls")
                 } footer: {

@@ -40,6 +40,10 @@ private let NX_KEYTYPE_MUTE: Int32 = 7
 /// when a keyboard sends F1/F2 instead of brightness media keys.
 private let kVirtualKeyF1: Int64 = 122
 private let kVirtualKeyF2: Int64 = 120
+// F10/F11/F12 carry mute / volume down / volume up on an Apple layout.
+private let kVirtualKeyF10: Int64 = 109
+private let kVirtualKeyF11: Int64 = 103
+private let kVirtualKeyF12: Int64 = 111
 
 enum MediaKeyDirection {
     case up
@@ -58,12 +62,16 @@ struct MediaKeyConfiguration {
     /// Treat plain F1/F2 as brightness down/up — see
     /// `Defaults.Keys.treatFunctionKeysAsBrightness`.
     var interceptFunctionKeysAsBrightness: Bool = false
+    /// Treat plain F10/F11/F12 as mute / volume down / up — see
+    /// `Defaults.Keys.treatFunctionKeysAsVolume`.
+    var interceptFunctionKeysAsVolume: Bool = false
 
     static let disabled = MediaKeyConfiguration(
         interceptVolume: false,
         interceptBrightness: false,
         interceptCommandModifiedBrightness: false,
-        interceptFunctionKeysAsBrightness: false
+        interceptFunctionKeysAsBrightness: false,
+        interceptFunctionKeysAsVolume: false
     )
 }
 
@@ -481,17 +489,32 @@ final class MediaKeyInterceptor {
         return configuration.interceptCommandModifiedBrightness && modifiers.contains(.command)
     }
 
-    /// Maps plain F1/F2 to brightness when the user has opted in.
+    /// Maps plain F1/F2 to brightness and F10/F11/F12 to volume, when the user
+    /// has opted in.
     ///
-    /// Only bare presses are claimed: any modifier (⌘F1, ⌥F2, …) passes
+    /// This exists because not every keyboard sends media keys. A keyboard that
+    /// emits plain function keys never produces the NX_SYSDEFINED events the
+    /// main path handles, so without this macOS services the key itself and
+    /// draws its own HUD — which is exactly what an external keyboard did for
+    /// both brightness and volume.
+    ///
+    /// Only bare presses are claimed: any modifier (⌘F1, ⌥F12, …) passes
     /// through, so app shortcuts built on modified function keys keep working.
     private func handleFunctionKeyDown(_ cgEvent: CGEvent) -> Unmanaged<CGEvent>? {
-        guard configuration.interceptFunctionKeysAsBrightness,
-              configuration.interceptBrightness
-        else { return Unmanaged.passUnretained(cgEvent) }
-
         let keyCode = cgEvent.getIntegerValueField(.keyboardEventKeycode)
-        guard keyCode == kVirtualKeyF1 || keyCode == kVirtualKeyF2 else {
+
+        let isBrightnessKey = keyCode == kVirtualKeyF1 || keyCode == kVirtualKeyF2
+        let isVolumeKey = keyCode == kVirtualKeyF10 || keyCode == kVirtualKeyF11
+            || keyCode == kVirtualKeyF12
+
+        let wantsBrightness = isBrightnessKey
+            && configuration.interceptFunctionKeysAsBrightness
+            && configuration.interceptBrightness
+        let wantsVolume = isVolumeKey
+            && configuration.interceptFunctionKeysAsVolume
+            && configuration.interceptVolume
+
+        guard wantsBrightness || wantsVolume else {
             return Unmanaged.passUnretained(cgEvent)
         }
 
@@ -513,11 +536,24 @@ final class MediaKeyInterceptor {
         }
 
         let isRepeat = cgEvent.getIntegerValueField(.keyboardEventAutorepeat) != 0
-        dispatchBrightnessCommand(
-            keyCode == kVirtualKeyF2 ? .up : .down,
-            step: .standard,
-            isRepeat: isRepeat,
-            modifiers: modifiers)
+
+        if wantsVolume {
+            if keyCode == kVirtualKeyF10 {
+                dispatchMuteCommand()
+            } else {
+                dispatchVolumeCommand(
+                    keyCode == kVirtualKeyF12 ? .up : .down,
+                    step: .standard,
+                    isRepeat: isRepeat,
+                    modifiers: modifiers)
+            }
+        } else {
+            dispatchBrightnessCommand(
+                keyCode == kVirtualKeyF2 ? .up : .down,
+                step: .standard,
+                isRepeat: isRepeat,
+                modifiers: modifiers)
+        }
         return nil
     }
 

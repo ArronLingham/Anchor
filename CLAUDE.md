@@ -604,6 +604,52 @@ xcodebuild -project Anchor.xcodeproj -scheme Anchor \
   running as the user could `open -n /Applications/Anchor.app --env
   ANCHOR_RENDER_UI=/tmp/x` and read the topic out of a PNG. Keep it `#if DEBUG`.
 
+### Measured: no programmatic volume write spawns OSDUIHelper
+
+The comment at `SystemOSDManager.swift:227` — and a diagnosis built on it —
+claimed "the CoreAudio volume write wakes/respawns the helper to draw the native
+OSD". **That is wrong.** Measured with Anchor quit and the helper killed first,
+four times across two APIs:
+
+| path | helper spawned |
+|---|---|
+| `AudioObjectSetPropertyData(kAudioDevicePropertyVolumeScalar)` | **no** |
+| `osascript -e "set volume output volume N"` | **no** |
+
+So the native volume HUD is drawn by the **key-handling path**, not by the volume
+change. The consequence for design is large: suppression is the wrong lever
+entirely. If Anchor intercepts the key, no helper is ever asked to draw; if it
+does not, no amount of SIGSTOP/SIGKILL wins, because the system draws it as part
+of servicing a key Anchor never claimed.
+
+A synthesized `NX_SYSDEFINED` key could not be used to complete the experiment —
+posting one needs Accessibility for the *posting* process, and the volume did not
+move, so that arm is inconclusive rather than negative.
+
+**Which is why F10/F11/F12 now have a fallback.** `handleFunctionKeyDown`
+handled only F1/F2 (brightness). A keyboard that sends plain function keys rather
+than media keys therefore had its volume keys pass straight through to macOS —
+the "external keyboard shows the system HUD" report. `treatFunctionKeysAsVolume`
+(off by default, sibling of `treatFunctionKeysAsBrightness`) claims F10 as mute
+and F11/F12 as volume.
+
+### Grants: Screen Recording IS granted — this file said otherwise
+
+Read from the system TCC database, current bundle id, all `auth_value = 2`:
+`kTCCServiceAccessibility`, `kTCCServiceListenEvent` (Input Monitoring),
+`kTCCServiceSystemPolicyAllFiles` (Full Disk Access) **and
+`kTCCServiceScreenCapture`**. The "Screen Recording is stranded on the old bundle
+id" section below is **stale** — window thumbnails, Dock Preview and the wave-6
+capture/OCR path are no longer blocked on a grant.
+
+`com.arronlingham.Anchor.dev` has Accessibility but `SystemPolicyAllFiles = 0`,
+which is consistent with the note that a Debug build cannot test Full Disk Access.
+
+```bash
+sqlite3 "/Library/Application Support/com.apple.TCC/TCC.db" \
+  "select service, client, auth_value from access where client like '%Anchor%';"
+```
+
 ### OSD suppression must be SIGSTOP, and volume is what proves it
 
 `suspendOSDUIHelper()` was briefly changed to **SIGKILL** (in `4ced65d`, with a

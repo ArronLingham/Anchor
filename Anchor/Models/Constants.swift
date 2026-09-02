@@ -1001,6 +1001,14 @@ extension Defaults.Keys {
     /// Help in many of them), which is only worth doing for someone whose
     /// keyboard leaves those keys inert anyway.
     static let treatFunctionKeysAsBrightness = Key<Bool>("treatFunctionKeysAsBrightness", default: false)
+    /// Treat plain F10/F11/F12 as mute / volume down / volume up.
+    ///
+    /// The sibling of `treatFunctionKeysAsBrightness`, and needed for the same
+    /// reason: a keyboard that sends plain function keys rather than
+    /// NX_SYSDEFINED media keys never reaches the interceptor's media-key path,
+    /// so macOS handles the key itself and draws its own volume HUD. That is
+    /// the "external keyboard shows the system HUD" report.
+    static let treatFunctionKeysAsVolume = Key<Bool>("treatFunctionKeysAsVolume", default: false)
     static let enableKeyboardBacklightHUD = Key<Bool>("enableKeyboardBacklightHUD", default: true)
     static let playVolumeChangeFeedback = Key<Bool>("playVolumeChangeFeedback", default: false)
 
