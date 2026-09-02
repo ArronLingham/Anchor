@@ -52,8 +52,24 @@ enum VinylWindowLevel: String, Codable, CaseIterable, Defaults.Serializable {
 }
 
 /// Size presets, matching VinylPod's own four.
+/// Which way round the card is laid out.
+enum VinylOrientation: String, Codable, CaseIterable, Defaults.Serializable {
+    /// Record on top, text and transport beneath.
+    case portrait
+    /// Record on the left, text and transport beside it — shorter, for sitting
+    /// along the bottom of a screen.
+    case landscape
+
+    var label: String {
+        switch self {
+        case .portrait: return String(localized: "Vertical")
+        case .landscape: return String(localized: "Horizontal")
+        }
+    }
+}
+
 enum VinylWidgetSize: String, Codable, CaseIterable, Defaults.Serializable {
-    case small, medium, regular, large
+    case small, medium, regular, large, desktop
 
     var label: String {
         switch self {
@@ -61,6 +77,7 @@ enum VinylWidgetSize: String, Codable, CaseIterable, Defaults.Serializable {
         case .medium: return String(localized: "Medium")
         case .regular: return String(localized: "Regular")
         case .large: return String(localized: "Large")
+        case .desktop: return String(localized: "Desktop")
         }
     }
 
@@ -70,15 +87,53 @@ enum VinylWidgetSize: String, Codable, CaseIterable, Defaults.Serializable {
         case .medium: return 250
         case .regular: return 320
         case .large: return 420
+        case .desktop: return 560
         }
     }
 
-    /// The card is portrait: record, then title, transport and progress under
-    /// it. 1.33 is the ratio that leaves the record square with the text block
-    /// beneath it rather than crowding either.
-    var height: CGFloat { (width * 1.36).rounded() }
+    /// Height for what is actually being drawn.
+    ///
+    /// This was a fixed 1.36 ratio, so turning the progress bar off left an
+    /// empty strip at the bottom of the card rather than making it shorter.
+    /// Each optional row is now worth its own share of the width, matching the
+    /// proportional padding the view lays out with.
+    var height: CGFloat {
+        Self.height(
+            width: width,
+            orientation: Defaults[.vinylOrientation],
+            showsTitle: Defaults[.vinylShowTitle],
+            showsProgress: Defaults[.vinylShowProgress] && Defaults[.vinylProgressStyle] == .bar)
+    }
 
-    var size: CGSize { CGSize(width: width, height: height) }
+    static func height(
+        width: CGFloat, orientation: VinylOrientation, showsTitle: Bool, showsProgress: Bool
+    ) -> CGFloat {
+        switch orientation {
+        case .portrait:
+            // record (0.72w) + padding, then each row beneath it
+            var h = width * 0.72 + width * 0.15
+            h += width * 0.16                        // transport, always shown
+            if showsTitle { h += width * 0.17 }
+            if showsProgress { h += width * 0.11 }
+            return h.rounded()
+        case .landscape:
+            // The record sets the height; the text column sits beside it, so
+            // hiding a row makes the card narrower rather than shorter.
+            return (width * 0.52).rounded()
+        }
+    }
+
+    /// Landscape needs more width for the text to sit beside the record.
+    var size: CGSize {
+        let w = Defaults[.vinylOrientation] == .landscape ? width * 1.5 : width
+        return CGSize(
+            width: w.rounded(),
+            height: Self.height(
+                width: width,
+                orientation: Defaults[.vinylOrientation],
+                showsTitle: Defaults[.vinylShowTitle],
+                showsProgress: Defaults[.vinylShowProgress] && Defaults[.vinylProgressStyle] == .bar))
+    }
 }
 
 /// A draggable panel holding the record.
@@ -143,7 +198,9 @@ final class VinylWidgetWindowManager: ObservableObject {
         guard !started else { return }
         started = true
 
-        Defaults.publisher(keys: .enableVinylWidget, .vinylWidgetSize, .vinylWindowLevel)
+        Defaults.publisher(
+            keys: .enableVinylWidget, .vinylWidgetSize, .vinylWindowLevel,
+            .vinylOrientation, .vinylShowTitle, .vinylShowProgress, .vinylProgressStyle)
             .sink { [weak self] _ in
                 Task { @MainActor in self?.sync() }
             }

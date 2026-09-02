@@ -46,6 +46,21 @@ struct NotchLyricsView: View {
             } else {
                 // Shared with the lock screen's immersive player.
                 SyncedLyricsList(currentSize: 15, otherSize: 13, lineSpacing: 10, fitted: true)
+                    // Turning lyrics off should not mean a trip to Settings
+                    // when they are right there in front of you.
+                    .overlay(alignment: .topTrailing) {
+                        Button {
+                            enableLyrics = false
+                        } label: {
+                            Image(systemName: "text.badge.xmark")
+                                .font(.system(size: 11))
+                                .foregroundStyle(.white.opacity(0.45))
+                                .padding(6)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .help("Turn lyrics off")
+                    }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)

@@ -44,6 +44,7 @@ struct Media: View {
     @Default(.pinnedInputDeviceUID) private var pinnedInputDeviceUID
     @Default(.lyricsOffsetSeconds) var lyricsOffsetSeconds
     @Default(.enableLyrics) var enableLyrics
+    @Default(.lyricsVisibleLines) var lyricsVisibleLines
     @Default(.waitInterval) var waitInterval
     @Default(.mediaController) var mediaController
     @ObservedObject var coordinator = AnchorViewCoordinator.shared
@@ -370,6 +371,20 @@ struct Media: View {
                 .disabled(!enableLyrics)
                 .settingsHighlight(id: highlightID("Translate lyrics"))
                 .settingsInfo("Shows a translation beneath the current line, into your Mac's language. Runs on device through Apple's Translation framework — no key, no network, and nothing about what you are listening to leaves the machine. macOS may ask to download a language model the first time.")
+
+                LabeledContent("Lines shown") {
+                    Picker("", selection: $lyricsVisibleLines) {
+                        Text("As many as fit").tag(0)
+                        ForEach([1, 2, 3, 4, 5, 6, 8], id: \.self) { n in
+                            Text("\(n)").tag(n)
+                        }
+                    }
+                    .labelsHidden()
+                    .fixedSize()
+                }
+                .disabled(!enableLyrics)
+                .settingsHighlight(id: highlightID("Lines shown"))
+                .settingsInfo("How many lines the notch shows at once. A fixed count is still clamped to what fits, so asking for eight in a space that holds four does not crop them.")
 
                 Slider(value: $lyricsOffsetSeconds, in: -1...1, step: 0.05) {
                     HStack {

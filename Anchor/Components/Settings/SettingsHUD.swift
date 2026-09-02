@@ -1023,6 +1023,12 @@ struct HUD: View {
                     }
                     .settingsHighlight(id: highlightID("Use F10, F11 and F12 for volume"))
                     .settingsInfo("The volume counterpart, and the fix for an external keyboard showing macOS's own volume HUD. Such a keyboard sends plain function keys rather than media keys, so Anchor never sees the press, macOS services it and draws its own HUD \u{2014} which no amount of suppression can prevent, because the key was never intercepted. F10 mutes, F11 and F12 change the volume. Keys pressed with a modifier are left alone.")
+
+                    Defaults.Toggle(key: .enableHUDDrag) {
+                        Text("Drag the HUD to set the value")
+                    }
+                    .settingsHighlight(id: highlightID("Drag the HUD to set the value"))
+                    .settingsInfo("Press and drag anywhere on a volume or brightness HUD to scrub it, like a slider. Works on all four HUD styles. The other things a HUD reports \u{2014} music, battery, Bluetooth, caps lock \u{2014} are notifications rather than controls, so they stay untouched.")
                 } header: {
                     Text("Controls")
                 } footer: {

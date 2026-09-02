@@ -1005,6 +1005,12 @@ extension Defaults.Keys {
     static let enableShortcuts = Key<Bool>("enableShortcuts", default: true)
     
     // MARK: System HUD Feature
+    /// Drag on a HUD to set the value it is showing.
+    ///
+    /// Volume and brightness only — the other sneak-peek types are
+    /// notifications rather than controls, so there is nothing to set.
+    static let enableHUDDrag = Key<Bool>("enableHUDDrag", default: false)
+
     static let enableSystemHUD = Key<Bool>("enableSystemHUD", default: true)
     static let enableVolumeHUD = Key<Bool>("enableVolumeHUD", default: true)
     static let enableBrightnessHUD = Key<Bool>("enableBrightnessHUD", default: true)
@@ -1127,6 +1133,9 @@ extension Defaults.Keys {
     
     // MARK: Lyrics Feature
     static let enableLyrics = Key<Bool>("enableLyrics", default: false)
+    /// How many lyric lines the notch shows at once. Zero means "as many as
+    /// fit", which is what it did before this was a setting.
+    static let lyricsVisibleLines = Key<Int>("lyricsVisibleLines", default: 0)
     /// Seconds to lead the lyrics by. Positive shows each line earlier.
     ///
     /// A player reports where its decoder is, which is ahead of what has reached
@@ -1508,6 +1517,8 @@ extension Defaults.Keys {
     /// A spinning record on the desktop showing what is playing.
     static let enableVinylWidget = Key<Bool>("enableVinylWidget", default: false)
     static let vinylWidgetSize = Key<VinylWidgetSize>("vinylWidgetSize", default: .regular)
+    /// Vertical (record above the text) or horizontal (record beside it).
+    static let vinylOrientation = Key<VinylOrientation>("vinylOrientation", default: .portrait)
     static let vinylWindowLevel = Key<VinylWindowLevel>("vinylWindowLevel", default: .desktop)
     static let vinylShowStylus = Key<Bool>("vinylShowStylus", default: true)
     static let vinylShowProgress = Key<Bool>("vinylShowProgress", default: true)

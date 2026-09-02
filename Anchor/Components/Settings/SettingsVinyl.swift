@@ -23,6 +23,7 @@ import SwiftUI
 struct VinylSettings: View {
     @Default(.enableVinylWidget) private var enabled
     @Default(.vinylWidgetSize) private var size
+    @Default(.vinylOrientation) private var orientation
     @Default(.vinylWindowLevel) private var level
     @Default(.vinylShowStylus) private var showStylus
     @Default(.vinylShowProgress) private var showProgress
@@ -64,6 +65,15 @@ struct VinylSettings: View {
                 }
                 .disabled(!enabled)
                 .settingsHighlight(id: highlightID("Size"))
+
+                Picker("Shape", selection: $orientation) {
+                    ForEach(VinylOrientation.allCases, id: \.self) { option in
+                        Text(option.label).tag(option)
+                    }
+                }
+                .disabled(!enabled)
+                .settingsHighlight(id: highlightID("Shape"))
+                .settingsInfo("Vertical puts the record above the title and transport; horizontal puts it beside them, which is shorter and suits sitting along the bottom of a screen. Every one of these is also on the widget's own right-click menu.")
 
                 Picker("Layer", selection: $level) {
                     ForEach(VinylWindowLevel.allCases, id: \.self) { option in

@@ -470,6 +470,7 @@ struct InlineHUD: View {
         .onChange(of: bluetoothManager.lastConnectedDevice?.name) { _, _ in
             displayName = Type2Name(type)
         }
+        .hudDragToSet(type: type, axis: .horizontal)
     }
     
     private struct CircularBatteryIndicator: View {

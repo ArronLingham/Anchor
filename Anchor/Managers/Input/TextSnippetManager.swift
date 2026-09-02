@@ -169,6 +169,7 @@ final class TextSnippetManager: ObservableObject {
         // A click moves the caret somewhere the buffer does not describe.
         if type == .leftMouseDown || type == .rightMouseDown {
             buffer = ""
+            lastExpansion = nil
             return
         }
 
@@ -192,16 +193,34 @@ final class TextSnippetManager: ObservableObject {
         let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
         switch keyCode {
         case 51:  // Delete — the buffer no longer matches the field
+            // Backspace immediately after an expansion undoes it.
+            //
+            // The tap is listenOnly by construction, so this keystroke cannot
+            // be swallowed — it WILL delete one character of what was inserted.
+            // The revert therefore removes the remaining characters and types
+            // the trigger back, which lands in the same place a swallow would
+            // have, without giving this tap the power to drop keys.
+            if let pending = lastExpansion {
+                lastExpansion = nil
+                revert(pending)
+                return
+            }
             if !buffer.isEmpty { buffer.removeLast() }
             return
         case 123, 124, 125, 126,  // arrows
              115, 116, 117, 119, 121,  // home/end/fwd-delete/page up/down
              48, 53:  // tab, escape
             buffer = ""
+            lastExpansion = nil
             return
         default:
             break
         }
+
+        // Only the very next keystroke may undo an expansion. "Immediately
+        // after" is the whole contract: reverting something typed a paragraph
+        // ago would be worse than not offering it.
+        lastExpansion = nil
 
         guard let characters = characters(from: event), !characters.isEmpty else { return }
         buffer.append(contentsOf: characters)
@@ -258,8 +277,46 @@ final class TextSnippetManager: ObservableObject {
 
             do {
                 try await TextInjector.insert(text)
+                // Armed for exactly one keystroke — see the Delete case.
+                lastExpansion = Expansion(trigger: match.snippet.trigger, inserted: text)
             } catch {
                 NSLog("⚠️ Snippet expansion failed: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    /// What was last expanded, so backspace can put it back.
+    private struct Expansion {
+        let trigger: String
+        let inserted: String
+    }
+
+    private var lastExpansion: Expansion?
+
+    /// Undoes an expansion: removes what is left of the inserted text and types
+    /// the trigger back.
+    ///
+    /// One character has already gone — the user's own backspace, which this tap
+    /// cannot intercept — so that one is subtracted from the count.
+    private func revert(_ expansion: Expansion) {
+        guard !expansion.inserted.isEmpty else { return }
+        isExpanding = true
+        buffer = ""
+
+        Task { @MainActor in
+            defer { isExpanding = false }
+
+            let remaining = max(0, expansion.inserted.count - 1)
+            for _ in 0..<remaining {
+                sendBackspace()
+                try? await Task.sleep(for: .milliseconds(6))
+            }
+            try? await Task.sleep(for: .milliseconds(12))
+
+            do {
+                try await TextInjector.insert(expansion.trigger)
+            } catch {
+                NSLog("⚠️ Snippet revert failed: \(error.localizedDescription)")
             }
         }
     }

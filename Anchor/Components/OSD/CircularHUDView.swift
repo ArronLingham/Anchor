@@ -105,6 +105,7 @@ struct CircularHUDView: View {
 
 
         }
+        .hudDragToSet(type: type, axis: .horizontal)
         .frame(width: size, height: size)
         .shadow(color: .black.opacity(0.2), radius: 15, x: 0, y: 5)
         .frame(maxWidth: .infinity, maxHeight: .infinity)

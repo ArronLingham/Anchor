@@ -208,6 +208,7 @@ struct ClipboardPopoverItemRow: View {
     @ObservedObject var clipboardManager = ClipboardManager.shared
     
     @State private var isExpanded = false
+    @State private var justCopied = false
     
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
@@ -218,17 +219,34 @@ struct ClipboardPopoverItemRow: View {
                 .frame(width: 16)
             
             // Content
+            //
+            // Clicking it both copies and expands. There used to be a copy
+            // button, hidden until hover, next to two other small buttons — so
+            // the commonest action in the panel was also the fiddliest. The
+            // text itself is the biggest target in the row.
             VStack(alignment: .leading, spacing: 3) {
                 Text(item.preview)
                     .font(.system(size: 11))
                     .foregroundColor(.primary)
                     .lineLimit(isExpanded ? nil : 2)
                     .multilineTextAlignment(.leading)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        clipboardManager.copyToClipboard(item)
+                        withAnimation(.easeInOut(duration: 0.15)) { isExpanded.toggle() }
+                        withAnimation(.easeOut(duration: 0.12)) { justCopied = true }
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.9) {
+                            withAnimation(.easeIn(duration: 0.2)) { justCopied = false }
+                        }
+                    }
                 
                 HStack {
-                    Text(item.type.displayName)
+                    // Copying with no button pressed needs to say so, or there
+                    // is no feedback that the click did anything at all.
+                    Text(justCopied ? String(localized: "Copied") : item.type.displayName)
                         .font(.system(size: 9))
-                        .foregroundColor(.secondary)
+                        .foregroundColor(justCopied ? .green : .secondary)
                     
                     Spacer()
                     
@@ -254,16 +272,6 @@ struct ClipboardPopoverItemRow: View {
                         Image(systemName: isPinned ? "heart.fill" : "heart")
                             .font(.system(size: 9))
                             .foregroundColor(isPinned ? .red : .gray)
-                    }
-                    .buttonStyle(PlainButtonStyle())
-                    
-                    // Copy button
-                    Button(action: {
-                        clipboardManager.copyToClipboard(item)
-                    }) {
-                        Image(systemName: "doc.on.doc")
-                            .font(.system(size: 9))
-                            .foregroundColor(.green)
                     }
                     .buttonStyle(PlainButtonStyle())
                     

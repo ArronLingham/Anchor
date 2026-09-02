@@ -66,6 +66,9 @@ struct VinylRecordRepresentable: NSViewRepresentable {
 struct VinylWidgetView: View {
     @ObservedObject private var music = MusicManager.shared
 
+    @Default(.vinylWidgetSize) private var size
+    @Default(.vinylOrientation) private var orientation
+    @Default(.vinylWindowLevel) private var windowLevel
     @Default(.vinylShowStylus) private var showStylus
     @Default(.vinylProgressStyle) private var progressStyle
     @Default(.vinylShowProgress) private var showProgress
@@ -120,33 +123,116 @@ struct VinylWidgetView: View {
 
     var body: some View {
         GeometryReader { geometry in
-            let width = geometry.size.width
-            let recordSide = width * 0.72
+            // Portrait sizes everything from the card width; landscape sizes it
+            // from the height, since there the record is what sets the height
+            // and the text column sits beside it.
+            let width = orientation == .portrait
+                ? geometry.size.width
+                : geometry.size.height / 0.52
+            let recordSide = orientation == .portrait
+                ? width * 0.72
+                : geometry.size.height * 0.78
 
-            VStack(spacing: 0) {
-                turntable(width: width, recordSide: recordSide)
-
-                if showTitle {
-                    trackLabels(width: width)
-                        .padding(.top, width * 0.055)
+            Group {
+                if orientation == .portrait {
+                    VStack(spacing: 0) {
+                        turntable(width: width, recordSide: recordSide)
+                        stack(width: width)
+                        Spacer(minLength: 0)
+                    }
+                } else {
+                    HStack(spacing: width * 0.05) {
+                        turntable(width: width, recordSide: recordSide)
+                        VStack(alignment: .leading, spacing: 0) {
+                            Spacer(minLength: 0)
+                            stack(width: width)
+                            Spacer(minLength: 0)
+                        }
+                    }
                 }
-
-                transport(width: width)
-                    .padding(.top, showTitle ? width * 0.05 : width * 0.07)
-
-                if showProgress && progressStyle == .bar {
-                    progressBar(width: width)
-                        .padding(.top, width * 0.045)
-                }
-
-                Spacer(minLength: 0)
             }
             .padding(width * 0.075)
-            .frame(width: geometry.size.width, height: geometry.size.height, alignment: .top)
+            .frame(width: geometry.size.width, height: geometry.size.height,
+                   alignment: orientation == .portrait ? .top : .leading)
             .background(card)
+            // Every setting, on the widget itself — the point of a desktop
+            // widget is not having to go and find a settings window for it.
+            .contextMenu { settingsMenu }
+            .overlay(alignment: .topTrailing) { closeButton }
         }
         .onHover { isHovering = $0 }
         .animation(.easeInOut(duration: 0.35), value: music.avgColor)
+        .animation(.easeInOut(duration: 0.25), value: orientation)
+    }
+
+    /// Title, transport and progress — the same stack either way round.
+    @ViewBuilder
+    private func stack(width: CGFloat) -> some View {
+        if showTitle {
+            trackLabels(width: width)
+                .padding(.top, orientation == .portrait ? width * 0.055 : 0)
+        }
+
+        transport(width: width)
+            .padding(.top, showTitle ? width * 0.05 : (orientation == .portrait ? width * 0.07 : 0))
+
+        if showProgress && progressStyle == .bar {
+            progressBar(width: width)
+                .padding(.top, width * 0.045)
+        }
+    }
+
+    /// Closing sends the widget behind everything rather than switching it off.
+    ///
+    /// Turning it off is a decision that takes a trip to Settings to undo;
+    /// dropping it to the desktop layer gets it out of the way and leaves it
+    /// where you put it. It only appears on hover, so it is not part of the
+    /// card's resting look.
+    @ViewBuilder
+    private var closeButton: some View {
+        if isHovering && windowLevel != .desktop {
+            Button {
+                windowLevel = .desktop
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.7))
+                    .padding(5)
+                    .background(Circle().fill(.black.opacity(0.35)))
+            }
+            .buttonStyle(.plain)
+            .padding(8)
+            .help("Send behind all windows")
+            .transition(.opacity)
+        }
+    }
+
+    @ViewBuilder
+    private var settingsMenu: some View {
+        Picker("Size", selection: $size) {
+            ForEach(VinylWidgetSize.allCases, id: \.self) { Text($0.label).tag($0) }
+        }
+        Picker("Shape", selection: $orientation) {
+            ForEach(VinylOrientation.allCases, id: \.self) { Text($0.label).tag($0) }
+        }
+        Picker("Layer", selection: $windowLevel) {
+            ForEach(VinylWindowLevel.allCases, id: \.self) { Text($0.label).tag($0) }
+        }
+        Divider()
+        Toggle("Show the title", isOn: $showTitle)
+        Toggle("Show the progress bar", isOn: $showProgress)
+        Toggle("Show the tonearm", isOn: $showStylus)
+        Toggle("Tint from the album art", isOn: $useAlbumColor)
+        Divider()
+        // A menu cannot hold a slider, so the transparency steps are offered as
+        // choices. The slider itself lives in Settings for finer control.
+        Picker("Background", selection: $backgroundOpacity) {
+            Text("Transparent").tag(0.0)
+            Text("Faint").tag(0.25)
+            Text("Half").tag(0.5)
+            Text("Mostly solid").tag(0.75)
+            Text("Solid").tag(1.0)
+        }
     }
 
     private var card: some View {
@@ -171,6 +257,12 @@ struct VinylWidgetView: View {
                 isPlaying: music.isPlaying,
                 labelFraction: 0.46)
             .frame(width: recordSide, height: recordSide)
+            // The record is the obvious thing to press to stop the music, and
+            // it is by far the largest target on the card — the transport's
+            // play button is a fraction of its size.
+            .contentShape(Circle())
+            .onTapGesture { music.playPause() }
+            .help(music.isPlaying ? "Pause" : "Play")
 
             if showStylus {
                 tonearm(width: width, recordSide: recordSide)

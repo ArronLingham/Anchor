@@ -1169,6 +1169,9 @@ struct SettingsView: View {
             SettingsSearchEntry(tab: .launcher, title: "Remember the last search for", keywords: ["remember", "last", "search", "launcher"], highlightID: SettingsTab.launcher.highlightID(for: "Remember the last search for")),
             SettingsSearchEntry(tab: .launcher, title: "Weather", keywords: ["weather", "launcher"], highlightID: SettingsTab.launcher.highlightID(for: "Weather")),
             SettingsSearchEntry(tab: .launcher, title: "When typing", keywords: ["typing", "launcher"], highlightID: SettingsTab.launcher.highlightID(for: "When typing")),
+            SettingsSearchEntry(tab: .media, title: "Lines shown", keywords: ["lines", "shown", "media"], highlightID: SettingsTab.media.highlightID(for: "Lines shown")),
+            SettingsSearchEntry(tab: .vinyl, title: "Shape", keywords: ["shape", "vinyl"], highlightID: SettingsTab.vinyl.highlightID(for: "Shape")),
+            SettingsSearchEntry(tab: .hudAndOSD, title: "Drag the HUD to set the value", keywords: ["drag", "hud", "set", "value", "hud and o s d"], highlightID: SettingsTab.hudAndOSD.highlightID(for: "Drag the HUD to set the value")),
         ]
     }
 

@@ -123,7 +123,12 @@ struct SyncedLyricsList: View {
     private var fittedTimed: some View {
         GeometryReader { geo in
             let rowHeight = currentSize + lineSpacing
-            let capacity = fittedCapacity ?? max(1, Int(geo.size.height / rowHeight))
+            // A fixed line count when the user has asked for one, clamped to
+            // what actually fits — asking for ten lines in a space that holds
+            // four would just crop them.
+            let fits = fittedCapacity ?? max(1, Int(geo.size.height / rowHeight))
+            let preferred = Defaults[.lyricsVisibleLines]
+            let capacity = preferred > 0 ? min(preferred, fits) : fits
             let window = windowedLines(capacity: capacity, before: linesBefore ?? capacity / 2)
 
             VStack(alignment: alignment, spacing: lineSpacing) {

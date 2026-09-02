@@ -55,6 +55,7 @@ struct CustomOSDView: View {
                 .frame(width: 140)
                 .padding(.top, 4) // Lower the bar slightly
         }
+        .hudDragToSet(type: type, axis: .horizontal)
         .frame(width: 200, height: 200)
         .background(
             RoundedRectangle(cornerRadius: 18, style: .continuous)
