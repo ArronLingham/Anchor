@@ -168,6 +168,65 @@ for p in [AIProvider.gemini, .openai] {
 ok("gemini blocked response explains itself",
    { if case .failure = parse(.gemini, #"{"candidates":[{"finishReason":"SAFETY","content":{"parts":[]}}]}"#) { return true }; return false }())
 
+// ---------- model listing ----------
+// The picker went stale because the list was hardcoded; enumerating is only an
+// improvement if it keeps the same credential rule as everything else.
+for provider in AIProvider.allCases {
+    guard let req = AIProtocol.buildModelListRequest(provider: provider, key: "SECRETKEY123") else {
+        ok("\(provider.rawValue): no model listing is acceptable", true)
+        continue
+    }
+    let url = req.url?.absoluteString ?? ""
+    ok("\(provider.rawValue) list: key is NOT in the URL", !url.contains("SECRETKEY123"), url)
+    ok("\(provider.rawValue) list: no query string", !url.contains("?"), url)
+    ok("\(provider.rawValue) list: https", url.hasPrefix("https://"), url)
+    ok("\(provider.rawValue) list: GET", req.httpMethod == "GET")
+    ok("\(provider.rawValue) list: key travels in a header",
+       (req.allHTTPHeaderFields ?? [:]).values.contains { $0.contains("SECRETKEY123") })
+}
+
+// Gemini reports what each model can do; offering one that cannot
+// generateContent produces a 400 the user cannot diagnose.
+let geminiList = #"""
+{"models":[
+ {"name":"models/gemini-3.6-flash","supportedGenerationMethods":["generateContent","countTokens"]},
+ {"name":"models/embedding-001","supportedGenerationMethods":["embedContent"]},
+ {"name":"models/gemini-3.5-flash-lite","supportedGenerationMethods":["generateContent"]}
+]}
+"""#
+let gm = AIProtocol.parseModelList(provider: .gemini, data: Data(geminiList.utf8))
+ok("gemini: keeps generateContent models", gm.contains("gemini-3.6-flash") && gm.contains("gemini-3.5-flash-lite"), "\(gm)")
+ok("gemini: drops embedding-only models", !gm.contains("embedding-001"), "\(gm)")
+ok("gemini: strips the models/ prefix", gm.allSatisfy { !$0.hasPrefix("models/") }, "\(gm)")
+
+let openaiList = #"""
+{"data":[{"id":"gpt-4o"},{"id":"o1-mini"},{"id":"text-embedding-3-small"},{"id":"whisper-1"},{"id":"tts-1"}]}
+"""#
+let om = AIProtocol.parseModelList(provider: .openai, data: Data(openaiList.utf8))
+ok("openai: keeps chat models", om.contains("gpt-4o") && om.contains("o1-mini"), "\(om)")
+ok("openai: drops embeddings, whisper and tts",
+   !om.contains("text-embedding-3-small") && !om.contains("whisper-1") && !om.contains("tts-1"), "\(om)")
+
+for p in AIProvider.allCases {
+    ok("\(p.rawValue): garbage list parses to empty, not a crash",
+       AIProtocol.parseModelList(provider: p, data: Data("<html>502</html>".utf8)).isEmpty)
+    ok("\(p.rawValue): empty body parses to empty",
+       AIProtocol.parseModelList(provider: p, data: Data()).isEmpty)
+    // The picker must never be blank, or there is no way back from a bad model.
+    ok("\(p.rawValue): fallback list is not empty", !AIProtocol.fallbackModels(for: p).isEmpty)
+}
+
+// Gemini returns "models/x" and users paste it that way; building
+// ".../models/models/x" 404s.
+for model in ["gemini-3.6-flash", "models/gemini-3.6-flash"] {
+    if let r = AIProtocol.buildRequest(provider: .gemini, model: model, key: "K",
+                                       history: [user("hi")], systemInstruction: nil) {
+        let u = r.url?.absoluteString ?? ""
+        ok("gemini accepts \(model)", u.contains("/models/gemini-3.6-flash:generateContent"), u)
+        ok("gemini never doubles the prefix", !u.contains("models/models/"), u)
+    }
+}
+
 if failures == 0 { print("\(passes)/\(passes) passed"); exit(0) }
 print("\(passes) passed, \(failures) failed"); exit(1)
 SWIFT

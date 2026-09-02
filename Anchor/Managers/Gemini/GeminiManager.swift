@@ -139,8 +139,17 @@ final class AIAssistantManager: ObservableObject {
 
         let history = AIProtocol.trimmed(messages, limit: Defaults[.aiHistoryTurns])
         
+        // Start from whichever key last worked, then wrap.
+        //
+        // Always starting at index 0 means a dead or exhausted first key costs
+        // a wasted round trip on every single message for the rest of the day —
+        // which is the thing having several keys was supposed to avoid.
+        let start = liveKeyIndex(for: provider, count: availableKeys.count)
+        let ordered = Array(availableKeys[start...] + availableKeys[..<start])
+
         var success = false
-        for key in availableKeys {
+        var exhausted: [String] = []
+        for (offset, key) in ordered.enumerated() {
             guard let request = AIProtocol.buildRequest(
                 provider: provider,
                 model: Defaults[.aiModel],
@@ -155,13 +164,17 @@ final class AIAssistantManager: ObservableObject {
             do {
                 let (data, response) = try await URLSession.shared.data(for: request)
                 if let http = response as? HTTPURLResponse {
+                    // Quota, and a rejected key, both mean "not this one" —
+                    // advance rather than give up. Returning on 401/403 was the
+                    // bug: one stale key at the front stopped the others from
+                    // ever being tried, so adding a second key fixed nothing.
                     if http.statusCode == 429 {
-                        // Rate limited, try next key
+                        exhausted.append(String(localized: "one key is rate limited"))
                         continue
                     }
                     if http.statusCode == 401 || http.statusCode == 403 {
-                        lastError = "The API key was rejected (HTTP \(http.statusCode))."
-                        return
+                        exhausted.append(String(localized: "one key was rejected"))
+                        continue
                     }
                 }
                 
@@ -170,6 +183,9 @@ final class AIAssistantManager: ObservableObject {
                     messages.append(AIMessage(role: .model, text: reply))
                     persistHistory()
                     success = true
+                    // Remember which key answered, so the next message starts
+                    // here instead of walking the dead ones again.
+                    setLiveKeyIndex((start + offset) % availableKeys.count, for: provider)
                 case .failure(let message):
                     lastError = message
                 }
@@ -184,8 +200,28 @@ final class AIAssistantManager: ObservableObject {
         }
         
         if !success && lastError == nil {
-            lastError = "All keys rate limited or failed."
+            lastError = availableKeys.count == 1
+                ? String(localized: "The key was rejected or is out of quota.")
+                : String(localized: "All \(availableKeys.count) keys failed — \(exhausted.joined(separator: ", ")).")
         }
+    }
+
+    // MARK: - Key rotation
+
+    /// Which key answered last, per provider. In memory only: keys live in the
+    /// Keychain and can change under us, so an index persisted across launches
+    /// would eventually point at a different key than the one it recorded.
+    private var liveKeyIndexByProvider: [AIProvider: Int] = [:]
+
+    private func liveKeyIndex(for provider: AIProvider, count: Int) -> Int {
+        guard count > 0 else { return 0 }
+        let stored = liveKeyIndexByProvider[provider] ?? 0
+        // A key may have been removed since, so never index past the end.
+        return stored < count ? stored : 0
+    }
+
+    private func setLiveKeyIndex(_ index: Int, for provider: AIProvider) {
+        liveKeyIndexByProvider[provider] = index
     }
 
     private func loadHistory() {
