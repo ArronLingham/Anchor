@@ -604,6 +604,40 @@ xcodebuild -project Anchor.xcodeproj -scheme Anchor \
   running as the user could `open -n /Applications/Anchor.app --env
   ANCHOR_RENDER_UI=/tmp/x` and read the topic out of a PNG. Keep it `#if DEBUG`.
 
+### The volume HUD bug was a settings interaction, not a signal
+
+Diagnosed live, and it is the actual cause of "the volume HUD suppression is
+still broken":
+
+`resolvedControlFlags()` surrenders channels to a third-party DDC helper when
+one is running. With `enableThirdPartyDDCIntegration` on, `thirdPartyDDCProvider`
+= lunar, Lunar actually running, **and `enableExternalVolumeControlListener` on**,
+it sets `volumeEnabled = false` alongside brightness and backlight. All three
+flags then read false, which means:
+
+- `interceptVolume` is false, so `MediaKeyInterceptor` **passes the volume key
+  straight through** — macOS services it and draws its own HUD. No amount of
+  suppressing OSDUIHelper can prevent that, because the key was never claimed.
+- Lunar sends volume payloads for a *monitor's* DDC speakers, not for the Mac's
+  system audio, so nothing replaced what Anchor stopped doing.
+
+Turning `enableExternalVolumeControlListener` off restores it — verified:
+OSDUIHelper went from `S` to **`T` within three seconds** of the restart.
+
+The toggle is reachable (HUD › Enable third-party DDC app integration › Enable
+external volume control listener) and its own caption says "Anchor's built-in
+volume key interception is disabled while external volume listening is on", so
+this is working as designed. It is recorded here because the *symptom* — the
+native volume HUD appearing while brightness behaves — points at suppression,
+which is the wrong subsystem entirely, and two separate investigations went
+there first.
+
+**Check the flags before touching SystemOSDManager:**
+
+```bash
+defaults read com.arronlingham.Anchor enableExternalVolumeControlListener
+```
+
 ### Measured: no programmatic volume write spawns OSDUIHelper
 
 The comment at `SystemOSDManager.swift:227` — and a diagnosis built on it —
