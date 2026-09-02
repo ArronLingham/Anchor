@@ -127,6 +127,23 @@ classic focus bug for this kind of panel. Activation was being requested
 before the panel was ordered front, so AppKit handed key to a notch window
 instead.
 
+**3.1a Fullscreen.** ✅ The whole display blurs behind it; clicking outside
+dismisses. Settings › Launcher › Panel › "Fill the screen" turns it off.
+**3.1b Paging.** Move the pointer into the left or right edge of the grid.
+✅ The page turns, and does not keep turning while the pointer rests there.
+Try each Paging setting: dots, scroll bar, both.
+**3.1c Order.** Settings › Launcher › Grid › Order. Under **Custom**, drag an
+icon — it moves and stays moved. ❌ Under the other three, dragging must do
+nothing (their positions are derived).
+**3.1d Folders.** ⌥-drag one app onto another. ✅ A folder appears with both in
+it. Drop a third app on the folder to file it. Click the folder to open it,
+rename it, and right-click an app inside to move it back out. Emptying a folder
+removes it.
+**3.1e Recall.** Type something, dismiss, reopen within 5 seconds.
+✅ The search is still there. Wait longer and it opens empty.
+**3.1f Widgets.** Settings › Launcher › Widgets. Turn on clock, weather and now
+playing. ✅ Clicking the record opens the vinyl player.
+
 **3.2a Apple Shortcuts.** With Settings › Launcher › "Show Apple Shortcuts" on,
 open the launcher and type the name of one of your shortcuts.
 ✅ It appears, labelled "Apple Shortcut". ❌ Never appears — the list is loaded
@@ -175,6 +192,11 @@ An empty result means no helper exists and suppression is broken again.
 brightness and keyboard-backlight HUDs. ✅ macOS's own HUD returns.
 ❌ *No* HUD at all — that was the bug: Anchor stopped drawing while keeping the
 native one suppressed. `pgrep -x OSDUIHelper` should show a process in state `S`.
+
+**4.8a Drag to set.** Turn on Settings › HUD › "Drag the HUD to set the value".
+Press and drag on a volume or brightness HUD. ✅ It scrubs like a slider, on all
+four styles — inline, circular, vertical, custom OSD. ❌ Music, battery,
+Bluetooth and caps lock HUDs must NOT respond; they are notifications.
 
 **4.8 External keyboard brightness.** With Settings › HUD › "Use F1 and F2 for
 brightness" **on**, press F1/F2 on the external keyboard. ✅ Anchor's HUD.
@@ -236,6 +258,20 @@ history; cancel reveals nothing.
 ---
 
 ## 8. Audio engine — listening tests
+
+**8.0a Per-app row.** Settings › Media › Per-app audio, with something playing.
+✅ Row reads `[icon] [name] ... [volume] [mute?] [EQ] [output]`.
+Click the volume icon repeatedly — the soundwave count cycles and wraps, and the
+level changes audibly.
+Switch Volume control between **Preset volumes** and **Volume booster**:
+✅ presets has four steps including a muted one and shows NO separate mute
+button; booster has three steps, never quieter than normal, and DOES show a
+headphones-with-a-line mute button.
+**8.0b Output routing.** Click the output icon and pick another device.
+✅ That app alone moves to it. The icon tints while Anchor is engaged.
+**8.0c EQ.** Click the EQ icon. ✅ Ten vertical sliders labelled 32, 64, 125,
+250, 500, 1k, 2k, 4k, 8k, 16k, a Preset dropdown showing the preset in force,
+and Custom once you move a band.
 
 **The maths is proven; the sound is not.** Headphones, on material you know.
 

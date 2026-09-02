@@ -1696,6 +1696,87 @@ Settings tabs have an equivalent check already asserted in code
 (`Set(SettingsTab.allCases).subtracting(ordered).isEmpty`), and it currently
 passes for all 23.
 
+## Phases 2-5, delivered 2026-09-02
+
+The ~45-item list from manual testing, worked through in the plan's order. What
+each phase actually changed, and the decisions inside it worth not re-deriving:
+
+### Per-app audio (Phase 2)
+
+Row is `[icon] [name] ... [volume] [mute?] [EQ] [output]`. The volume control is
+one button whose soundwave count is the level; clicking cycles and wraps. Two
+modes in `PerAppVolumeMode`:
+
+- **presets** — four steps, and step 0 IS silence, which is why that mode shows
+  no separate mute button. A second control for the same thing would be two ways
+  to say one thing.
+- **booster** — three steps, none below normal, with mute as its own control.
+
+`run_volumemode_tests.sh` pins the invariant the button depends on (one symbol
+per level) plus the property that distinguishes the modes. The step is **derived
+from the app's gain**, not stored, so the icon still agrees with the engine if
+the volume was set from anywhere else.
+
+The engaged indicator moved onto the output icon as a tint. It was a blue
+waveform beside the app name, which read like a warning; on the output icon it
+points at the thing doing the work.
+
+### Launcher (Phase 3)
+
+The panel was always screen-sized and above everything — the hosting view was
+pinned to 860x560, so it was a fixed box in a transparent window. That is the
+whole reason it never looked full-screen.
+
+- **Order** has four modes. Dragging is offered *only* under Custom: everywhere
+  else the position is derived, so a drag would either be ignored or silently
+  change the sort. The custom order seeds itself from what is on screen the
+  first time, without which dragging one icon sends every unplaced app to the back.
+- **Folders**: ⌥-drag one app onto another makes one; a plain drag reorders. The
+  modifier is the separator because dropping an icon on another is far more
+  often a reorder, and a gesture that silently swallowed two apps into a folder
+  is much harder to undo than one that got the order wrong.
+- Folders are **not part of `selection`** — they are opened with the mouse while
+  the arrow keys and Return go on addressing apps. `ungroupedApps` is what
+  selection indexes, so what Return launches is always what is highlighted.
+- **Widgets** default off and none polls: the clock is a `TimelineView` the
+  system schedules, weather reuses the lock screen's snapshot, the record reads
+  the event-driven `MusicManager`.
+
+### AI (Phase 4)
+
+The model picker was a hardcoded list naming a model the API had stopped
+serving, so every message failed and the picker could not help. It enumerates
+via ListModels now, filtered to models that can `generateContent` (Gemini) or
+chat (OpenAI — the account also lists embeddings, whisper and tts). A stored
+model the account cannot use is corrected rather than left to fail.
+
+**Failover did not fail over.** A 401/403 *returned* instead of advancing, so
+one stale key at the front stopped every other key being tried — adding a second
+key fixed nothing. Both a rejected and an exhausted key now advance, and the key
+that answered is tried first next time (in memory only: keys live in the
+Keychain and can change, so a persisted index would eventually name a different
+key than it recorded).
+
+### Phase 5
+
+- **Vinyl** height follows what is drawn; it was a fixed 1.36 ratio, so hiding
+  the progress bar left an empty strip. Closing sends it to the desktop layer
+  rather than switching it off — off takes a trip to Settings to undo.
+- **HUD drag** is one modifier applied to all four styles rather than built into
+  one, so the gesture means the same thing whichever style is on. Brightness uses
+  the *immediate* setter: the pointer is already the smoothing.
+- **Snippet undo**: the tap is `listenOnly` by construction and cannot swallow
+  the backspace, so the revert accounts for the character the user's own
+  keystroke already removed. Armed for exactly one keystroke.
+
+### Two settings indexes are generated, not hand-written
+
+`scripts/regen-settings-indexes.sh` rebuilds `SettingsSectionIndex` and appends
+search entries for rows that have none. Both drift the moment a pane grows a
+row, and both are pinned by harnesses — run it after adding settings rather than
+patching two lists by hand. It never rewrites existing search entries; their
+keywords are hand-written and better than anything generated.
+
 ## Smaller features
 
 | Feature | Where | Notes |
