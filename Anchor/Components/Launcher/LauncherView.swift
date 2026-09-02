@@ -28,6 +28,11 @@ struct LauncherView: View {
     let onDismiss: () -> Void
 
     @ObservedObject private var index = AppIndex.shared
+    /// Observed so the list refreshes when `shortcuts list` finally answers.
+    /// Loading runs a subprocess, so the first search always ran against an
+    /// empty `names` — which is why Apple Shortcuts never appeared.
+    @ObservedObject private var shortcuts = AppleShortcutsManager.shared
+
     @State private var query = ""
     @State private var results: [LauncherResult] = []
     @State private var commands: [LauncherCommand.ScoredCommand] = []
@@ -68,6 +73,12 @@ struct LauncherView: View {
         .padding(.horizontal, 100)
         .onAppear {
             index.refreshIfNeeded()
+            // Start the shortcuts subprocess as the panel opens rather than
+            // lazily on the first keystroke, so it has a chance to finish
+            // before the user has typed anything worth matching.
+            if Defaults[.enableShortcutsLauncher] {
+                AppleShortcutsManager.shared.loadIfNeeded()
+            }
             recompute()
             DispatchQueue.main.async {
                 queryFocused = true
@@ -87,6 +98,11 @@ struct LauncherView: View {
         }
         .onChange(of: query) { _, _ in recompute() }
         .onChange(of: index.apps) { _, _ in recompute(resetSelection: false) }
+        // `loadIfNeeded()` returns before the subprocess does. Without this the
+        // results were computed once against an empty list and never revisited,
+        // so the shortcuts existed, parsed correctly, and were simply never
+        // shown.
+        .onChange(of: shortcuts.names) { _, _ in recompute(resetSelection: false) }
     }
 
     // MARK: - Pieces
