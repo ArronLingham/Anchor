@@ -174,7 +174,22 @@ struct HUDAndOSDSettingsView: View {
 
     var body: some View {
         VStack(spacing: 20) {
-            HStack(spacing: 16) {
+            // A wrapping grid, not an HStack.
+            //
+            // Five cards at a fixed 110pt plus 16pt gaps need 614pt. The
+            // Settings window is 700 wide with a ~210pt sidebar, so this pane
+            // gets about 450 — the row overflowed by enough to clip the fifth
+            // card, and because the Form was then wider than its container it
+            // pushed the whole NavigationSplitView, cutting off the sidebar.
+            //
+            // .adaptive wraps to as many rows as it needs instead, so every
+            // card stays reachable at any window width and nothing forces the
+            // window wider. A horizontal ScrollView would have hidden the
+            // fifth card behind a scroll nobody would look for.
+            LazyVGrid(
+                columns: [GridItem(.adaptive(minimum: 110), spacing: 16)],
+                spacing: 16
+            ) {
                 HUDSelectionCard(
                     title: String(localized: "Dynamic Island"),
                     isSelected: selectedTab == .hud,

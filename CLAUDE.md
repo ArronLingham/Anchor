@@ -441,6 +441,34 @@ and read the topic out of a PNG. See `Helpers/UISnapshotHarness.swift`.
   kill landed. Count the PNGs and check for both appearances before reading
   anything into a missing pane.
 
+### The render sweep was 270pt too wide to catch overflow
+
+The sweep renders every pane on a **720**pt canvas. The app gives a pane about
+**490**: the Settings window is 700 wide and the sidebar takes ~210
+(`navigationSplitViewColumnWidth(ideal: 210)`).
+
+So horizontal overflow was structurally invisible to it. The HUD style row is
+five `HUDSelectionCard`s at a fixed 110pt with 16pt gaps — **614pt** — which
+looks perfect at 720 and, in the real window, clips its own fifth card *and*
+pushes the `NavigationSplitView` far enough to cut off the sidebar. It rendered
+green in every sweep.
+
+Two things changed:
+
+- The row is a `LazyVGrid(columns: [.adaptive(minimum: 110)])`, so it wraps to
+  as many rows as it needs. A horizontal `ScrollView` was the other option and
+  is worse — it would hide the fifth card behind a scroll nobody would look for.
+- `UISnapshotHarness` gained `narrowPane(...)`, which renders at 490. The
+  Controls pane uses it (`settings-controls-realwidth-*`). **Use it for any pane
+  with fixed-width horizontal content**; 720 cannot show you that class of bug.
+
+**The sweep was also rendering the wrong view for this tab.** `pane("hud", HUD())`
+renders a *sub-view*; `SettingsView` builds `HUDAndOSDSettingsView()` for
+`.hudAndOSD` (SettingsView.swift:1164), and that is the one carrying the card
+row. So the tab was covered except for the part that broke. Both are rendered
+now. When adding a pane to `settingsPanes`, check it is the same type
+`SettingsView.detailView` actually constructs — the names do not always match.
+
 ## TESTING.md
 
 Rewritten 2026-09-01. It had grown chronologically — "Added 2026-08-25", "Added

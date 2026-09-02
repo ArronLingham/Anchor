@@ -223,11 +223,38 @@ enum UISnapshotHarness {
                     .environmentObject(viewModel)))
         }
 
+        // The width a pane actually gets in the app: the Settings window is 700
+        // and the sidebar takes ~210 (SettingsView uses ideal: 210).
+        //
+        // Rendering the sweep at 720 is fine for reading a pane's content, and
+        // useless for catching horizontal overflow — a row 160pt too wide looks
+        // perfect at 720 and, in the real window, clips its own last item AND
+        // pushes the NavigationSplitView so the sidebar is cut off. That is
+        // exactly how a five-card row at a fixed 110pt each shipped unnoticed.
+        //
+        // Panes with fixed-width horizontal content get a second render here at
+        // the real width, where overflow is visible.
+        let realWidth = CGSize(width: 490, height: 2400)
+        func narrowPane<V: View>(_ name: String, _ view: V) -> (String, CGSize, AnyView) {
+            (name, realWidth, AnyView(
+                view
+                    .formStyle(.grouped)
+                    .environmentObject(highlight)
+                    .environmentObject(viewModel)))
+        }
+
         return [
             pane("general", GeneralSettings()),
             pane("charge", Charge()),
             pane("downloads", Downloads()),
+            // HUD() is a sub-view of the Controls tab, not the tab itself.
+            // SettingsView renders HUDAndOSDSettingsView for .hudAndOSD, and
+            // that is the one carrying the HUD-style card row — so the sweep
+            // covered everything on that tab EXCEPT the part that overflowed.
+            // Both are rendered now.
             pane("hud", HUD()),
+            pane("controls", HUDAndOSDSettingsView()),
+            narrowPane("controls-realwidth", HUDAndOSDSettingsView()),
             pane("media", Media()),
             pane("calendar", CalendarSettings()),
             // startingUpdater: false, matching AnchorApp. Sparkle must
