@@ -34,6 +34,7 @@ import UniformTypeIdentifiers
 // Richard Kunkli on 07/08/2024. Behaviour unchanged.
 
 struct GeneralSettings: View {
+    @Default(.showSpaceIndicator) private var showSpaceIndicator
     @Default(.enableBatteryAlert) private var enableBatteryAlert
     @Default(.enableCPUAlert) private var enableCPUAlert
     @Default(.enableDiskAlert) private var enableDiskAlert
@@ -152,7 +153,14 @@ struct GeneralSettings: View {
                     Text("Show desktop number")
                 }
                 .settingsHighlight(id: highlightID("Show desktop number"))
-                .settingsInfo("Shows which desktop you are on, updated when macOS reports a Space change. Fullscreen apps are not counted as desktops.")
+                .settingsInfo("Shows which desktop you are on, updated when macOS reports a Space change. Counted per display, so each screen's notch shows its own desktop.")
+                if showSpaceIndicator {
+                    Defaults.Toggle(key: .countFullscreenSpaces) {
+                        Text("Count fullscreen apps as desktops")
+                    }
+                    .settingsHighlight(id: highlightID("Count fullscreen apps as desktops"))
+                    .settingsInfo("Each fullscreen app occupies its own Space. Counting them matches Mission Control, but makes the number jump whenever you fullscreen something.")
+                }
             } header: {
                 Text("Desktop")
             }

@@ -1131,6 +1131,12 @@ extension Defaults.Keys {
 
     /// Show which desktop you are on in the notch.
     static let showSpaceIndicator = Key<Bool>("showSpaceIndicator", default: false)
+    /// Count fullscreen apps as desktops in the space indicator.
+    ///
+    /// Off by default: a fullscreen app occupies its own Space, so counting
+    /// them makes the number jump the moment you fullscreen something, which
+    /// is not what anyone means by "desktop 3".
+    static let countFullscreenSpaces = Key<Bool>("countFullscreenSpaces", default: false)
 
     // MARK: - Window snapping
     /// Drag a window to a screen edge to tile it. Needs Accessibility, which

@@ -73,6 +73,18 @@ struct LauncherView: View {
                 queryFocused = true
             }
         }
+        // Re-assert focus when the panel actually becomes key.
+        //
+        // The onAppear assignment above runs one runloop turn after the view
+        // appears, which is not necessarily after the panel is key — and a
+        // @FocusState set on a non-key window is dropped silently. Gating on
+        // the notification makes the assignment land at the moment it can
+        // take effect. Filtered to the launcher's own panel so a notch window
+        // becoming key never pulls focus into the search field.
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { note in
+            guard note.object is LauncherPanel else { return }
+            queryFocused = true
+        }
         .onChange(of: query) { _, _ in recompute() }
         .onChange(of: index.apps) { _, _ in recompute(resetSelection: false) }
     }

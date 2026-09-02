@@ -60,11 +60,20 @@ final class LauncherPanelManager: ObservableObject {
         panel.positionOnActiveScreen()
         self.panel = panel
 
-        // Activating is what lets the search field take keystrokes. The panel is
-        // .nonactivatingPanel, so this does not pull Atoll's other windows
-        // forward, and focus is handed back explicitly on dismiss.
-        NSApp.activate(ignoringOtherApps: true)
+        // Order the panel front and nominate it as key BEFORE asking for
+        // activation. The reverse order is what lost the search field its
+        // focus: Anchor is .accessory and the shortcut fires while another app
+        // is frontmost, so `activate` is an asynchronous round-trip that
+        // resolves several runloop turns later — and AppKit picks the key
+        // window from the candidates that existed when activation was
+        // requested. With the panel not yet ordered front, that candidate was a
+        // notch AnchorWindow, which takes key and drops the launcher's focus.
+        //
+        // The panel is .nonactivatingPanel, so this does not pull Anchor's
+        // other windows forward, and focus is handed back explicitly on
+        // dismiss.
         panel.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
     }
 
     func hide(restoringFocus: Bool = true) {

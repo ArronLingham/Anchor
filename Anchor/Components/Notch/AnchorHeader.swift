@@ -186,7 +186,7 @@ struct AnchorHeader: View {
                     }
                     
                     if Defaults[.showSpaceIndicator] && !shouldSuppressStatusIndicators {
-                        SpaceIndicatorBadge()
+                        SpaceIndicatorBadge(screenName: vm.screen)
                             .frame(width: 30, height: 30)
                     }
 

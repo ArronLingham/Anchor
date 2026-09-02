@@ -119,6 +119,7 @@ class SystemHUDManager {
                 brightnessEnabled: flags.brightness,
                 keyboardBacklightEnabled: flags.backlight
             )
+            self.applyOSDSuppression(flags)
         }.store(in: &cancellables)
         
         Defaults.publisher(.treatFunctionKeysAsBrightness, options: []).sink { [weak self] _ in
@@ -129,6 +130,7 @@ class SystemHUDManager {
                 brightnessEnabled: flags.brightness,
                 keyboardBacklightEnabled: flags.backlight
             )
+            self.applyOSDSuppression(flags)
         }.store(in: &cancellables)
 
         Defaults.publisher(.enableBrightnessHUD, options: []).sink { [weak self] _ in
@@ -141,6 +143,7 @@ class SystemHUDManager {
                 brightnessEnabled: flags.brightness,
                 keyboardBacklightEnabled: flags.backlight
             )
+            self.applyOSDSuppression(flags)
         }.store(in: &cancellables)
 
         Defaults.publisher(.enableKeyboardBacklightHUD, options: []).sink { [weak self] _ in
@@ -153,6 +156,7 @@ class SystemHUDManager {
                 brightnessEnabled: flags.brightness,
                 keyboardBacklightEnabled: flags.backlight
             )
+            self.applyOSDSuppression(flags)
         }.store(in: &cancellables)
         
         // Observe individual OSD toggles
@@ -166,6 +170,7 @@ class SystemHUDManager {
                 brightnessEnabled: flags.brightness,
                 keyboardBacklightEnabled: flags.backlight
             )
+            self.applyOSDSuppression(flags)
         }.store(in: &cancellables)
         
         Defaults.publisher(.enableOSDBrightness, options: []).sink { [weak self] _ in
@@ -178,6 +183,7 @@ class SystemHUDManager {
                 brightnessEnabled: flags.brightness,
                 keyboardBacklightEnabled: flags.backlight
             )
+            self.applyOSDSuppression(flags)
         }.store(in: &cancellables)
         
         Defaults.publisher(.enableOSDKeyboardBacklight, options: []).sink { [weak self] _ in
@@ -190,6 +196,7 @@ class SystemHUDManager {
                 brightnessEnabled: flags.brightness,
                 keyboardBacklightEnabled: flags.backlight
             )
+            self.applyOSDSuppression(flags)
         }.store(in: &cancellables)
 
         // Restart observer when third-party DDC integration state changes.
@@ -263,6 +270,21 @@ class SystemHUDManager {
     }
     
     /// Resolves the effective control flags, applying third-party DDC overrides.
+    /// Suppresses the native OSD only while Anchor is actually drawing a
+    /// replacement for it.
+    ///
+    /// Called from every path that resolves the control flags, so the two can
+    /// never disagree. The failure this prevents is silent and total: an app
+    /// that suppresses the system HUD and then declines to draw its own leaves
+    /// the machine with no volume or brightness feedback whatsoever.
+    private func applyOSDSuppression(_ flags: (volume: Bool, brightness: Bool, backlight: Bool)) {
+        if flags.volume || flags.brightness || flags.backlight {
+            SystemOSDManager.disableSystemHUD()
+        } else {
+            SystemOSDManager.enableSystemHUD()
+        }
+    }
+
     private func resolvedControlFlags() -> (volume: Bool, brightness: Bool, backlight: Bool) {
         var volumeEnabled: Bool
         var brightnessEnabled: Bool
@@ -325,8 +347,18 @@ class SystemHUDManager {
             keyboardBacklightEnabled: flags.backlight
         )
         
-        // Force disable system HUD to ensure no duplicates
-        SystemOSDManager.disableSystemHUD()
+        // Derive suppression from the resolved flags rather than forcing it on.
+        //
+        // This used to be an unconditional `disableSystemHUD()`, and it is why
+        // turning the HUDs off in Settings did nothing: the per-control
+        // publishers below only ever called `changesObserver?.update(...)`, so
+        // nothing re-derived suppression. Switch all three off and Anchor
+        // stopped drawing a HUD while OSDUIHelper stayed suspended — leaving no
+        // HUD at all, which reads as "the setting is ignored".
+        //
+        // Suppression is only ever correct when Anchor is actually replacing
+        // something, so it is now a function of that.
+        applyOSDSuppression(flags)
         
         print("System observer started (HUD: \(Defaults[.enableSystemHUD]), OSD: \(Defaults[.enableCustomOSD]), Vertical: \(Defaults[.enableVerticalHUD]), ThirdPartyDDC: \(Defaults[.enableThirdPartyDDCIntegration]), Provider: \(Defaults[.thirdPartyDDCProvider].displayName), ExternalVolumeListener: \(Defaults[.enableExternalVolumeControlListener]))")
         isSystemOperationInProgress = false

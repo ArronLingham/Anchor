@@ -496,8 +496,19 @@ final class MediaKeyInterceptor {
         }
 
         let modifiers = NSEvent(cgEvent: cgEvent)?.modifierFlags ?? []
-        // Allow .shift so Shift+F1/F2 can be used to control built-in display
-        guard modifiers.intersection([.command, .option, .control, .function]).isEmpty else {
+        // Allow .shift so Shift+F1/F2 can be used to control the built-in display.
+        //
+        // `.function` is deliberately NOT in this set. It looks like "the fn key
+        // is held", but macOS sets NSEventModifierFlagFunction
+        // (kCGEventFlagMaskSecondaryFn) on *every* function-key event as a key
+        // identifier, whether or not fn is physically down. Including it made
+        // this guard unsatisfiable, so a bare F1/F2 was always passed through
+        // and Anchor never saw brightness keys from a keyboard that sends plain
+        // F-keys rather than NX_SYSDEFINED media keys — which is what an
+        // external keyboard does. There is no way to tell a held fn from the
+        // identifier bit here, so the bit must be ignored rather than treated
+        // as a modifier.
+        guard modifiers.intersection([.command, .option, .control]).isEmpty else {
             return Unmanaged.passUnretained(cgEvent)
         }
 

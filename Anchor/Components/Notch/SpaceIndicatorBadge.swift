@@ -26,11 +26,20 @@ import SwiftUI
 /// one re-renders the whole notch, and this value changes on every desktop
 /// switch.
 struct SpaceIndicatorBadge: View {
+    /// The screen this notch is on. Spaces are per-display, so a badge that
+    /// asked a global manager showed the focused screen's desktop on every
+    /// display at once.
+    let screenName: String?
+
     @ObservedObject private var manager = SpaceIndicatorManager.shared
 
+    private var position: SpaceIndicatorManager.Position? {
+        manager.position(for: screenName)
+    }
+
     var body: some View {
-        if manager.currentSpace > 0 {
-            Text("\(manager.currentSpace)")
+        if let position, position.index > 0 {
+            Text("\(position.index)")
                 .font(.system(size: 11, weight: .semibold, design: .rounded))
                 .foregroundStyle(.white.opacity(0.85))
                 .frame(width: 18, height: 18)
@@ -38,9 +47,9 @@ struct SpaceIndicatorBadge: View {
                     Circle().fill(.white.opacity(0.14))
                 )
                 .help(
-                    manager.totalSpaces > 0
-                        ? "Desktop \(manager.currentSpace) of \(manager.totalSpaces)"
-                        : "Desktop \(manager.currentSpace)"
+                    position.total > 0
+                        ? "Desktop \(position.index) of \(position.total)"
+                        : "Desktop \(position.index)"
                 )
                 .transition(.opacity)
         }

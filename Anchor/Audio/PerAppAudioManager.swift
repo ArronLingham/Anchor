@@ -35,6 +35,16 @@ struct PerAppAudioState: Codable, Equatable, Defaults.Serializable {
     var eqBandGains: [Float] = Array(repeating: 0, count: EQSettings.bandCount)
     var eqEnabled: Bool = false
 
+    /// Where this app's audio is sent, as a device UID. `nil` follows the
+    /// system default output, which is what every app does until the user
+    /// routes one somewhere else.
+    ///
+    /// A UID rather than an `AudioDeviceID`: IDs are assigned per boot and per
+    /// connection, so a stored ID points at a different device — or nothing —
+    /// after exactly the reconnect this needs to survive. The same reasoning
+    /// already governs the pinned input device.
+    var outputDeviceUID: String?
+
     var eqSettings: EQSettings {
         EQSettings(bandGains: eqBandGains, isEnabled: eqEnabled)
     }
@@ -48,6 +58,11 @@ struct PerAppAudioState: Codable, Equatable, Defaults.Serializable {
         isMuted
             || abs(volume - 1) > 0.001
             || (eqEnabled && eqBandGains.contains { abs($0) > 0.01 })
+            // Routing is the one setting that needs the engine while every gain
+            // is still at its default: sending an app to another device is done
+            // by building the aggregate against that device, not by scaling
+            // anything. Omit this and choosing an output would silently no-op.
+            || outputDeviceUID != nil
     }
 }
 
