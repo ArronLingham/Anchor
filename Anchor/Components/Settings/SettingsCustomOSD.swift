@@ -35,7 +35,6 @@ import UniformTypeIdentifiers
 
 struct CustomOSDSettings: View {
     @Default(.enableCustomOSD) var enableCustomOSD
-    @Default(.hasSeenOSDAlphaWarning) var hasSeenOSDAlphaWarning
     @Default(.enableOSDVolume) var enableOSDVolume
     @Default(.enableOSDBrightness) var enableOSDBrightness
     @Default(.enableOSDKeyboardBacklight) var enableOSDKeyboardBacklight

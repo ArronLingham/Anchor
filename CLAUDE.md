@@ -175,8 +175,10 @@ do not let that graph follow it in.
     done
   ```
   It found four of 320: `selectedDownloadIconStyle` (defaulted to a value the
-  app then ignored, and had no control at all), `customVisualizers` (the pane
-  adds them, nothing renders them), and `showEmojis` / `systemHUDSensitivity`
+  app then ignored, and had no control at all), `customVisualizers` (**suspect** — the pane adds them and
+  `selectedVisualizer`, which a custom one is assigned to, has five
+  non-settings references, so it may render after all; re-check before
+  deleting), and `showEmojis` / `systemHUDSensitivity`
   (`@Default` properties declared and never read even in their own file — live
   subscriptions re-rendering a pane for nothing).
 - **Zero unreferenced keys is not the same as zero dead switches.** All 320 keys
@@ -516,7 +518,7 @@ Anchor/
     Display/                  8 files
     Gemini/                   3 files
     HUD/                      6 files
-    Input/                    6 files
+    Input/                    7 files
     Launcher/                 8 files
     LockScreen/               9 files
     Media/                    8 files
@@ -528,17 +530,17 @@ Anchor/
     Calendar/                 2 files
     Clipboard/                3 files
     Downloads/                2 files
-    Launcher/                 5 files
+    Launcher/                 6 files
     Live activities/         13 files
     LockScreen/              10 files
     Music/                    6 files
     Notch/                   17 files
-    OSD/                      4 files
+    OSD/                      5 files
     Onboarding/               7 files
-    Settings/                41 files
+    Settings/                42 files
     Tabs/                     2 files
     Timer/                    5 files
-    UI/                       2 files
+    UI/                       8 files
     Vinyl/                    2 files
   Animations/                 2 files
   Audio/                     50 files
@@ -807,7 +809,7 @@ xcodebuild -project Anchor.xcodeproj -scheme Anchor \
 
 - The project hardcodes upstream's team `9Y64TRM77N`; ad-hoc (`-`) signing is required until it's changed. A real `Apple Development: arronlingham@icloud.com (Q4FNFX8QSH)` identity exists and should be used once TCC grants matter.
 - SwiftTerm needs the Metal toolchain (`xcodebuild -downloadComponent MetalToolchain`) — already installed. SwiftTerm is a Phase 1 deletion target, which removes this dependency.
-- Build is clean: **0 errors, 19 warnings** in a clean Release build, from 94
+- Build is clean: **0 errors, 21 warnings** in a clean Release build, from 94
   at the start of this pass (82 → 69 → 58 → 52 → 37 → 21 → 19). Swift 6 language-mode
   errors 5 → 1, deprecated `onChange(of:perform:)` 6 → 0, macOS 12 constant
   renames 10 → 0, redundant `await` 5 → 0, unused results 4 → 1.
@@ -900,7 +902,7 @@ python3 tests/test_privacy_configuration.py
 ./tests/run_gemini_tests.sh       # 44  Gemini request/response wire format
 ```
 
-**981 assertions across 32 harnesses** (counted, not estimated — run the
+**1043 assertions across 34 harnesses** (counted, not estimated — run the
 loop in `Tests` above rather than trusting a number in a commit message; two
 figures in this repo's history were quoted without being measured). Every one of the later harnesses was
 proven non-vacuous by deliberately breaking the guard it covers and checking the
@@ -1776,6 +1778,34 @@ search entries for rows that have none. Both drift the moment a pane grows a
 row, and both are pinned by harnesses — run it after adding settings rather than
 patching two lists by hand. It never rewrites existing search entries; their
 keywords are hand-written and better than anything generated.
+
+### Dead-switch audit, re-run 2026-09-02
+
+412 `Defaults` keys. Three are read by no code outside the settings panes, and
+none of the three is a clean delete:
+
+- **`updateChannel`** — drives the Sparkle UI, and Sparkle is disabled on
+  purpose (`startingUpdater: false`, `feedURLString` returns nil). So it is a
+  control for a subsystem that must never run. Removing it means unpicking
+  `CustomUpdaterViews/` and the user driver wired into
+  `SPUStandardUpdaterController`: real breakage risk for UI that never appears.
+- **`customVisualizers`** — see the corrected note above. `selectedVisualizer`
+  has five non-settings references, so the old "nothing renders them" claim may
+  be wrong.
+- **`releaseName`** — *fixed*: it was a constant (`"Kaafu"`) stored as a
+  Defaults key, so `defaults write` could change it and it read as configurable.
+  Inlined.
+
+Ten further keys are read only inside `Constants.swift`. Those are **migration
+bookkeeping and legitimate** — CLAUDE.md's own audit snippet warns that
+excluding `Constants.swift` invents orphans, and ten of thirteen "orphans" found
+that way once turned out to be false.
+
+**The audit must not treat `Components/Settings/PerAppAudioList.swift` or
+`SettingsSectionIndex.swift` as settings panes.** They live in that folder but
+are a feature view and a data table; counting them as panes reported
+`perAppVolumeMode` and `showPerAppVolumeControl` as dead switches when both are
+live.
 
 ## Smaller features
 

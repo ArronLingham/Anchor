@@ -9,7 +9,7 @@ Build under test: the installed signed Release at `/Applications/Anchor.app`.
 
 ---
 
-## Don't re-test these — 32 harnesses, 981 assertions cover them
+## Don't re-test these — 34 harnesses, 1043 assertions cover them
 
 ```bash
 for t in tests/run_*_tests.sh; do "$t"; done   # excludes the two LIVE suites

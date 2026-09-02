@@ -45,7 +45,7 @@ struct About: View {
                     HStack {
                         Text("Release name")
                         Spacer()
-                        Text(Defaults[.releaseName])
+                        Text(verbatim: "Kaafu")
                             .foregroundStyle(.secondary)
                     }
                     HStack {
