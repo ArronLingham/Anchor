@@ -49,10 +49,86 @@ enum AIProtocol {
         return kept
     }
 
+    /// A request that asks the provider which models this key may use.
+    ///
+    /// The model picker used to be a hardcoded list, and it went stale exactly
+    /// as you would expect — the default named a model the API no longer
+    /// served, so the assistant failed with a model error and nothing in the UI
+    /// hinted why. Enumerating is the only version of this that stays correct.
+    ///
+    /// Same credential rule as `buildRequest`: the key travels in a header,
+    /// never in the URL.
+    static func buildModelListRequest(provider: AIProvider, key: String) -> URLRequest? {
+        let url: URL?
+        switch provider {
+        case .gemini:  url = URL(string: "https://generativelanguage.googleapis.com/v1beta/models")
+        case .openai:  url = URL(string: "https://api.openai.com/v1/models")
+        case .anthropic: url = URL(string: "https://api.anthropic.com/v1/models")
+        }
+        guard let url else { return nil }
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        switch provider {
+        case .gemini:
+            request.setValue(key, forHTTPHeaderField: "x-goog-api-key")
+        case .openai:
+            request.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
+        case .anthropic:
+            request.setValue(key, forHTTPHeaderField: "x-api-key")
+            request.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
+        }
+        return request
+    }
+
+    /// Model ids from a ListModels response, newest-looking first.
+    ///
+    /// Gemini reports `supportedGenerationMethods`; anything that cannot
+    /// `generateContent` (embedding and tuning endpoints, mostly) is dropped,
+    /// because offering one in the picker produces a 400 the user cannot
+    /// diagnose.
+    static func parseModelList(provider: AIProvider, data: Data) -> [String] {
+        guard let root = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { return [] }
+        switch provider {
+        case .gemini:
+            let models = (root["models"] as? [[String: Any]]) ?? []
+            return models.compactMap { m in
+                let methods = (m["supportedGenerationMethods"] as? [String]) ?? []
+                guard methods.contains("generateContent") else { return nil }
+                guard let name = m["name"] as? String else { return nil }
+                return name.hasPrefix("models/") ? String(name.dropFirst("models/".count)) : name
+            }
+        case .openai:
+            let models = (root["data"] as? [[String: Any]]) ?? []
+            return models.compactMap { $0["id"] as? String }
+                // Chat completions only; the account also lists embeddings,
+                // moderation, whisper and tts, none of which can answer here.
+                .filter { $0.hasPrefix("gpt-") || $0.hasPrefix("o1") || $0.hasPrefix("o3") || $0.hasPrefix("o4") }
+        case .anthropic:
+            let models = (root["data"] as? [[String: Any]]) ?? []
+            return models.compactMap { $0["id"] as? String }
+        }
+    }
+
+    /// What to offer before the API has answered, and if it never does.
+    ///
+    /// Deliberately short. A long hardcoded list is what went stale; this is a
+    /// fallback so the picker is never empty, not a catalogue.
+    static func fallbackModels(for provider: AIProvider) -> [String] {
+        switch provider {
+        case .gemini:    return ["gemini-3.6-flash", "gemini-3.5-flash-lite"]
+        case .openai:    return ["gpt-4o-mini", "gpt-4o"]
+        case .anthropic: return ["claude-sonnet-4-5", "claude-haiku-4-5"]
+        }
+    }
+
     static func buildRequest(provider: AIProvider, model: String, key: String, history: [AIMessage], systemInstruction: String?) -> URLRequest? {
         switch provider {
         case .gemini:
-            let urlStr = "https://generativelanguage.googleapis.com/v1beta/models/\(model):generateContent"
+            // Gemini's own ListModels returns names as "models/gemini-…", and
+            // users paste them that way. Strip the prefix rather than building
+            // ".../models/models/gemini-…", which 404s.
+            let bare = model.hasPrefix("models/") ? String(model.dropFirst("models/".count)) : model
+            let urlStr = "https://generativelanguage.googleapis.com/v1beta/models/\(bare):generateContent"
             guard let url = URL(string: urlStr) else { return nil }
             var request = URLRequest(url: url)
             request.httpMethod = "POST"

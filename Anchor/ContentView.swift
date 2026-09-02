@@ -1503,6 +1503,15 @@ struct ContentView: View {
 
     // MARK: - Private Methods
     private func openNotch() {
+        // Only open from closed.
+        //
+        // This used to run on every tap. `vm.open()` is synchronous and the
+        // wrapper is a `.bouncy` spring, so tapping an already-open notch
+        // restarted that spring from wherever it currently was — mid-overshoot,
+        // repeatedly, if you kept clicking. The shape collapses toward the new
+        // target each time, which is the "notch shrinks if I click too fast"
+        // report. Re-opening an open notch has no meaning anyway.
+        guard vm.notchState == .closed else { return }
         withAnimation(.bouncy.speed(1.2)) {
             vm.open()
         }

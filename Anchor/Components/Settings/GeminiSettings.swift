@@ -15,6 +15,14 @@ struct AIAssistantSettings: View {
     @Default(.aiProvider) private var aiProvider
     @Default(.aiModel) private var aiModel
 
+    /// Live list when the provider has answered, a short built-in list until
+    /// then — never empty, so the picker always has something to show.
+    private var modelChoices: [String] {
+        manager.availableModels.isEmpty
+            ? AIProtocol.fallbackModels(for: aiProvider)
+            : manager.availableModels
+    }
+
     private func highlightID(_ title: String) -> String {
         SettingsTab.gemini.highlightID(for: title)
     }
@@ -37,25 +45,50 @@ struct AIAssistantSettings: View {
                     }
                 }
                 
+                // Populated from the provider's own model list, not a
+                // hardcoded one. The hardcoded version is what went stale: it
+                // offered a model the API had stopped serving, so every message
+                // failed and the picker could not help you fix it.
                 Picker("Model", selection: $aiModel) {
-                    if aiProvider == .gemini {
-                        Text("Flash 2.5").tag("gemini-2.5-flash")
-                        Text("Pro 1.5").tag("gemini-1.5-pro-latest")
-                        Text("Flash 2.0").tag("gemini-2.0-flash")
-                    } else if aiProvider == .openai {
-                        Text("GPT-4o").tag("gpt-4o")
-                        Text("GPT-4o mini").tag("gpt-4o-mini")
-                        Text("o1-preview").tag("o1-preview")
-                    } else if aiProvider == .anthropic {
-                        Text("Claude 3.5 Sonnet").tag("claude-3-5-sonnet-latest")
-                        Text("Claude 3.5 Haiku").tag("claude-3-5-haiku-latest")
+                    ForEach(modelChoices, id: \.self) { id in
+                        Text(id).tag(id)
+                    }
+                    // Keep whatever is stored selectable even when it is not in
+                    // the list, so opening Settings never silently reassigns it.
+                    if !modelChoices.contains(aiModel) {
+                        Text(aiModel).tag(aiModel)
                     }
                 }
-                .onChange(of: aiProvider) { newProvider in
-                    if newProvider == .gemini { aiModel = "gemini-2.5-flash" }
-                    else if newProvider == .openai { aiModel = "gpt-4o-mini" }
-                    else if newProvider == .anthropic { aiModel = "claude-3-5-sonnet-latest" }
+                .settingsHighlight(id: highlightID("Model"))
+                .onChange(of: aiProvider) { _, _ in
+                    // Model ids do not carry across providers; reset to the
+                    // first the new provider offers, then ask what it has.
+                    aiModel = AIProtocol.fallbackModels(for: aiProvider).first ?? aiModel
+                    manager.refreshModels()
                 }
+
+                HStack {
+                    Button {
+                        manager.refreshModels()
+                    } label: {
+                        Label(
+                            manager.isLoadingModels ? "Loading models…" : "Reload model list",
+                            systemImage: "arrow.clockwise")
+                            .font(.caption)
+                    }
+                    .buttonStyle(.link)
+                    .disabled(manager.isLoadingModels)
+                    Spacer()
+                    if !manager.availableModels.isEmpty {
+                        Text("\(manager.availableModels.count) available")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                if let err = manager.modelListError {
+                    Text(err).font(.caption).foregroundStyle(.orange)
+                }
+
             } header: {
                 Text("AI Provider & Model")
             }

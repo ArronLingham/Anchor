@@ -54,6 +54,66 @@ final class AIAssistantManager: ObservableObject {
         if provider == Defaults[.aiProvider] { checkKey() }
     }
 
+    // MARK: - Model listing
+
+    /// Models this key may actually use, fetched from the provider.
+    ///
+    /// Empty until the first fetch answers; the settings picker falls back to
+    /// `AIProtocol.fallbackModels` so it is never blank.
+    @Published private(set) var availableModels: [String] = []
+    @Published private(set) var isLoadingModels = false
+    @Published private(set) var modelListError: String?
+
+    /// Asks the provider which models it will serve.
+    ///
+    /// Enumerating rather than hardcoding is the whole point: the previous
+    /// hardcoded list named a model the API had stopped serving, and the only
+    /// symptom was the assistant failing with an error the picker could not
+    /// help you fix.
+    func refreshModels() {
+        let provider = Defaults[.aiProvider]
+        guard let key = keys(for: provider).first, !key.isEmpty else {
+            availableModels = []
+            modelListError = String(localized: "Add an API key first.")
+            return
+        }
+        guard let request = AIProtocol.buildModelListRequest(provider: provider, key: key) else { return }
+        isLoadingModels = true
+        modelListError = nil
+        Task { [weak self] in
+            do {
+                let (data, response) = try await URLSession.shared.data(for: request)
+                let models = AIProtocol.parseModelList(provider: provider, data: data)
+                await MainActor.run {
+                    guard let self else { return }
+                    self.isLoadingModels = false
+                    if models.isEmpty {
+                        let code = (response as? HTTPURLResponse)?.statusCode ?? 0
+                        self.modelListError = code == 401 || code == 403
+                            ? String(localized: "That key was rejected.")
+                            : String(localized: "No usable models came back.")
+                    } else {
+                        self.availableModels = models
+                        // A stored model the account can no longer use is the
+                        // original bug. Correct it rather than leaving a
+                        // selection that will fail on the next message.
+                        let current = Defaults[.aiModel]
+                        let bare = current.hasPrefix("models/")
+                            ? String(current.dropFirst("models/".count)) : current
+                        if !models.contains(bare), let first = models.first {
+                            Defaults[.aiModel] = first
+                        }
+                    }
+                }
+            } catch {
+                await MainActor.run {
+                    self?.isLoadingModels = false
+                    self?.modelListError = error.localizedDescription
+                }
+            }
+        }
+    }
+
     func clearConversation() {
         messages = []
         persistHistory()

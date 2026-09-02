@@ -255,7 +255,7 @@ class AnchorViewCoordinator: ObservableObject {
         styleOverride: SneakPeekStyle? = nil,
         onScreen targetScreen: NSScreen? = nil
     ) {
-        let resolvedDuration: TimeInterval
+        var resolvedDuration: TimeInterval
         switch type {
         case .timer:
             resolvedDuration = 10
@@ -267,6 +267,18 @@ class AnchorViewCoordinator: ObservableObject {
             resolvedDuration = 6
         default:
             resolvedDuration = duration
+        }
+        // Only a genuinely persistent indicator may be infinite.
+        //
+        // An infinite duration makes `scheduleSneakPeekHide` return without
+        // scheduling anything, so the peek sits on the notch until something
+        // else explicitly clears it. Caps Lock is the one type that means to do
+        // that (it clears when the key goes off). For any other type an
+        // infinite duration is a bug, and its symptom is a HUD stuck on screen
+        // with no way to dismiss it — which is what happened to brightness.
+        let persistentTypes: [SneakContentType] = [.capsLock]
+        if !resolvedDuration.isFinite && !persistentTypes.contains(type) {
+            resolvedDuration = 1.5
         }
         sneakPeekDuration = resolvedDuration
         // Not a system HUD event — it must show whether or not the user has the
@@ -304,7 +316,10 @@ class AnchorViewCoordinator: ObservableObject {
     private func scheduleSneakPeekHide(after duration: TimeInterval) {
         sneakPeekTask?.cancel()
         
-        // Don't schedule auto-hide if duration is infinite (for persistent indicators like Caps Lock)
+        // Don't schedule auto-hide if duration is infinite (for persistent
+        // indicators like Caps Lock). `toggleSneakPeek` guarantees only those
+        // types can reach here with an infinite duration; every other type is
+        // clamped, so nothing else can wedge itself on screen.
         guard duration.isFinite else { return }
 
         sneakPeekTask = Task { [weak self] in

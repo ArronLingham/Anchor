@@ -75,7 +75,15 @@ class CapsLockManager: ObservableObject {
         print("CapsLockManager: Caps Lock \(newState ? "ACTIVATED" : "DEACTIVATED")")
         
         // Only show/hide if feature is enabled
-        guard Defaults[.enableCapsLockIndicator] else { return }
+        guard Defaults[.enableCapsLockIndicator] else {
+            // Returning here while the indicator is showing would strand it:
+            // it was scheduled with an infinite duration, so nothing else will
+            // ever hide it. Clear it on the way out instead.
+            if coordinator.sneakPeek.show, coordinator.sneakPeek.type == .capsLock {
+                coordinator.toggleSneakPeek(status: false, type: .capsLock, duration: 0, value: 0, icon: "")
+            }
+            return
+        }
         
         if newState {
             // Show inline indicator

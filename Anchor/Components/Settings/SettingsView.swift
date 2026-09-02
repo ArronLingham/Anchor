@@ -205,6 +205,15 @@ final class SettingsHighlightCoordinator: ObservableObject {
 
     private var clearWorkItem: DispatchWorkItem?
 
+    /// Scroll to and highlight one row, by its highlight id.
+    ///
+    /// Used by the sidebar's section rows, which know the id of the first row
+    /// in the section but have no `SettingsSearchEntry` to hand.
+    func focus(onHighlightID highlightID: String, in tab: SettingsTab) {
+        pendingScrollRequest = ScrollRequest(id: highlightID, tab: tab)
+        activateHighlight(id: highlightID)
+    }
+
     fileprivate func focus(on entry: SettingsSearchEntry) {
         guard let highlightID = entry.highlightID else { return }
         pendingScrollRequest = ScrollRequest(id: highlightID, tab: entry.tab)
@@ -342,6 +351,21 @@ struct SettingsView: View {
                                 NavigationLink(value: tab) {
                                     sidebarRow(for: tab)
                                 }
+                                // A pane is one long Form, and its sections are
+                                // the only structure inside it — so the sidebar
+                                // could get you to "Controls" but not to the
+                                // "Step size" part of it. The selected tab's
+                                // sections are listed here; choosing one scrolls
+                                // to it and flashes the highlight, the same
+                                // path search results already use.
+                                //
+                                // Only the selected tab expands: showing all 97
+                                // at once would bury the tabs themselves.
+                                if tab == selectedTab {
+                                    ForEach(SettingsSectionIndex.sections(for: tab)) { entry in
+                                        sectionRow(entry, in: tab)
+                                    }
+                                }
                             }
                         } header: {
                             if let title = section.group.title {
@@ -461,6 +485,32 @@ struct SettingsView: View {
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(Color.white)
             }
+    }
+
+    /// One of the selected pane's own sections, in the sidebar.
+    ///
+    /// Split out of the List body because inlining it made the type-checker
+    /// give up on that expression entirely.
+    @ViewBuilder
+    private func sectionRow(_ entry: SettingsSectionIndex.Section, in tab: SettingsTab) -> some View {
+        Button {
+            highlightCoordinator.focus(onHighlightID: entry.anchor, in: tab)
+        } label: {
+            HStack(spacing: 8) {
+                Rectangle()
+                    .fill(Color.secondary.opacity(0.35))
+                    .frame(width: 2, height: 12)
+                Text(entry.title)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                Spacer(minLength: 0)
+            }
+            .padding(.leading, 18)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .listRowInsets(EdgeInsets(top: 1, leading: 8, bottom: 1, trailing: 8))
     }
 
     @ViewBuilder
@@ -736,6 +786,7 @@ struct SettingsView: View {
             SettingsSearchEntry(tab: .launcher, title: "Show Apple Shortcuts", keywords: ["shortcuts", "apple shortcuts", "workflow", "automation", "run shortcut"], highlightID: SettingsTab.launcher.highlightID(for: "Show Apple Shortcuts")),
             SettingsSearchEntry(tab: .gemini, title: "AI Assistant", keywords: ["gemini", "ai", "assistant", "chat", "google ai", "llm"], highlightID: SettingsTab.gemini.highlightID(for: "AI Assistant")),
             SettingsSearchEntry(tab: .gemini, title: "API key", keywords: ["gemini key", "api key", "google ai studio"], highlightID: SettingsTab.gemini.highlightID(for: "API key")),
+            SettingsSearchEntry(tab: .gemini, title: "Model", keywords: ["model", "gemini", "gpt", "claude", "llm", "which model", "model list"], highlightID: SettingsTab.gemini.highlightID(for: "Model")),
             SettingsSearchEntry(tab: .cleanup, title: "Scan", keywords: ["clean", "cleaner", "storage", "free space", "disk space", "caches", "reclaim"], highlightID: SettingsTab.cleanup.highlightID(for: "Scan")),
             SettingsSearchEntry(tab: .cleanup, title: "Move to Trash", keywords: ["clear caches", "derived data", "npm cache", "homebrew cache", "clean up"], highlightID: SettingsTab.cleanup.highlightID(for: "Move to Trash")),
             SettingsSearchEntry(tab: .cleanup, title: "Check for updates", keywords: ["homebrew", "brew outdated", "app updates", "outdated packages", "upgrade"], highlightID: SettingsTab.cleanup.highlightID(for: "Check for updates")),

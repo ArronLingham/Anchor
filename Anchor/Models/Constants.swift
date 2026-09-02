@@ -1419,7 +1419,13 @@ extension Defaults.Keys {
     /// belong in this file.
     static let enableAIAssistant = Key<Bool>("enableAIAssistant", default: false)
     static let aiProvider = Key<AIProvider>("aiProvider", default: .gemini)
-    static let aiModel = Key<String>("aiModel", default: "gemini-2.0-flash")
+    /// Default model.
+    ///
+    /// This was `gemini-2.0-flash`, which the API no longer serves for this
+    /// account — the assistant failed with a model error and the picker, being
+    /// a hardcoded list, offered nothing better. The picker now enumerates live
+    /// via ListModels; this is only the value before the first fetch answers.
+    static let aiModel = Key<String>("aiModel", default: "gemini-3.6-flash")
     /// How many prior turns to send. More context costs more per request.
     static let aiHistoryTurns = Key<Int>("aiHistoryTurns", default: 20)
     static let aiRememberConversation = Key<Bool>("aiRememberConversation", default: true)
