@@ -74,11 +74,46 @@ struct LauncherGridView: View {
         }
     }
 
-    private var currentPage: Int {
-        guard Self.perPage > 0 else { return 0 }
-        // Selection addresses apps; folders occupy slots ahead of them, so the
-        // page has to be computed from the slot position, not the app index.
-        return (selection + folders.count) / Self.perPage
+    /// Moves the selection so `page` becomes the visible one.
+    ///
+    /// Selection indexes APPS, but folders occupy slots ahead of them, so the
+    /// target index is offset by the folder count. Setting `page * perPage`
+    /// directly — which every paging control used to do — lands a page further
+    /// on for each full page of folders, and can run past the end of the app
+    /// list entirely.
+    /// Shows `page`, and moves the selection onto it when that page holds apps.
+    ///
+    /// A page of nothing but folders is perfectly reachable now; the selection
+    /// simply stays where it was, because there is no app on that page for it
+    /// to point at.
+    private func goToPage(_ page: Int) {
+        let last = max(0, pages.count - 1)
+        let clamped = min(max(0, page), last)
+        currentPage = clamped
+        if let next = LauncherPaging.selection(
+            forPage: clamped, folderCount: folders.count,
+            perPage: Self.perPage, appCount: apps.count),
+           LauncherPaging.page(forSelection: next, folderCount: folders.count,
+                               perPage: Self.perPage) == clamped {
+            selection = next
+        }
+    }
+
+    /// The visible page, owned here rather than derived from `selection`.
+    ///
+    /// It used to be `selection / perPage`, which made the scroll position a
+    /// function of which APP was selected — and folders are not apps. With
+    /// enough folders to fill a page, that page could never be shown at all,
+    /// because no selection maps onto it. Paging controls move this; the
+    /// selection follows it, not the other way round.
+    @State private var currentPage: Int = 0
+
+    /// Keeps the page in step when something else moves the selection — the
+    /// arrow keys, or a fresh search.
+    private func syncPageToSelection() {
+        let p = LauncherPaging.page(
+            forSelection: selection, folderCount: folders.count, perPage: Self.perPage)
+        if p != currentPage { currentPage = p }
     }
 
     var body: some View {
@@ -99,6 +134,8 @@ struct LauncherGridView: View {
                 .onChange(of: currentPage) { _, page in
                     withAnimation(.easeInOut(duration: 0.2)) { proxy.scrollTo(page, anchor: .center) }
                 }
+                .onChange(of: selection) { _, _ in syncPageToSelection() }
+                .onAppear { syncPageToSelection() }
             }
 
             if pages.count > 1 && navigationStyle.showsDots {
@@ -199,8 +236,7 @@ struct LauncherGridView: View {
                 .contentShape(Rectangle())
                 .onHover { inside in
                     guard inside, canGo else { return }
-                    let target = forward ? currentPage + 1 : currentPage - 1
-                    selection = target * Self.perPage
+                    goToPage(forward ? currentPage + 1 : currentPage - 1)
                 }
                 .allowsHitTesting(canGo)
                 .accessibilityHidden(true)
@@ -225,7 +261,7 @@ struct LauncherGridView: View {
                 DragGesture(minimumDistance: 0).onChanged { drag in
                     let p = max(0, min(1, drag.location.x / max(width, 1)))
                     let target = Int((p * Double(pages.count - 1)).rounded())
-                    if target != currentPage { selection = target * Self.perPage }
+                    if target != currentPage { goToPage(target) }
                 })
         }
         .frame(height: 12)
@@ -364,7 +400,7 @@ struct LauncherGridView: View {
                     .contentShape(Circle())
                     .onTapGesture {
                         withAnimation(.easeInOut(duration: 0.2)) {
-                            selection = index * Self.perPage
+                            goToPage(index)
                         }
                     }
             }

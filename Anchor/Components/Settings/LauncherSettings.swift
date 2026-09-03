@@ -29,6 +29,8 @@ struct LauncherSettings: View {
     @Default(.launcherSortMode) private var launcherSortMode
     @Default(.launcherNavigationStyle) private var launcherNavigationStyle
     @Default(.launcherRecallSeconds) private var launcherRecallSeconds
+    @Default(.launcherCustomOrder) private var launcherCustomOrder
+    @Default(.launcherFolders) private var launcherFolders
     @Default(.launcherGridColumns) private var columns
     @Default(.launcherGridRows) private var rows
 
@@ -156,6 +158,36 @@ struct LauncherSettings: View {
                     .disabled(!enableLauncher)
                     .settingsHighlight(id: highlightID("Paging"))
                     .settingsInfo("Moving the pointer to either edge of the grid always turns the page, whichever of these is shown.")
+
+                    // Both of these are written by dragging in the grid, not
+                    // by a control — so without a reset there is no way back
+                    // from an arrangement you did not mean to make.
+                    HStack {
+                        Button("Reset custom order") {
+                            Defaults[.launcherCustomOrder] = []
+                        }
+                        .disabled(!enableLauncher || launcherCustomOrder.isEmpty)
+                        Spacer()
+                        Text(launcherCustomOrder.isEmpty
+                             ? "Not set" : "\(launcherCustomOrder.count) placed")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .settingsHighlight(id: highlightID("Reset custom order"))
+
+                    HStack {
+                        Button("Remove all folders") {
+                            Defaults[.launcherFolders] = [:]
+                        }
+                        .disabled(!enableLauncher || launcherFolders.isEmpty)
+                        Spacer()
+                        Text(launcherFolders.isEmpty
+                             ? "None" : "\(launcherFolders.count) folders")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .settingsHighlight(id: highlightID("Remove all folders"))
+                    .settingsInfo("Removing a folder puts its apps back in the grid; nothing is uninstalled.")
 
                     Text("\(columns * rows) apps per page.")
                         .font(.caption)

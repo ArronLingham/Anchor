@@ -1028,7 +1028,7 @@ struct HUD: View {
                         Text("Drag the HUD to set the value")
                     }
                     .settingsHighlight(id: highlightID("Drag the HUD to set the value"))
-                    .settingsInfo("Press and drag anywhere on a volume or brightness HUD to scrub it, like a slider. Works on all four HUD styles. The other things a HUD reports \u{2014} music, battery, Bluetooth, caps lock \u{2014} are notifications rather than controls, so they stay untouched.")
+                    .settingsInfo("Press and drag anywhere on a volume or brightness HUD to scrub it, like a slider. Adds this to the circular, custom-OSD and inline HUDs \u{2014} the vertical bar has its own, always on, under Devices. The other things a HUD reports \u{2014} music, battery, Bluetooth, caps lock \u{2014} are notifications rather than controls, so they stay untouched.")
                 } header: {
                     Text("Controls")
                 } footer: {

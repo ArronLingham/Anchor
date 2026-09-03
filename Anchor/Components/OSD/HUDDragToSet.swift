@@ -23,10 +23,13 @@ import SwiftUI
 
 /// Lets a HUD be dragged to set the value it is showing.
 ///
-/// Applied to every HUD style rather than built into one of them, so the
-/// gesture means the same thing whichever style is on — the alternative is a
-/// feature that works on the vertical bar and mysteriously does not on the
-/// circle.
+/// Applied to the circular, custom-OSD and inline HUDs, so the gesture means
+/// the same thing across them.
+///
+/// **Not** the vertical bar: that one already has its own drag, complete with
+/// rubber-band overshoot and auto-hide cancellation, gated on
+/// `verticalHUDInteractive` and on by default. Adding this there put a second
+/// DragGesture on the same view for the two to fight over.
 ///
 /// Only volume and brightness are draggable. Keyboard backlight is on the same
 /// key path but has no continuous control worth scrubbing, and the remaining
@@ -39,6 +42,12 @@ struct HUDDragToSet: ViewModifier {
     /// across the glyph is the least surprising mapping.
     let axis: Axis
     /// Which screen's brightness to set. Volume ignores it.
+    ///
+    /// Left nil by every current caller, because the circular, custom-OSD and
+    /// inline HUDs do not carry one — so it is resolved from the pointer at
+    /// drag time instead. On two displays that matters: nil means the main
+    /// screen, which would dim the built-in while you drag the HUD on the
+    /// external one.
     var screen: NSScreen?
 
     @Default(.enableHUDDrag) private var enabled
@@ -89,7 +98,9 @@ struct HUDDragToSet: ViewModifier {
             // Immediate rather than the smoothed setter: the pointer is already
             // the smoothing, and easing toward a target that moves every frame
             // reads as lag.
-            SystemBrightnessController.shared.setBrightnessImmediate(Float(fraction), for: screen)
+            let target = screen
+                ?? NSScreen.screens.first { $0.frame.contains(NSEvent.mouseLocation) }
+            SystemBrightnessController.shared.setBrightnessImmediate(Float(fraction), for: target)
         default:
             break
         }
