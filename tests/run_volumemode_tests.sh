@@ -78,6 +78,44 @@ ok("raw values are stable (they are persisted)",
    PerAppVolumeMode.presets.rawValue == "Preset volumes"
    && PerAppVolumeMode.booster.rawValue == "Volume booster")
 
+// ---- step derivation: what the button shows for a given gain ----
+// This has been wrong once. A gain of 0 with isMuted false is reachable from
+// the slider this control replaced and is still sitting in perAppAudioStates;
+// matching it to the nearest non-zero level showed "Regular" on a silent app.
+ok("presets: muted is step 0",
+   PerAppVolumeMode.presets.step(forVolume: 1.0, isMuted: true) == 0)
+ok("presets: a zero gain is step 0 even without the mute flag",
+   PerAppVolumeMode.presets.step(forVolume: 0.0, isMuted: false) == 0)
+ok("presets: a near-zero gain is still silence",
+   PerAppVolumeMode.presets.step(forVolume: 0.001, isMuted: false) == 0)
+ok("presets: 1.0 is Regular",  PerAppVolumeMode.presets.step(forVolume: 1.0, isMuted: false) == 1)
+ok("presets: 1.5 is Loud",     PerAppVolumeMode.presets.step(forVolume: 1.5, isMuted: false) == 2)
+ok("presets: 2.0 is Louder",   PerAppVolumeMode.presets.step(forVolume: 2.0, isMuted: false) == 3)
+
+// Values from the old slider land on the nearest step rather than off the end.
+for v in [Float(0.2), 0.4, 0.6, 0.75, 0.9, 1.1, 1.3, 1.7, 1.9, 2.0] {
+    let step = PerAppVolumeMode.presets.step(forVolume: v, isMuted: false)
+    ok("presets: gain \(v) maps into range", step >= 0 && step < PerAppVolumeMode.presets.levels.count, "got \(step)")
+    ok("presets: a non-zero gain is never silence", step != 0, "gain \(v) read as muted")
+}
+
+// Booster has no silent step, so mute is tracked separately and never folds in.
+ok("booster: 1.0 is the first step", PerAppVolumeMode.booster.step(forVolume: 1.0, isMuted: false) == 0)
+ok("booster: muted still reports its gain step, since mute is its own control",
+   PerAppVolumeMode.booster.step(forVolume: 2.0, isMuted: true) == 2)
+ok("booster: a zero gain is not treated as a step",
+   PerAppVolumeMode.booster.step(forVolume: 0.0, isMuted: false) == 0)
+
+// Cycling from any derived step stays in range.
+for mode in PerAppVolumeMode.allCases {
+    for v in [Float(0), 0.5, 1.0, 1.5, 2.0] {
+        let step = mode.step(forVolume: v, isMuted: false)
+        let next = (step + 1) % mode.levels.count
+        ok("\(mode.rawValue): cycling from gain \(v) stays in range",
+           next >= 0 && next < mode.levels.count)
+    }
+}
+
 if failures == 0 { print("\(passes)/\(passes) passed"); exit(0) }
 print("\(passes) passed, \(failures) failed"); exit(1)
 SWIFT

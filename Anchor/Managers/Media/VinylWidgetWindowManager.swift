@@ -216,6 +216,29 @@ final class VinylWidgetWindowManager: ObservableObject {
         sync()
     }
 
+    /// Keeps a resized widget inside the display it is on.
+    ///
+    /// Resizing keeps the origin, so growing the card pushes its right and top
+    /// edges outward — and every size and shape is now on the widget's own
+    /// right-click menu, so going from Small to Desktop (190pt to 560) or
+    /// portrait to horizontal (1.5x wider) near an edge slid it off screen.
+    /// A borderless panel you cannot see is one you cannot drag back.
+    private static func keptOnScreen(_ frame: NSRect, near panel: NSPanel) -> NSRect {
+        let screen = panel.screen
+            ?? NSScreen.screens.first { $0.frame.intersects(frame) }
+            ?? NSScreen.main
+        guard let visible = screen?.visibleFrame else { return frame }
+
+        var f = frame
+        // Only ever pull it back in; a widget smaller than the screen keeps
+        // wherever the user put it.
+        f.origin.x = min(f.origin.x, visible.maxX - f.width)
+        f.origin.y = min(f.origin.y, visible.maxY - f.height)
+        f.origin.x = max(f.origin.x, visible.minX)
+        f.origin.y = max(f.origin.y, visible.minY)
+        return f
+    }
+
     /// Creates, resizes or removes the window to match the settings.
     func sync() {
         let wanted = Defaults[.enableVinylWidget]
@@ -233,7 +256,7 @@ final class VinylWidgetWindowManager: ObservableObject {
             if panel.frame.size != size {
                 var frame = panel.frame
                 frame.size = size
-                panel.setFrame(frame, display: true)
+                panel.setFrame(Self.keptOnScreen(frame, near: panel), display: true)
             }
             panel.level = level
             return

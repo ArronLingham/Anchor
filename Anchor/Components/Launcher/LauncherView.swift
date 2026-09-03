@@ -319,7 +319,18 @@ struct LauncherView: View {
         }
     }
 
-    private var selectableCount: Int { commands.count + results.count }
+    /// How many things the arrow keys can address.
+    ///
+    /// In grid mode this MUST be the list the grid actually draws. The grid
+    /// lays out `ungroupedApps`, and its cells compare `index == selection`
+    /// against indices into that filtered array — so counting `results` here,
+    /// which still contains everything filed inside folders, makes the two
+    /// disagree the moment one folder exists: ↓ walks the selection past the
+    /// last drawn cell (no cursor anywhere) and Return launches an app that is
+    /// in a folder and not on screen.
+    private var selectableCount: Int {
+        showingGrid ? ungroupedApps.count : commands.count + results.count
+    }
 
     private func move(by delta: Int) {
         guard calculation == nil, selectableCount > 0 else { return }
@@ -347,6 +358,13 @@ struct LauncherView: View {
             let command = commands[selection].command
             onDismiss()
             command.run()
+            return
+        }
+        // Same index space as `selectableCount` — the grid addresses the apps
+        // it draws, which excludes anything filed in a folder.
+        if showingGrid {
+            guard ungroupedApps.indices.contains(selection) else { return }
+            onLaunch(ungroupedApps[selection])
             return
         }
         let appIndex = selection - commands.count

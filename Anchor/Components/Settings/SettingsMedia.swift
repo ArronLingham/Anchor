@@ -96,7 +96,7 @@ struct Media: View {
                         Text("Show the volume control")
                     }
                     .settingsHighlight(id: highlightID("Show the volume control"))
-                    .settingsInfo("Turn this off to keep the equaliser and output routing without the per-app volume stepper.")
+                    .settingsInfo("Turn this off to keep the equaliser, mute and output routing without the per-app volume stepper. Mute stays on the row \u{2014} hiding it too would leave a muted app with no way to unmute it.")
 
                     if showPerAppVolumeControl {
                         Picker("Volume control", selection: $perAppVolumeMode) {

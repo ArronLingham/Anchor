@@ -381,6 +381,27 @@ enum PerAppVolumeMode: String, CaseIterable, Defaults.Serializable, Identifiable
         }
     }
 
+    /// Which step a given gain corresponds to.
+    ///
+    /// Derived rather than stored, so the icon still agrees with the engine if
+    /// the volume was set from anywhere else — including the slider this
+    /// control replaced, whose values are still in `perAppAudioStates`.
+    ///
+    /// Silence is step 0 in presets mode however it was reached: a gain of zero
+    /// without the mute flag is reachable from that old slider, and matching it
+    /// to the nearest non-zero level showed "Regular" on an app that was in
+    /// fact silent, with no way to cycle back to silence.
+    func step(forVolume volume: Float, isMuted: Bool) -> Int {
+        if self == .presets && (isMuted || volume < 0.005) { return 0 }
+        var best = 0
+        var bestDistance = Float.greatestFiniteMagnitude
+        for (i, level) in levels.enumerated() where !(self == .presets && i == 0) {
+            let d = abs(level - volume)
+            if d < bestDistance { bestDistance = d; best = i }
+        }
+        return best
+    }
+
     /// Icon for each step. Index 0 of `.presets` is silence.
     var symbols: [String] {
         switch self {

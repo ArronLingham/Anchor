@@ -252,6 +252,24 @@ final class PerAppAudioManager: ObservableObject {
 
     /// Returns every app to normal. Called on quit — belt and braces, since
     /// macOS destroys our taps with the process anyway.
+    /// Tears the engine down and leaves every app playing normally.
+    ///
+    /// The master switch used to be read once at launch, so turning it off
+    /// mid-session removed the UI (SettingsMedia hides the list) while the
+    /// engine kept running — an app left muted stayed muted with no control
+    /// anywhere to unmute it. Stopping has to hand the audio back, not just
+    /// stop drawing.
+    func stop() {
+        guard started else { return }
+        started = false
+        resetAll()
+        deviceMonitor.stop()
+        processMonitor.onAppsChanged = nil
+        processMonitor.stop()
+        apps = []
+        lastFailure = nil
+    }
+
     func resetAll() {
         for (pid, controller) in controllers {
             controller.invalidate()

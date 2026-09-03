@@ -119,12 +119,13 @@ struct PerAppAudioList: View {
 
                 if showPerAppVolumeControl {
                     volumeStepButton(for: app, state: state)
-                    // Mute is its own control only in booster mode. In presets
-                    // mode silence IS a step, so a second control for it would
-                    // be two ways to say the same thing.
-                    if perAppVolumeMode == .booster {
-                        muteButton(for: app, state: state)
-                    }
+                }
+                // Mute is hidden only where the stepper already provides it —
+                // presets mode, where step 0 IS silence. With the stepper
+                // switched off there is nothing providing it, so hiding mute
+                // as well would leave a muted app with no control to unmute it.
+                if perAppVolumeMode == .booster || !showPerAppVolumeControl {
+                    muteButton(for: app, state: state)
                 }
 
                 equaliserButton(for: app, state: state, isOpen: isOpen)
@@ -147,19 +148,7 @@ struct PerAppAudioList: View {
     /// stored — so the button always agrees with the engine even if the volume
     /// was set from somewhere else.
     private func currentStep(_ state: PerAppAudioState) -> Int {
-        let mode = perAppVolumeMode
-        if mode == .presets && state.isMuted { return 0 }
-        let levels = mode.levels
-        let v = state.volume
-        // Nearest level, so a value that came from anywhere else still lands on
-        // a sensible icon instead of falling off the end.
-        var best = 0
-        var bestDistance = Float.greatestFiniteMagnitude
-        for (i, level) in levels.enumerated() where !(mode == .presets && i == 0) {
-            let d = abs(level - v)
-            if d < bestDistance { bestDistance = d; best = i }
-        }
-        return best
+        perAppVolumeMode.step(forVolume: state.volume, isMuted: state.isMuted)
     }
 
     private func applyStep(_ step: Int, to app: AudioApp) {

@@ -817,6 +817,20 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             if Defaults[.enablePerAppAudio] {
                 PerAppAudioManager.shared.start()
             }
+
+            // Follow the switch rather than reading it once. Turning it off
+            // used to leave the engine running with the UI gone, so an app
+            // muted through it stayed muted with nothing anywhere to undo it.
+            Defaults.publisher(.enablePerAppAudio, options: [])
+                .receive(on: DispatchQueue.main)
+                .sink { change in
+                    if change.newValue {
+                        PerAppAudioManager.shared.start()
+                    } else {
+                        PerAppAudioManager.shared.stop()
+                    }
+                }
+                .store(in: &self.cancellables)
         }
 
         ReminderLiveActivityManager.shared.$activeWindowReminders

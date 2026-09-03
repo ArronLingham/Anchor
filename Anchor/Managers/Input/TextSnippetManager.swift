@@ -187,6 +187,11 @@ final class TextSnippetManager: ObservableObject {
         if flags.contains(.maskCommand) || flags.contains(.maskControl)
             || flags.contains(.maskAlternate) {
             buffer = ""
+            // Also disarm the undo. ⌘Tab is a chord, and without this a
+            // backspace in the app you switched to would revert an expansion
+            // that happened in the one you left — typing the trigger into the
+            // wrong window.
+            lastExpansion = nil
             return
         }
 
@@ -200,11 +205,16 @@ final class TextSnippetManager: ObservableObject {
             // The revert therefore removes the remaining characters and types
             // the trigger back, which lands in the same place a swallow would
             // have, without giving this tap the power to drop keys.
-            if let pending = lastExpansion {
+            // A held backspace is not an undo. Auto-repeat keeps deleting in
+            // the target app while the revert is inserting, so the two race and
+            // over-delete; only a fresh press means "undo that".
+            let isRepeat = event.getIntegerValueField(.keyboardEventAutorepeat) != 0
+            if let pending = lastExpansion, !isRepeat {
                 lastExpansion = nil
                 revert(pending)
                 return
             }
+            if isRepeat { lastExpansion = nil }
             if !buffer.isEmpty { buffer.removeLast() }
             return
         case 123, 124, 125, 126,  // arrows
