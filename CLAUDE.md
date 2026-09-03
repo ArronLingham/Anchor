@@ -894,6 +894,9 @@ file-system-synchronized groups. Both compile the *real* source files with
 ./tests/run_netrate_tests.sh      # 12  network rate deltas and counter resets
 ./tests/run_settingsbinding_tests.sh #  4  settings controls that actually redraw
 ./tests/run_settingssearch_tests.sh #  5  every settings row is findable
+./tests/run_settingssections_tests.sh #  4  the sidebar's per-pane section index
+./tests/run_volumemode_tests.sh    # 64  per-app volume steps and mode invariants
+./tests/run_launcherpaging_tests.sh # 402 launcher paging with folders
 python3 tests/test_privacy_configuration.py
 
 # LIVE suites — these drive the running app and are NOT part of the unit run:
@@ -902,7 +905,7 @@ python3 tests/test_privacy_configuration.py
 ./tests/run_gemini_tests.sh       # 44  Gemini request/response wire format
 ```
 
-**1043 assertions across 34 harnesses** (counted, not estimated — run the
+**1484 assertions across 36 harnesses** (counted, not estimated — run the
 loop in `Tests` above rather than trusting a number in a commit message; two
 figures in this repo's history were quoted without being measured). Every one of the later harnesses was
 proven non-vacuous by deliberately breaking the guard it covers and checking the
@@ -1770,6 +1773,41 @@ key than it recorded).
 - **Snippet undo**: the tap is `listenOnly` by construction and cannot swallow
   the backspace, so the revert accounts for the character the user's own
   keystroke already removed. Armed for exactly one keystroke.
+
+### Phase 2-5 defects found afterwards, and what they have in common
+
+Eight, found by an adversarial review and by writing the tests. Seven were mine,
+from this session. The pattern in almost all of them is **two lists that must
+agree and don't**:
+
+- **The launcher grid drew `ungroupedApps` while `selectableCount` and
+  `activateSelection` indexed `results`.** With one folder, Return launched an
+  app that was inside it and not on screen, and ↓ walked past the last drawn
+  cell. Mouse clicks were fine, which is exactly why it survives casual use.
+- **Paging was driven through `selection`,** which indexes apps while the grid
+  lays out folders first. Extracting the arithmetic into `LauncherPaging` to pin
+  it exposed the deeper problem: with a page's worth of folders, that page could
+  never be shown, because no selection maps onto it. **Scroll position was never
+  selection's job** — the grid owns `currentPage` now.
+- **Filing an app made it unfindable.** The grid kept excluding foldered apps
+  while showing search results.
+- **`reorder` seeded the custom order from the visible list**, so a drag among
+  search results demoted every app that had not matched.
+
+The other three:
+
+- **`enablePerAppAudio` was read once at launch.** Switching it off hid the UI
+  while the engine kept running, leaving an app muted with no control to unmute
+  it. A master switch has to hand back what it took, not just stop drawing.
+- **Drag-to-set was added to the vertical HUD, which already had it** — on by
+  default — so two `DragGesture`s fought over one view. Check for the feature
+  before adding it.
+- **The vinyl widget could be resized off screen**, and a borderless panel you
+  cannot see is one you cannot drag back.
+
+Three of these were only findable by running the sequence, not by reading:
+`run_launcherpaging_tests.sh`'s first version asserted the wrong invariant and
+had to be corrected before it could catch anything.
 
 ### Two settings indexes are generated, not hand-written
 
