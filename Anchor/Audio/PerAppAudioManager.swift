@@ -127,6 +127,14 @@ final class PerAppAudioManager: ObservableObject {
     private var controllers: [pid_t: ProcessTapController] = [:]
     private var started = false
 
+    /// Held so the listener can be removed again: CoreAudio matches on the
+    /// block itself, so dropping the reference leaks the registration.
+    private var defaultOutputListener: AudioObjectPropertyListenerBlock?
+    private var defaultOutputAddress = AudioObjectPropertyAddress(
+        mSelector: kAudioHardwarePropertyDefaultOutputDevice,
+        mScope: kAudioObjectPropertyScopeGlobal,
+        mElement: kAudioObjectPropertyElementMain)
+
     private init() {
         states = Defaults[.perAppAudioStates]
     }
@@ -157,6 +165,8 @@ final class PerAppAudioManager: ObservableObject {
         deviceMonitor.onDeviceConnected = { [weak self] _, _ in
             MainActor.assumeIsolated { self?.rebuildAll() }
         }
+
+        installDefaultOutputListener()
     }
 
     func refresh() {
@@ -266,6 +276,7 @@ final class PerAppAudioManager: ObservableObject {
         deviceMonitor.stop()
         processMonitor.onAppsChanged = nil
         processMonitor.stop()
+        removeDefaultOutputListener()
         apps = []
         lastFailure = nil
     }
@@ -304,6 +315,20 @@ final class PerAppAudioManager: ObservableObject {
         guard wanted.needsProcessing else {
             controllers.removeValue(forKey: app.id)?.invalidate()
             return
+        }
+
+        // A tap is built from the process objects that existed when it was
+        // made — `CATapDescription` takes them by value and the controller's
+        // `app` is a `let`, so the set is frozen at activation. Spotify and
+        // Chrome both spawn playback helpers, and a helper that appears after
+        // the tap is not tapped at all: its audio bypasses the gain and is
+        // audible straight through a mute. `AudioProcessMonitor` already
+        // fingerprints the object IDs and fires `onAppsChanged` when they
+        // move, so the change is detected — it just was not acted on. There is
+        // no crossfade path for this, because `switchDevice` would rebuild
+        // from the same stale `app`, so it is a teardown.
+        if let existing = controllers[app.id], existing.app.processObjectIDs != app.processObjectIDs {
+            controllers.removeValue(forKey: app.id)?.invalidate()
         }
 
         if let existing = controllers[app.id] {
@@ -365,6 +390,49 @@ final class PerAppAudioManager: ObservableObject {
             Logger.log(
                 "Per-app audio engine failed for \(app.name): \(error.localizedDescription)",
                 category: .error)
+        }
+    }
+
+    /// Follows the system output device.
+    ///
+    /// An app with no explicit override is routed to whatever is default, but
+    /// the aggregate was built around the device that was default at the time.
+    /// Neither `onDeviceConnected` nor `onDeviceDisconnected` fires when the
+    /// user switches output in Control Centre — both devices stay connected
+    /// and only the *default* moves — so without this the app carries on
+    /// playing out of the old one while everything else follows.
+    private func installDefaultOutputListener() {
+        guard defaultOutputListener == nil else { return }
+
+        let block: AudioObjectPropertyListenerBlock = { [weak self] _, _ in
+            MainActor.assumeIsolated { self?.defaultOutputDeviceChanged() }
+        }
+        let status = AudioObjectAddPropertyListenerBlock(
+            .system, &defaultOutputAddress, .main, block)
+        guard status == noErr else {
+            Logger.log(
+                "Per-app audio could not observe the default output device (status \(status))",
+                category: .error)
+            return
+        }
+        defaultOutputListener = block
+    }
+
+    private func removeDefaultOutputListener() {
+        guard let block = defaultOutputListener else { return }
+        AudioObjectRemovePropertyListenerBlock(
+            .system, &defaultOutputAddress, .main, block)
+        defaultOutputListener = nil
+    }
+
+    /// `syncController` resolves the target through `outputUIDFor`, which reads
+    /// the default afresh — so re-syncing is all that is needed, and it routes
+    /// through the equal-power crossfade rather than dropping the audio. An app
+    /// pinned to a device explicitly resolves to the same UID and is left
+    /// alone, which is the whole point of pinning.
+    private func defaultOutputDeviceChanged() {
+        for app in apps where controllers[app.id] != nil {
+            syncController(for: app)
         }
     }
 

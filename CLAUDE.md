@@ -1518,6 +1518,41 @@ newline (impossible in a real name) are rejected.
 Verified against the 8 real shortcuts on this machine: all parse, all produce
 correct argv, none listed-but-unrunnable.
 
+### The tap goes stale two ways, and the monitor already knew about one
+
+Found 2026-09-03 by asking what invalidates a tap, rather than by a symptom.
+Both are the same shape as the dead-switch and unobserved-notification traps
+this file keeps recording: **something detects the change and nothing acts on
+it.**
+
+- **Nothing observed `kAudioHardwarePropertyDefaultOutputDevice`.**
+  `AudioDeviceMonitor` watches the device *list*, `kAudioDevicePropertyDataSource`
+  and the sample rate — so a device appearing or vanishing rebuilds everything,
+  and switching output between two devices that are both still connected fires
+  nothing at all. The aggregate is built around whatever was default at
+  activation, so a boosted app kept playing out of the old device while every
+  other app followed. `PerAppAudioManager` now installs that listener and
+  re-syncs; `syncController` already resolves the target through `outputUIDFor`,
+  which reads the default afresh, so the re-sync routes through the equal-power
+  crossfade and an app pinned to a device explicitly resolves to the same UID
+  and is left alone.
+- **`processObjectIDs` growing did not rebuild the tap.** `CATapDescription`
+  takes the process list by value and `ProcessTapController.app` is a `let`, so
+  the set is frozen at activation — and a helper that appears afterwards is not
+  tapped, which means `.mutedWhenTapped` does not apply to it and its audio is
+  audible straight through a mute. This is the plural-`processObjectIDs` lesson
+  already recorded above, in its time dimension: tapping every process is not
+  enough if you only do it once. **`AudioProcessMonitor` was already right** —
+  its change fingerprint is `AppFingerprint(pid:objectIDs:)`, so it fires
+  `onAppsChanged` exactly when this happens. `syncController` simply never
+  looked, because its only staleness test was the device. It now tears the
+  controller down when the object IDs differ; `switchDevice` cannot help,
+  because it would rebuild from the same stale `app`.
+
+TESTING.md §8.4/§8.4b/§8.4c cover all three cases. §8.4 already existed and
+would have caught the first one — it asks you to switch the output device and
+watch for a dip, and before this the app never moved at all.
+
 ### The per-app audio engine had no tests at all
 
 ~1,800 lines of pure DSP ported from FineTune, untested until 2026-09-01. It is

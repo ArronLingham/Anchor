@@ -568,6 +568,7 @@ struct GeneralSettings: View {
                 Text("Extend hover area")
             }
             .settingsHighlight(id: highlightID("Extend hover area"))
+            .settingsInfo("Opens the notch from a region wider than the notch itself, so a hover does not have to be precise. The cost is that reaching past the notch — for the clock or a menu bar item — can open it. Turn this off if that happens, or raise the hover delay below.")
             Defaults.Toggle(key: .enableHaptics) {
                 Text("Enable haptics")
             }

@@ -291,8 +291,18 @@ crackles. Crackle means the limiter is being bypassed, not that the maths is wro
 material sitting there may audibly *pump*. The smoother should make it a swell —
 **a click there means the smoother is not being applied.**
 **8.4 Device crossfade.** With per-app volume active on a playing app, switch the
-system output device. ✅ Seamless — no gap, no dip at the halfway point.
-A dip means the fade has gone linear instead of equal-power.
+system output device (Control Centre, or Sound settings).
+✅ **The app follows**, like everything else, and the move is seamless — no gap,
+no dip at the halfway point.
+An app left playing out of the *old* device means the default-output listener is
+not firing: neither device connected or disconnected, so only that listener sees
+the change. A dip means the fade has gone linear instead of equal-power.
+**8.4b Helper processes.** Mute an app that plays through helpers — Spotify, or
+Chrome — then make it start a new one: skip to the next track, or open a second
+tab playing video. ✅ Stays muted. Sound leaking through means the tap was not
+rebuilt when the app's process objects changed, so the new helper is untapped.
+**8.4c Pinning survives it.** Pin one app to a specific output, then change the
+system default. ✅ The pinned app stays where you put it; unpinned ones move.
 **8.5 AutoEQ import.** Import a real profile for headphones you own. ✅ Preamp is
 negative; filter count and frequencies match the file. Then import a broken file
 (truncated, or every filter `OFF`) → rejected, not half-applied.
