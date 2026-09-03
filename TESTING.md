@@ -29,7 +29,7 @@ Already proven, mathematically or structurally:
 | DDC wire format | `run_ddc_tests` (74) |
 | Version comparison, `brew outdated` parsing | `run_version_tests` (60) |
 | Apple Shortcuts argv safety | `run_shortcuts_tests` (50) |
-| Gemini request/response | `run_gemini_tests` (44) |
+| AI assistant request/response | `run_ai_tests` (80) |
 | Quit-on-close guards | `run_applifecycle_tests` (33) |
 | To-do ordering | `run_todo_tests` (38) |
 | Alert hysteresis | `run_alert_tests` (26) |
@@ -398,9 +398,16 @@ through a hub.
 Never run on two screens. `showOnAllDisplays` is on for your profile.
 
 **13.1** A notch/pill on each display; both live and independent.
+✅ **Verified 2026-09-03** — two screens, three Anchor windows, one notch window
+per display. Do not eyeball this one: `CGWindowListCopyWindowInfo` answers it
+exactly, and returns front-to-back, so the number of non-Anchor windows *before*
+the pill is whether anything is covering it.
 **13.2** **"Always show on external displays"** — the pill must be visible on the
-external monitor. ⚠️ If it is missing, check you are **not mirroring**:
-`NSScreen.screens` returns one screen when mirrored, which looks identical to a bug.
+external monitor. ✅ **Verified 2026-09-03**: 928x224 at (-1424,-65) on the
+EK271, `alpha 1.0`, `onscreen true`, level 27, with nothing at a normal window
+level in front of it. ⚠️ If it ever *is* missing, check you are **not
+mirroring**: `NSScreen.screens` returns one screen when mirrored, which looks
+identical to a bug.
 **13.3** Music control window: present on the display you are using; hiding it on
 one must not tear down the other's.
 **13.4** Unplug the external display while both are showing. ✅ No orphaned window,

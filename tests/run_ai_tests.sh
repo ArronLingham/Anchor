@@ -24,7 +24,7 @@ trap 'rm -rf "$WORK"' EXIT
 
 python3 - "$WORK/Rules.swift" <<'PYX'
 import re, sys
-src = open("Anchor/Managers/Gemini/GeminiProtocol.swift").read()
+src = open("Anchor/Managers/Assistant/AIProtocol.swift").read()
 
 def block(pattern):
     m = re.search(pattern, src)

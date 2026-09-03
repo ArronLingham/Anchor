@@ -139,11 +139,25 @@ do not let that graph follow it in.
     on a different display's panel, which is the whole bug. It also handles the
     notch moving between displays mid-present by tearing the old panel down and
     presenting on the new one.
-  - **Still untested on real hardware — this was written without a second
-    display.** Verified only that it builds, launches and behaves unchanged on
-    one screen. `showOnAllDisplays` defaults to false but is *on* for this user,
-    so these paths go live the moment a monitor is attached. Check it first if
-    anything odd shows up around the floating control window.
+  - **Now tested on real hardware, 2026-09-03 — the second display was
+    attached the whole time.** Two sessions recorded "needs a monitor, cannot
+    verify" without ever asking the machine; `system_profiler SPDisplaysDataType`
+    listed an EK271 GD both times. **Check what is plugged in before declaring
+    something untestable.**
+
+    Measured with `NSScreen` and `CGWindowListCopyWindowInfo` while the app ran:
+    two screens, not mirrored (built-in 1470x956 with a notch, EK271 1920x1080
+    at x = -1920 without one), and **three Anchor windows** — a notch window per
+    screen, the external one 928x224 at (-1424,-65), `alpha 1.0`, `onscreen
+    true`, window level 27. Nothing at a normal window level was in front of it;
+    the only windows above it were Wispr Flow's and Lunar's, both at level 1000,
+    which sit above everything by design. So the external pill is created,
+    positioned, opaque and correctly pinned. `showOnAllDisplays` defaults to
+    false but is *on* for this user.
+
+    The probe is worth rebuilding rather than reasoning about window levels:
+    `CGWindowListCopyWindowInfo` returns front-to-back, so the count of
+    non-Anchor windows *before* the pill in that array is the whole question.
 - **Adding a `SettingsTab` case does not put it in the sidebar.**
   `SettingsView.availableTabs` is a *hardcoded ordered array*, not `allCases`,
   and it is what draws the list. A tab with an enum case, a `detailView`, an
@@ -516,7 +530,7 @@ Anchor/
     Clipboard/                3 files
     Dictation/                4 files
     Display/                  8 files
-    Gemini/                   3 files
+    Assistant/                3 files
     HUD/                      6 files
     Input/                    7 files
     Launcher/                 8 files
@@ -902,7 +916,7 @@ python3 tests/test_privacy_configuration.py
 # LIVE suites — these drive the running app and are NOT part of the unit run:
 ./tests/run_functional_live.sh    #  5  clipboard URL cleaning, end to end
 ./tests/run_runtime_stress.sh     #     hostile Defaults values (see Stress results)
-./tests/run_gemini_tests.sh       # 44  Gemini request/response wire format
+./tests/run_ai_tests.sh           # 80  Gemini + OpenAI request/response wire format
 ```
 
 **1500 assertions across 36 harnesses** — 35 shell harnesses plus the Python
@@ -1448,7 +1462,17 @@ is the `AudioTap` pattern: nothing exists while the feature is off.
 The preview is horizontally flipped by default, because a mirror in which
 raising your right hand raises the image's left hand is not a mirror.
 
-### Gemini — the key is not in the URL, and the model cannot act
+### The AI assistant — the key is not in the URL, and the model cannot act
+
+Lives in `Managers/Assistant/` — `AIAssistantManager`, `AIAssistantCredential`,
+`AIProtocol` — with `Components/Settings/AIAssistantSettings.swift` and
+`Components/Notch/NotchAIAssistantView.swift`. **Every one of those five files
+was still named `Gemini*` until 2026-09-03** while declaring an `AI*` type, and
+`AIProtocol.swift` had handled OpenAI since Phase 4. That is worse than untidy:
+a filename is the first thing read when deciding what a change can affect, and
+these said "Gemini only" about code covering both providers. An audit keyed to
+*filenames* also reported `GeminiManager` as a manager that is never started,
+which it is not — `AIAssistantManager.shared.start()` is in `AnchorApp`.
 
 Two decisions worth not re-deriving:
 
@@ -1465,7 +1489,7 @@ Two decisions worth not re-deriving:
 **Trimmed history must never begin with a `model` turn.** Gemini rejects that
 with a 400, so a naive "keep the last N" fails on roughly half of all cut
 points — intermittently, which is the worst way for it to fail.
-`GeminiProtocol.trimmed` drops a leading model turn, and the test asserts the
+`AIProtocol.trimmed` drops a leading model turn, and the test asserts the
 property at *every* limit from 1 to the conversation length.
 
 **Tool execution and screen awareness are deliberately not built**, and the
