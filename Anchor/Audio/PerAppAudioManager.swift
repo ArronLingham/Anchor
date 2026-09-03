@@ -308,17 +308,32 @@ final class PerAppAudioManager: ObservableObject {
 
         if let existing = controllers[app.id] {
             // Volume, mute and EQ are live parameters on the running IOProc.
-            // The output device is not: it is baked into the aggregate device
-            // built at activation, so changing it means tearing the controller
-            // down and building a new one.
-            if existing.targetDeviceUIDs != [outputUIDFor(wanted)] {
-                controllers.removeValue(forKey: app.id)?.invalidate()
-            } else {
-                existing.volume = wanted.volume
-                existing.isMuted = wanted.isMuted
-                existing.updateEQSettings(wanted.eqSettings)
-                return
+            existing.volume = wanted.volume
+            existing.isMuted = wanted.isMuted
+            existing.updateEQSettings(wanted.eqSettings)
+
+            let target = outputUIDFor(wanted)
+            guard existing.targetDeviceUIDs != [target], !target.isEmpty else { return }
+
+            // Moving an app to another device goes through switchDevice, which
+            // builds the second tap and aggregate, crossfades between them and
+            // then destroys the first — the equal-power path
+            // run_crossfade_tests pins. Tearing the controller down and
+            // rebuilding, which this used to do, drops the audio for as long as
+            // activation takes.
+            Task { @MainActor [weak self] in
+                do {
+                    try await existing.switchDevice(to: target, preferredTapSourceDeviceUID: target)
+                } catch {
+                    // A failed crossfade leaves the controller on its old
+                    // device; rebuild rather than silently ignoring the
+                    // routing the user asked for.
+                    guard let self else { return }
+                    self.controllers.removeValue(forKey: app.id)?.invalidate()
+                    self.syncController(for: app)
+                }
             }
+            return
         }
 
         // The per-app override wins over the system default. Routing is done by

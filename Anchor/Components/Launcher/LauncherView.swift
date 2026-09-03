@@ -78,7 +78,18 @@ struct LauncherView: View {
     /// An id for an app that has since been uninstalled is dropped rather than
     /// leaving a gap, and a folder left with nothing in it is not shown at all
     /// — a tile you cannot open is worse than no tile.
+    /// True when the grid is showing search results rather than everything.
+    ///
+    /// Folders are a way of arranging the full set. While a query is filtering,
+    /// they get in the way: their tiles are not matches, and filing an app away
+    /// must not make it unfindable.
+    private var gridIsFiltered: Bool {
+        !query.trimmingCharacters(in: .whitespaces).isEmpty
+    }
+
     private var resolvedFolders: [(name: String, apps: [LauncherApp])] {
+        // No folder tiles among search results — they answer no query.
+        guard !gridIsFiltered else { return [] }
         let byID = Dictionary(uniqueKeysWithValues: index.apps.map { ($0.id, $0) })
         return folders
             .map { (name: $0.key, apps: $0.value.compactMap { byID[$0] }) }
@@ -92,6 +103,10 @@ struct LauncherView: View {
     /// the arrow keys and Return keep addressing apps whether or not folders
     /// exist, and folders are opened with the mouse.
     private var ungroupedApps: [LauncherApp] {
+        // While searching, show every match. Excluding filed apps here made an
+        // app impossible to find by name once it was in a folder — which is a
+        // much worse outcome than a folder's contents appearing in results.
+        guard !gridIsFiltered else { return results.map(\.app) }
         let filed = Set(folders.values.flatMap { $0 })
         return results.map(\.app).filter { !filed.contains($0.id) }
     }
@@ -115,6 +130,7 @@ struct LauncherView: View {
                 LauncherGridView(
                     apps: ungroupedApps,
                     folders: resolvedFolders,
+                    allowsReorder: !gridIsFiltered,
                     selection: $selection,
                     onLaunch: onLaunch
                 )

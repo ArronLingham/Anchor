@@ -36,6 +36,11 @@ struct LauncherGridView: View {
     /// the mouse, while the arrow keys and Return continue to address apps, so
     /// keyboard navigation means the same thing whether or not folders exist.
     var folders: [(name: String, apps: [LauncherApp])] = []
+    /// Whether dragging may reorder. False while a query is filtering the grid:
+    /// the order seeds from what is on screen, so a drag among search results
+    /// would write an order containing only the matches and permanently demote
+    /// everything that did not match that one query.
+    var allowsReorder: Bool = true
     @Binding var selection: Int
     @Default(.launcherNavigationStyle) private var navigationStyle
     @Default(.launcherSortMode) private var sortMode
@@ -298,7 +303,7 @@ struct LauncherGridView: View {
                     // gesture simply not being offered.
                     .opacity(draggingID == app.id ? 0.35 : 1)
                     .modifier(ReorderableCell(
-                        enabled: sortMode.isReorderable,
+                        enabled: sortMode.isReorderable && allowsReorder,
                         appID: app.id,
                         draggingID: $draggingID,
                         onDrop: { moved in dropped(moved, onto: app.id) }))
@@ -375,9 +380,12 @@ struct LauncherGridView: View {
     /// this seeds it from the current on-screen order the first time — without
     /// that, dragging one icon would send every unplaced app to the back.
     private func reorder(_ moved: String, before target: String) {
-        guard sortMode.isReorderable, moved != target else { return }
+        guard sortMode.isReorderable, allowsReorder, moved != target else { return }
         var order = Defaults[.launcherCustomOrder]
-        if order.isEmpty { order = apps.map(\.id) }
+        // Seed from the WHOLE index, not from `apps` — that is only what this
+        // view is currently showing, so seeding from it would write an order
+        // containing a subset and push every app missing from it to the back.
+        if order.isEmpty { order = AppIndex.shared.apps.map(\.id) }
         order.removeAll { $0 == moved }
         if let idx = order.firstIndex(of: target) {
             order.insert(moved, at: idx)
