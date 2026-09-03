@@ -905,7 +905,15 @@ python3 tests/test_privacy_configuration.py
 ./tests/run_gemini_tests.sh       # 44  Gemini request/response wire format
 ```
 
-**1484 assertions across 36 harnesses** (counted, not estimated — run the
+**1500 assertions across 36 harnesses** — 35 shell harnesses plus the Python
+privacy test. This figure read **1484 until 2026-09-03, and was wrong by exactly
+the 16 in `run_gitcommit_tests.sh`**: that harness is the one that prints
+`16 passed, 0 failed` rather than `16/16 passed`, so a counting loop keyed to
+the `N/N` form silently skips it — and reports it as a *failure* if the loop
+also infers pass/fail from that match. Two independently written loops made the
+same mistake, this file's original and its recount. Parse both forms, and treat
+a harness your loop cannot parse as unknown rather than failed. (Counted, not
+estimated — run the
 loop in `Tests` above rather than trusting a number in a commit message; two
 figures in this repo's history were quoted without being measured). Every one of the later harnesses was
 proven non-vacuous by deliberately breaking the guard it covers and checking the
