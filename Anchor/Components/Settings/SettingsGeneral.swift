@@ -73,6 +73,11 @@ struct GeneralSettings: View {
     @Default(.reverseScrollGestures) var reverseScrollGestures
     @Default(.externalDisplayStyle) var externalDisplayStyle
     @Default(.hideNonNotchUntilHover) var hideNonNotchUntilHover
+    // Declared, not read imperatively: the sub-option below is
+    // `.disabled` on it, and `Defaults[.key]` inside a body records no
+    // SwiftUI dependency, so the row would keep rendering its old
+    // enablement after the toggle above it changed.
+    @Default(.alwaysShowOnExternalDisplays) var alwaysShowOnExternalDisplays
 
     // Sourced from @Default rather than `Binding(get: { Defaults[...] })`.
     // An imperative read inside a binding closure records no SwiftUI
@@ -559,10 +564,17 @@ struct GeneralSettings: View {
             .settingsInfo("Stops the notch closing when you click elsewhere, type, or move the pointer away. There is a pin button in the notch itself, and ⌘⇧K toggles it from anywhere.")
 
             Defaults.Toggle(key: .alwaysShowOnExternalDisplays) {
-                Text("Always show on external displays")
+                Text("Show a pill on displays without a notch")
             }
-            .settingsHighlight(id: highlightID("Always show on external displays"))
-            .settingsInfo("Pins the pill above other windows on displays that have no real notch. Without this it is drawn but sits behind whatever window is in front, which looks like it is missing.")
+            .settingsHighlight(id: highlightID("Show a pill on displays without a notch"))
+            .settingsInfo("Puts a permanent pill at the top centre of every display that has no physical notch — an external monitor — and pins it above other windows. Hover it to open the notch on that display. Without this the pill is either absent or drawn behind whatever window is in front, which looks like it is missing.")
+
+            Defaults.Toggle(key: .hideNonNotchUntilHover) {
+                Text("Hide until hovered on non-notch displays")
+            }
+            .settingsHighlight(id: highlightID("Hide until hovered"))
+            .settingsInfo("Makes that pill slide up out of sight until the pointer reaches the top edge, instead of sitting there permanently. Turn this off to keep it always visible.")
+            .disabled(!alwaysShowOnExternalDisplays)
 
             Defaults.Toggle(key: .extendHoverArea) {
                 Text("Extend hover area")
@@ -602,13 +614,6 @@ struct GeneralSettings: View {
             }
             .settingsHighlight(id: highlightID("External display style"))
             Text(externalDisplayStyle.description)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            Defaults.Toggle(key: .hideNonNotchUntilHover) {
-                Text("Hide until hovered on non-notch displays")
-            }
-            .settingsHighlight(id: highlightID("Hide until hovered"))
-            Text("When enabled, the notch slides up and hides on external (non-notch) displays until you hover over it.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         } header: {

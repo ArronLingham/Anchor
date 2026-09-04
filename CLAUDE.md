@@ -879,7 +879,7 @@ file-system-synchronized groups. Both compile the *real* source files with
 ```bash
 ./tests/run_parser_tests.sh       # 19  banner wordings
 ./tests/run_watcher_tests.sh      #  7  real FSEventStream over a temp dir
-./tests/run_launcher_tests.sh     # 25  fuzzy matching and the calculator
+./tests/run_launcher_tests.sh     # 27  fuzzy matching and the calculator
 ./tests/run_color_tests.sh        # 24  the eight clipboard colour formats
 ./tests/run_gitcommit_tests.sh    # 16  the git contract the daily commit relies on
 ./tests/run_urlclean_tests.sh     # 19  tracking-parameter stripping
@@ -911,6 +911,7 @@ file-system-synchronized groups. Both compile the *real* source files with
 ./tests/run_settingssections_tests.sh #  4  the sidebar's per-pane section index
 ./tests/run_volumemode_tests.sh    # 64  per-app volume steps and mode invariants
 ./tests/run_launcherpaging_tests.sh # 402 launcher paging with folders
+./tests/run_externalpill_tests.sh  # 29  the external pill's per-screen hover band
 python3 tests/test_privacy_configuration.py
 
 # LIVE suites — these drive the running app and are NOT part of the unit run:
@@ -919,8 +920,12 @@ python3 tests/test_privacy_configuration.py
 ./tests/run_ai_tests.sh           # 80  Gemini + OpenAI request/response wire format
 ```
 
-**1500 assertions across 36 harnesses** — 35 shell harnesses plus the Python
-privacy test. This figure read **1484 until 2026-09-03, and was wrong by exactly
+**1529 assertions across 37 harnesses** — 36 shell harnesses plus the Python
+privacy test. Counted 2026-09-03 with the loop below; the 1449 the loop reports
+excludes `run_ai_tests.sh` (80), which is LIVE and not part of the unit run.
+Three harnesses print `N/N passed (extra detail)` and a loop anchored with `$`
+skips them — parse a *prefix*, not a whole line. This figure read **1484 before
+2026-09-03, and was wrong by exactly
 the 16 in `run_gitcommit_tests.sh`**: that harness is the one that prints
 `16 passed, 0 failed` rather than `16/16 passed`, so a counting loop keyed to
 the `N/N` form silently skips it — and reports it as a *failure* if the loop
@@ -1549,6 +1554,85 @@ newline (impossible in a real name) are rejected.
 
 Verified against the 8 real shortcuts on this machine: all parse, all produce
 correct argv, none listed-but-unrunnable.
+
+### The external pill: one setting, and a hover that opened every display
+
+**`alwaysShowOnExternalDisplays` IS the external-pill switch, and its label said
+otherwise.** It alone makes `AppDelegate.shouldUseMultiWindow` true — so
+`adjustWindowPosition` builds a window and an `AnchorViewModel` for every screen —
+and `syncNotchSpaceMembership` then pins the ones whose `safeAreaInsets.top == 0`
+above every space. It needs neither `showOnAllDisplays` nor anything else.
+**Verified by measurement**, not by reading: with `showOnAllDisplays` written to
+`false` and only this key on, `scripts/extpill.sh` still finds an opaque
+928x224 panel at the external display's top edge, centred, with nothing at a
+normal window level in front of it.
+
+It was captioned "Always show on external displays" and its info text described
+only the pinning half, so it read as a *modifier* of "Show on all displays"
+rather than as the feature. It is now "Show a pill on displays without a notch",
+and `hideNonNotchUntilHover` — which is the negation of "permanent" — sits
+directly beneath it and is `.disabled` when it is off, instead of forty lines
+further down under an unrelated heading. Adding a fourth near-duplicate toggle
+would have been the wrong fix; this file already records what two adjacent
+toggles that look the same cost.
+
+**The hover was broken in two ways, both the per-screen/global mistake in
+mirror image.** `ContentView` is instantiated once per screen, and:
+
+- `NotchHoverManager` published **one global `isHoveringExtendedArea: Bool`**
+  that every instance observed. The pointer is only ever over one display, so
+  with `extendHoverArea` on, hovering the band above the built-in called
+  `handleHover(true)` on the external display too — and opened both notches at
+  once. It now publishes `hoveredScreenNames: Set<String>` and each view asks
+  about **its own** screen.
+- The band was sized from `AppDelegate.shared.vm.closedNotchSize` — the
+  **singleton** view model, which in multi-window mode drives no window at all
+  and is sized for `NSScreen.main`. On the external display that made the band
+  the width of the built-in's 183pt physical notch instead of its own 135pt
+  pill. Each display now carries its own size, taken from its live view model.
+
+The geometry moved into `Managers/Input/NotchHoverGeometry.swift`, which is pure
+(Foundation + CoreGraphics only, no AppKit) so `run_externalpill_tests.sh`
+compiles the real file rather than a copy. Both bugs were re-introduced as
+negative controls and the harness went red for each — 4 failures for the global
+broadcast, 3 for the shared notch size.
+
+### Verifying a second display with no Screen Recording grant
+
+Screen capture is denied to the shell here, so `screencapture` and
+`CGWindowListCreateImage` are both dead ends. Three things do work, and they
+are what the probes use:
+
+- **`CGWindowListCopyWindowInfo` needs no grant.** It returns windows
+  front-to-back, so the count of non-Anchor windows *before* the pill in that
+  array answers "is something covering it" outright. `scripts/extpill.sh`
+  wraps this.
+- **Cocoa and CG y-axes are flipped and the external display is ABOVE the
+  built-in here.** Cocoa `(-1920,-59,1920,1080)` puts its top edge at y=1021
+  against the built-in's 956, which is CG y=**-65**. A probe that assumes CG
+  y=0 is the top of the world finds nothing. `screencapture -R` also refuses
+  negative origins.
+- **`AXIsProcessTrusted()` is true for the shell**, so Anchor's element tree is
+  readable and `CGEvent(mouseType: .mouseMoved).post(tap: .cghidEventTap)`
+  drives a real hover. **But AX window enumeration for these borderless
+  non-activating panels is unreliable** — the same app sampled seconds apart
+  returned the external panel, then omitted it while `CGWindowListCopyWindowInfo`
+  still listed it as onscreen. Use AX for *elements*, `CGWindowList` for
+  *existence*. `CGWarpMouseCursorPosition` is the wrong tool for hover: it moves
+  the cursor without generating an event, so no tracking area fires.
+
+**One unexplained observation, recorded rather than fixed.** After roughly three
+minutes of AX polling and failed `screencapture` calls, the external panel
+vanished from `CGWindowList` entirely and the built-in's went to 203x32 at
+window level 2147483628 — the signature of the *single*-window branch — while
+`alwaysShowOnExternalDisplays` still read 1 on disk. It did not reproduce: a
+clean relaunch followed by a scripted ten-step pointer sweep across both
+displays held both panels at 928x224 and 900x218, level 27, alpha 1.0
+throughout, and a five-minute idle watch sampling every 5 s never lost them.
+`extendHoverArea` also went from 1 to 0 with nothing writing it. Both smell like
+the app's cached `Defaults` losing a race with `defaults write`, but that is a
+guess and is written here as one. **If the pill disappears, check
+`shouldUseMultiWindow`'s two keys as the app sees them, not as the plist reads.**
 
 ### The tap goes stale two ways, and the monitor already knew about one
 

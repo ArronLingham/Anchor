@@ -9,7 +9,7 @@ Build under test: the installed signed Release at `/Applications/Anchor.app`.
 
 ---
 
-## Don't re-test these — 36 harnesses, 1484 assertions cover them
+## Don't re-test these — 37 harnesses, 1529 assertions cover them
 
 ```bash
 for t in tests/run_*_tests.sh; do "$t"; done   # excludes the two LIVE suites
@@ -402,7 +402,8 @@ Never run on two screens. `showOnAllDisplays` is on for your profile.
 per display. Do not eyeball this one: `CGWindowListCopyWindowInfo` answers it
 exactly, and returns front-to-back, so the number of non-Anchor windows *before*
 the pill is whether anything is covering it.
-**13.2** **"Always show on external displays"** — the pill must be visible on the
+**13.2** **"Show a pill on displays without a notch"** (was "Always show on
+external displays") — the pill must be visible on the
 external monitor. ✅ **Verified 2026-09-03**: 928x224 at (-1424,-65) on the
 EK271, `alpha 1.0`, `onscreen true`, level 27, with nothing at a normal window
 level in front of it. ⚠️ If it ever *is* missing, check you are **not
@@ -415,6 +416,35 @@ no crash.
 **13.5** Change resolution / arrangement. ⚠️ This exercises the `assumeIsolated`
 paths, which **trap rather than warn** if an assumption is wrong.
 **13.6** Vinyl widget and lock-screen widgets on the second display.
+
+**13.7** **The external pill is one setting, and it is self-sufficient.**
+Settings › General › Notch behaviour › **"Show a pill on displays without a
+notch"**. Turn *off* "Show on all displays" and leave this one on: the pill on
+the EK271 must stay. ✅ **Verified 2026-09-03** by measurement — with
+`showOnAllDisplays` written false, `scripts/extpill.sh` still finds the opaque
+928x224 panel, centred and uncovered. Search Settings for "external monitor",
+"second screen" or "permanent pill" — all three must reach this row.
+
+**13.8** **Hover opens only the display you are pointing at.** ⚠️ **This is the
+one thing here a human still has to look at** — Screen Recording is not granted
+to the shell, so no probe can see the notch expand. Turn **"Extend hover area"**
+on (Notch behaviour), then rest the pointer at the top centre of the EK271 for
+half a second. The notch must open **on the EK271 and not on the built-in**.
+Then do the same on the built-in: it must open there and not on the EK271.
+Before 2026-09-03 both opened together, because `NotchHoverManager` published
+one global flag that every per-screen `ContentView` observed.
+
+**13.9** **The hover target is the size of the pill you are actually pointing
+at.** With "Extend hover area" on, the band reaches ~20pt either side of the
+external pill (135pt wide here), *not* ~24pt either side of a built-in-sized
+183pt notch. Sweep the pointer inward from ~110pt left of centre: it should not
+open until you are close to the pill. Geometry is pinned by
+`tests/run_externalpill_tests.sh` (29 assertions); this checks it against the
+real pointer.
+
+**13.10** **"Hide until hovered on non-notch displays"** is directly beneath
+13.7's toggle and greys out when it is off. On: the external pill slides out of
+sight and comes back on hover. Off: it sits there permanently.
 
 ---
 

@@ -344,6 +344,11 @@ struct ContentView: View {
         vm.screen ?? coordinator.selectedScreen
     }
 
+    /// Whether the pointer is in the extended hover band above *this* screen's pill.
+    private var isHoveringExtendedAreaOnThisScreen: Bool {
+        NotchHoverManager.shared.isHoveringExtendedArea(on: currentScreenName)
+    }
+
     /// Whether the current screen lacks a physical notch.
     private var isNonNotchScreen: Bool {
         guard let screen = NSScreen.screens.first(where: { $0.localizedName == currentScreenName }) else {
@@ -536,10 +541,13 @@ struct ContentView: View {
                     .contentShape(resolvedClipShape)
                     .onHover { hovering in
                         isHoveringInsideNotch = hovering
-                        handleHover(hovering || NotchHoverManager.shared.isHoveringExtendedArea)
+                        handleHover(hovering || isHoveringExtendedAreaOnThisScreen)
                     }
-                    .onReceive(NotchHoverManager.shared.$isHoveringExtendedArea) { hoveringExtended in
-                        handleHover(isHoveringInsideNotch || hoveringExtended)
+                    // The set, not a global flag: this view exists once per
+                    // screen, so it must only react to the band above ITS OWN
+                    // display. A shared Bool opened every notch at once.
+                    .onReceive(NotchHoverManager.shared.$hoveredScreenNames) { hovered in
+                        handleHover(isHoveringInsideNotch || hovered.contains(currentScreenName))
                     }
                     .onTapGesture {
                         if handleClosedMusicWaveformTapIfNeeded() {

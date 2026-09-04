@@ -208,12 +208,19 @@ enum UISnapshotHarness {
     /// point is to catch a pane that renders empty or crashes, and whitespace at
     /// the bottom of a short pane costs nothing. A pane that outgrows this will
     /// be visibly cut off, which is itself the signal to raise it.
+    ///
+    /// 1200 -> 1800 -> 2400 -> 3200, each time because General grew. At 2400 its
+    /// last section ("Notch behavior") rendered as a header with nothing under
+    /// it, hard against the bottom edge — so the external-pill toggle that lives
+    /// there was outside every snapshot the sweep took. A cut-off pane looks
+    /// like a rendered one unless you check the bottom band, which is the whole
+    /// reason this note keeps getting a new number.
     @MainActor
     private static func settingsPanes(
         highlight: SettingsHighlightCoordinator,
         viewModel: AnchorViewModel
     ) -> [(name: String, size: CGSize, view: AnyView)] {
-        let size = CGSize(width: 720, height: 2400)
+        let size = CGSize(width: 720, height: 3200)
 
         func pane<V: View>(_ name: String, _ view: V) -> (String, CGSize, AnyView) {
             (name, size, AnyView(
@@ -234,7 +241,7 @@ enum UISnapshotHarness {
         //
         // Panes with fixed-width horizontal content get a second render here at
         // the real width, where overflow is visible.
-        let realWidth = CGSize(width: 490, height: 2400)
+        let realWidth = CGSize(width: 490, height: 3200)
         func narrowPane<V: View>(_ name: String, _ view: V) -> (String, CGSize, AnyView) {
             (name, realWidth, AnyView(
                 view
