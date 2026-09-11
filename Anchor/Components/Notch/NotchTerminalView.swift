@@ -181,9 +181,14 @@ struct NotchTerminalView: View {
                         .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(.secondary)
 
-                    Text("Enable it in Settings → Terminal")
-                        .font(.system(size: 10))
-                        .foregroundStyle(.tertiary)
+                    Button {
+                        SettingsWindowController.shared.showWindow(tab: .terminal)
+                    } label: {
+                        Text("Enable it in Settings → Terminal")
+                            .font(.system(size: 10))
+                            .foregroundStyle(.tertiary)
+                    }
+                    .buttonStyle(.plain)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }

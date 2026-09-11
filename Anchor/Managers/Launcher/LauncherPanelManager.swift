@@ -44,7 +44,7 @@ final class LauncherPanelManager: ObservableObject {
 
         previouslyActiveApp = NSWorkspace.shared.frontmostApplication
 
-        let hosting = NSHostingView(
+        let hosting = FirstMouseHostingView(
             rootView: LauncherView(
                 onLaunch: { [weak self] app in
                     AppIndex.shared.launch(app)
@@ -79,6 +79,7 @@ final class LauncherPanelManager: ObservableObject {
         // other windows forward, and focus is handed back explicitly on
         // dismiss.
         panel.makeKeyAndOrderFront(nil)
+        panel.makeFirstResponder(hosting)
         NSApp.activate(ignoringOtherApps: true)
     }
 

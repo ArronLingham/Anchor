@@ -56,11 +56,12 @@ struct ClaudeUsageSettings: View {
                 }
                 .settingsHighlight(id: highlightID("Watch for usage limits"))
 
-                Defaults.Toggle(key: .claudeUsageNotifyOnMac) {
-                    Text("Show in the notch")
+                if watchEnabled {
+                    Defaults.Toggle(key: .claudeUsageNotifyOnMac) {
+                        Text("Show in the notch")
+                    }
+                    .settingsHighlight(id: highlightID("Show in the notch"))
                 }
-                .disabled(!watchEnabled)
-                .settingsHighlight(id: highlightID("Show in the notch"))
             } header: {
                 Text("Claude Usage")
             } footer: {
@@ -71,60 +72,61 @@ struct ClaudeUsageSettings: View {
                 .font(.caption)
             }
 
-            Section {
-                // Secure, not plain: the topic is the only access control on the
-                // channel, so it should not be shoulder-surfable or captured by
-                // anything that renders this pane.
-                SecureField("ntfy topic", text: $topic, prompt: Text("e.g. anchor-a8f3c1d9"))
-                    .textFieldStyle(.roundedBorder)
-                    .disableAutocorrection(true)
-                    .settingsHighlight(id: highlightID("ntfy topic"))
-
-                HStack {
-                    Button("Save") { saveTopic() }
-                        .disabled(!topicLoaded)
-                    Button("Send test") { sendTest() }
-                        .disabled(trimmedTopic.isEmpty || testState == .sending)
-                    Spacer()
-                    statusLabel
-                }
-            } header: {
-                Text("Phone notification")
-            } footer: {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(
-                        "Install the ntfy app on your phone and subscribe to a topic, then enter the same topic here. When a limit is hit, Anchor schedules the notification with ntfy immediately so it still arrives at the reset time even if this Mac is asleep."
-                    )
-                    Text(
-                        "Anyone who knows the topic name can read it, so treat it as a password — use a long random one. It is stored in your Keychain, never in preferences. Only the reset time is sent; never your prompts, transcripts, or project names."
-                    )
-                }
-                .foregroundStyle(.secondary)
-                .font(.caption)
-            }
-
-            Section {
-                Defaults.Toggle(key: .claudeUsageAutoResume) {
-                    Text("Resume the halted session automatically")
-                }
-                .disabled(!watchEnabled)
-                .settingsHighlight(id: highlightID("Resume the halted session automatically"))
-
-                LabeledContent("Resume with") {
-                    TextField("", text: resumePromptBinding, prompt: Text("continue"))
+            if watchEnabled {
+                Section {
+                    // Secure, not plain: the topic is the only access control on the
+                    // channel, so it should not be shoulder-surfable or captured by
+                    // anything that renders this pane.
+                    SecureField("ntfy topic", text: $topic, prompt: Text("e.g. anchor-a8f3c1d9"))
                         .textFieldStyle(.roundedBorder)
-                        .frame(maxWidth: 220)
-                        .disabled(!autoResume || !watchEnabled)
+                        .disableAutocorrection(true)
+                        .settingsHighlight(id: highlightID("ntfy topic"))
+
+                    HStack {
+                        Button("Save") { saveTopic() }
+                            .disabled(!topicLoaded)
+                        Button("Send test") { sendTest() }
+                            .disabled(trimmedTopic.isEmpty || testState == .sending)
+                        Spacer()
+                        statusLabel
+                    }
+                } header: {
+                    Text("Phone notification")
+                } footer: {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(
+                            "Install the ntfy app on your phone and subscribe to a topic, then enter the same topic here. When a limit is hit, Anchor schedules the notification with ntfy immediately so it still arrives at the reset time even if this Mac is asleep."
+                        )
+                        Text(
+                            "Anyone who knows the topic name can read it, so treat it as a password — use a long random one. It is stored in your Keychain, never in preferences. Only the reset time is sent; never your prompts, transcripts, or project names."
+                        )
+                    }
+                    .foregroundStyle(.secondary)
+                    .font(.caption)
                 }
-                .settingsHighlight(id: highlightID("Resume with"))
-            } header: {
-                Text("Auto-resume")
-            } footer: {
-                Text(
-                    "Only the most recently halted session is resumed — restarting every queued session at once would exhaust the new window within minutes. A session that recovered on its own is left alone. If the task is still too big, it will stop again and resume on the next window."
-                )
-                .foregroundStyle(.secondary)
-                .font(.caption)
+
+                Section {
+                    Defaults.Toggle(key: .claudeUsageAutoResume) {
+                        Text("Resume the halted session automatically")
+                    }
+                    .settingsHighlight(id: highlightID("Resume the halted session automatically"))
+
+                    LabeledContent("Resume with") {
+                        TextField("", text: resumePromptBinding, prompt: Text("continue"))
+                            .textFieldStyle(.roundedBorder)
+                            .frame(maxWidth: 220)
+                            .disabled(!autoResume)
+                    }
+                    .settingsHighlight(id: highlightID("Resume with"))
+                } header: {
+                    Text("Auto-resume")
+                } footer: {
+                    Text(
+                        "Only the most recently halted session is resumed — restarting every queued session at once would exhaust the new window within minutes. A session that recovered on its own is left alone. If the task is still too big, it will stop again and resume on the next window."
+                    )
+                    .foregroundStyle(.secondary)
+                    .font(.caption)
+                }
             }
         }
         .onAppear(perform: loadTopic)

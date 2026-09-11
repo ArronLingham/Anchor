@@ -35,8 +35,16 @@ import Cocoa
 /// several slots further left, is 552.
 enum StatusItemDefaults {
     static subscript<Value>(key: Key<Value>, autosaveName: String) -> Value? {
-        get { UserDefaults.standard.object(forKey: key.stringKey(for: autosaveName)) as? Value }
-        set { UserDefaults.standard.set(newValue, forKey: key.stringKey(for: autosaveName)) }
+        get {
+            UserDefaults.standard.object(forKey: key.stringKey(for: autosaveName)) as? Value
+        }
+        set {
+            if let newValue {
+                UserDefaults.standard.set(newValue, forKey: key.stringKey(for: autosaveName))
+            } else {
+                UserDefaults.standard.removeObject(forKey: key.stringKey(for: autosaveName))
+            }
+        }
     }
 
     struct Key<Value> {
@@ -58,7 +66,9 @@ enum StatusItemDefaults {
         let autosaveName = item.autosaveName as String
         let cached = Self[.preferredPosition, autosaveName]
         NSStatusBar.system.removeStatusItem(item)
-        Self[.preferredPosition, autosaveName] = cached
+        if let cached {
+            Self[.preferredPosition, autosaveName] = cached
+        }
     }
 }
 

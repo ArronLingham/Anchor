@@ -44,6 +44,7 @@ struct LiveActivitiesSettings: View {
     @Default(.enableScreenRecordingDetection) var enableScreenRecordingDetection
     @Default(.enableDoNotDisturbDetection) var enableDoNotDisturbDetection
     @Default(.focusIndicatorNonPersistent) var focusIndicatorNonPersistent
+    @Default(.enableCapsLockIndicator) var enableCapsLockIndicator
     @Default(.capsLockIndicatorTintMode) var capsLockTintMode
 
     private func highlightID(_ title: String) -> String {
@@ -58,27 +59,28 @@ struct LiveActivitiesSettings: View {
                 }
                 .settingsHighlight(id: highlightID("Enable Screen Recording Detection"))
 
-                Defaults.Toggle(key: .showRecordingIndicator) {
-                    Text("Show Recording Indicator")
-                }
-                .disabled(!enableScreenRecordingDetection)
-                .settingsHighlight(id: highlightID("Show Recording Indicator"))
+                if enableScreenRecordingDetection {
+                    Defaults.Toggle(key: .showRecordingIndicator) {
+                        Text("Show Recording Indicator")
+                    }
+                    .settingsHighlight(id: highlightID("Show Recording Indicator"))
 
-                if recordingManager.isMonitoring {
-                    HStack {
-                        Text("Detection Status")
-                        Spacer()
-                        if recordingManager.isRecording {
-                            HStack(spacing: 4) {
-                                Circle()
-                                    .fill(Color.red)
-                                    .frame(width: 8, height: 8)
-                                Text("Recording Detected")
-                                    .foregroundColor(.red)
+                    if recordingManager.isMonitoring {
+                        HStack {
+                            Text("Detection Status")
+                            Spacer()
+                            if recordingManager.isRecording {
+                                HStack(spacing: 4) {
+                                    Circle()
+                                        .fill(Color.red)
+                                        .frame(width: 8, height: 8)
+                                    Text("Recording Detected")
+                                        .foregroundColor(.red)
+                                }
+                            } else {
+                                Text("Active - No Recording")
+                                    .foregroundColor(.green)
                             }
-                        } else {
-                            Text("Active - No Recording")
-                                .foregroundColor(.green)
                         }
                     }
                 }
@@ -129,49 +131,49 @@ struct LiveActivitiesSettings: View {
                 }
                 .settingsHighlight(id: highlightID("Enable Focus Detection"))
 
-                Defaults.Toggle(key: .showDoNotDisturbIndicator) {
-                    Text("Show Focus Indicator")
-                }
-                .disabled(!enableDoNotDisturbDetection)
-                .settingsHighlight(id: highlightID("Show Focus Indicator"))
-
-                Defaults.Toggle(key: .showDoNotDisturbLabel) {
-                    Text("Show Focus Label")
-                }
-                .disabled(!enableDoNotDisturbDetection || focusIndicatorNonPersistent)
-                .help(focusIndicatorNonPersistent ? "Labels are forced to compact on/off text while brief toast mode is enabled." : "Show the active Focus name inside the indicator.")
-                .settingsHighlight(id: highlightID("Show Focus Label"))
-
-                Defaults.Toggle(key: .focusIndicatorNonPersistent) {
-                    Text("Show Focus as brief toast")
-                }
-                .disabled(!enableDoNotDisturbDetection)
-                .settingsHighlight(id: highlightID("Show Focus as brief toast"))
-                .settingsInfo("When enabled, Focus appears briefly (on/off) and then collapses instead of staying visible.")
-
-                if doNotDisturbManager.isMonitoring {
-                    HStack {
-                        Text("Focus Status")
-                        Spacer()
-                        if doNotDisturbManager.isDoNotDisturbActive {
-                            HStack(spacing: 4) {
-                                Circle()
-                                    .fill(Color.purple)
-                                    .frame(width: 8, height: 8)
-                                Text(doNotDisturbManager.currentFocusModeName.isEmpty ? "Focus Enabled" : doNotDisturbManager.currentFocusModeName)
-                                    .foregroundColor(.purple)
-                            }
-                        } else {
-                            Text("Active - No Focus")
-                                .foregroundColor(.green)
-                        }
+                if enableDoNotDisturbDetection {
+                    Defaults.Toggle(key: .showDoNotDisturbIndicator) {
+                        Text("Show Focus Indicator")
                     }
-                } else {
-                    HStack {
-                        Text("Focus Status")
-                        Spacer()
-                        Text("Disabled")
-                            .foregroundColor(.secondary)
+                    .settingsHighlight(id: highlightID("Show Focus Indicator"))
+
+                    Defaults.Toggle(key: .showDoNotDisturbLabel) {
+                        Text("Show Focus Label")
+                    }
+                    .disabled(focusIndicatorNonPersistent)
+                    .help(focusIndicatorNonPersistent ? "Labels are forced to compact on/off text while brief toast mode is enabled." : "Show the active Focus name inside the indicator.")
+                    .settingsHighlight(id: highlightID("Show Focus Label"))
+
+                    Defaults.Toggle(key: .focusIndicatorNonPersistent) {
+                        Text("Show Focus as brief toast")
+                    }
+                    .settingsHighlight(id: highlightID("Show Focus as brief toast"))
+                    .settingsInfo("When enabled, Focus appears briefly (on/off) and then collapses instead of staying visible.")
+
+                    if doNotDisturbManager.isMonitoring {
+                        HStack {
+                            Text("Focus Status")
+                            Spacer()
+                            if doNotDisturbManager.isDoNotDisturbActive {
+                                HStack(spacing: 4) {
+                                    Circle()
+                                        .fill(Color.purple)
+                                        .frame(width: 8, height: 8)
+                                    Text(doNotDisturbManager.currentFocusModeName.isEmpty ? "Focus Enabled" : doNotDisturbManager.currentFocusModeName)
+                                        .foregroundColor(.purple)
+                                }
+                            } else {
+                                Text("Active - No Focus")
+                                    .foregroundColor(.green)
+                            }
+                        }
+                    } else {
+                        HStack {
+                            Text("Focus Status")
+                            Spacer()
+                            Text("Disabled")
+                                .foregroundColor(.secondary)
+                        }
                     }
                 }
             } header: {
@@ -186,20 +188,20 @@ struct LiveActivitiesSettings: View {
                 }
                 .settingsHighlight(id: highlightID("Show Caps Lock Indicator"))
 
-                Defaults.Toggle(key: .showCapsLockLabel) {
-                    Text("Show Caps Lock label")
-                }
-                .disabled(!Defaults[.enableCapsLockIndicator])
-                .settingsHighlight(id: highlightID("Show Caps Lock label"))
-
-                Picker("Caps Lock color", selection: $capsLockTintMode) {
-                    ForEach(CapsLockIndicatorTintMode.allCases) { mode in
-                        Text(mode.displayName).tag(mode)
+                if enableCapsLockIndicator {
+                    Defaults.Toggle(key: .showCapsLockLabel) {
+                        Text("Show Caps Lock label")
                     }
+                    .settingsHighlight(id: highlightID("Show Caps Lock label"))
+
+                    Picker("Caps Lock color", selection: $capsLockTintMode) {
+                        ForEach(CapsLockIndicatorTintMode.allCases) { mode in
+                            Text(mode.displayName).tag(mode)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .settingsHighlight(id: highlightID("Caps Lock color"))
                 }
-                .pickerStyle(.segmented)
-                .disabled(!Defaults[.enableCapsLockIndicator])
-                .settingsHighlight(id: highlightID("Caps Lock color"))
             } header: {
                 Text("Caps Lock Indicator")
             } footer: {

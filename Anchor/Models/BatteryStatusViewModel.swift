@@ -29,6 +29,7 @@ import SwiftUI
 
 enum BatteryTemporaryHUDKind: Equatable {
     case charging
+    case disconnected
     case lowBattery
     case fullBattery
 }
@@ -97,6 +98,8 @@ class BatteryStatusViewModel: ObservableObject {
             }
             if !wasPluggedIn && isPluggedIn {
                 presentTemporaryBatteryHUDIfNeeded(kind: .charging)
+            } else if wasPluggedIn && !isPluggedIn {
+                presentTemporaryBatteryHUDIfNeeded(kind: .disconnected)
             }
 
         case .batteryLevelChanged(let level):
@@ -170,7 +173,7 @@ class BatteryStatusViewModel: ObservableObject {
         let previewLevel: Int
 
         switch kind {
-        case .charging:
+        case .charging, .disconnected:
             previewLevel = max(12, min(95, Int(levelBattery.rounded())))
         case .lowBattery:
             previewLevel = max(5, min(20, Defaults[.lowBatteryHUDThreshold]))
@@ -201,6 +204,9 @@ class BatteryStatusViewModel: ObservableObject {
         case .charging:
             duration = Defaults[.chargingBatteryHUDDuration]
             isEnabled = Defaults[.showChargingBatteryHUD]
+        case .disconnected:
+            duration = Defaults[.disconnectedBatteryHUDDuration]
+            isEnabled = Defaults[.showDisconnectedBatteryHUD]
         case .lowBattery:
             duration = Defaults[.lowBatteryHUDDuration]
             isEnabled = Defaults[.showLowBatteryHUD]

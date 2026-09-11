@@ -36,7 +36,12 @@ struct NotchLyricsView: View {
     var body: some View {
         Group {
             if !enableLyrics {
-                message("Lyrics are off", detail: "Turn them on in Settings › Media.")
+                Button {
+                    SettingsWindowController.shared.showWindow(for: .lyrics)
+                } label: {
+                    message("Lyrics are off", detail: "Turn them on in Settings › Media.")
+                }
+                .buttonStyle(.plain)
             } else if !hasLyrics {
                 message(
                     musicManager.isPlayerIdle ? "Nothing playing" : "No lyrics found",

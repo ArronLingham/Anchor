@@ -128,7 +128,7 @@ struct ContentView: View {
             if let kind = batteryModel.activeTemporaryHUDKind {
                 let style: BatteryNotificationStyle = {
                     switch kind {
-                    case .charging: return .compact
+                    case .charging, .disconnected: return .compact
                     case .lowBattery: return Defaults[.lowBatteryHUDStyle]
                     case .fullBattery: return Defaults[.fullBatteryHUDStyle]
                     }
@@ -138,13 +138,13 @@ struct ContentView: View {
                 var height = vm.effectiveClosedNotchHeight
                 
                 switch (kind, style) {
-                case (.charging, _), (.lowBattery, .compact), (.fullBattery, .compact):
-                    width += 180
+                case (.charging, _), (.disconnected, _), (.lowBattery, .compact), (.fullBattery, .compact):
+                    width += 240 + notchHorizontalPadding * 2
                 case (.lowBattery, .standard):
-                    width += 100
+                    width += 160 + notchHorizontalPadding * 2
                     height += 75
                 case (.fullBattery, .standard):
-                    width += 80
+                    width += 160 + notchHorizontalPadding * 2
                     height += 70
                 }
                 
@@ -152,25 +152,22 @@ struct ContentView: View {
             }
         }
         
-        if coordinator.currentView == .timer {
-            return CGSize(width: baseSize.width, height: 250) // Extra height for timer presets
-        }
-        
-        if coordinator.currentView == .notes || coordinator.currentView == .clipboard {
-            let preferredHeight = coordinator.notesLayoutState.preferredHeight
-            let resolvedHeight = max(baseSize.height, preferredHeight)
-            return CGSize(width: baseSize.width, height: resolvedHeight)
+        if vm.notchState == .closed && eyeBreakManager.isResting && !vm.hideOnClosed {
+            return CGSize(
+                width: vm.closedNotchSize.width + 280 + notchHorizontalPadding * 2,
+                height: vm.effectiveClosedNotchHeight
+            )
         }
 
-        if coordinator.currentView == .terminal {
-            // Dynamic height: up to terminalMaxHeightFraction of screen, min 300pt
-            let screenHeight = NSScreen.main?.visibleFrame.height ?? 800
-            let maxFraction = Defaults[.terminalMaxHeightFraction]
-            let terminalHeight = min(screenHeight * maxFraction, max(300, screenHeight * maxFraction))
-            return CGSize(width: baseSize.width, height: terminalHeight)
+        if vm.notchState == .closed && systemAlertManager.visibleAlert != nil && !vm.hideOnClosed {
+            return CGSize(
+                width: vm.closedNotchSize.width + 260 + notchHorizontalPadding * 2,
+                height: vm.effectiveClosedNotchHeight
+            )
         }
 
-        return baseSize
+        let screen = NSScreen.screens.first(where: { $0.localizedName == currentScreenName }) ?? NSScreen.main
+        return tabSpecificNotchSize(for: coordinator.currentView, baseSize: baseSize, screen: screen)
     }
     
 
@@ -448,7 +445,7 @@ struct ContentView: View {
 
     private func resolvedBatteryNotificationStyle(for kind: BatteryTemporaryHUDKind) -> BatteryNotificationStyle {
         switch kind {
-        case .charging:
+        case .charging, .disconnected:
             return .compact
         case .lowBattery:
             return lowBatteryHUDStyle
@@ -523,6 +520,7 @@ struct ContentView: View {
                     .animation(hoverAnimation, value: isHovering)
                     .animation(activeNotchStateAnimation, value: vm.notchState)
                     .animation(.smooth, value: gestureProgress)
+                    .animation(.smooth(duration: 0.35), value: dynamicNotchSize)
                     .transition(.blurReplace.animation(.interactiveSpring(dampingFraction: 1.2)))
             }
             .conditionalModifier(useModernCloseAnimation) { view in
@@ -531,6 +529,7 @@ struct ContentView: View {
                     .animation(hoverAnimation, value: isHovering)
                     .animation(activeNotchStateAnimation, value: vm.notchState)
                     .animation(.smooth, value: gestureProgress)
+                    .animation(.smooth(duration: 0.35), value: dynamicNotchSize)
             }
             .conditionalModifier(interactionsEnabled) { view in
                 view
@@ -664,7 +663,7 @@ struct ContentView: View {
             .sensoryFeedback(.alignment, trigger: haptics)
             .contextMenu {
                 Button("Settings") {
-                    SettingsWindowController.shared.showWindow()
+                    SettingsWindowController.shared.showWindow(for: coordinator.currentView)
                 }
 //                Button("Edit") { // Doesnt work....
 //                    let dn = DynamicNotch(content: EditPanelView())
@@ -691,6 +690,7 @@ struct ContentView: View {
         // Without this the 24pt maxWidth change above lands in a single frame
         // while the notch is still animating shut.
         .animation(activeNotchStateAnimation, value: vm.notchState)
+        .animation(.smooth(duration: 0.35), value: dynamicNotchSize)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .environmentObject(privacyManager)
         .background(dragDetector)
@@ -861,6 +861,7 @@ struct ContentView: View {
                             baseHeight: vm.effectiveClosedNotchHeight + (isHovering ? 8 : 0),
                             isDynamicIslandMode: isDynamicIslandMode,
                             topCornerRadius: activeCornerRadiusInsets.closed.top,
+                            bottomCornerRadius: activeCornerRadiusInsets.closed.bottom,
                             styleOverride: batteryModel.activeTemporaryHUDKind.map { resolvedBatteryNotificationStyle(for: $0) }
                         )
                         .id(batteryModel.activeTemporaryHUDToken)

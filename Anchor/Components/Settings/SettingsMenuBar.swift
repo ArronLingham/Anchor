@@ -64,9 +64,10 @@ struct MenuBarSettings: View {
                 }
                 .settingsHighlight(id: highlightID("Shrink the menu bar"))
 
-                KeyboardShortcuts.Recorder("Show or hide:", name: .toggleMenuBarSection)
-                    .disabled(!enabled)
-                    .settingsHighlight(id: highlightID("Show or hide"))
+                if enabled {
+                    KeyboardShortcuts.Recorder("Show or hide:", name: .toggleMenuBarSection)
+                        .settingsHighlight(id: highlightID("Show or hide"))
+                }
             } footer: {
                 Text(
                     "Adds a chevron to the menu bar. Anything you ⌘-drag to the "
@@ -82,44 +83,43 @@ struct MenuBarSettings: View {
                 .foregroundStyle(.secondary)
             }
 
-            Section("Behaviour") {
-                Picker("Hide again after", selection: $autoHideSeconds) {
-                    Text("Never").tag(0)
-                    Text("5 seconds").tag(5)
-                    Text("10 seconds").tag(10)
-                    Text("30 seconds").tag(30)
-                    Text("1 minute").tag(60)
-                }
-                .disabled(!enabled)
-                .settingsHighlight(id: highlightID("Hide again after"))
-                .settingsInfo("A one-shot timer, armed only while the items are showing.")
+            if enabled {
+                Section("Behaviour") {
+                    Picker("Hide again after", selection: $autoHideSeconds) {
+                        Text("Never").tag(0)
+                        Text("5 seconds").tag(5)
+                        Text("10 seconds").tag(10)
+                        Text("30 seconds").tag(30)
+                        Text("1 minute").tag(60)
+                    }
+                    .settingsHighlight(id: highlightID("Hide again after"))
+                    .settingsInfo("A one-shot timer, armed only while the items are showing.")
 
-                Toggle("Expand on hover", isOn: $expandOnHover)
-                    .disabled(!enabled)
-                    .settingsHighlight(id: highlightID("Expand on hover"))
-                    .settingsInfo("Point at the chevron instead of clicking it. The chevron stays on screen either way.")
+                    Toggle("Expand on hover", isOn: $expandOnHover)
+                        .settingsHighlight(id: highlightID("Expand on hover"))
+                        .settingsInfo("Point at the chevron instead of clicking it. The chevron stays on screen either way.")
 
-                Toggle("Add an always-hidden section", isOn: $alwaysHidden)
-                    .disabled(!enabled)
-                    .settingsHighlight(id: highlightID("Add an always-hidden section"))
-                    .help(
-                        "A second divider. Anything dragged to the left of it stays "
-                        + "hidden even when the first section is showing — for items "
-                        + "you never want to see but cannot remove.")
-            }
+                    Toggle("Add an always-hidden section", isOn: $alwaysHidden)
+                        .settingsHighlight(id: highlightID("Add an always-hidden section"))
+                        .help(
+                            "A second divider. Anything dragged to the left of it stays "
+                            + "hidden even when the first section is showing — for items "
+                            + "you never want to see but cannot remove.")
+                }
 
-            Section("Now") {
-                LabeledContent("Divider") {
-                    Text(manager.isActive
-                         ? (manager.isCollapsed ? "Collapsed" : "Showing")
-                         : "Not installed")
-                    .foregroundStyle(.secondary)
+                Section("Now") {
+                    LabeledContent("Divider") {
+                        Text(manager.isActive
+                             ? (manager.isCollapsed ? "Collapsed" : "Showing")
+                             : "Not installed")
+                        .foregroundStyle(.secondary)
+                    }
+                    Button(manager.isCollapsed ? "Show Items" : "Hide Items") {
+                        manager.toggle()
+                    }
+                    .disabled(!manager.isActive)
+                    .settingsHighlight(id: highlightID("Show Items"))
                 }
-                Button(manager.isCollapsed ? "Show Items" : "Hide Items") {
-                    manager.toggle()
-                }
-                .disabled(!manager.isActive)
-                .settingsHighlight(id: highlightID("Show Items"))
             }
         }
     }

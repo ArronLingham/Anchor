@@ -449,9 +449,35 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         resizeWindows(to: requiredSize, animated: animateResize, force: false)
     }
 
+    private var tabSwitchResizeTask: Task<Void, Never>?
+
     private func updateWindowSizeForTabSwitch() {
         let requiredSize = calculateRequiredNotchSize()
-        resizeWindows(to: requiredSize, animated: false, force: true)
+        let currentWindowSize = windows.values.first?.frame.size ?? window?.frame.size ?? .zero
+        tabSwitchResizeTask?.cancel()
+
+        if requiredSize.width >= currentWindowSize.width && requiredSize.height >= currentWindowSize.height {
+            resizeWindows(to: requiredSize, animated: false, force: true)
+        } else if requiredSize.width > currentWindowSize.width || requiredSize.height > currentWindowSize.height {
+            // One dimension grew, one shrank: expand the smaller dimension immediately to avoid clipping, then shrink after animation
+            let expandedSize = CGSize(
+                width: max(requiredSize.width, currentWindowSize.width),
+                height: max(requiredSize.height, currentWindowSize.height)
+            )
+            resizeWindows(to: expandedSize, animated: false, force: true)
+            tabSwitchResizeTask = Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 350_000_000)
+                guard !Task.isCancelled else { return }
+                self.resizeWindows(to: requiredSize, animated: false, force: true)
+            }
+        } else {
+            // Shrinking: wait for SwiftUI 0.35s transition before shrinking the NSWindow frame
+            tabSwitchResizeTask = Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 350_000_000)
+                guard !Task.isCancelled else { return }
+                self.resizeWindows(to: requiredSize, animated: false, force: true)
+            }
+        }
     }
     
     private func calculateRequiredNotchSize() -> CGSize {
@@ -491,7 +517,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 
                 let style: BatteryNotificationStyle = {
                     switch kind {
-                    case .charging: return .compact
+                    case .charging, .disconnected: return .compact
                     case .lowBattery: return Defaults[.lowBatteryHUDStyle]
                     case .fullBattery: return Defaults[.fullBatteryHUDStyle]
                     }
@@ -499,15 +525,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 
                 var width = closedNotchWidth
                 var height = closedNotchHeight
+                let horizontalPadding = cornerRadiusInsets.closed.bottom * 2
                 
                 switch (kind, style) {
-                case (.charging, _), (.lowBattery, .compact), (.fullBattery, .compact):
-                    width += 180
+                case (.charging, _), (.disconnected, _), (.lowBattery, .compact), (.fullBattery, .compact):
+                    width += 240 + horizontalPadding
                 case (.lowBattery, .standard):
-                    width += 100
+                    width += 160 + horizontalPadding
                     height += 75
                 case (.fullBattery, .standard):
-                    width += 80
+                    width += 160 + horizontalPadding
                     height += 70
                 }
                 
@@ -515,23 +542,25 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
         
-        // Use minimalistic or normal size based on settings
-        var baseSize = Defaults[.enableMinimalisticUI] ? minimalisticOpenNotchSize(isDynamicIslandMode: shouldUseDynamicIslandMode(for: vm.screen)) : openNotchSize
-        
-        // Use a consistent height for different view types
-        if coordinator.currentView == .timer {
-            baseSize.height = 250 // Extra space for timer presets
-        } else if coordinator.currentView == .notes || coordinator.currentView == .clipboard {
-            let preferredHeight = coordinator.notesLayoutState.preferredHeight
-            baseSize.height = max(baseSize.height, preferredHeight)
-        } else if coordinator.currentView == .terminal {
-            let screenHeight = NSScreen.main?.visibleFrame.height ?? 800
-            let maxFraction = Defaults[.terminalMaxHeightFraction]
-            baseSize.height = min(screenHeight * maxFraction, max(300, screenHeight * maxFraction))
+        if vm.notchState == .closed && EyeBreakManager.shared.isResting && !vm.hideOnClosed {
+            let horizontalPadding = cornerRadiusInsets.closed.bottom * 2
+            let width = vm.closedNotchSize.width + 280 + horizontalPadding
+            return addShadowPadding(to: CGSize(width: width, height: vm.effectiveClosedNotchHeight), isMinimalistic: Defaults[.enableMinimalisticUI])
+        }
+
+        if vm.notchState == .closed && SystemAlertManager.shared.visibleAlert != nil && !vm.hideOnClosed {
+            let horizontalPadding = cornerRadiusInsets.closed.bottom * 2
+            let width = vm.closedNotchSize.width + 260 + horizontalPadding
+            return addShadowPadding(to: CGSize(width: width, height: vm.effectiveClosedNotchHeight), isMinimalistic: Defaults[.enableMinimalisticUI])
         }
         
+        // Use minimalistic or normal size based on settings
+        let baseSize = Defaults[.enableMinimalisticUI] ? minimalisticOpenNotchSize(isDynamicIslandMode: shouldUseDynamicIslandMode(for: vm.screen)) : openNotchSize
+        let screenObj = NSScreen.screens.first { $0.localizedName == vm.screen } ?? NSScreen.main
+        let sized = tabSpecificNotchSize(for: coordinator.currentView, baseSize: baseSize, screen: screenObj)
+        
         let result = addShadowPadding(
-            to: baseSize,
+            to: sized,
             isMinimalistic: Defaults[.enableMinimalisticUI]
         )
 
@@ -733,6 +762,34 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         coordinator.$notesLayoutState
             .removeDuplicates()
+            .sink { [weak self] _ in
+                self?.updateWindowSizeIfNeeded()
+            }
+            .store(in: &cancellables)
+
+        coordinator.$expandingView
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                self?.updateWindowSizeIfNeeded()
+            }
+            .store(in: &cancellables)
+
+        BatteryStatusViewModel.shared.$activeTemporaryHUDKind
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                self?.updateWindowSizeIfNeeded()
+            }
+            .store(in: &cancellables)
+
+        SystemAlertManager.shared.$visibleAlert
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                self?.updateWindowSizeIfNeeded()
+            }
+            .store(in: &cancellables)
+
+        EyeBreakManager.shared.$phase
+            .receive(on: RunLoop.main)
             .sink { [weak self] _ in
                 self?.updateWindowSizeIfNeeded()
             }

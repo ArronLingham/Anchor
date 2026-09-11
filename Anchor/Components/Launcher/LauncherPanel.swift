@@ -35,17 +35,9 @@ final class LauncherPanel: NSPanel {
             defer: false
         )
 
-        // Wrap the content view in a visual effect view to get a native blur background
-        let effectView = NSVisualEffectView(frame: frame)
-        effectView.material = .hudWindow
-        effectView.blendingMode = .behindWindow
-        effectView.state = .active
-        
-        contentView.frame = frame
+        contentView.frame = NSRect(origin: .zero, size: frame.size)
         contentView.autoresizingMask = [.width, .height]
-        effectView.addSubview(contentView)
-        
-        self.contentView = effectView
+        self.contentView = contentView
 
         isOpaque = false
         backgroundColor = .clear
@@ -73,6 +65,7 @@ final class LauncherPanel: NSPanel {
         let screen = NSScreen.screens.first { $0.frame.contains(NSEvent.mouseLocation) } ?? NSScreen.main
         guard let screenFrame = screen?.frame else { return }
         setFrame(screenFrame, display: true)
+        contentView?.frame = NSRect(origin: .zero, size: screenFrame.size)
         
         // Add a slight fade-in effect when positioning (which usually happens on show)
         self.alphaValue = 0

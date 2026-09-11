@@ -395,6 +395,7 @@ private struct BatteryTemporaryHUDMetrics {
     let height: CGFloat
     let topRadius: CGFloat
     let bottomRadius: CGFloat
+    let wingWidth: CGFloat
 }
 
 private extension BatteryTemporaryHUDKind {
@@ -405,74 +406,102 @@ private extension BatteryTemporaryHUDKind {
     ) -> BatteryTemporaryHUDMetrics {
         let compactBaseRadius = max(baseHeight / 2, 16)
         let compactTopRadius = max(12, compactBaseRadius - 4)
+        let compactWingWidth: CGFloat = 120
 
         switch (self, style) {
-        case (.charging, _), (.lowBattery, .compact), (.fullBattery, .compact):
+        case (.charging, _), (.disconnected, _), (.lowBattery, .compact), (.fullBattery, .compact):
             return BatteryTemporaryHUDMetrics(
-                width: closedNotchWidth + 180,
+                width: closedNotchWidth + compactWingWidth * 2,
                 height: baseHeight,
                 topRadius: compactTopRadius,
-                bottomRadius: compactBaseRadius
+                bottomRadius: compactBaseRadius,
+                wingWidth: compactWingWidth
             )
         case (.lowBattery, .standard):
             return BatteryTemporaryHUDMetrics(
-                width: closedNotchWidth + 150,
+                width: closedNotchWidth + 160,
                 height: baseHeight + 75,
                 topRadius: 22,
-                bottomRadius: 40
+                bottomRadius: 40,
+                wingWidth: 80
             )
         case (.fullBattery, .standard):
             return BatteryTemporaryHUDMetrics(
-                width: closedNotchWidth + 140,
+                width: closedNotchWidth + 160,
                 height: baseHeight + 70,
                 topRadius: 18,
-                bottomRadius: 36
+                bottomRadius: 36,
+                wingWidth: 80
             )
         }
     }
 }
 
 private struct BatteryCompactStatusRow: View {
+    let kind: BatteryTemporaryHUDKind
     let title: String
     let batteryLevel: Int
+    let isLowPowerMode: Bool
     let tint: Color
+    let closedNotchWidth: CGFloat
+    let wingWidth: CGFloat
+    let baseHeight: CGFloat
+
+    private var statusIcon: String {
+        switch kind {
+        case .charging:
+            return "bolt.fill"
+        case .disconnected:
+            return "bolt.slash.fill"
+        case .lowBattery:
+            return isLowPowerMode ? "bolt.circle.fill" : "battery.25"
+        case .fullBattery:
+            return "battery.100"
+        }
+    }
 
     var body: some View {
-        HStack {
-            Text(verbatim: title)
-                .font(.system(size: 14))
-                .foregroundColor(.white.opacity(0.8))
+        HStack(spacing: 0) {
+            // Left wing: Status icon + title, kept clear of the notch
+            HStack(spacing: 6) {
+                Image(systemName: statusIcon)
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(tint)
 
-            Spacer()
+                Text(verbatim: title)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundColor(.white.opacity(0.9))
+                    .lineLimit(1)
+            }
+            .padding(.leading, 14)
+            .frame(width: wingWidth, height: baseHeight, alignment: .leading)
 
+            // Center: Black spacer matching the hardware notch width
+            Rectangle()
+                .fill(Color.black)
+                .frame(width: closedNotchWidth, height: baseHeight)
+
+            // Right wing: Battery percentage + visual battery indicator
             HStack(spacing: 6) {
                 Text("\(batteryLevel)%")
-                    .font(.system(size: 14))
+                    .font(.system(size: 13, weight: .semibold, design: .rounded))
                     .foregroundColor(tint)
+                    .lineLimit(1)
 
-                HStack(spacing: 1.5) {
-                    ZStack(alignment: .leading) {
-                        RoundedRectangle(cornerRadius: 6, style: .continuous)
-                            .fill(tint.opacity(0.3))
-
-                        GeometryReader { geo in
-                            let clamped = max(0, min(batteryLevel, 100))
-                            let width = CGFloat(clamped) / 100 * geo.size.width
-                            Rectangle()
-                                .fill(tint.gradient)
-                                .frame(width: max(0, width))
-                        }
-                    }
-                    .frame(width: 28, height: 16)
-                    .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
-
-                    RoundedRectangle(cornerRadius: 1.5, style: .continuous)
-                        .fill(batteryLevel == 100 ? tint.gradient : tint.opacity(0.3).gradient)
-                        .frame(width: 2, height: 6)
-                }
+                MinimalisticBatteryView(
+                    levelBattery: Float(batteryLevel),
+                    isPluggedIn: kind == .charging,
+                    isCharging: kind == .charging,
+                    isInLowPowerMode: isLowPowerMode,
+                    bodyWidth: 28,
+                    bodyHeight: 15,
+                    isForNotification: true,
+                    showPercentInside: false
+                )
             }
+            .padding(.trailing, 14)
+            .frame(width: wingWidth, height: baseHeight, alignment: .trailing)
         }
-        .padding(.horizontal, 16)
     }
 }
 
@@ -484,6 +513,7 @@ struct BatteryTemporaryActivityView: View {
     let baseHeight: CGFloat
     let isDynamicIslandMode: Bool
     let topCornerRadius: CGFloat
+    var bottomCornerRadius: CGFloat? = nil
     @Default(.lowBatteryHUDStyle) var lowBatteryHUDStyle
     @Default(.fullBatteryHUDStyle) var fullBatteryHUDStyle
     var styleOverride: BatteryNotificationStyle? = nil
@@ -493,14 +523,14 @@ struct BatteryTemporaryActivityView: View {
     @State private var changeBatteryIndicator = true
 
     private var style: BatteryNotificationStyle {
-        if kind == .charging {
+        if kind == .charging || kind == .disconnected {
             return .compact
         }
         if let styleOverride {
             return styleOverride
         }
         switch kind {
-        case .charging:
+        case .charging, .disconnected:
             return .compact
         case .lowBattery:
             return lowBatteryHUDStyle
@@ -526,6 +556,13 @@ struct BatteryTemporaryActivityView: View {
                 return .red
             }
             return .green
+        case .disconnected:
+            if isLowPowerMode {
+                return .yellow
+            } else if batteryLevel <= 20 {
+                return .red
+            }
+            return .white
         case .lowBattery:
             return isLowPowerMode ? .yellow : .red
         case .fullBattery:
@@ -538,7 +575,7 @@ struct BatteryTemporaryActivityView: View {
         if isDynamicIslandMode {
             return AnyShape(AnchorPillShape(cornerRadius: dynamicIslandPillCornerRadiusInsets.opened))
         } else {
-            return AnyShape(NotchShape(topCornerRadius: topCornerRadius, bottomCornerRadius: metrics.bottomRadius))
+            return AnyShape(NotchShape(topCornerRadius: topCornerRadius, bottomCornerRadius: bottomCornerRadius ?? metrics.bottomRadius))
         }
     }
 
@@ -555,9 +592,14 @@ struct BatteryTemporaryActivityView: View {
     private var content: some View {
         if style == .compact {
             BatteryCompactStatusRow(
+                kind: kind,
                 title: compactTitle,
                 batteryLevel: batteryLevel,
-                tint: batteryTint
+                isLowPowerMode: isLowPowerMode,
+                tint: batteryTint,
+                closedNotchWidth: closedNotchWidth,
+                wingWidth: metrics.wingWidth,
+                baseHeight: baseHeight
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
         } else {
@@ -585,6 +627,8 @@ struct BatteryTemporaryActivityView: View {
         switch kind {
         case .charging:
             return "Charging"
+        case .disconnected:
+            return "Disconnected"
         case .lowBattery:
             return "Low Battery"
         case .fullBattery:
@@ -609,7 +653,7 @@ struct BatteryTemporaryActivityView: View {
     @ViewBuilder
     private var standardDescription: some View {
         switch kind {
-        case .charging:
+        case .charging, .disconnected:
             EmptyView()
         case .lowBattery:
             if isLowPowerMode {
@@ -640,7 +684,7 @@ struct BatteryTemporaryActivityView: View {
     @ViewBuilder
     private var standardIndicator: some View {
         switch kind {
-        case .charging:
+        case .charging, .disconnected:
             EmptyView()
         case .lowBattery:
             if isLowPowerMode {
@@ -798,7 +842,7 @@ struct BatteryTemporaryActivityView: View {
         guard style == .standard else { return }
 
         switch kind {
-        case .charging:
+        case .charging, .disconnected:
             break
         case .lowBattery:
             if !isLowPowerMode {

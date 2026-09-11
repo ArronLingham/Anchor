@@ -26,40 +26,56 @@ import SwiftUI
 /// manager never has to push a value a view might not be watching — the same
 /// reason MusicManager's elapsed time is read rather than observed.
 struct EyeBreakLiveActivity: View {
+    @EnvironmentObject var vm: AnchorViewModel
     @ObservedObject private var manager = EyeBreakManager.shared
+
+    private let wingWidth: CGFloat = 140
 
     var body: some View {
         if case .resting(let until) = manager.phase {
-            HStack(spacing: 8) {
-                Image(systemName: "eye")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(.green)
+            HStack(spacing: 0) {
+                // Leading wing: eye icon + instruction
+                HStack(spacing: 6) {
+                    Image(systemName: "eye")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(.green)
 
-                Text("Look 20 feet away")
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(.white)
-                    .lineLimit(1)
-
-                Spacer(minLength: 4)
-
-                TimelineView(.periodic(from: .now, by: 1)) { _ in
-                    Text("\(max(0, Int(until.timeIntervalSinceNow.rounded(.up))))s")
-                        .font(.system(size: 12, weight: .semibold))
-                        .monospacedDigit()
-                        .foregroundStyle(.white.opacity(0.85))
+                    Text("Look 20 feet away")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(.white)
+                        .lineLimit(1)
                 }
+                .padding(.leading, 12)
+                .frame(width: wingWidth, height: vm.effectiveClosedNotchHeight, alignment: .leading)
 
-                Button {
-                    manager.skipRest()
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 12))
-                        .foregroundStyle(.white.opacity(0.5))
+                // Center spacer: keeps content clear of the hardware notch cutout
+                Rectangle()
+                    .fill(Color.black)
+                    .frame(width: vm.closedNotchSize.width, height: vm.effectiveClosedNotchHeight)
+
+                // Trailing wing: countdown + skip button
+                HStack(spacing: 8) {
+                    TimelineView(.periodic(from: .now, by: 1)) { _ in
+                        Text("\(max(0, Int(until.timeIntervalSinceNow.rounded(.up))))s")
+                            .font(.system(size: 12, weight: .semibold))
+                            .monospacedDigit()
+                            .foregroundStyle(.white.opacity(0.85))
+                    }
+
+                    Button {
+                        manager.skipRest()
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 12))
+                            .foregroundStyle(.white.opacity(0.5))
+                    }
+                    .buttonStyle(.plain)
+                    .help("Skip this break")
                 }
-                .buttonStyle(.plain)
-                .help("Skip this break")
+                .padding(.trailing, 12)
+                .frame(width: wingWidth, height: vm.effectiveClosedNotchHeight, alignment: .trailing)
             }
-            .padding(.horizontal, 4)
+            .frame(height: vm.effectiveClosedNotchHeight)
         }
     }
 }

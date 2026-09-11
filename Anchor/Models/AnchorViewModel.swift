@@ -260,6 +260,27 @@ class AnchorViewModel: NSObject, ObservableObject {
                 }
             }
             .store(in: &cancellables)
+
+        coordinator.$currentView
+            .removeDuplicates()
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                guard let self else { return }
+                guard self.notchState == .open else { return }
+                let updatedTarget = self.calculateDynamicNotchSize()
+                guard self.notchSize != updatedTarget else { return }
+                withAnimation(.smooth) {
+                    self.notchSize = updatedTarget
+                }
+                if let delegate = AppDelegate.shared {
+                    delegate.ensureWindowSize(
+                        addShadowPadding(to: updatedTarget, isMinimalistic: Defaults[.enableMinimalisticUI]),
+                        animated: true,
+                        force: false
+                    )
+                }
+            }
+            .store(in: &cancellables)
     }
 
     private func handleMinimalisticTimerHeightChange() {
@@ -357,15 +378,8 @@ class AnchorViewModel: NSObject, ObservableObject {
     
     private func calculateDynamicNotchSize() -> CGSize {
         let baseSize = Defaults[.enableMinimalisticUI] ? minimalisticOpenNotchSize(isDynamicIslandMode: shouldUseDynamicIslandMode(for: screen)) : openNotchSize
-        var adjustedSize = baseSize
-
-        if coordinator.currentView == .notes || coordinator.currentView == .clipboard {
-            let preferred = coordinator.notesLayoutState.preferredHeight
-            adjustedSize.height = max(adjustedSize.height, preferred)
-            return adjustedSize
-        }
-
-        return adjustedSize
+        let screenObj = NSScreen.screens.first { $0.localizedName == screen } ?? NSScreen.main
+        return tabSpecificNotchSize(for: coordinator.currentView, baseSize: baseSize, screen: screenObj)
     }
 
     /// Closes the notch.

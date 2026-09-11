@@ -35,7 +35,12 @@ struct NotchNotificationsView: View {
                 list
             }
         case .needsPermission:
-            message("Needs Full Disk Access. Grant it in Settings → Live Activities.")
+            Button {
+                SettingsWindowController.shared.showWindow(for: .notifications)
+            } label: {
+                message("Needs Full Disk Access. Grant it in Settings → Live Activities.")
+            }
+            .buttonStyle(.plain)
         case .off:
             message("Notification mirroring is off.")
         }

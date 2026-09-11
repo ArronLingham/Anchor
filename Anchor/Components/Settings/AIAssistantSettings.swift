@@ -11,6 +11,7 @@ struct AIAssistantSettings: View {
     @ObservedObject private var manager = AIAssistantManager.shared
     @State private var keyDraft = ""
     @State private var saveResult: String?
+    @Default(.enableAIAssistant) private var enableAIAssistant
     @Default(.aiHistoryTurns) private var aiHistoryTurns
     @Default(.aiProvider) private var aiProvider
     @Default(.aiModel) private var aiModel
@@ -38,7 +39,8 @@ struct AIAssistantSettings: View {
                 Text("Assistant")
             }
 
-            Section {
+            if enableAIAssistant {
+                Section {
                 Picker("Provider", selection: $aiProvider) {
                     ForEach(AIProvider.allCases, id: \.self) { p in
                         Text(p.rawValue).tag(p)
@@ -150,6 +152,7 @@ struct AIAssistantSettings: View {
                 Button("Clear conversation") { manager.clearConversation() }
             } header: {
                 Text("Behaviour")
+            }
             }
         }
         .formStyle(.grouped)

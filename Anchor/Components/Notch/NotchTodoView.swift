@@ -32,6 +32,10 @@ struct NotchTodoView: View {
     @FocusState private var draftFocused: Bool
 
     @State private var undoMonitor: Any?
+    @State private var completingIDs: Set<UUID> = []
+    @State private var completionTasks: [UUID: Task<Void, Never>] = [:]
+    @State private var showUndoBar: Bool = false
+    @State private var undoBarDismissTask: Task<Void, Never>?
 
     var body: some View {
         VStack(spacing: 6) {
@@ -43,7 +47,7 @@ struct NotchTodoView: View {
                 list
             }
 
-            if todo.lastCompletion != nil {
+            if showUndoBar, todo.lastCompletion != nil {
                 undoBar
             }
         }
@@ -64,7 +68,13 @@ struct NotchTodoView: View {
                 .font(.system(size: 10))
                 .lineLimit(1)
             Spacer(minLength: 4)
-            Button("Undo") { todo.undoLastCompletion() }
+            Button("Undo") {
+                undoBarDismissTask?.cancel()
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    showUndoBar = false
+                }
+                todo.undoLastCompletion()
+            }
                 .buttonStyle(.plain)
                 .font(.system(size: 10, weight: .semibold))
         }
@@ -75,6 +85,59 @@ struct NotchTodoView: View {
             RoundedRectangle(cornerRadius: 7, style: .continuous)
                 .fill(.white.opacity(0.06)))
         .transition(.opacity.combined(with: .move(edge: .bottom)))
+    }
+
+    private func isItemCompleted(_ item: TodoItem) -> Bool {
+        item.isDone || completingIDs.contains(item.id)
+    }
+
+    private func handleItemToggle(_ item: TodoItem) {
+        if completingIDs.contains(item.id) {
+            completionTasks[item.id]?.cancel()
+            completionTasks.removeValue(forKey: item.id)
+            withAnimation(.easeInOut(duration: 0.15)) {
+                completingIDs.remove(item.id)
+            }
+            return
+        }
+
+        if item.isDone {
+            todo.complete(item)
+            return
+        }
+
+        withAnimation(.easeInOut(duration: 0.15)) {
+            completingIDs.insert(item.id)
+        }
+
+        let task = Task {
+            try? await Task.sleep(nanoseconds: 1_200_000_000)
+            guard !Task.isCancelled else { return }
+            await MainActor.run {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    completingIDs.remove(item.id)
+                    todo.complete(item)
+                    triggerUndoBar()
+                }
+            }
+        }
+        completionTasks[item.id] = task
+    }
+
+    private func triggerUndoBar() {
+        undoBarDismissTask?.cancel()
+        withAnimation(.easeInOut(duration: 0.2)) {
+            showUndoBar = true
+        }
+        undoBarDismissTask = Task {
+            try? await Task.sleep(nanoseconds: 4_000_000_000)
+            guard !Task.isCancelled else { return }
+            await MainActor.run {
+                withAnimation(.easeInOut(duration: 0.25)) {
+                    showUndoBar = false
+                }
+            }
+        }
     }
 
     /// ⌘Z while the tab is on screen.
@@ -91,7 +154,23 @@ struct NotchTodoView: View {
             else { return event }
 
             return MainActor.assumeIsolated {
-                todo.undoLastCompletion() ? nil : event
+                if let lastPendingID = completingIDs.first {
+                    completionTasks[lastPendingID]?.cancel()
+                    completionTasks.removeValue(forKey: lastPendingID)
+                    withAnimation(.easeInOut(duration: 0.15)) {
+                        completingIDs.remove(lastPendingID)
+                    }
+                    return nil
+                }
+
+                if todo.undoLastCompletion() {
+                    undoBarDismissTask?.cancel()
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        showUndoBar = false
+                    }
+                    return nil
+                }
+                return event
             }
         }
     }
@@ -99,6 +178,14 @@ struct NotchTodoView: View {
     private func removeUndoMonitor() {
         if let undoMonitor { NSEvent.removeMonitor(undoMonitor) }
         undoMonitor = nil
+        for (id, task) in completionTasks {
+            task.cancel()
+            if let item = todo.items.first(where: { $0.id == id }) {
+                todo.complete(item)
+            }
+        }
+        completionTasks.removeAll()
+        completingIDs.removeAll()
     }
 
     // MARK: - Entry
@@ -179,16 +266,17 @@ struct NotchTodoView: View {
 
     @ViewBuilder
     private func row(_ item: TodoItem) -> some View {
-        HStack(spacing: 8) {
+        let done = isItemCompleted(item)
+        return HStack(spacing: 8) {
             Button {
-                todo.complete(item)
+                handleItemToggle(item)
             } label: {
-                Image(systemName: item.isDone ? "checkmark.circle.fill" : "circle")
+                Image(systemName: done ? "checkmark.circle.fill" : "circle")
                     .font(.system(size: 13))
-                    .foregroundStyle(item.isDone ? .green : .white.opacity(0.45))
+                    .foregroundStyle(done ? .green : .white.opacity(0.45))
             }
             .buttonStyle(.plain)
-            .help(item.isDone ? "Mark as not done" : "Mark as done")
+            .help(done ? "Mark as not done" : "Mark as done")
 
             if editingID == item.id {
                 TextField("", text: $editingText)
@@ -203,8 +291,8 @@ struct NotchTodoView: View {
             } else {
                 Text(item.title)
                     .font(.system(size: 12))
-                    .strikethrough(item.isDone, color: .white.opacity(0.35))
-                    .foregroundStyle(item.isDone ? .white.opacity(0.35) : .white.opacity(0.9))
+                    .strikethrough(done, color: .white.opacity(0.35))
+                    .foregroundStyle(done ? .white.opacity(0.35) : .white.opacity(0.9))
                     .lineLimit(1)
                     .onTapGesture(count: 2) {
                         editingText = item.title
@@ -214,7 +302,7 @@ struct NotchTodoView: View {
 
             Spacer(minLength: 4)
 
-            if let due = item.dueDate, !item.isDone {
+            if let due = item.dueDate, !done {
                 Text(dueLabel(due))
                     .font(.system(size: 9, weight: .medium))
                     .foregroundStyle(item.isOverdue ? .red : .white.opacity(0.45))

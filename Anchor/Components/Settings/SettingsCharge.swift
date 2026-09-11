@@ -38,9 +38,11 @@ struct Charge: View {
     @Default(.enableBatteryHistory) private var enableBatteryHistory
     @Default(.showPowerStatusNotifications) private var showPowerStatusNotifications
     @Default(.showChargingBatteryHUD) private var showChargingBatteryHUD
+    @Default(.showDisconnectedBatteryHUD) private var showDisconnectedBatteryHUD
     @Default(.showLowBatteryHUD) private var showLowBatteryHUD
     @Default(.showFullBatteryHUD) private var showFullBatteryHUD
     @Default(.chargingBatteryHUDDuration) private var chargingBatteryHUDDuration
+    @Default(.disconnectedBatteryHUDDuration) private var disconnectedBatteryHUDDuration
     @Default(.lowBatteryHUDDuration) private var lowBatteryHUDDuration
     @Default(.fullBatteryHUDDuration) private var fullBatteryHUDDuration
     @Default(.lowBatteryHUDThreshold) private var lowBatteryHUDThreshold
@@ -56,6 +58,13 @@ struct Charge: View {
         Binding(
             get: { Double(chargingBatteryHUDDuration) },
             set: { chargingBatteryHUDDuration = Int($0.rounded()) }
+        )
+    }
+
+    private var disconnectedDurationBinding: Binding<Double> {
+        Binding(
+            get: { Double(disconnectedBatteryHUDDuration) },
+            set: { disconnectedBatteryHUDDuration = Int($0.rounded()) }
         )
     }
 
@@ -152,6 +161,11 @@ struct Charge: View {
                     }
                     .settingsHighlight(id: highlightID("Charging HUD"))
 
+                    Defaults.Toggle(key: .showDisconnectedBatteryHUD) {
+                        Text("Disconnected HUD")
+                    }
+                    .settingsHighlight(id: highlightID("Disconnected HUD"))
+
                     Defaults.Toggle(key: .showLowBatteryHUD) {
                         Text("Low battery HUD")
                     }
@@ -164,7 +178,7 @@ struct Charge: View {
                 } header: {
                     Text("Battery HUDs")
                 } footer: {
-                    Text("These temporary HUDs recreate the charging, low-battery, and full-battery notch alerts.")
+                    Text("These temporary HUDs recreate the charging, disconnected, low-battery, and full-battery notch alerts.")
                 }
                 Section {
                     VStack(alignment: .leading, spacing: 8) {
@@ -179,6 +193,19 @@ struct Charge: View {
                     .settingsHighlight(id: highlightID("Charging duration"))
                     .disabled(!showPowerStatusNotifications || !showChargingBatteryHUD)
                     .opacity(sectionOpacity(showPowerStatusNotifications && showChargingBatteryHUD))
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Text("Disconnected duration")
+                            Spacer()
+                            Text("\(disconnectedBatteryHUDDuration)s")
+                                .foregroundStyle(.secondary)
+                        }
+                        Slider(value: disconnectedDurationBinding, in: 1...10, step: 1)
+                    }
+                    .settingsHighlight(id: highlightID("Disconnected duration"))
+                    .disabled(!showPowerStatusNotifications || !showDisconnectedBatteryHUD)
+                    .opacity(sectionOpacity(showPowerStatusNotifications && showDisconnectedBatteryHUD))
 
                     VStack(alignment: .leading, spacing: 8) {
                         HStack {
@@ -215,6 +242,13 @@ struct Charge: View {
                         Label("Test charging HUD", systemImage: "bolt.fill")
                     }
                     .disabled(!showPowerStatusNotifications || !showChargingBatteryHUD)
+
+                    Button {
+                        batteryStatusViewModel.triggerTestHUD(kind: .disconnected)
+                    } label: {
+                        Label("Test disconnected HUD", systemImage: "bolt.slash.fill")
+                    }
+                    .disabled(!showPowerStatusNotifications || !showDisconnectedBatteryHUD)
 
                     Button {
                         batteryStatusViewModel.triggerTestHUD(kind: .lowBattery)

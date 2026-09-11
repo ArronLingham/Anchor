@@ -170,7 +170,7 @@ struct AnchorHeader: View {
 
                     if Defaults[.settingsIconInNotch] {
                         Button(action: {
-                            SettingsWindowController.shared.showWindow()
+                            SettingsWindowController.shared.showWindow(for: coordinator.currentView)
                         }) {
                             Capsule()
                                 .fill(.black)

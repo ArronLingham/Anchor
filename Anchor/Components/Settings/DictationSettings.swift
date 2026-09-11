@@ -44,9 +44,10 @@ struct DictationSettings: View {
                 }
                 .settingsHighlight(id: highlightID("Enable Dictation"))
 
-                KeyboardShortcuts.Recorder("Push-to-talk:", name: .pushToTalkDictation)
-                    .disabled(!enableDictation)
-                    .settingsHighlight(id: highlightID("Push-to-talk"))
+                if enableDictation {
+                    KeyboardShortcuts.Recorder("Push-to-talk:", name: .pushToTalkDictation)
+                        .settingsHighlight(id: highlightID("Push-to-talk"))
+                }
             } header: {
                 Text("Dictation")
             } footer: {
@@ -57,68 +58,66 @@ struct DictationSettings: View {
                 .font(.caption)
             }
 
-            Section {
-                permissionRow(
-                    title: "Microphone",
-                    granted: micStatus == .authorized,
-                    detail: micStatus == .denied
-                        ? "Denied — enable it in System Settings"
-                        : "Needed to record your voice",
-                    settingsPane: "Privacy_Microphone"
-                )
+            if enableDictation {
+                Section {
+                    permissionRow(
+                        title: "Microphone",
+                        granted: micStatus == .authorized,
+                        detail: micStatus == .denied
+                            ? "Denied — enable it in System Settings"
+                            : "Needed to record your voice",
+                        settingsPane: "Privacy_Microphone"
+                    )
 
-                permissionRow(
-                    title: "Accessibility",
-                    granted: accessibilityTrusted,
-                    detail: accessibilityTrusted
-                        ? "Allows the transcript to be typed for you"
-                        : "Without this the transcript is only copied, never pasted",
-                    settingsPane: "Privacy_Accessibility"
-                )
-            } header: {
-                Text("Permissions")
-            }
-
-            Section {
-                Defaults.Toggle(key: .dictationAutoPaste) {
-                    Text("Paste into the focused app")
+                    permissionRow(
+                        title: "Accessibility",
+                        granted: accessibilityTrusted,
+                        detail: accessibilityTrusted
+                            ? "Allows the transcript to be typed for you"
+                            : "Without this the transcript is only copied, never pasted",
+                        settingsPane: "Privacy_Accessibility"
+                    )
+                } header: {
+                    Text("Permissions")
                 }
-                .disabled(!enableDictation)
-                .settingsHighlight(id: highlightID("Paste into the focused app"))
 
-                if !autoPaste {
-                    Text("The transcript will be copied to the clipboard instead.")
-                        .font(.caption)
+                Section {
+                    Defaults.Toggle(key: .dictationAutoPaste) {
+                        Text("Paste into the focused app")
+                    }
+                    .settingsHighlight(id: highlightID("Paste into the focused app"))
+
+                    if !autoPaste {
+                        Text("The transcript will be copied to the clipboard instead.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    Defaults.Toggle(key: .dictationTidyWhitespace) {
+                        Text("Tidy spacing")
+                    }
+                    .settingsHighlight(id: highlightID("Tidy spacing"))
+
+                    Defaults.Toggle(key: .dictationFeedbackSound) {
+                        Text("Play a sound when finished")
+                    }
+                    .settingsHighlight(id: highlightID("Play a sound when finished"))
+                } header: {
+                    Text("Output")
+                }
+
+                Section {
+                    Defaults.Toggle(key: .showDictationLiveActivity) {
+                        Text("Show in the notch while dictating")
+                    }
+                    .settingsHighlight(id: highlightID("Show in the notch while dictating"))
+                } header: {
+                    Text("Appearance")
+                } footer: {
+                    Text("Shows a level meter and the live transcript as you speak.")
                         .foregroundStyle(.secondary)
+                        .font(.caption)
                 }
-
-                Defaults.Toggle(key: .dictationTidyWhitespace) {
-                    Text("Tidy spacing")
-                }
-                .disabled(!enableDictation)
-                .settingsHighlight(id: highlightID("Tidy spacing"))
-
-                Defaults.Toggle(key: .dictationFeedbackSound) {
-                    Text("Play a sound when finished")
-                }
-                .disabled(!enableDictation)
-                .settingsHighlight(id: highlightID("Play a sound when finished"))
-            } header: {
-                Text("Output")
-            }
-
-            Section {
-                Defaults.Toggle(key: .showDictationLiveActivity) {
-                    Text("Show in the notch while dictating")
-                }
-                .disabled(!enableDictation)
-                .settingsHighlight(id: highlightID("Show in the notch while dictating"))
-            } header: {
-                Text("Appearance")
-            } footer: {
-                Text("Shows a level meter and the live transcript as you speak.")
-                    .foregroundStyle(.secondary)
-                    .font(.caption)
             }
         }
         .onReceive(

@@ -50,40 +50,40 @@ struct TodoSettings: View {
                 .foregroundStyle(.secondary)
             }
 
-            Section("List") {
-                Picker("Sort by", selection: $sortOrder) {
-                    ForEach(TodoSortOrder.allCases, id: \.self) { order in
-                        Text(order.label).tag(order)
+            if enableTodoFeature {
+                Section("List") {
+                    Picker("Sort by", selection: $sortOrder) {
+                        ForEach(TodoSortOrder.allCases, id: \.self) { order in
+                            Text(order.label).tag(order)
+                        }
                     }
-                }
-                .disabled(!enableTodoFeature)
-                .settingsHighlight(id: highlightID("Sort by"))
-                .settingsInfo("Manual keeps whatever order you drag things into.")
+                    .settingsHighlight(id: highlightID("Sort by"))
+                    .settingsInfo("Manual keeps whatever order you drag things into.")
 
-                Toggle("Show completed items", isOn: $showCompleted)
-                    .disabled(!enableTodoFeature)
-                    .settingsHighlight(id: highlightID("Show completed items"))
-                    .settingsInfo("Off hides ticked items instead of showing them below a divider.")
-            }
-
-            Section("Stored") {
-                LabeledContent("Open") { Text("\(todo.openCount)") }
-                LabeledContent("Completed") { Text("\(todo.doneItems.count)") }
-                if todo.overdueCount > 0 {
-                    LabeledContent("Overdue") {
-                        Text("\(todo.overdueCount)").foregroundStyle(.red)
-                    }
+                    Toggle("Show completed items", isOn: $showCompleted)
+                        .settingsHighlight(id: highlightID("Show completed items"))
+                        .settingsInfo("Off hides ticked items instead of showing them below a divider.")
                 }
 
-                HStack {
-                    Button("Clear Completed") { todo.clearCompleted() }
-                        .disabled(todo.doneItems.isEmpty)
-                    Button("Delete All…", role: .destructive) {
-                        showingClearConfirmation = true
+                Section("Stored") {
+                    LabeledContent("Open") { Text("\(todo.openCount)") }
+                    LabeledContent("Completed") { Text("\(todo.doneItems.count)") }
+                    if todo.overdueCount > 0 {
+                        LabeledContent("Overdue") {
+                            Text("\(todo.overdueCount)").foregroundStyle(.red)
+                        }
                     }
-                    .disabled(todo.items.isEmpty)
+
+                    HStack {
+                        Button("Clear Completed") { todo.clearCompleted() }
+                            .disabled(todo.doneItems.isEmpty)
+                        Button("Delete All…", role: .destructive) {
+                            showingClearConfirmation = true
+                        }
+                        .disabled(todo.items.isEmpty)
+                    }
+                    .settingsHighlight(id: highlightID("Clear Completed"))
                 }
-                .settingsHighlight(id: highlightID("Clear Completed"))
             }
         }
         .confirmationDialog(

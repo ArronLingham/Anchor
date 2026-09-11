@@ -32,40 +32,54 @@ import SwiftUI
 /// the closed-notch chain. Nothing ticks — an alert is static text until the
 /// manager clears it.
 struct SystemAlertLiveActivity: View {
+    @EnvironmentObject var vm: AnchorViewModel
     @ObservedObject private var manager = SystemAlertManager.shared
+
+    private let wingWidth: CGFloat = 130
 
     var body: some View {
         if let alert = manager.visibleAlert {
-            HStack(spacing: 8) {
-                Image(systemName: alert.icon)
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(alert.tint)
+            HStack(spacing: 0) {
+                // Leading wing: icon + alert title
+                HStack(spacing: 6) {
+                    Image(systemName: alert.icon)
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(alert.tint)
 
-                VStack(alignment: .leading, spacing: 0) {
                     Text(alert.title)
                         .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(.white)
                         .lineLimit(1)
+                }
+                .padding(.leading, 12)
+                .frame(width: wingWidth, height: vm.effectiveClosedNotchHeight, alignment: .leading)
+
+                // Center spacer: keeps content clear of the hardware notch cutout
+                Rectangle()
+                    .fill(Color.black)
+                    .frame(width: vm.closedNotchSize.width, height: vm.effectiveClosedNotchHeight)
+
+                // Trailing wing: detail + dismiss button
+                HStack(spacing: 6) {
                     Text(alert.detail)
-                        .font(.system(size: 10))
-                        .foregroundStyle(.white.opacity(0.7))
+                        .font(.system(size: 11))
+                        .foregroundStyle(.white.opacity(0.75))
                         .lineLimit(1)
-                }
 
-                Spacer(minLength: 4)
-
-                Button {
-                    manager.dismissVisibleAlert()
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 12))
-                        .foregroundStyle(.white.opacity(0.5))
+                    Button {
+                        manager.dismissVisibleAlert()
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 12))
+                            .foregroundStyle(.white.opacity(0.5))
+                    }
+                    .buttonStyle(.plain)
+                    .help("Dismiss")
                 }
-                .buttonStyle(.plain)
-                .help("Dismiss")
+                .padding(.trailing, 12)
+                .frame(width: wingWidth, height: vm.effectiveClosedNotchHeight, alignment: .trailing)
             }
-            .padding(.horizontal, 10)
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(height: vm.effectiveClosedNotchHeight)
         }
     }
 }

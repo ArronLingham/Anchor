@@ -34,6 +34,7 @@ import UniformTypeIdentifiers
 // Richard Kunkli on 07/08/2024. Behaviour unchanged.
 
 struct Downloads: View {
+    @Default(.enableDownloadListener) private var enableDownloadListener
     @Default(.selectedDownloadIndicatorStyle) var selectedDownloadIndicatorStyle
     @Default(.selectedDownloadIconStyle) var selectedDownloadIconStyle
 
@@ -48,39 +49,41 @@ struct Downloads: View {
                     Text("Enable download detection")
                 }
                 .settingsHighlight(id: highlightID("Enable download detection"))
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("Download indicator style")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(.white)
 
-                    HStack(spacing: 16) {
-                        DownloadStyleButton(
-                            style: .progress,
-                            isSelected: selectedDownloadIndicatorStyle == .progress,
-                            disabled: !Defaults[.enableDownloadListener]
-                        ) {
-                            selectedDownloadIndicatorStyle = .progress
-                        }
+                if enableDownloadListener {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Download indicator style")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(.white)
 
-                        DownloadStyleButton(
-                            style: .circle,
-                            isSelected: selectedDownloadIndicatorStyle == .circle,
-                            disabled: !Defaults[.enableDownloadListener]
-                        ) {
-                            selectedDownloadIndicatorStyle = .circle
+                        HStack(spacing: 16) {
+                            DownloadStyleButton(
+                                style: .progress,
+                                isSelected: selectedDownloadIndicatorStyle == .progress,
+                                disabled: false
+                            ) {
+                                selectedDownloadIndicatorStyle = .progress
+                            }
+
+                            DownloadStyleButton(
+                                style: .circle,
+                                isSelected: selectedDownloadIndicatorStyle == .circle,
+                                disabled: false
+                            ) {
+                                selectedDownloadIndicatorStyle = .circle
+                            }
                         }
                     }
-                }
-                .settingsHighlight(id: highlightID("Download indicator style"))
+                    .settingsHighlight(id: highlightID("Download indicator style"))
 
-                Picker("Icon", selection: $selectedDownloadIconStyle) {
-                    ForEach(DownloadIconStyle.allCases, id: \.self) { style in
-                        Text(style.rawValue).tag(style)
+                    Picker("Icon", selection: $selectedDownloadIconStyle) {
+                        ForEach(DownloadIconStyle.allCases, id: \.self) { style in
+                            Text(style.rawValue).tag(style)
+                        }
                     }
+                    .settingsHighlight(id: highlightID("Icon"))
+                    .settingsInfo("The app icon is the icon of the file being downloaded — this watches the Downloads folder and cannot tell which app started a download.")
                 }
-                .disabled(!Defaults[.enableDownloadListener])
-                .settingsHighlight(id: highlightID("Icon"))
-                .settingsInfo("The app icon is the icon of the file being downloaded — this watches the Downloads folder and cannot tell which app started a download.")
             } header: {
                 Text("Download Detection")
             } footer: {

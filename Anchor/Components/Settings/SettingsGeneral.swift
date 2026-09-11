@@ -105,17 +105,19 @@ struct GeneralSettings: View {
                 }
                 .settingsHighlight(id: highlightID("Enable Minimalistic UI"))
 
-                Defaults.Toggle(key: .showMinimalisticBatteryIndicator) {
-                    Text("Show battery indicator")
-                }
-                .disabled(!enableMinimalisticUI)
-                .settingsHighlight(id: highlightID("Show battery indicator in Minimalistic UI"))
+                if enableMinimalisticUI {
+                    Defaults.Toggle(key: .showMinimalisticBatteryIndicator) {
+                        Text("Show battery indicator")
+                    }
+                    .settingsHighlight(id: highlightID("Show battery indicator in Minimalistic UI"))
 
-                Defaults.Toggle(key: .showBatteryPercentInside) {
-                    Text("Show battery percentage inside icon")
+                    if Defaults[.showMinimalisticBatteryIndicator] {
+                        Defaults.Toggle(key: .showBatteryPercentInside) {
+                            Text("Show battery percentage inside icon")
+                        }
+                        .settingsHighlight(id: highlightID("Show battery percentage inside icon"))
+                    }
                 }
-                .disabled(!enableMinimalisticUI || !Defaults[.showMinimalisticBatteryIndicator])
-                .settingsHighlight(id: highlightID("Show battery percentage inside icon"))
             } header: {
                 Text("UI Mode")
             } footer: {
@@ -347,23 +349,23 @@ struct GeneralSettings: View {
                 .settingsHighlight(id: highlightID("Eye break reminders"))
                 .settingsInfo("The 20-20-20 rule: every twenty minutes, look twenty feet away for twenty seconds. Reminders pause while the display sleeps or the Mac is locked, and the interval restarts when you come back — time away from the screen is not screen time.")
 
-                Stepper(value: $eyeBreakWorkMinutes, in: 5...60, step: 5) {
-                    HStack {
-                        Text("Break every")
-                        Spacer()
-                        Text("\(eyeBreakWorkMinutes) min").foregroundStyle(.secondary).monospacedDigit()
+                if eyeBreakEnabled {
+                    Stepper(value: $eyeBreakWorkMinutes, in: 5...60, step: 5) {
+                        HStack {
+                            Text("Break every")
+                            Spacer()
+                            Text("\(eyeBreakWorkMinutes) min").foregroundStyle(.secondary).monospacedDigit()
+                        }
                     }
-                }
-                .disabled(!eyeBreakEnabled)
 
-                Stepper(value: $eyeBreakRestSeconds, in: 10...60, step: 5) {
-                    HStack {
-                        Text("Look away for")
-                        Spacer()
-                        Text("\(eyeBreakRestSeconds)s").foregroundStyle(.secondary).monospacedDigit()
+                    Stepper(value: $eyeBreakRestSeconds, in: 10...60, step: 5) {
+                        HStack {
+                            Text("Look away for")
+                            Spacer()
+                            Text("\(eyeBreakRestSeconds)s").foregroundStyle(.secondary).monospacedDigit()
+                        }
                     }
                 }
-                .disabled(!eyeBreakEnabled)
             } header: {
                 Text("Eye break")
             }

@@ -319,9 +319,8 @@ private struct SettingsForm<Content: View>: View {
 }
 
 struct SettingsView: View {
-    @State private var selectedTab: SettingsTab = .general
+    @ObservedObject private var navigation = SettingsNavigationState.shared
     @State private var searchText: String = ""
-    @StateObject private var highlightCoordinator = SettingsHighlightCoordinator()
     @Default(.enableMinimalisticUI) var enableMinimalisticUI
 
     let updaterController: SPUStandardUpdaterController?
@@ -361,7 +360,7 @@ struct SettingsView: View {
                                 //
                                 // Only the selected tab expands: showing all 97
                                 // at once would bury the tabs themselves.
-                                if tab == selectedTab {
+                                if tab == navigation.selectedTab {
                                     ForEach(SettingsSectionIndex.sections(for: tab)) { entry in
                                         sectionRow(entry, in: tab)
                                     }
@@ -389,14 +388,19 @@ struct SettingsView: View {
         .navigationSplitViewStyle(.balanced)
         .toolbar(removing: .sidebarToggle)
         .toolbar { toolbarSpacingShim }
-        .environmentObject(highlightCoordinator)
+        .environmentObject(navigation.highlightCoordinator)
         .formStyle(.grouped)
         .frame(width: 700)
         .onChange(of: searchText) { _, newValue in
             let matches = tabsMatchingSearch(newValue)
             guard let firstMatch = matches.first else { return }
             if !matches.contains(resolvedSelection) {
-                selectedTab = firstMatch
+                navigation.selectedTab = firstMatch
+            }
+        }
+        .onChange(of: navigation.selectedTab) { _, _ in
+            if !searchText.isEmpty {
+                searchText = ""
             }
         }
         .background {
@@ -422,7 +426,7 @@ struct SettingsView: View {
     }
 
     private var resolvedSelection: SettingsTab {
-        availableTabs.contains(selectedTab) ? selectedTab : (availableTabs.first ?? .general)
+        availableTabs.contains(navigation.selectedTab) ? navigation.selectedTab : (availableTabs.first ?? .general)
     }
 
     @ToolbarContentBuilder
@@ -455,7 +459,7 @@ struct SettingsView: View {
         Binding(
             get: { resolvedSelection },
             set: { newValue in
-                selectedTab = newValue
+                navigation.selectedTab = newValue
             }
         )
     }
@@ -494,7 +498,7 @@ struct SettingsView: View {
     @ViewBuilder
     private func sectionRow(_ entry: SettingsSectionIndex.Section, in tab: SettingsTab) -> some View {
         Button {
-            highlightCoordinator.focus(onHighlightID: entry.anchor, in: tab)
+            navigation.highlightCoordinator.focus(onHighlightID: entry.anchor, in: tab)
         } label: {
             HStack(spacing: 8) {
                 Rectangle()
@@ -633,8 +637,8 @@ struct SettingsView: View {
 
     private func handleSearchSuggestionSelection(_ suggestion: SettingsSearchEntry) {
         guard suggestion.tab != .downloads else { return }
-        highlightCoordinator.focus(on: suggestion)
-        selectedTab = suggestion.tab
+        navigation.highlightCoordinator.focus(on: suggestion)
+        navigation.selectedTab = suggestion.tab
     }
 
     private struct SettingsSidebarSearchBar: View {
@@ -851,12 +855,15 @@ struct SettingsView: View {
             SettingsSearchEntry(tab: .battery, title: "Show power status icons", keywords: ["power icons", "charging icon"], highlightID: SettingsTab.battery.highlightID(for: "Show power status icons")),
             SettingsSearchEntry(tab: .battery, title: "Play low battery alert sound", keywords: ["low battery", "alert", "sound"], highlightID: SettingsTab.battery.highlightID(for: "Play low battery alert sound")),
             SettingsSearchEntry(tab: .battery, title: "Charging HUD", keywords: ["battery", "charging", "temporary activity"], highlightID: SettingsTab.battery.highlightID(for: "Charging HUD")),
+            SettingsSearchEntry(tab: .battery, title: "Disconnected HUD", keywords: ["battery", "disconnected", "unplugged", "temporary activity"], highlightID: SettingsTab.battery.highlightID(for: "Disconnected HUD")),
             SettingsSearchEntry(tab: .battery, title: "Low battery HUD", keywords: ["battery", "low", "temporary activity"], highlightID: SettingsTab.battery.highlightID(for: "Low battery HUD")),
             SettingsSearchEntry(tab: .battery, title: "Fully charged HUD", keywords: ["battery", "full", "temporary activity"], highlightID: SettingsTab.battery.highlightID(for: "Fully charged HUD")),
             SettingsSearchEntry(tab: .battery, title: "Charging duration", keywords: ["charging", "duration", "seconds"], highlightID: SettingsTab.battery.highlightID(for: "Charging duration")),
+            SettingsSearchEntry(tab: .battery, title: "Disconnected duration", keywords: ["disconnected", "unplugged", "duration", "seconds"], highlightID: SettingsTab.battery.highlightID(for: "Disconnected duration")),
             SettingsSearchEntry(tab: .battery, title: "Low battery duration", keywords: ["low battery", "duration", "seconds"], highlightID: SettingsTab.battery.highlightID(for: "Low battery duration")),
             SettingsSearchEntry(tab: .battery, title: "Full battery duration", keywords: ["full battery", "duration", "seconds"], highlightID: SettingsTab.battery.highlightID(for: "Full battery duration")),
             SettingsSearchEntry(tab: .battery, title: "Test charging HUD", keywords: ["battery", "test", "charging", "preview"], highlightID: nil),
+            SettingsSearchEntry(tab: .battery, title: "Test disconnected HUD", keywords: ["battery", "test", "disconnected", "unplugged", "preview"], highlightID: nil),
             SettingsSearchEntry(tab: .battery, title: "Test low battery HUD", keywords: ["battery", "test", "low", "preview"], highlightID: nil),
             SettingsSearchEntry(tab: .battery, title: "Test full battery HUD", keywords: ["battery", "test", "full", "preview"], highlightID: nil),
             SettingsSearchEntry(tab: .battery, title: "Low battery style", keywords: ["battery", "style", "compact", "standard"], highlightID: SettingsTab.battery.highlightID(for: "Low battery style")),

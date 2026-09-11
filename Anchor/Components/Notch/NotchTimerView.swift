@@ -106,13 +106,18 @@ struct NotchTimerView: View {
     private var presetColumn: some View {
         VStack(spacing: 6) {
             if timerPresets.isEmpty {
-                Text("Configure presets in Settings to see them here.")
-                    .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(14)
-                    .background(Color.white.opacity(0.05))
-                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                Button {
+                    SettingsWindowController.shared.showWindow(tab: .timer)
+                } label: {
+                    Text("Configure presets in Settings to see them here.")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(14)
+                        .background(Color.white.opacity(0.05))
+                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                }
+                .buttonStyle(.plain)
             } else {
                 let computedHeight = CGFloat(timerPresets.count) * 60 + 4
                 let listHeight = min(max(0, maxTabContentHeight - 16), computedHeight)
@@ -357,10 +362,15 @@ struct NotchTimerView: View {
                 .font(.title2)
                 .fontWeight(.medium)
 
-            Text("Enable the timer feature in Settings to access this tab.")
-                .font(.body)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
+            Button {
+                SettingsWindowController.shared.showWindow(tab: .timer)
+            } label: {
+                Text("Enable the timer feature in Settings to access this tab.")
+                    .font(.body)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+            }
+            .buttonStyle(.plain)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }

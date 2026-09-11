@@ -160,6 +160,7 @@ struct LauncherView: View {
                 .onTapGesture { onDismiss() }
             }
         }
+        .defaultFocus($queryFocused, true)
         .onAppear {
             restoreRecalledQuery()
             index.refreshIfNeeded()
@@ -170,6 +171,7 @@ struct LauncherView: View {
                 AppleShortcutsManager.shared.loadIfNeeded()
             }
             recompute()
+            queryFocused = true
             DispatchQueue.main.async {
                 queryFocused = true
             }
@@ -184,6 +186,9 @@ struct LauncherView: View {
         // becoming key never pulls focus into the search field.
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { note in
             guard note.object is LauncherPanel else { return }
+            queryFocused = true
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             queryFocused = true
         }
         .onDisappear { rememberQuery() }
@@ -224,6 +229,10 @@ struct LauncherView: View {
         .frame(maxWidth: 680)
         .frame(height: 62)
         .padding(.horizontal, 24)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            queryFocused = true
+        }
     }
 
     /// In the grid, ↑/↓ move a whole row; in the list they move one item.

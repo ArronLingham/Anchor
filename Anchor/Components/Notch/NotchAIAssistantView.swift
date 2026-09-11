@@ -36,7 +36,7 @@ struct NotchAIAssistantView: View {
                 .font(.caption)
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)
-            Button("Open Settings") { SettingsWindowController.shared.showWindow() }
+            Button("Open Settings") { SettingsWindowController.shared.showWindow(tab: .gemini) }
                 .buttonStyle(.link)
                 .font(.caption)
         }

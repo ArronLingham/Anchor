@@ -22,8 +22,62 @@
  */
 
 import AppKit
+import Defaults
 import SwiftUI
 import Sparkle
+
+@MainActor
+final class SettingsNavigationState: ObservableObject {
+    static let shared = SettingsNavigationState()
+
+    @Published var selectedTab: SettingsTab = .general
+    let highlightCoordinator = SettingsHighlightCoordinator()
+
+    private init() {}
+
+    func select(tab: SettingsTab, highlightID: String? = nil) {
+        selectedTab = tab
+        if let highlightID {
+            highlightCoordinator.focus(onHighlightID: highlightID, in: tab)
+        }
+    }
+
+    func select(for notchView: NotchViews) {
+        let target = notchView.settingsTarget
+        select(tab: target.tab, highlightID: target.highlightID)
+    }
+}
+
+extension NotchViews {
+    var settingsTarget: (tab: SettingsTab, highlightID: String?) {
+        switch self {
+        case .home:
+            return (.general, nil)
+        case .timer:
+            return (.timer, nil)
+        case .notes:
+            return Defaults[.enableNotes] ? (.notes, nil) : (.clipboard, nil)
+        case .clipboard:
+            return (.clipboard, nil)
+        case .terminal:
+            return (.terminal, nil)
+        case .lyrics:
+            return (.media, SettingsTab.media.highlightID(for: "Enable lyrics"))
+        case .shelf:
+            return (.general, SettingsTab.general.highlightID(for: "File shelf"))
+        case .stats:
+            return (.general, SettingsTab.general.highlightID(for: "System stats"))
+        case .notifications:
+            return (.liveActivities, nil)
+        case .todo:
+            return (.todo, nil)
+        case .cameraMirror:
+            return (.media, SettingsTab.media.highlightID(for: "Camera mirror"))
+        case .gemini:
+            return (.gemini, nil)
+        }
+    }
+}
 
 class SettingsWindowController: NSWindowController {
     static let shared = SettingsWindowController()
@@ -84,7 +138,28 @@ class SettingsWindowController: NSWindowController {
         ScreenCaptureVisibilityManager.shared.register(window, scope: .panelsOnly)
     }
     
+    func showWindow(tab: SettingsTab? = nil, highlightID: String? = nil) {
+        if let tab {
+            SettingsNavigationState.shared.select(tab: tab, highlightID: highlightID)
+        }
+        presentWindow()
+    }
+
+    func showWindow(for notchView: NotchViews) {
+        SettingsNavigationState.shared.select(for: notchView)
+        presentWindow()
+    }
+
     func showWindow() {
+        let currentTab = AnchorViewCoordinator.shared.currentView
+        if currentTab != .home {
+            showWindow(for: currentTab)
+            return
+        }
+        presentWindow()
+    }
+
+    private func presentWindow() {
         // Ensure window exists
         _ = window
 

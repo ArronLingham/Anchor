@@ -53,125 +53,124 @@ struct GitCommitSettings: View {
                 .foregroundStyle(.secondary)
             }
 
-            Section("Repositories") {
-                if repos.isEmpty {
-                    Text("No repositories chosen. Nothing will happen.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                } else {
-                    ForEach(repos, id: \.self) { path in
-                        HStack(spacing: 8) {
-                            Image(systemName: "folder")
+            if enabled {
+                Section("Repositories") {
+                    if repos.isEmpty {
+                        Text("No repositories chosen. Nothing will happen.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        ForEach(repos, id: \.self) { path in
+                            HStack(spacing: 8) {
+                                Image(systemName: "folder")
+                                    .foregroundStyle(.secondary)
+                                VStack(alignment: .leading, spacing: 1) {
+                                    Text((path as NSString).lastPathComponent)
+                                    Text(abbreviated(path))
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                                Button {
+                                    repos.removeAll { $0 == path }
+                                } label: {
+                                    Image(systemName: "minus.circle.fill")
+                                        .foregroundStyle(.secondary)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                    }
+
+                    Button("Add Repository…") { addRepo() }
+                        .settingsHighlight(id: highlightID("Add Repository…"))
+                }
+
+                GitCommitScheduleSection(highlightID: highlightID)
+
+                Section("When") {
+                    DatePicker(
+                        "Time of day",
+                        selection: Binding(
+                            get: { timeOfDay },
+                            set: { newValue in
+                                let parts = Calendar.current.dateComponents(
+                                    [.hour, .minute], from: newValue)
+                                hour = parts.hour ?? 21
+                                minute = parts.minute ?? 7
+                            }),
+                        displayedComponents: .hourAndMinute)
+                    .disabled(randomTime)
+                    .settingsHighlight(id: highlightID("Time of day"))
+                    .help(randomTime
+                          ? "Ignored while \"Commit at a random time\" is on — the window above decides."
+                          : "The commit fires at this time each day.")
+
+                    if let next = manager.nextRunAt {
+                        LabeledContent("Next") {
+                            Text(next.formatted(date: .abbreviated, time: .shortened))
                                 .foregroundStyle(.secondary)
-                            VStack(alignment: .leading, spacing: 1) {
-                                Text((path as NSString).lastPathComponent)
-                                Text(abbreviated(path))
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                            Spacer()
-                            Button {
-                                repos.removeAll { $0 == path }
-                            } label: {
-                                Image(systemName: "minus.circle.fill")
-                                    .foregroundStyle(.secondary)
-                            }
-                            .buttonStyle(.plain)
+                        }
+                    }
+                    if let last = manager.lastRunAt {
+                        LabeledContent("Last") {
+                            Text(last.formatted(date: .abbreviated, time: .shortened))
+                                .foregroundStyle(.secondary)
                         }
                     }
                 }
 
-                Button("Add Repository…") { addRepo() }
-                    .settingsHighlight(id: highlightID("Add Repository…"))
-            }
+                Section("Commit") {
+                    TextField("Message", text: $message)
+                        .settingsHighlight(id: highlightID("Message"))
+                        .settingsInfo("{date} and {time} are replaced when the commit is made.")
 
-            GitCommitScheduleSection(highlightID: highlightID)
+                    Text("Preview: \(manager.renderedMessage())")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
 
-            Section("When") {
-                DatePicker(
-                    "Time of day",
-                    selection: Binding(
-                        get: { timeOfDay },
-                        set: { newValue in
-                            let parts = Calendar.current.dateComponents(
-                                [.hour, .minute], from: newValue)
-                            hour = parts.hour ?? 21
-                            minute = parts.minute ?? 7
-                        }),
-                    displayedComponents: .hourAndMinute)
-                .disabled(!enabled || randomTime)
-                .settingsHighlight(id: highlightID("Time of day"))
-                .help(randomTime
-                      ? "Ignored while \"Commit at a random time\" is on — the window above decides."
-                      : "The commit fires at this time each day.")
+                    Toggle("Also commit uncommitted changes", isOn: $stageChanges)
+                        .settingsHighlight(id: highlightID("Also commit uncommitted changes"))
+                        .help(
+                            "Runs git add -A first. Off by default: an unattended "
+                            + "sweep of the whole working tree will eventually commit "
+                            + "a half-finished edit or a secret.")
 
-                if let next = manager.nextRunAt, enabled {
-                    LabeledContent("Next") {
-                        Text(next.formatted(date: .abbreviated, time: .shortened))
-                            .foregroundStyle(.secondary)
-                    }
+                    Toggle("Push after committing", isOn: Binding(
+                        get: { push },
+                        set: { wants in
+                            // Turning it on is the one irreversible step here, so it
+                            // is confirmed. Turning it off is not.
+                            if wants { showingPushConfirmation = true } else { push = false }
+                        }))
+                        .settingsHighlight(id: highlightID("Push after committing"))
+                        .settingsInfo("Committing is local and undoable. Pushing is neither.")
                 }
-                if let last = manager.lastRunAt {
-                    LabeledContent("Last") {
-                        Text(last.formatted(date: .abbreviated, time: .shortened))
-                            .foregroundStyle(.secondary)
+
+                Section("Run now") {
+                    HStack {
+                        Button("Commit Now") {
+                            Task { await manager.run(trigger: "manual", force: true) }
+                        }
+                        .disabled(repos.isEmpty || manager.isRunning)
+
+                        if manager.isRunning {
+                            ProgressView().controlSize(.small)
+                        }
                     }
-                }
-            }
+                    .settingsHighlight(id: highlightID("Commit Now"))
 
-            Section("Commit") {
-                TextField("Message", text: $message)
-                    .disabled(!enabled)
-                    .settingsHighlight(id: highlightID("Message"))
-                    .settingsInfo("{date} and {time} are replaced when the commit is made.")
-
-                Text("Preview: \(manager.renderedMessage())")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-
-                Toggle("Also commit uncommitted changes", isOn: $stageChanges)
-                    .disabled(!enabled)
-                    .settingsHighlight(id: highlightID("Also commit uncommitted changes"))
-                    .help(
-                        "Runs git add -A first. Off by default: an unattended "
-                        + "sweep of the whole working tree will eventually commit "
-                        + "a half-finished edit or a secret.")
-
-                Toggle("Push after committing", isOn: Binding(
-                    get: { push },
-                    set: { wants in
-                        // Turning it on is the one irreversible step here, so it
-                        // is confirmed. Turning it off is not.
-                        if wants { showingPushConfirmation = true } else { push = false }
-                    }))
-                    .disabled(!enabled)
-                    .settingsHighlight(id: highlightID("Push after committing"))
-                    .settingsInfo("Committing is local and undoable. Pushing is neither.")
-            }
-
-            Section("Run now") {
-                HStack {
-                    Button("Commit Now") {
-                        Task { await manager.run(trigger: "manual", force: true) }
-                    }
-                    .disabled(repos.isEmpty || manager.isRunning)
-
-                    if manager.isRunning {
-                        ProgressView().controlSize(.small)
-                    }
-                }
-                .settingsHighlight(id: highlightID("Commit Now"))
-
-                ForEach(manager.lastResults, id: \.repo) { record in
-                    HStack(spacing: 6) {
-                        Image(systemName: record.succeeded
-                            ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
-                            .foregroundStyle(record.succeeded ? .green : .orange)
-                        Text(record.repo).font(.callout)
-                        Spacer()
-                        Text(record.detail)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                    ForEach(manager.lastResults, id: \.repo) { record in
+                        HStack(spacing: 6) {
+                            Image(systemName: record.succeeded
+                                ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+                                .foregroundStyle(record.succeeded ? .green : .orange)
+                            Text(record.repo).font(.callout)
+                            Spacer()
+                            Text(record.detail)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
                     }
                 }
             }

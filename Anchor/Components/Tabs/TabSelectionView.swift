@@ -102,6 +102,11 @@ struct TabSelectionView: View {
                 TabButton(label: tab.label, icon: tab.icon, selected: isSelected) {
                     coordinator.currentView = tab.view
                 }
+                .contextMenu {
+                    Button("\(tab.label) Settings...") {
+                        SettingsWindowController.shared.showWindow(for: tab.view)
+                    }
+                }
                 .frame(height: 26)
                 .foregroundStyle(isSelected ? activeAccent : .gray)
                 .background {

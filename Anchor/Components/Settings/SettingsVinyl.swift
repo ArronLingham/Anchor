@@ -57,71 +57,65 @@ struct VinylSettings: View {
                 .foregroundStyle(.secondary)
             }
 
-            Section("Placement") {
-                Picker("Size", selection: $size) {
-                    ForEach(VinylWidgetSize.allCases, id: \.self) { option in
-                        Text(option.label).tag(option)
+            if enabled {
+                Section("Placement") {
+                    Picker("Size", selection: $size) {
+                        ForEach(VinylWidgetSize.allCases, id: \.self) { option in
+                            Text(option.label).tag(option)
+                        }
                     }
-                }
-                .disabled(!enabled)
-                .settingsHighlight(id: highlightID("Size"))
+                    .settingsHighlight(id: highlightID("Size"))
 
-                Picker("Shape", selection: $orientation) {
-                    ForEach(VinylOrientation.allCases, id: \.self) { option in
-                        Text(option.label).tag(option)
+                    Picker("Shape", selection: $orientation) {
+                        ForEach(VinylOrientation.allCases, id: \.self) { option in
+                            Text(option.label).tag(option)
+                        }
                     }
-                }
-                .disabled(!enabled)
-                .settingsHighlight(id: highlightID("Shape"))
-                .settingsInfo("Vertical puts the record above the title and transport; horizontal puts it beside them, which is shorter and suits sitting along the bottom of a screen. Every one of these is also on the widget's own right-click menu.")
+                    .settingsHighlight(id: highlightID("Shape"))
+                    .settingsInfo("Vertical puts the record above the title and transport; horizontal puts it beside them, which is shorter and suits sitting along the bottom of a screen. Every one of these is also on the widget's own right-click menu.")
 
-                Picker("Layer", selection: $level) {
-                    ForEach(VinylWindowLevel.allCases, id: \.self) { option in
-                        Text(option.label).tag(option)
+                    Picker("Layer", selection: $level) {
+                        ForEach(VinylWindowLevel.allCases, id: \.self) { option in
+                            Text(option.label).tag(option)
+                        }
                     }
+                    .settingsHighlight(id: highlightID("Layer"))
+                    .settingsInfo("Below all windows keeps it on the wallpaper, out of the way.")
                 }
-                .disabled(!enabled)
-                .settingsHighlight(id: highlightID("Layer"))
-                .settingsInfo("Below all windows keeps it on the wallpaper, out of the way.")
-            }
 
-            Section("Look") {
-                Toggle("Show the tonearm", isOn: $showStylus)
-                    .disabled(!enabled)
-                    .settingsHighlight(id: highlightID("Show the tonearm"))
-                    .settingsInfo("Swings onto the record while playing and lifts when it stops.")
+                Section("Look") {
+                    Toggle("Show the tonearm", isOn: $showStylus)
+                        .settingsHighlight(id: highlightID("Show the tonearm"))
+                        .settingsInfo("Swings onto the record while playing and lifts when it stops.")
 
-                Toggle("Show progress", isOn: $showProgress)
-                    .disabled(!enabled)
-                    .settingsHighlight(id: highlightID("Show progress"))
+                    Toggle("Show progress", isOn: $showProgress)
+                        .settingsHighlight(id: highlightID("Show progress"))
 
-                Picker("Progress style", selection: $progressStyle) {
-                    ForEach(VinylProgressStyle.allCases, id: \.self) { style in
-                        Text(style.label).tag(style)
+                    Picker("Progress style", selection: $progressStyle) {
+                        ForEach(VinylProgressStyle.allCases, id: \.self) { style in
+                            Text(style.label).tag(style)
+                        }
                     }
+                    .disabled(!showProgress)
+                    .settingsHighlight(id: highlightID("Progress style"))
+                    .settingsInfo("The ring hugs the record and covers nothing. The bar sits under the transport with elapsed and remaining times, and can be clicked to seek.")
+
+                    Toggle("Show title and artist", isOn: $showTitle)
+                        .settingsHighlight(id: highlightID("Show title and artist"))
+
+                    Toggle("Tint with the album colour", isOn: $useAlbumColor)
+                        .settingsHighlight(id: highlightID("Tint with the album colour"))
+
+                    Slider(value: $backgroundOpacity, in: 0...0.85) {
+                        Text("Backing")
+                    } minimumValueLabel: {
+                        Text("None").font(.caption)
+                    } maximumValueLabel: {
+                        Text("Solid").font(.caption)
+                    }
+                    .settingsHighlight(id: highlightID("Backing"))
+                    .settingsInfo("A panel behind the record, for wallpapers it would otherwise disappear into.")
                 }
-                .disabled(!enabled || !showProgress)
-                .settingsHighlight(id: highlightID("Progress style"))
-                .settingsInfo("The ring hugs the record and covers nothing. The bar sits under the transport with elapsed and remaining times, and can be clicked to seek.")
-
-                Toggle("Show title and artist", isOn: $showTitle)
-                    .disabled(!enabled)
-                    .settingsHighlight(id: highlightID("Show title and artist"))
-
-                Toggle("Tint with the album colour", isOn: $useAlbumColor)
-                    .disabled(!enabled)
-                    .settingsHighlight(id: highlightID("Tint with the album colour"))
-
-                Slider(value: $backgroundOpacity, in: 0...0.85) {
-                    Text("Backing")
-                } minimumValueLabel: {
-                    Text("None").font(.caption)
-                } maximumValueLabel: {
-                    Text("Solid").font(.caption)
-                }
-                .disabled(!enabled)
-                .settingsHighlight(id: highlightID("Backing"))
-                .settingsInfo("A panel behind the record, for wallpapers it would otherwise disappear into.")
             }
         }
     }

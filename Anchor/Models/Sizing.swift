@@ -98,14 +98,37 @@ func enabledStandardTabCount() -> Int {
         count += 1
     }
 
+    // Alerts / Notification tab
+    if Defaults[.enableNotificationMirroring] {
+        count += 1
+    }
+
+    // To-Do tab
+    if Defaults[.enableTodoFeature] {
+        count += 1
+    }
+
+    // Camera Mirror tab
+    if Defaults[.enableCameraMirror] {
+        count += 1
+    }
+
+    // Gemini AI tab
+    if Defaults[.enableAIAssistant] {
+        count += 1
+    }
+
     return count
 }
 
 /// Returns the recommended minimum notch width for the given tab count.
 func recommendedMinimumNotchWidth(forTabCount count: Int) -> CGFloat {
-    if count >= 6 { return 770 }
-    if count >= 5 { return 690 }
-    return 640
+    if count >= 6 { return 740 }
+    if count == 5 { return 680 }
+    if count == 4 { return 620 }
+    if count == 3 { return 560 }
+    if count == 2 { return 520 }
+    return 480
 }
 
 /// Returns the recommended minimum notch width for the current tab configuration.
@@ -127,6 +150,88 @@ func enforceMinimumNotchWidth() {
         Defaults[.openNotchWidth] = width
     }
 }
+
+// MARK: - Tab-Specific Dynamic Sizing
+
+/// Calculates the per-tab dynamic notch size (both width and height vary by tab).
+@MainActor
+func tabSpecificNotchSize(for view: NotchViews, baseSize: CGSize, screen: NSScreen? = nil) -> CGSize {
+    guard !Defaults[.enableMinimalisticUI] else {
+        return baseSize
+    }
+
+    let minTabWidth = currentRecommendedMinimumNotchWidth()
+    let maxAllowedW = maxAllowedNotchWidth(for: screen?.localizedName)
+    let screenFrame = screen?.visibleFrame ?? NSScreen.main?.visibleFrame ?? CGRect(x: 0, y: 0, width: 1440, height: 900)
+
+    var width = baseSize.width
+    var height = baseSize.height
+
+    switch view {
+    case .home:
+        // Home tab is compact; default width does not need to be as wide as to-do or terminal
+        width = min(baseSize.width, 580)
+        height = 200
+
+    case .todo:
+        // To-do list needs double height and spacious width
+        width = max(baseSize.width, 680)
+        height = max(400, baseSize.height * 2)
+
+    case .timer:
+        // Timer tab with presets column
+        width = min(max(baseSize.width, 540), 600)
+        height = 250
+
+    case .notes, .clipboard:
+        // Notes split view / editor and clipboard history
+        width = max(baseSize.width, 680)
+        let preferred = AnchorViewCoordinator.shared.notesLayoutState.preferredHeight
+        height = max(240, preferred)
+
+    case .terminal:
+        // Terminal tab: wide for 80-col shell, dynamic height based on user fraction
+        width = max(baseSize.width, min(screenFrame.width - 120, 840))
+        let maxFraction = Defaults[.terminalMaxHeightFraction]
+        height = min(screenFrame.height * maxFraction, max(300, screenFrame.height * maxFraction))
+
+    case .lyrics:
+        // Synced lyrics view
+        width = min(max(baseSize.width, 560), 660)
+        height = 300
+
+    case .shelf:
+        // File drop shelf
+        width = max(baseSize.width, 600)
+        height = 220
+
+    case .stats:
+        // System stats graphs
+        width = max(baseSize.width, 620)
+        height = 220
+
+    case .notifications:
+        // Alerts & notification history
+        width = max(baseSize.width, 620)
+        height = 320
+
+    case .cameraMirror:
+        // Video camera mirror
+        width = min(max(baseSize.width, 540), 640)
+        height = 320
+
+    case .gemini:
+        // AI assistant chat interface
+        width = max(baseSize.width, 680)
+        height = 380
+    }
+
+    width = min(max(width, minTabWidth), maxAllowedW)
+    height = min(height, max(200, screenFrame.height - 60))
+
+    return CGSize(width: width, height: height)
+}
+
 private let minimalisticBaseOpenNotchSize: CGSize = .init(width: 420, height: 180)
 private let minimalisticLyricsExtraHeight: CGFloat = 40
 let minimalisticTimerCountdownTopPadding: CGFloat = 12
