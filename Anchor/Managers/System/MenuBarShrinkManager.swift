@@ -80,6 +80,7 @@ final class MenuBarShrinkManager: NSResponder, ObservableObject {
     private var rehideMonitor: Any?
     private var rehideTimer: DispatchSourceTimer?
     private var hoverTracking: NSTrackingArea?
+    private var chevronMovementCancellable: AnyCancellable?
     private var cancellables = Set<AnyCancellable>()
     private var started = false
 
@@ -140,8 +141,6 @@ final class MenuBarShrinkManager: NSResponder, ObservableObject {
     static func keepOwnIconOnVisibleSide() {
         guard Defaults[.enableMenuBarShrink] else { return }
 
-        UserDefaults.standard.synchronize()
-
         // Read current chevron position or default to 1 (left of position 0)
         let chevronPos = StatusItemDefaults[.preferredPosition, Self.chevronAutosaveName] ?? 1
         StatusItemDefaults[.preferredPosition, Self.chevronAutosaveName] = chevronPos
@@ -154,8 +153,6 @@ final class MenuBarShrinkManager: NSResponder, ObservableObject {
         if Defaults[.menubarIcon] && StatusItemDefaults[.preferredPosition, "Item-0"] == nil {
             StatusItemDefaults[.preferredPosition, "Item-0"] = 0
         }
-
-        UserDefaults.standard.synchronize()
     }
 
     static let dividerAutosaveName = "AnchorMenuBarDivider"
@@ -164,15 +161,12 @@ final class MenuBarShrinkManager: NSResponder, ObservableObject {
     private func activate() {
         guard chevronItem == nil else { return }
 
-        UserDefaults.standard.synchronize()
-
         let chevronPos = StatusItemDefaults[.preferredPosition, Self.chevronAutosaveName] ?? 1
         StatusItemDefaults[.preferredPosition, Self.chevronAutosaveName] = chevronPos
         lastKnownChevronPos = chevronPos
 
         let dividerPos = chevronPos + 0.01
         StatusItemDefaults[.preferredPosition, Self.dividerAutosaveName] = dividerPos
-        UserDefaults.standard.synchronize()
 
         let chevron = NSStatusBar.system.statusItem(withLength: Self.chevronLength)
         chevron.autosaveName = Self.chevronAutosaveName
@@ -187,6 +181,7 @@ final class MenuBarShrinkManager: NSResponder, ObservableObject {
             ? String(localized: "Show hidden menu bar items")
             : String(localized: "Hide menu bar items")
         chevronItem = chevron
+        observeChevronMovement()
 
         let expander = NSStatusBar.system.statusItem(withLength: 0)
         expander.autosaveName = Self.dividerAutosaveName
@@ -206,6 +201,8 @@ final class MenuBarShrinkManager: NSResponder, ObservableObject {
     private func deactivate() {
         cancelAutoHide()
         removeHoverTracking()
+        chevronMovementCancellable?.cancel()
+        chevronMovementCancellable = nil
         for item in [chevronItem, expanderItem, alwaysHiddenDivider].compactMap({ $0 }) {
             StatusItemDefaults.removeStatusItemPreservingPosition(item)
         }
@@ -239,6 +236,25 @@ final class MenuBarShrinkManager: NSResponder, ObservableObject {
 
     // MARK: - Expander Alignment
 
+    /// Observes chevron window movement to immediately realign the expander when dragged.
+    private func observeChevronMovement() {
+        chevronMovementCancellable?.cancel()
+        guard let window = chevronItem?.button?.window else { return }
+
+        let moveNotification = NotificationCenter.default
+            .publisher(for: NSWindow.didMoveNotification, object: window)
+            .map { _ in () }
+        let framePublisher = window
+            .publisher(for: \.frame)
+            .map { _ in () }
+
+        chevronMovementCancellable = Publishers.Merge(moveNotification, framePublisher)
+            .debounce(for: .milliseconds(150), scheduler: RunLoop.main)
+            .sink { [weak self] in
+                self?.syncExpanderPositionIfChevronMoved()
+            }
+    }
+
     /// Keeps the expander item immediately to the left of the chevron item.
     ///
     /// In AppKit's right-to-left menu bar layout, a higher preferred position
@@ -271,7 +287,6 @@ final class MenuBarShrinkManager: NSResponder, ObservableObject {
         }
 
         StatusItemDefaults[.preferredPosition, Self.dividerAutosaveName] = targetPos
-        UserDefaults.standard.synchronize()
 
         let expander = NSStatusBar.system.statusItem(withLength: 0)
         expander.autosaveName = Self.dividerAutosaveName
@@ -330,8 +345,19 @@ final class MenuBarShrinkManager: NSResponder, ObservableObject {
 
     func toggle() {
         guard isActive else { return }
-        syncExpanderPositionIfChevronMoved()
-        setCollapsed(!isCollapsed)
+        let nextCollapsed = !isCollapsed
+        if !nextCollapsed {
+            // Unhiding: switch to expanded state immediately for instant, zero-lag animation.
+            setCollapsed(false)
+            // If the chevron shifted, ensure the divider position is synced asynchronously.
+            DispatchQueue.main.async { [weak self] in
+                self?.syncExpanderPositionIfChevronMoved()
+            }
+        } else {
+            // Collapsing: ensure divider is positioned before expanding.
+            syncExpanderPositionIfChevronMoved()
+            setCollapsed(true)
+        }
     }
 
     func collapse() {
