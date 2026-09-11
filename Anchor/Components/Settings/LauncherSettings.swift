@@ -28,6 +28,10 @@ struct LauncherSettings: View {
     @Default(.launcherLayoutMode) private var launcherLayoutMode
     @Default(.launcherSortMode) private var launcherSortMode
     @Default(.launcherNavigationStyle) private var launcherNavigationStyle
+    @Default(.launcherPresentationMode) private var presentationMode
+    @Default(.launcherBackgroundStyle) private var backgroundStyle
+    @Default(.launcherHotCorner) private var hotCorner
+    @Default(.launcherShowCategoryPage) private var showCategoryPage
     @Default(.launcherRecallSeconds) private var launcherRecallSeconds
     @Default(.launcherCustomOrder) private var launcherCustomOrder
     @Default(.launcherFolders) private var launcherFolders
@@ -202,12 +206,41 @@ struct LauncherSettings: View {
             }
 
             Section {
-                Defaults.Toggle(key: .launcherFullScreen) {
-                    Text("Fill the screen")
+                Picker("Presentation mode", selection: $presentationMode) {
+                    ForEach(LauncherPresentationMode.allCases) { mode in
+                        Text(mode.localizedName).tag(mode)
+                    }
                 }
                 .disabled(!enableLauncher)
-                .settingsHighlight(id: highlightID("Fill the screen"))
-                .settingsInfo("Blurs the whole display behind the launcher and dismisses on a click anywhere outside it. With this off the launcher floats over what is already there.")
+                .settingsHighlight(id: highlightID("Presentation mode"))
+                .settingsInfo("Fullscreen Launchpad covers the display with an immersive grid. Floaty Panel floats a sleek centered window.")
+
+                if presentationMode == .fullscreen {
+                    Picker("Background style", selection: $backgroundStyle) {
+                        ForEach(LauncherBackgroundStyle.allCases) { style in
+                            Text(style.localizedName).tag(style)
+                        }
+                    }
+                    .disabled(!enableLauncher)
+                    .settingsHighlight(id: highlightID("Background style"))
+                    .settingsInfo("Wallpaper Blur captures and blurs your active desktop wallpaper. Frosted Glass uses system material.")
+                }
+
+                Picker("Hot corner trigger", selection: $hotCorner) {
+                    ForEach(LauncherHotCorner.allCases) { corner in
+                        Text(corner.localizedName).tag(corner)
+                    }
+                }
+                .disabled(!enableLauncher)
+                .settingsHighlight(id: highlightID("Hot corner trigger"))
+                .settingsInfo("Move the cursor into this screen corner to open the launcher effortlessly.")
+
+                Defaults.Toggle(key: .launcherShowCategoryPage) {
+                    Text("Show categories tab")
+                }
+                .disabled(!enableLauncher)
+                .settingsHighlight(id: highlightID("Show categories tab"))
+                .settingsInfo("Organizes apps into categorized library collections (Developer Tools, Productivity, Social, Games, etc.).")
 
                 LabeledContent("Remember the last search for") {
                     Picker("", selection: $launcherRecallSeconds) {
@@ -224,7 +257,7 @@ struct LauncherSettings: View {
                 .settingsHighlight(id: highlightID("Remember the last search for"))
                 .settingsInfo("Reopen within this long and your previous search is still in the field. After it, the field opens empty.")
             } header: {
-                Text("Panel")
+                Text("Presentation & Behavior")
             }
 
             Section {

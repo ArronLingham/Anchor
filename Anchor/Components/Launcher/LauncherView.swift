@@ -43,9 +43,18 @@ struct LauncherView: View {
     @Default(.launcherShowGridWhenEmpty) private var showGridWhenEmpty
     @Default(.launcherLayoutMode) private var layoutMode
     @Default(.launcherFullScreen) private var fullScreen
+    @Default(.launcherPresentationMode) private var presentationMode
+    @Default(.launcherShowCategoryPage) private var showCategoryPage
     @Default(.launcherRecallSeconds) private var recallSeconds
     @Default(.launcherFolders) private var folders
     @Default(.launcherEnableCalculator) private var calculatorEnabled
+
+    @State private var selectedTab: LauncherTab = .apps
+
+    private enum LauncherTab: String, CaseIterable {
+        case apps = "All Apps"
+        case categories = "Categories"
+    }
 
     private static let rowHeight: CGFloat = 44
 
@@ -122,18 +131,27 @@ struct LauncherView: View {
         VStack(spacing: 0) {
             searchField
             LauncherWidgetStrip()
-            Divider().opacity(0.5)
+
+            if query.trimmingCharacters(in: .whitespaces).isEmpty && showCategoryPage && showingGrid {
+                tabSelector
+            }
+
+            Divider().opacity(0.4)
 
             if let calculation {
                 calculatorRow(calculation)
             } else if showingGrid {
-                LauncherGridView(
-                    apps: ungroupedApps,
-                    folders: resolvedFolders,
-                    allowsReorder: !gridIsFiltered,
-                    selection: $selection,
-                    onLaunch: onLaunch
-                )
+                if selectedTab == .categories && showCategoryPage && query.trimmingCharacters(in: .whitespaces).isEmpty {
+                    LauncherCategoryPageView(onLaunch: onLaunch)
+                } else {
+                    LauncherGridView(
+                        apps: ungroupedApps,
+                        folders: resolvedFolders,
+                        allowsReorder: !gridIsFiltered,
+                        selection: $selection,
+                        onLaunch: onLaunch
+                    )
+                }
             } else if results.isEmpty && commands.isEmpty {
                 emptyState
             } else {
@@ -141,23 +159,20 @@ struct LauncherView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .padding(.top, 100)
-        .padding(.horizontal, 100)
-        // The blurred backdrop.
-        //
-        // The panel is already the size of the screen and sits above everything
-        // including full-screen apps; without this it was transparent, so the
-        // launcher read as a floating box rather than taking over the screen.
-        // Clicking the backdrop dismisses, which is the behaviour anyone
-        // expects from a full-screen overlay.
+        .padding(.top, presentationMode == .fullscreen ? 90 : 20)
+        .padding(.horizontal, presentationMode == .fullscreen ? 90 : 24)
+        .padding(.bottom, presentationMode == .fullscreen ? 30 : 16)
         .background {
-            if fullScreen {
-                ZStack {
-                    Rectangle().fill(.ultraThinMaterial)
-                    Rectangle().fill(Color.black.opacity(0.28))
-                }
-                .ignoresSafeArea()
-                .onTapGesture { onDismiss() }
+            if presentationMode == .fullscreen {
+                LauncherWallpaperBlur()
+                    .onTapGesture { onDismiss() }
+            } else {
+                RoundedRectangle(cornerRadius: 32, style: .continuous)
+                    .fill(.ultraThinMaterial)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 32, style: .continuous)
+                            .strokeBorder(Color.white.opacity(0.20), lineWidth: 1)
+                    )
             }
         }
         .defaultFocus($queryFocused, true)
@@ -218,7 +233,14 @@ struct LauncherView: View {
                 .onKeyPress(.downArrow) { move(by: stride); return .handled }
                 .onKeyPress(.leftArrow) { showingGrid ? move(by: -1) : nil; return showingGrid ? .handled : .ignored }
                 .onKeyPress(.rightArrow) { showingGrid ? move(by: 1) : nil; return showingGrid ? .handled : .ignored }
-                .onKeyPress(.escape) { onDismiss(); return .handled }
+                .onKeyPress(.escape) {
+                    if !query.isEmpty {
+                        query = ""
+                        return .handled
+                    }
+                    onDismiss()
+                    return .handled
+                }
 
             // The copy confirmation lives in the calculator row itself, which is
             // where the user is looking when they press ↩.
@@ -233,6 +255,47 @@ struct LauncherView: View {
         .onTapGesture {
             queryFocused = true
         }
+    }
+
+    private var tabSelector: some View {
+        HStack(spacing: 2) {
+            Button {
+                withAnimation(.easeInOut(duration: 0.15)) { selectedTab = .apps }
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "square.grid.2x2.fill")
+                        .font(.system(size: 11))
+                    Text("All Apps")
+                        .font(.system(size: 12, weight: selectedTab == .apps ? .semibold : .regular))
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 5)
+                .background(
+                    selectedTab == .apps ? Capsule().fill(Color.primary.opacity(0.12)) : Capsule().fill(Color.clear)
+                )
+            }
+            .buttonStyle(.plain)
+
+            Button {
+                withAnimation(.easeInOut(duration: 0.15)) { selectedTab = .categories }
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "folder.badge.gearshape")
+                        .font(.system(size: 11))
+                    Text("Categories")
+                        .font(.system(size: 12, weight: selectedTab == .categories ? .semibold : .regular))
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 5)
+                .background(
+                    selectedTab == .categories ? Capsule().fill(Color.primary.opacity(0.12)) : Capsule().fill(Color.clear)
+                )
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(3)
+        .background(Capsule().fill(Color.primary.opacity(0.06)))
+        .padding(.vertical, 4)
     }
 
     /// In the grid, ↑/↓ move a whole row; in the list they move one item.

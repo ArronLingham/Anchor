@@ -18,19 +18,23 @@
  */
 
 import AppKit
+import Defaults
 import SwiftUI
 
-/// Fullscreen launcher overlay.
+/// Adaptable launcher window supporting Fullscreen Launchpad and Floaty Panel presentation.
 final class LauncherPanel: NSPanel {
     var onResignKey: (() -> Void)?
+    private(set) var currentMode: LauncherPresentationMode = .fullscreen
+    private var isDismissing = false
 
-    init(contentView: NSView) {
+    init(contentView: NSView, mode: LauncherPresentationMode) {
+        self.currentMode = mode
         let screen = NSScreen.screens.first { $0.frame.contains(NSEvent.mouseLocation) } ?? NSScreen.main
-        let frame = screen?.frame ?? NSRect(x: 0, y: 0, width: 860, height: 560)
-        
+        let frame = Self.calculateFrame(for: mode, on: screen)
+
         super.init(
             contentRect: frame,
-            styleMask: [.borderless, .nonactivatingPanel],
+            styleMask: [.borderless, .nonactivatingPanel, .fullSizeContentView],
             backing: .buffered,
             defer: false
         )
@@ -41,12 +45,42 @@ final class LauncherPanel: NSPanel {
 
         isOpaque = false
         backgroundColor = .clear
-        hasShadow = false
-        level = .screenSaver // High enough to cover menu bar and everything
         isMovableByWindowBackground = false
         hidesOnDeactivate = false
         animationBehavior = .none
         collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .transient, .ignoresCycle]
+
+        configureForMode(mode)
+    }
+
+    private func configureForMode(_ mode: LauncherPresentationMode) {
+        currentMode = mode
+        switch mode {
+        case .fullscreen:
+            level = .screenSaver
+            hasShadow = false
+        case .floaty:
+            level = .floating
+            hasShadow = true
+        }
+    }
+
+    static func calculateFrame(for mode: LauncherPresentationMode, on screen: NSScreen?) -> NSRect {
+        guard let screen = screen ?? NSScreen.main else {
+            return NSRect(x: 0, y: 0, width: 1040, height: 830)
+        }
+
+        switch mode {
+        case .fullscreen:
+            return screen.frame
+        case .floaty:
+            let visible = screen.visibleFrame
+            let targetWidth = min(1040, visible.width * 0.88)
+            let targetHeight = min(820, visible.height * 0.88)
+            let x = visible.midX - targetWidth / 2
+            let y = visible.midY - targetHeight / 2
+            return NSRect(x: x, y: y, width: targetWidth, height: targetHeight)
+        }
     }
 
     override var canBecomeKey: Bool { true }
@@ -54,24 +88,54 @@ final class LauncherPanel: NSPanel {
 
     override func resignKey() {
         super.resignKey()
+        guard !isDismissing else { return }
         onResignKey?()
     }
 
     override func cancelOperation(_ sender: Any?) {
+        guard !isDismissing else { return }
         onResignKey?()
     }
 
-    func positionOnActiveScreen() {
+    func positionOnActiveScreen(mode: LauncherPresentationMode) {
         let screen = NSScreen.screens.first { $0.frame.contains(NSEvent.mouseLocation) } ?? NSScreen.main
-        guard let screenFrame = screen?.frame else { return }
-        setFrame(screenFrame, display: true)
-        contentView?.frame = NSRect(origin: .zero, size: screenFrame.size)
-        
-        // Add a slight fade-in effect when positioning (which usually happens on show)
+        let targetFrame = Self.calculateFrame(for: mode, on: screen)
+        configureForMode(mode)
+
+        setFrame(targetFrame, display: true)
+        contentView?.frame = NSRect(origin: .zero, size: targetFrame.size)
+
+        // Entrance animation
         self.alphaValue = 0
+        if mode == .fullscreen, let cView = contentView {
+            let originalOrigin = cView.frame.origin
+            cView.setFrameOrigin(NSPoint(x: originalOrigin.x, y: originalOrigin.y - 30))
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = 0.28
+                context.timingFunction = CAMediaTimingFunction(name: .easeOut)
+                self.animator().alphaValue = 1.0
+                cView.animator().setFrameOrigin(originalOrigin)
+            }
+        } else {
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = 0.22
+                context.timingFunction = CAMediaTimingFunction(name: .easeOut)
+                self.animator().alphaValue = 1.0
+            }
+        }
+    }
+
+    func dismiss(completion: @escaping () -> Void) {
+        guard !isDismissing else { return }
+        isDismissing = true
         NSAnimationContext.runAnimationGroup { context in
-            context.duration = 0.2
-            self.animator().alphaValue = 1.0
+            context.duration = 0.18
+            context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            self.animator().alphaValue = 0.0
+        } completionHandler: {
+            self.orderOut(nil)
+            self.close()
+            completion()
         }
     }
 }

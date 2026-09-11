@@ -992,6 +992,14 @@ extension Defaults.Keys {
     static let launcherRecallSeconds = Key<Double>("launcherRecallSeconds", default: 5)
     /// Fill the screen with a blurred backdrop rather than floating a panel.
     static let launcherFullScreen = Key<Bool>("launcherFullScreen", default: true)
+    /// Presentation style of the launcher window: Fullscreen Launchpad vs Floaty Panel.
+    static let launcherPresentationMode = Key<LauncherPresentationMode>("launcherPresentationMode", default: .fullscreen)
+    /// Background aesthetic: blurred active wallpaper vs frosted glass material.
+    static let launcherBackgroundStyle = Key<LauncherBackgroundStyle>("launcherBackgroundStyle", default: .wallpaperBlur)
+    /// Screen corner hover trigger to open the launcher.
+    static let launcherHotCorner = Key<LauncherHotCorner>("launcherHotCorner", default: .none)
+    /// Show automatic category library page before user grid.
+    static let launcherShowCategoryPage = Key<Bool>("launcherShowCategoryPage", default: true)
     /// Widgets shown beside the launcher grid.
     static let launcherShowClockWidget = Key<Bool>("launcherShowClockWidget", default: false)
     static let launcherShowWeatherWidget = Key<Bool>("launcherShowWeatherWidget", default: false)

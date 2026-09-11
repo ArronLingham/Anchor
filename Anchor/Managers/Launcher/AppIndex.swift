@@ -26,8 +26,16 @@ struct LauncherApp: Identifiable, Hashable {
     let url: URL
     let name: String
     let bundleIdentifier: String?
+    let category: AppCategory
 
     var id: String { url.path }
+
+    init(url: URL, name: String, bundleIdentifier: String?, category: AppCategory = .other) {
+        self.url = url
+        self.name = name
+        self.bundleIdentifier = bundleIdentifier
+        self.category = category
+    }
 
     static func == (lhs: LauncherApp, rhs: LauncherApp) -> Bool { lhs.url == rhs.url }
     func hash(into hasher: inout Hasher) { hasher.combine(url) }
@@ -54,6 +62,7 @@ final class AppIndex: ObservableObject {
     @Published private(set) var isIndexing = false
 
     private var rootMTimes: [URL: TimeInterval] = [:]
+    private var directoryMonitor: ApplicationDirectoryMonitor?
 
     private nonisolated static let searchRoots: [URL] = {
         var roots = [
@@ -73,7 +82,13 @@ final class AppIndex: ObservableObject {
         return roots
     }()
 
-    private init() {}
+    private init() {
+        directoryMonitor = ApplicationDirectoryMonitor(directories: Self.searchRoots) { [weak self] in
+            Task { @MainActor [weak self] in
+                self?.refresh()
+            }
+        }
+    }
 
     // MARK: - Indexing
 
@@ -172,12 +187,20 @@ final class AppIndex: ObservableObject {
             FileManager.default.displayName(atPath: standardized.path)
             .replacingOccurrences(of: ".app", with: "")
 
+        let category = AppCategory.category(for: bundle, url: standardized)
+
         results.append(
             LauncherApp(
                 url: standardized,
                 name: name,
-                bundleIdentifier: bundle?.bundleIdentifier
+                bundleIdentifier: bundle?.bundleIdentifier,
+                category: category
             ))
+    }
+
+    /// Applications belonging to a given category.
+    func apps(in category: AppCategory) -> [LauncherApp] {
+        apps.filter { $0.category == category }
     }
 
     // MARK: - Search
@@ -193,12 +216,33 @@ final class AppIndex: ObservableObject {
 
         var scored: [(app: LauncherApp, score: Double, indices: [Int])] = []
         scored.reserveCapacity(apps.count)
+
+        let folders = Defaults[.launcherFolders]
+        var appFolders: [String: [String]] = [:]
+        for (folderName, appIDs) in folders {
+            for id in appIDs {
+                appFolders[id, default: []].append(folderName)
+            }
+        }
+
         for app in apps {
-            guard let match = FuzzyMatcher.match(query: trimmed, candidate: app.name) else { continue }
-            // Frecency nudges ties without letting a favourite outrank a clearly
-            // better textual match.
-            let combined = Double(match.score) + history.score(for: app.id) * 4
-            scored.append((app: app, score: combined, indices: match.matchedIndices))
+            if let match = FuzzyMatcher.match(query: trimmed, candidate: app.name) {
+                // Frecency nudges ties without letting a favourite outrank a clearly
+                // better textual match.
+                let combined = Double(match.score) + history.score(for: app.id) * 4
+                scored.append((app: app, score: combined, indices: match.matchedIndices))
+            } else if let catMatch = FuzzyMatcher.match(query: trimmed, candidate: app.category.rawValue) {
+                let combined = Double(catMatch.score) * 0.7 + history.score(for: app.id) * 2
+                scored.append((app: app, score: combined, indices: []))
+            } else if let folderNames = appFolders[app.id] {
+                for fName in folderNames {
+                    if let fMatch = FuzzyMatcher.match(query: trimmed, candidate: fName) {
+                        let combined = Double(fMatch.score) * 0.75 + history.score(for: app.id) * 2
+                        scored.append((app: app, score: combined, indices: []))
+                        break
+                    }
+                }
+            }
         }
 
         scored.sort { lhs, rhs in

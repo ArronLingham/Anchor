@@ -167,26 +167,48 @@ struct LauncherGridView: View {
            let members = folders.first(where: { $0.name == name })?.apps {
             ZStack {
                 Rectangle()
-                    .fill(.black.opacity(0.35))
+                    .fill(Color.black.opacity(0.35))
                     .ignoresSafeArea()
                     .onTapGesture { openFolder = nil }
+                    // Dropping an app on the backdrop moves it out of the folder.
+                    .onDrop(of: [.text], isTargeted: nil) { providers in
+                        accept(providers) { moved in
+                            removeFromFolder(moved, folder: name)
+                        }
+                    }
 
-                VStack(spacing: 12) {
-                    TextField("Folder name", text: $renaming)
-                        .textFieldStyle(.plain)
-                        .font(.system(size: 15, weight: .medium))
-                        .multilineTextAlignment(.center)
-                        .frame(maxWidth: 260)
-                        .onSubmit { renameFolder(from: name, to: renaming) }
+                VStack(spacing: 14) {
+                    HStack {
+                        Spacer()
+                        TextField("Folder name", text: $renaming)
+                            .textFieldStyle(.plain)
+                            .font(.system(size: 16, weight: .semibold))
+                            .multilineTextAlignment(.center)
+                            .frame(maxWidth: 260)
+                            .onSubmit { renameFolder(from: name, to: renaming) }
+                        Spacer()
+                        Button {
+                            openFolder = nil
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.system(size: 18))
+                                .foregroundStyle(.secondary)
+                        }
+                        .buttonStyle(.plain)
+                    }
 
                     LazyVGrid(
                         columns: Array(repeating: GridItem(.flexible(), spacing: 4), count: min(5, max(1, members.count))),
-                        spacing: 10
+                        spacing: 12
                     ) {
                         ForEach(members) { app in
                             LauncherGridCell(app: app, isSelected: false)
                                 .contentShape(Rectangle())
                                 .onTapGesture { onLaunch(app) }
+                                .onDrag {
+                                    draggingID = app.id
+                                    return NSItemProvider(object: app.id as NSString)
+                                }
                                 .contextMenu {
                                     Button("Move out of folder") {
                                         removeFromFolder(app.id, folder: name)
@@ -194,22 +216,22 @@ struct LauncherGridView: View {
                                 }
                         }
                     }
-                    .frame(maxWidth: 520)
+                    .frame(maxWidth: 540)
 
-                    Text("Drag an app onto a folder to file it. ⌥-drag one app onto another to make a new folder.")
+                    Text("Drag an app outside the card to remove it from this folder.")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                 }
-                .padding(22)
-                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18))
+                .padding(24)
+                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
                 .overlay {
-                    RoundedRectangle(cornerRadius: 18)
+                    RoundedRectangle(cornerRadius: 22, style: .continuous)
                         .stroke(Color.primary.opacity(0.08), lineWidth: 1)
                 }
-                .shadow(radius: 24, y: 8)
-                .frame(maxWidth: 600)
+                .shadow(radius: 30, y: 10)
+                .frame(maxWidth: 620)
             }
-            .transition(.opacity)
+            .transition(.opacity.combined(with: .scale(scale: 0.9)))
             .onAppear { renaming = name }
         }
     }
@@ -225,26 +247,19 @@ struct LauncherGridView: View {
         openFolder = trimmed
     }
 
-    /// A narrow hover strip at the screen edge that advances a page.
-    ///
-    /// Hover rather than click: the pointer is already travelling that way when
-    /// it runs out of grid, and a click target that thin is hard to hit. It
-    /// re-arms only after the pointer leaves, so resting there does not run
-    /// through every page.
+    /// Edge drop zones that navigate pages on hover or when dragging an app.
     @ViewBuilder
     private func edgeAdvance(forward: Bool) -> some View {
         let canGo = forward ? currentPage < pages.count - 1 : currentPage > 0
         if pages.count > 1 {
-            Rectangle()
-                .fill(Color.clear)
-                .frame(width: 46)
-                .contentShape(Rectangle())
-                .onHover { inside in
-                    guard inside, canGo else { return }
+            PageDropZone(
+                forward: forward,
+                canNavigate: canGo,
+                isDragging: draggingID != nil,
+                onNavigate: {
                     goToPage(forward ? currentPage + 1 : currentPage - 1)
                 }
-                .allowsHitTesting(canGo)
-                .accessibilityHidden(true)
+            )
         }
     }
 
@@ -568,3 +583,57 @@ private struct LauncherAppIcon: View {
         }
     }
 }
+
+/// Active drop zone on the screen edge that flips pages when dragging or hovering.
+private struct PageDropZone: View {
+    let forward: Bool
+    let canNavigate: Bool
+    let isDragging: Bool
+    let onNavigate: () -> Void
+
+    @State private var isTargeted = false
+    @State private var timer: Timer?
+
+    var body: some View {
+        if canNavigate {
+            ZStack {
+                Rectangle()
+                    .fill(isTargeted && isDragging ? Color.accentColor.opacity(0.2) : Color.clear)
+                    .frame(width: 52)
+                    .overlay(alignment: forward ? .trailing : .leading) {
+                        if isDragging && isTargeted {
+                            Image(systemName: forward ? "chevron.right" : "chevron.left")
+                                .font(.system(size: 22, weight: .bold))
+                                .foregroundStyle(Color.accentColor)
+                                .padding(forward ? .trailing : .leading, 14)
+                                .transition(.opacity)
+                        }
+                    }
+            }
+            .contentShape(Rectangle())
+            .onHover { inside in
+                guard inside, !isDragging, canNavigate else { return }
+                onNavigate()
+            }
+            .onDrop(of: [.text], isTargeted: $isTargeted) { _ in false }
+            .onChange(of: isTargeted) { _, targeted in
+                if targeted && isDragging && canNavigate {
+                    timer?.invalidate()
+                    timer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: false) { _ in
+                        DispatchQueue.main.async {
+                            onNavigate()
+                        }
+                    }
+                } else {
+                    timer?.invalidate()
+                    timer = nil
+                }
+            }
+            .onDisappear {
+                timer?.invalidate()
+                timer = nil
+            }
+        }
+    }
+}
+

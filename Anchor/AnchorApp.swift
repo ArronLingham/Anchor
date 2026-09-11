@@ -1036,6 +1036,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             LauncherPanelManager.shared.toggle()
         }
 
+        LauncherHotCornerMonitor.shared.setup()
+
         // Push-to-talk dictation: hold to record, release to transcribe and paste.
         KeyboardShortcuts.onKeyDown(for: .pushToTalkDictation) {
             guard Defaults[.enableShortcuts], Defaults[.enableDictation] else { return }

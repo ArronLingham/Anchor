@@ -18,6 +18,7 @@
  */
 
 import AppKit
+import Defaults
 import SwiftUI
 
 /// Owns the launcher panel's lifetime. Follows the same shape as the other
@@ -43,6 +44,9 @@ final class LauncherPanelManager: ObservableObject {
         guard panel == nil else { return }
 
         previouslyActiveApp = NSWorkspace.shared.frontmostApplication
+        let mode = Defaults[.launcherPresentationMode]
+        let screen = NSScreen.screens.first { $0.frame.contains(NSEvent.mouseLocation) } ?? NSScreen.main
+        let frame = LauncherPanel.calculateFrame(for: mode, on: screen)
 
         let hosting = FirstMouseHostingView(
             rootView: LauncherView(
@@ -53,49 +57,34 @@ final class LauncherPanelManager: ObservableObject {
                 },
                 onDismiss: { [weak self] in self?.hide() }
             ))
-        // Fill the panel, which is already the size of the screen. It used to
-        // be pinned to 860x560, so the launcher was a fixed box floating in a
-        // transparent full-screen window — the blurred backdrop had nothing to
-        // cover and the layout could not use the space.
-        let screen = NSScreen.screens.first { $0.frame.contains(NSEvent.mouseLocation) } ?? NSScreen.main
-        hosting.frame = NSRect(origin: .zero, size: screen?.frame.size ?? CGSize(width: 860, height: 560))
+        hosting.frame = NSRect(origin: .zero, size: frame.size)
         hosting.autoresizingMask = [.width, .height]
 
-        let panel = LauncherPanel(contentView: hosting)
+        let panel = LauncherPanel(contentView: hosting, mode: mode)
         panel.onResignKey = { [weak self] in self?.hide() }
-        panel.positionOnActiveScreen()
+        panel.positionOnActiveScreen(mode: mode)
         self.panel = panel
 
         // Order the panel front and nominate it as key BEFORE asking for
-        // activation. The reverse order is what lost the search field its
-        // focus: Anchor is .accessory and the shortcut fires while another app
-        // is frontmost, so `activate` is an asynchronous round-trip that
-        // resolves several runloop turns later — and AppKit picks the key
-        // window from the candidates that existed when activation was
-        // requested. With the panel not yet ordered front, that candidate was a
-        // notch AnchorWindow, which takes key and drops the launcher's focus.
-        //
-        // The panel is .nonactivatingPanel, so this does not pull Anchor's
-        // other windows forward, and focus is handed back explicitly on
-        // dismiss.
-        panel.makeKeyAndOrderFront(nil)
+        // activation.
+        panel.makeKeyAndOrderFront(nil as Any?)
         panel.makeFirstResponder(hosting)
         NSApp.activate(ignoringOtherApps: true)
     }
 
     func hide(restoringFocus: Bool = true) {
         guard let panel else { return }
-        // Break the retain cycle before closing, or resignKey re-enters hide().
         panel.onResignKey = nil
-        panel.orderOut(nil)
-        panel.close()
+        let appToRestore = previouslyActiveApp
+        self.previouslyActiveApp = nil
         self.panel = nil
 
-        if restoringFocus, let previouslyActiveApp,
-            previouslyActiveApp.bundleIdentifier != Bundle.main.bundleIdentifier
-        {
-            previouslyActiveApp.activate()
+        panel.dismiss {
+            if restoringFocus, let appToRestore,
+                appToRestore.bundleIdentifier != Bundle.main.bundleIdentifier
+            {
+                appToRestore.activate()
+            }
         }
-        previouslyActiveApp = nil
     }
 }

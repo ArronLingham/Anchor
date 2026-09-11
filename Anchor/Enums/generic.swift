@@ -477,3 +477,130 @@ enum LauncherSortMode: String, CaseIterable, Defaults.Serializable, Identifiable
     /// Dragging only means something when the order is the user's to set.
     var isReorderable: Bool { self == .custom }
 }
+
+/// Presentation mode of the launcher window.
+enum LauncherPresentationMode: String, CaseIterable, Defaults.Serializable, Identifiable {
+    case fullscreen = "Fullscreen"
+    case floaty     = "Floaty Panel"
+
+    var id: String { rawValue }
+    var localizedName: String {
+        switch self {
+        case .fullscreen: return String(localized: "Fullscreen Launchpad")
+        case .floaty:     return String(localized: "Centered Floaty Panel")
+        }
+    }
+}
+
+/// Visual style of the launcher's background.
+enum LauncherBackgroundStyle: String, CaseIterable, Defaults.Serializable, Identifiable {
+    case wallpaperBlur = "Wallpaper Blur"
+    case material      = "Material Glass"
+
+    var id: String { rawValue }
+    var localizedName: String {
+        switch self {
+        case .wallpaperBlur: return String(localized: "Desktop Wallpaper Blur")
+        case .material:      return String(localized: "Frosted Glass Material")
+        }
+    }
+}
+
+/// Screen corner that triggers the launcher on hover.
+enum LauncherHotCorner: String, CaseIterable, Defaults.Serializable, Identifiable {
+    case none        = "None"
+    case topLeft     = "Top Left"
+    case topRight    = "Top Right"
+    case bottomLeft  = "Bottom Left"
+    case bottomRight = "Bottom Right"
+
+    var id: String { rawValue }
+    var localizedName: String {
+        switch self {
+        case .none:        return String(localized: "Disabled")
+        case .topLeft:     return String(localized: "Top Left")
+        case .topRight:    return String(localized: "Top Right")
+        case .bottomLeft:  return String(localized: "Bottom Left")
+        case .bottomRight: return String(localized: "Bottom Right")
+        }
+    }
+}
+
+/// Human-friendly category categorization for apps based on LSApplicationCategoryType.
+enum AppCategory: String, CaseIterable, Codable, Identifiable {
+    case developer    = "Developer Tools"
+    case productivity = "Productivity"
+    case utilities    = "Utilities"
+    case graphics     = "Graphics & Design"
+    case games        = "Games"
+    case social       = "Social & Communication"
+    case audio        = "Music & Audio"
+    case video        = "Video"
+    case education    = "Education & Reference"
+    case other        = "Other"
+
+    var id: String { rawValue }
+
+    var symbolName: String {
+        switch self {
+        case .developer:    return "hammer.fill"
+        case .productivity: return "doc.text.fill"
+        case .utilities:    return "wrench.and.screwdriver.fill"
+        case .graphics:     return "paintbrush.fill"
+        case .games:        return "gamecontroller.fill"
+        case .social:       return "bubble.left.and.bubble.right.fill"
+        case .audio:        return "music.note"
+        case .video:        return "film.fill"
+        case .education:    return "book.fill"
+        case .other:        return "square.grid.2x2.fill"
+        }
+    }
+
+    /// Determines the best category for an application bundle.
+    static func category(for bundle: Bundle?, url: URL) -> AppCategory {
+        if let rawType = bundle?.object(forInfoDictionaryKey: "LSApplicationCategoryType") as? String {
+            let lower = rawType.lowercased()
+            if lower.contains("developer") { return .developer }
+            if lower.contains("productivity") || lower.contains("business") || lower.contains("finance") { return .productivity }
+            if lower.contains("utilities") { return .utilities }
+            if lower.contains("graphics") || lower.contains("photography") || lower.contains("design") { return .graphics }
+            if lower.contains("games") || lower.contains("arcade") { return .games }
+            if lower.contains("social") || lower.contains("chat") || lower.contains("networking") { return .social }
+            if lower.contains("music") || lower.contains("audio") { return .audio }
+            if lower.contains("video") || lower.contains("entertainment") { return .video }
+            if lower.contains("education") || lower.contains("reference") || lower.contains("book") { return .education }
+        }
+
+        let path = url.path.lowercased()
+        let name = url.deletingPathExtension().lastPathComponent.lowercased()
+
+        if path.contains("/utilities") || name.contains("terminal") || name.contains("console") || name.contains("activity monitor") || name.contains("disk utility") || name.contains("keychain") {
+            return .utilities
+        }
+        if name.contains("xcode") || name.contains("code") || name.contains("studio") || name.contains("git") || name.contains("sublime") || name.contains("cursor") || name.contains("zed") || name.contains("ghostty") || name.contains("iterm") || name.contains("docker") || name.contains("simulator") {
+            return .developer
+        }
+        if name.contains("slack") || name.contains("discord") || name.contains("telegram") || name.contains("messages") || name.contains("mail") || name.contains("whatsapp") || name.contains("zoom") || name.contains("teams") || name.contains("signal") || name.contains("wechat") {
+            return .social
+        }
+        if name.contains("music") || name.contains("spotify") || name.contains("podcast") || name.contains("sound") || name.contains("logic") || name.contains("garageband") || name.contains("audacity") {
+            return .audio
+        }
+        if name.contains("tv") || name.contains("quicktime") || name.contains("vlc") || name.contains("iina") || name.contains("final cut") || name.contains("handbrake") || name.contains("obs") || name.contains("netflix") {
+            return .video
+        }
+        if name.contains("pages") || name.contains("numbers") || name.contains("keynote") || name.contains("notes") || name.contains("reminders") || name.contains("calendar") || name.contains("notion") || name.contains("word") || name.contains("excel") || name.contains("powerpoint") || name.contains("obsidian") || name.contains("trello") {
+            return .productivity
+        }
+        if name.contains("photoshop") || name.contains("illustrator") || name.contains("figma") || name.contains("sketch") || name.contains("preview") || name.contains("photos") || name.contains("blender") || name.contains("gimp") || name.contains("affinity") {
+            return .graphics
+        }
+        if name.contains("steam") || name.contains("chess") || name.contains("game") {
+            return .games
+        }
+        if name.contains("books") || name.contains("dictionary") || name.contains("wikipedia") {
+            return .education
+        }
+        return .other
+    }
+}
