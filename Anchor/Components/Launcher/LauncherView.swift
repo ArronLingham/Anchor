@@ -167,12 +167,13 @@ struct LauncherView: View {
                 LauncherWallpaperBlur()
                     .onTapGesture { onDismiss() }
             } else {
-                RoundedRectangle(cornerRadius: 32, style: .continuous)
-                    .fill(.ultraThinMaterial)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 32, style: .continuous)
-                            .strokeBorder(Color.white.opacity(0.20), lineWidth: 1)
-                    )
+                ZStack {
+                    LauncherWallpaperBlur()
+                    RoundedRectangle(cornerRadius: 32, style: .continuous)
+                        .strokeBorder(Color.white.opacity(0.20), lineWidth: 1)
+                }
+                .clipShape(RoundedRectangle(cornerRadius: 32, style: .continuous))
+                .shadow(color: Color.black.opacity(0.35), radius: 24, y: 12)
             }
         }
         .defaultFocus($queryFocused, true)

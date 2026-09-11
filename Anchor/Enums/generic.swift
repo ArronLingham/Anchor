@@ -494,15 +494,33 @@ enum LauncherPresentationMode: String, CaseIterable, Defaults.Serializable, Iden
 
 /// Visual style of the launcher's background.
 enum LauncherBackgroundStyle: String, CaseIterable, Defaults.Serializable, Identifiable {
-    case wallpaperBlur = "Wallpaper Blur"
-    case material      = "Material Glass"
+    case desktopWallpaper = "Desktop Wallpaper"
+    case openWindows      = "Open Windows & Apps"
 
     var id: String { rawValue }
     var localizedName: String {
         switch self {
-        case .wallpaperBlur: return String(localized: "Desktop Wallpaper Blur")
-        case .material:      return String(localized: "Frosted Glass Material")
+        case .desktopWallpaper: return String(localized: "Desktop Wallpaper")
+        case .openWindows:      return String(localized: "Open Windows & Apps")
         }
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        let raw = try container.decode(String.self)
+        switch raw {
+        case "Desktop Wallpaper", "Wallpaper Blur":
+            self = .desktopWallpaper
+        case "Open Windows & Apps", "Material Glass":
+            self = .openWindows
+        default:
+            self = .desktopWallpaper
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(rawValue)
     }
 }
 

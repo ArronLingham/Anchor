@@ -57,7 +57,7 @@ final class LauncherPanel: NSPanel {
         currentMode = mode
         switch mode {
         case .fullscreen:
-            level = .screenSaver
+            level = .statusBar + 1
             hasShadow = false
         case .floaty:
             level = .floating

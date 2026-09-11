@@ -112,6 +112,8 @@ struct LauncherGridView: View {
     /// because no selection maps onto it. Paging controls move this; the
     /// selection follows it, not the other way round.
     @State private var currentPage: Int = 0
+    @State private var isScrubbing = false
+    @State private var isScrubberHovered = false
 
     /// Keeps the page in step when something else moves the selection — the
     /// arrow keys, or a fresh search.
@@ -143,12 +145,7 @@ struct LauncherGridView: View {
                 .onAppear { syncPageToSelection() }
             }
 
-            if pages.count > 1 && navigationStyle.showsDots {
-                pageDots
-            }
-            if pages.count > 1 && navigationStyle.showsBar {
-                pageScrubber
-            }
+            navigationControls
         }
         .padding(.vertical, 12)
         // Moving the pointer to either edge pages, the way Launchpad did.
@@ -263,29 +260,73 @@ struct LauncherGridView: View {
         }
     }
 
-    /// A draggable bar, for people who would rather scrub than click dots.
-    private var pageScrubber: some View {
-        GeometryReader { geo in
-            let width = geo.size.width
-            let fraction = pages.count > 1 ? Double(currentPage) / Double(pages.count - 1) : 0
-            let knobWidth = max(40, width / Double(pages.count))
-            ZStack(alignment: .leading) {
-                Capsule().fill(Color.secondary.opacity(0.18)).frame(height: 4)
-                Capsule()
-                    .fill(Color.secondary.opacity(0.55))
-                    .frame(width: knobWidth, height: 4)
-                    .offset(x: (width - knobWidth) * fraction)
+    @ViewBuilder
+    private var navigationControls: some View {
+        VStack(spacing: 8) {
+            if navigationStyle.showsBar {
+                pageScrubber
             }
-            .contentShape(Rectangle())
-            .gesture(
-                DragGesture(minimumDistance: 0).onChanged { drag in
-                    let p = max(0, min(1, drag.location.x / max(width, 1)))
-                    let target = Int((p * Double(pages.count - 1)).rounded())
-                    if target != currentPage { goToPage(target) }
-                })
+            if navigationStyle.showsDots {
+                pageDots
+            }
         }
-        .frame(height: 12)
-        .padding(.horizontal, 60)
+        .padding(.top, 4)
+        .padding(.bottom, 2)
+    }
+
+    /// A macOS-styled draggable scroll bar for smooth page scrubbing.
+    private var pageScrubber: some View {
+        let totalPages = max(1, pages.count)
+        return GeometryReader { geo in
+            let barWidth: CGFloat = min(320, max(180, geo.size.width * 0.35))
+            let totalAvailable = barWidth
+            let knobWidth: CGFloat = totalPages > 1 ? max(44, totalAvailable / CGFloat(totalPages)) : totalAvailable
+            let fraction: CGFloat = totalPages > 1 ? CGFloat(currentPage) / CGFloat(totalPages - 1) : 0
+            let knobOffset = (totalAvailable - knobWidth) * fraction
+
+            HStack {
+                Spacer()
+                ZStack(alignment: .leading) {
+                    // Track
+                    Capsule()
+                        .fill(Color.primary.opacity(isScrubberHovered || isScrubbing ? 0.16 : 0.10))
+                        .frame(width: totalAvailable, height: isScrubberHovered || isScrubbing ? 8 : 6)
+                        .animation(.easeInOut(duration: 0.15), value: isScrubberHovered)
+
+                    // Thumb
+                    Capsule()
+                        .fill(Color.primary.opacity(isScrubbing ? 0.85 : (isScrubberHovered ? 0.70 : 0.50)))
+                        .frame(width: knobWidth, height: isScrubberHovered || isScrubbing ? 8 : 6)
+                        .offset(x: knobOffset)
+                        .shadow(color: Color.black.opacity(isScrubbing ? 0.25 : 0.10), radius: 2, y: 1)
+                        .animation(.spring(response: 0.25, dampingFraction: 0.75), value: currentPage)
+                }
+                .frame(width: totalAvailable, height: 16)
+                .contentShape(Rectangle())
+                .onHover { hovering in
+                    isScrubberHovered = hovering
+                }
+                .gesture(
+                    DragGesture(minimumDistance: 0)
+                        .onChanged { drag in
+                            isScrubbing = true
+                            guard totalPages > 1 else { return }
+                            let x = max(0, min(totalAvailable, drag.location.x))
+                            let p = x / totalAvailable
+                            let target = Int((p * CGFloat(totalPages - 1)).rounded())
+                            let clampedTarget = max(0, min(totalPages - 1, target))
+                            if clampedTarget != currentPage {
+                                goToPage(clampedTarget)
+                            }
+                        }
+                        .onEnded { _ in
+                            isScrubbing = false
+                        }
+                )
+                Spacer()
+            }
+        }
+        .frame(height: 16)
     }
 
     private func page_(_ page: [Slot], pageIndex: Int) -> some View {
@@ -410,25 +451,30 @@ struct LauncherGridView: View {
         Defaults[.launcherCustomOrder] = order
     }
 
-    /// Dots are clickable — jumping five pages with the arrow keys is tedious,
-    /// and a dot that looks like a control but isn't one reads as broken.
+    /// Interactive page indicator dots / pill.
     private var pageDots: some View {
-        HStack(spacing: 8) {
-            ForEach(0..<pages.count, id: \.self) { index in
-                Circle()
-                    .fill(index == currentPage ? Color.primary.opacity(0.75) : Color.primary.opacity(0.2))
-                    .frame(width: 6, height: 6)
-                    // Padded hit area — a 6pt target is too small to click.
-                    .padding(4)
-                    .contentShape(Circle())
+        let totalPages = max(1, pages.count)
+        return HStack(spacing: 8) {
+            ForEach(0..<totalPages, id: \.self) { index in
+                Capsule()
+                    .fill(index == currentPage ? Color.primary.opacity(0.85) : Color.primary.opacity(0.25))
+                    .frame(width: index == currentPage ? 16 : 7, height: 7)
+                    .contentShape(Rectangle())
                     .onTapGesture {
-                        withAnimation(.easeInOut(duration: 0.2)) {
+                        guard index < pages.count else { return }
+                        withAnimation(.spring(response: 0.25, dampingFraction: 0.75)) {
                             goToPage(index)
                         }
                     }
             }
         }
-        .animation(.easeInOut(duration: 0.2), value: currentPage)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 6)
+        .background(
+            Capsule()
+                .fill(Color.primary.opacity(0.08))
+        )
+        .animation(.spring(response: 0.28, dampingFraction: 0.75), value: currentPage)
     }
 }
 

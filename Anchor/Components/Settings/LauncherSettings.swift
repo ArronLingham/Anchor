@@ -154,14 +154,14 @@ struct LauncherSettings: View {
                     .settingsHighlight(id: highlightID("Order"))
                     .settingsInfo("Custom is your own order — drag icons in the grid to set it. Dragging does nothing under the other three, because their positions are derived.")
 
-                    Picker("Paging", selection: $launcherNavigationStyle) {
+                    Picker("Paging controls", selection: $launcherNavigationStyle) {
                         ForEach(LauncherNavigationStyle.allCases) { style in
                             Text(style.localizedName).tag(style)
                         }
                     }
                     .disabled(!enableLauncher)
                     .settingsHighlight(id: highlightID("Paging"))
-                    .settingsInfo("Moving the pointer to either edge of the grid always turns the page, whichever of these is shown.")
+                    .settingsInfo("Choose between interactive page dots, a macOS-style scroll bar, or both when deploying the launchpad.")
 
                     // Both of these are written by dragging in the grid, not
                     // by a control — so without a reset there is no way back
@@ -215,16 +215,14 @@ struct LauncherSettings: View {
                 .settingsHighlight(id: highlightID("Presentation mode"))
                 .settingsInfo("Fullscreen Launchpad covers the display with an immersive grid. Floaty Panel floats a sleek centered window.")
 
-                if presentationMode == .fullscreen {
-                    Picker("Background style", selection: $backgroundStyle) {
-                        ForEach(LauncherBackgroundStyle.allCases) { style in
-                            Text(style.localizedName).tag(style)
-                        }
+                Picker("Background blur style", selection: $backgroundStyle) {
+                    ForEach(LauncherBackgroundStyle.allCases) { style in
+                        Text(style.localizedName).tag(style)
                     }
-                    .disabled(!enableLauncher)
-                    .settingsHighlight(id: highlightID("Background style"))
-                    .settingsInfo("Wallpaper Blur captures and blurs your active desktop wallpaper. Frosted Glass uses system material.")
                 }
+                .disabled(!enableLauncher)
+                .settingsHighlight(id: highlightID("Background style"))
+                .settingsInfo("Choose whether Launchpad blurs your desktop wallpaper (ignoring open windows) or blurs whatever windows and apps are currently open on your screen (e.g. Safari).")
 
                 Picker("Hot corner trigger", selection: $hotCorner) {
                     ForEach(LauncherHotCorner.allCases) { corner in

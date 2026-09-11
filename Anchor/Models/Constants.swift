@@ -995,7 +995,7 @@ extension Defaults.Keys {
     /// Presentation style of the launcher window: Fullscreen Launchpad vs Floaty Panel.
     static let launcherPresentationMode = Key<LauncherPresentationMode>("launcherPresentationMode", default: .fullscreen)
     /// Background aesthetic: blurred active wallpaper vs frosted glass material.
-    static let launcherBackgroundStyle = Key<LauncherBackgroundStyle>("launcherBackgroundStyle", default: .wallpaperBlur)
+    static let launcherBackgroundStyle = Key<LauncherBackgroundStyle>("launcherBackgroundStyle", default: .desktopWallpaper)
     /// Screen corner hover trigger to open the launcher.
     static let launcherHotCorner = Key<LauncherHotCorner>("launcherHotCorner", default: .none)
     /// Show automatic category library page before user grid.

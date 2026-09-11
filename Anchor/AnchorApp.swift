@@ -671,6 +671,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         LockScreenLiveActivityWindowManager.shared.configure(viewModel: vm)
         LockScreenManager.shared.configure(viewModel: vm)
+        LauncherWallpaperCache.shared.prewarmAll()
         
         // Migrate legacy progress bar settings
         Defaults.Keys.migrateProgressBarStyle()
