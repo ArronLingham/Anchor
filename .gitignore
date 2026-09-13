@@ -139,13 +139,13 @@ referenceimages
 PrivateWorks
 
 *.py
-!tests/test_privacy_configuration.py
-# Scratch shell scripts stay out, but committed test and measurement
-# harnesses must not — an unqualified *.sh silently swallowed measure.sh,
-# which is why it was lost with the session that wrote it.
 *.sh
-!tests/*.sh
-!scripts/*.sh
+
+# Testing & Measurement (Not needed to run Anchor)
+tests/
+AnchorUITests/
+TESTING.md
+scripts/
 comparison_report.json
 *.txt
 ANIMATION_DEBUG_GUIDE.md

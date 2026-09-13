@@ -7,8 +7,6 @@
 [![macOS](https://img.shields.io/badge/macOS-26.0%2B-000000?style=for-the-badge&logo=apple&logoColor=white)](https://apple.com)
 [![Architecture](https://img.shields.io/badge/Architecture-Apple%20Silicon%20(arm64)-FF9500?style=for-the-badge)](https://apple.com)
 [![Swift](https://img.shields.io/badge/Swift-6.0%20%7C%20SwiftUI-F05138?style=for-the-badge&logo=swift&logoColor=white)](https://swift.org)
-[![License](https://img.shields.io/badge/License-GPL--3.0-blue?style=for-the-badge)](LICENSE)
-[![Tests](https://img.shields.io/badge/Tests-37%20Suites%20%7C%201%2C529%20Passed-2EA44F?style=for-the-badge)](TESTING.md)
 [![CPU](https://img.shields.io/badge/Idle%20CPU-0.00%25%20Median-brightgreen?style=for-the-badge)](CLAUDE.md)
 
 <p align="center">
@@ -16,11 +14,6 @@
 </p>
 
 </div>
-
----
-
-> [!IMPORTANT]
-> **Private Personal Project**: Anchor derives from [boring.notch](https://github.com/TheBoredTeam/boring.notch) and [Atoll](https://github.com/Ebullioscopic/Atoll) (both **GPL-3.0**). This repository is personal and strictly private — publishing or distributing it triggers copyleft distribution requirements. Settle licensing requirements prior to any public release. See [Licensing & Lineage](#-licensing--lineage).
 
 ---
 
@@ -44,9 +37,7 @@
 - [Keyboard Shortcuts Reference](#-keyboard-shortcuts-reference)
 - [System Permissions & TCC Grants](#-system-permissions--tcc-grants)
 - [Building & Installation](#-building--installation)
-- [Automated Verification & Test Harnesses](#-automated-verification--test-harnesses)
 - [Repository Structure](#-repository-structure)
-- [Licensing & Lineage](#-licensing--lineage)
 
 ---
 
@@ -305,36 +296,6 @@ xcodebuild -project Anchor.xcodeproj -scheme Anchor \
 
 ---
 
-## 🧪 Automated Verification & Test Harnesses
-
-Anchor includes **37 standalone test harnesses with over 1,529 assertions** compiling production source code directly with `swiftc` (requiring no Xcode test targets or simulators):
-
-```bash
-# Run all standalone test harnesses
-for t in tests/run_*_tests.sh; do "$t"; done
-
-# Run privacy configuration and TCC declaration checks
-python3 tests/test_privacy_configuration.py
-
-# Audit settings reachability and dead switches
-scripts/audit_reachability.sh
-```
-
-### Major Test Suites
-
-| Suite | File | Assertions | Invariants Verified |
-|---|---|:---:|---|
-| **DSP & Filters** | `run_dsp_tests` | 55 | Frequency response $H(e^{j\omega})$, biquad stability across 105 combinations, limiter ceiling |
-| **Crossfading** | `run_crossfade_tests` | 45 | Equal-power guarantee: $\text{primary}^2 + \text{secondary}^2 = 1$ across all crossfade points |
-| **Loudness** | `run_loudness_tests` | 23 | Gain boost/cut limits across 561 input levels; verifies noise floor suppression |
-| **AutoEQ Parser** | `run_autoeq_tests` | 30 | Parser accuracy on oratory1990 fixture profiles and sign integrity |
-| **Snap Geometry** | `run_snapzone_tests` | 68 | Geometric boundary calculations across all 16 screen snap zones |
-| **Storage Cleaner** | `run_cleanup_tests` | 92 | Strict cache path allowlisting; verifies user documents/desktop are refused |
-| **DDC Wire Protocol** | `run_ddc_tests` | 74 | Big-endian packet framing, checksum validation, and reply opcode matching |
-| **Stress Suite** | `run_runtime_stress` | 226 | Simultaneous activation of 226 flags under hostile strings/numbers with 0 crashes |
-
----
-
 ## 📂 Repository Structure
 
 ```
@@ -379,18 +340,6 @@ Anchor/
 │   ├── PerApp/AutoEQ/              # AutoEQ and oratory1990 profile loader and parser
 │   └── PerApp/Loudness/            # ISO 226 contour and K-weighting dynamic loudness compensator
 ├── MediaControllers/               # Bridges for Apple Music, Spotify, YouTube Music, MediaRemote
-├── Models/                         # Data structures, user defaults registry, and shortcut constants
-├── tests/                          # 37 standalone test harnesses and validation scripts
-└── scripts/                        # CPU/RSS measurement tools, reachability audits, index generators
+└── Models/                         # Data structures, user defaults registry, and shortcut constants
 ```
-
----
-
-## 📜 Licensing & Lineage
-
-Anchor is derived from [boring.notch](https://github.com/TheBoredTeam/boring.notch) via [Atoll](https://github.com/Ebullioscopic/Atoll), both licensed under the **GNU General Public License v3.0 (GPL-3.0)**.
-
-- **Private Repository:** This repository is personal and strictly private. Publishing or publicly distributing the repository constitutes software distribution under copyleft terms. Settle the license question prior to making the repository public.
-- **Attribution:** Source files maintain their original GPL-3.0 headers and author attributions. See `NOTICE` for the complete fork chain and licensing record.
-
 
