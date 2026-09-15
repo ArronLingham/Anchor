@@ -15,6 +15,9 @@
 
 </div>
 
+[anchor_lockScreen.pdf](https://github.com/user-attachments/files/32218470/anchor_lockScreen.pdf)
+
+
 ---
 
 ## 📑 Table of Contents
@@ -84,6 +87,9 @@ Anchor replaces an entire suite of third-party apps (WisprFlow, SoundSource/Fine
 - **Notch Pin Mode (<kbd>⌘</kbd> <kbd>⇧</kbd> <kbd>K</kbd>):** Lock the notch expanded to maintain persistent focus without auto-collapsing on hover-out.
 - **Contextual Sneak Peeks:** Glanceable micro-HUDs (volume, mic mute, battery status, caps lock, timer progress) convey real-time state without expanding the entire notch bar.
 - **Integrated Notch Tabs:** Quick tab bar navigation between Notch Home, Media/Lyrics, Notes, To-Do, Terminal, System Stats, Calendar, and File Shelf.
+
+[anchor_dynamicIsland.pdf](https://github.com/user-attachments/files/32218435/anchor_dynamicIsland.pdf)[anchor_lockScreen.pdf](https://github.com/user-attachments/files/32218457/anchor_lockScreen.pdf)
+
 
 ---
 
