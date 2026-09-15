@@ -15,7 +15,8 @@
 
 </div>
 
-![anchor_lockScreen.pdf](https://github.com/user-attachments/files/32218470/anchor_lockScreen.pdf)
+<img width="1470" height="956" alt="anchor_dynamicIsland" src="https://github.com/user-attachments/assets/7e02fb40-0030-4b6e-8605-4d960204a5c6" />
+
 
 
 ---
