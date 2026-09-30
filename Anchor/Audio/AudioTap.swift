@@ -156,6 +156,7 @@ class AudioTap: NSObject {
 
     private override init() {
         super.init()
+        observeTargetAppLaunches()
     }
 
     /// Advances the smoothing toward the latest analyser output.
@@ -200,6 +201,34 @@ class AudioTap: NSObject {
             self.consumerCount += 1
             guard !self.isSuspended, self.consumerCount == 1 else { return }
             self.startCaptureSync()
+        }
+    }
+
+    /// Retry when a target app appears.
+    ///
+    /// `startCaptureSync` returns early — correctly — when none of the target
+    /// apps are running, and nothing ever tried again. `getSmoothedMagnitudes`
+    /// then returns the same never-updated array forever, so the bars sat
+    /// perfectly still and looked broken rather than idle. Anything placed
+    /// before Spotify was launched stayed dead for the whole session.
+    ///
+    /// This is an observer, not a poll: the rule here is schedule, don't poll.
+    private func observeTargetAppLaunches() {
+        NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didLaunchApplicationNotification,
+            object: nil, queue: .main
+        ) { [weak self] note in
+            guard let self,
+                let app = note.userInfo?[NSWorkspace.applicationUserInfoKey]
+                    as? NSRunningApplication,
+                let bundleID = app.bundleIdentifier,
+                self.targetBundleIDs.contains(bundleID)
+            else { return }
+            self.audioQueue.async {
+                guard !self.isSuspended, self.consumerCount > 0, !self.captureIsRunning
+                else { return }
+                self.startCaptureSync()
+            }
         }
     }
 

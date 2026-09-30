@@ -1004,6 +1004,30 @@ extension Defaults.Keys {
     static let launcherShowClockWidget = Key<Bool>("launcherShowClockWidget", default: false)
     static let launcherShowWeatherWidget = Key<Bool>("launcherShowWeatherWidget", default: false)
     static let launcherShowVinylWidget = Key<Bool>("launcherShowVinylWidget", default: false)
+    static let launcherShowCalendarWidget = Key<Bool>("launcherShowCalendarWidget", default: false)
+    static let launcherShowRemindersWidget = Key<Bool>("launcherShowRemindersWidget", default: false)
+    static let playerLayouts = Key<PlayerLayouts>("anchorCadencePlayerLayouts", default: .defaults)
+    static let anchorCadenceLayoutsImported = Key<Bool>(
+        "anchorCadenceLayoutsImported", default: false)
+    static let enablePlayerWidget = Key<Bool>("anchorCadenceDesktopPlayerEnabled", default: false)
+    static let playerWidth = Key<Double>("anchorCadencePlayerWidth", default: 320)
+    static let playerWindowLevel = Key<PlayerWindowLevel>(
+        "anchorCadencePlayerWindowLevel", default: .normal)
+    static let playerTintsWithAlbum = Key<Bool>("anchorCadencePlayerTintsWithAlbum", default: true)
+    static let playerBackgroundOpacity = Key<Double>(
+        "anchorCadencePlayerBackgroundOpacity", default: 1)
+    static let hoverGrowsWidget = Key<Bool>("anchorCadenceHoverGrowsWidget", default: true)
+    static let playerFollowsSpaces = Key<Bool>("anchorCadencePlayerFollowsSpaces", default: false)
+    static let playerUsesGlass = Key<Bool>("anchorCadencePlayerUsesGlass", default: true)
+    static let lockFullBackground = Key<LockFullBackground>(
+        "anchorCadenceFullBackground", default: .blurredArtwork)
+    static let useCadenceLockLayouts = Key<Bool>("anchorCadenceLockLayouts", default: true)
+    static let launcherWidgetSize = Key<LauncherPlayerWidget.Size>(
+        "anchorCadenceLauncherWidgetSize", default: .regular)
+    static let launcherAlwaysShowsControls = Key<Bool>(
+        "anchorCadenceLauncherAlwaysShowsControls", default: false)
+    static let volumeControlsApp = Key<Bool>("anchorCadenceVolumeControlsApp", default: false)
+    static let playerHeightBudget = Key<Double>("anchorCadencePlayerHeightBudget", default: 0)
     static let clipboardHistorySize = Key<Int>("clipboardHistorySize", default: 3)
     static let showClipboardIcon = Key<Bool>("showClipboardIcon", default: true)
     static let clipboardDisplayMode = Key<ClipboardDisplayMode>("clipboardDisplayMode", default: .panel)
@@ -1310,8 +1334,13 @@ extension Defaults.Keys {
     // MARK: To-do list
     /// Adds the To-Do tab. Off by default like every other optional tab.
     static let enableTodoFeature = Key<Bool>("enableTodoFeature", default: false)
+    static let todoRemindersSyncEnabled = Key<Bool>("todoRemindersSyncEnabled", default: false)
+    static let todoRemindersListID = Key<String>("todoRemindersListID", default: "")
     static let savedTodos = Key<[TodoItem]>("savedTodos", default: [])
     static let todoSortOrder = Key<TodoSortOrder>("todoSortOrder", default: .manual)
+    static let todoSortInverted = Key<Bool>("todoSortInverted", default: false)
+    static let todoSecondarySortOrder = Key<TodoSecondarySortOrder>("todoSecondarySortOrder", default: .none)
+    static let todoSecondarySortInverted = Key<Bool>("todoSecondarySortInverted", default: false)
     /// Show ticked items under a divider rather than hiding them outright.
     static let todoShowCompleted = Key<Bool>("todoShowCompleted", default: true)
 

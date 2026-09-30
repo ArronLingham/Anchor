@@ -43,7 +43,7 @@ class AnchorViewModel: NSObject, ObservableObject {
     /// borderless panels, preventing leaked hover-polling Tasks from accumulating.
     var onViewTeardown: (() -> Void)?
     
-    @Published var hideOnClosed: Bool = true
+    @Published var hideOnClosed: Bool = false
     @Published var isHoveringCalendar: Bool = false
     @Published var isBatteryPopoverActive: Bool = false
     @Published var isClipboardPopoverActive: Bool = false
@@ -52,6 +52,7 @@ class AnchorViewModel: NSObject, ObservableObject {
     @Published var isReminderPopoverActive: Bool = false
     @Published var isMediaOutputPopoverActive: Bool = false
     @Published var isTimerPopoverActive: Bool = false
+    @Published var isTodoPopoverActive: Bool = false
     @Published var shouldRecheckHover: Bool = false
     @Published var isScrollGestureActive: Bool = false
     private var scrollGestureSuppressionTokens: Set<UUID> = []
@@ -317,9 +318,15 @@ class AnchorViewModel: NSObject, ObservableObject {
             }
             .switchToLatest()
 
-        // 3) Combine enabled & status, animate only on changes
-        Publishers.CombineLatest(statusPublisher, enabledPublisher)
-            .map { status, enabled in enabled && status }
+        // The persistent external pill overrides fullscreen hiding, including live setting changes.
+        Publishers.CombineLatest3(statusPublisher, enabledPublisher,
+                                  Defaults.publisher(.alwaysShowOnExternalDisplays).map(\.newValue))
+            .receive(on: RunLoop.main)
+            .map { [weak self] status, enabled, persistent in
+                let screen = NSScreen.screens.first { $0.localizedName == self?.screen }
+                let keepVisible = ExternalPillPolicy.isPersistent(enabled: persistent, safeAreaTop: screen?.safeAreaInsets.top)
+                return ExternalPillPolicy.hidesForFullscreen(detected: status, detectionEnabled: enabled, persistent: keepVisible)
+            }
             .removeDuplicates()
             .receive(on: RunLoop.main)
             .sink { [weak self] shouldHide in

@@ -36,21 +36,21 @@ import SwiftUI
 /// roughly at the right app" work reliably.
 struct AppSwitcherView: View {
     @ObservedObject private var switcher = AppSwitcherManager.shared
+    @State private var initialHoverPoint: CGPoint?
+    let diameter: CGFloat
 
     /// Scales with how many apps are open — see `AppSwitcherManager.ringDiameter`.
     /// The panel's own NSWindow is sized from the same property at present
     /// time, so this must stay in lockstep with it rather than reading the
     /// raw Default directly.
-    private var diameter: CGFloat { switcher.ringDiameter }
-
     /// Icon edge, shrinking as the ring fills up so a busy Mac still fits.
     private var iconSize: CGFloat {
         let count = switcher.apps.count
         switch count {
-        case ...8: return 64
-        case 9...12: return 54
-        case 13...18: return 44
-        default: return 36
+        case ...8: return 52
+        case 9...12: return 46
+        case 13...18: return 38
+        default: return 32
         }
     }
 
@@ -69,16 +69,28 @@ struct AppSwitcherView: View {
             ForEach(Array(switcher.apps.enumerated()), id: \.element.id) { index, app in
                 icon(app, at: index)
             }
+            selectedAppLabel
         }
         .frame(width: diameter, height: diameter)
         .contentShape(Circle())
         .onContinuousHover(coordinateSpace: .local) { phase in
-            guard case .active(let location) = phase else { return }
+            guard case .active(let location) = phase else {
+                initialHoverPoint = nil
+                return
+            }
+            if initialHoverPoint == nil {
+                initialHoverPoint = location
+                return
+            }
+            if let origin = initialHoverPoint,
+               hypot(location.x - origin.x, location.y - origin.y) < 2 {
+                return
+            }
             selectWedge(at: location)
         }
         .onTapGesture { location in
             selectWedge(at: location)
-            switcher.activateSelection()
+            AppSwitcherPanelManager.shared.dismiss(activating: true)
         }
     }
 
@@ -129,14 +141,14 @@ struct AppSwitcherView: View {
     private var backdrop: some View {
         let ringWidth = diameter / 2 - deadZoneRadius
         return ZStack {
-            Circle().strokeBorder(.ultraThinMaterial, lineWidth: ringWidth)
-            Circle().strokeBorder(.black.opacity(0.38), lineWidth: ringWidth)
-            Circle().strokeBorder(.white.opacity(0.12), lineWidth: 1)
+            Circle().strokeBorder(.black.opacity(0.80), lineWidth: ringWidth)
+            Circle().strokeBorder(.white.opacity(0.055), lineWidth: ringWidth)
+            Circle().strokeBorder(.white.opacity(0.18), lineWidth: 1)
             Circle()
-                .stroke(.white.opacity(0.12), lineWidth: 1)
+                .stroke(.white.opacity(0.18), lineWidth: 1)
                 .frame(width: deadZoneRadius * 2, height: deadZoneRadius * 2)
         }
-        .shadow(color: .black.opacity(0.45), radius: 24, y: 8)
+        .shadow(color: .black.opacity(0.30), radius: 20, y: 8)
     }
 
     /// The selected app's slice of the disc, lit up behind its icon so the
@@ -152,7 +164,7 @@ struct AppSwitcherView: View {
                 innerRadius: deadZoneRadius,
                 outerRadius: diameter / 2
             )
-            .fill(.white.opacity(0.14))
+            .fill(.white.opacity(0.10))
             .allowsHitTesting(false)
         }
     }
@@ -172,8 +184,8 @@ struct AppSwitcherView: View {
         return ZStack {
             if isSelected {
                 Circle()
-                    .fill(.white.opacity(0.16))
-                    .frame(width: iconSize * 1.42, height: iconSize * 1.42)
+                    .fill(.white.opacity(0.20))
+                    .frame(width: iconSize * 1.38, height: iconSize * 1.38)
             }
 
             Group {
@@ -187,11 +199,25 @@ struct AppSwitcherView: View {
             }
             .frame(width: iconSize, height: iconSize)
         }
-        .scaleEffect(isSelected ? 1.12 : 1)
+        .scaleEffect(isSelected ? 1.06 : 1)
         .offset(offset)
-        .animation(.spring(response: 0.22, dampingFraction: 0.75), value: switcher.selectedIndex)
+        .animation(.easeOut(duration: 0.08), value: switcher.selectedIndex)
         .allowsHitTesting(false)
         .help(app.name)
+    }
+
+    @ViewBuilder
+    private var selectedAppLabel: some View {
+        if switcher.apps.indices.contains(switcher.selectedIndex) {
+            Text(switcher.apps[switcher.selectedIndex].name)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(.primary)
+                .lineLimit(2)
+                .multilineTextAlignment(.center)
+                .frame(width: deadZoneRadius * 1.8)
+                .allowsHitTesting(false)
+                .accessibilityLabel("Selected app: \(switcher.apps[switcher.selectedIndex].name)")
+        }
     }
 }
 

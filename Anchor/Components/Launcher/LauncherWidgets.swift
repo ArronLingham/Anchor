@@ -17,6 +17,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
+import AppKit
 import Defaults
 import SwiftUI
 
@@ -34,20 +35,155 @@ struct LauncherWidgetStrip: View {
     @Default(.launcherShowClockWidget) private var showClock
     @Default(.launcherShowWeatherWidget) private var showWeather
     @Default(.launcherShowVinylWidget) private var showVinyl
+    @Default(.launcherShowCalendarWidget) private var showCalendar
+    @Default(.launcherShowRemindersWidget) private var showReminders
 
-    var anyEnabled: Bool { showClock || showWeather || showVinyl }
+    var anyEnabled: Bool { showClock || showWeather || showVinyl || showCalendar || showReminders }
 
     var body: some View {
         if anyEnabled {
-            HStack(spacing: 12) {
-                if showClock { LauncherClockWidget() }
-                if showWeather { LauncherWeatherWidget() }
-                if showVinyl { LauncherVinylWidget() }
-                Spacer(minLength: 0)
+            ScrollView(.horizontal) {
+                HStack(alignment: .top, spacing: 10) {
+                    if showClock { LauncherClockWidget() }
+                    if showWeather { LauncherWeatherWidget() }
+                    if showCalendar { LauncherCalendarWidget() }
+                    if showReminders { LauncherRemindersWidget() }
+                    if showVinyl { LauncherVinylWidget() }
+                }
             }
-            .padding(.top, 14)
-            .padding(.bottom, 2)
+            .scrollIndicators(.hidden)
+            .padding(.top, 2)
+            .padding(.bottom, 12)
         }
+    }
+}
+
+private struct LauncherCalendarWidget: View {
+    @ObservedObject private var calendar = CalendarManager.shared
+
+    private var upcoming: [EventModel] {
+        calendar.launcherEvents
+            .filter { $0.type.isEvent && $0.end >= Date() }
+            .sorted { $0.start < $1.start }
+            .prefix(2)
+            .map { $0 }
+    }
+
+    var body: some View {
+        WidgetCard {
+            VStack(alignment: .leading, spacing: 8) {
+                Label("Calendar", systemImage: "calendar")
+                    .font(.system(size: 12, weight: .semibold))
+                if !calendar.hasCalendarAccess {
+                    Text("Allow Calendar access in Settings")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else if upcoming.isEmpty {
+                    Text("No upcoming events")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(upcoming) { event in
+                        Button {
+                            if let url = event.calendarAppURL() {
+                                _ = NSWorkspace.shared.open(url)
+                            } else {
+                                _ = NSWorkspace.shared.open(
+                                    URL(fileURLWithPath: "/System/Applications/Calendar.app"))
+                            }
+                        } label: {
+                            HStack(spacing: 8) {
+                                Text(event.isAllDay ? "All day" : event.start.formatted(date: .omitted, time: .shortened))
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                                    .frame(width: 58, alignment: .leading)
+                                Text(event.title)
+                                    .font(.caption)
+                                    .lineLimit(1)
+                                Spacer(minLength: 0)
+                            }
+                        }
+                        .buttonStyle(.plain)
+                        .help("Open \(event.title) in Calendar")
+                    }
+                }
+            }
+            .frame(width: 218, alignment: .leading)
+        }
+        .task {
+            if !calendar.hasCalendarAccess {
+                await calendar.checkCalendarAuthorization()
+            }
+            if calendar.hasCalendarAccess { await calendar.updateLauncherEvents() }
+        }
+    }
+}
+
+private struct LauncherRemindersWidget: View {
+    @ObservedObject private var reminders = LauncherAppleReminders.shared
+    @State private var newTask = ""
+
+    var body: some View {
+        WidgetCard {
+            VStack(alignment: .leading, spacing: 7) {
+                HStack {
+                    Label("Reminders", systemImage: "checklist")
+                        .font(.system(size: 12, weight: .semibold))
+                    Spacer()
+                    Text("\(reminders.items.count)")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+                if !reminders.hasAccess {
+                    Text("Allow Reminders access")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else if reminders.items.isEmpty {
+                    Text("All caught up")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(Array(reminders.items.prefix(2))) { item in
+                        Button {
+                            Task { await reminders.complete(item) }
+                        } label: {
+                            HStack(spacing: 7) {
+                                Image(systemName: "circle")
+                                Text(item.title).lineLimit(1)
+                                Spacer(minLength: 0)
+                            }
+                            .font(.caption)
+                        }
+                        .buttonStyle(.plain)
+                        .help("Complete \(item.title)")
+                    }
+                }
+                HStack(spacing: 5) {
+                    TextField("New reminder", text: $newTask)
+                        .textFieldStyle(.plain)
+                        .font(.caption)
+                        .onSubmit(addTask)
+                    Button(action: addTask) {
+                        Image(systemName: "plus.circle.fill")
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(newTask.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .accessibilityLabel("Add reminder")
+                }
+            }
+            .frame(width: 218, alignment: .leading)
+        }
+        .task { await reminders.refresh() }
+        .onReceive(NotificationCenter.default.publisher(for: .EKEventStoreChanged)) { _ in
+            Task { await reminders.refresh(force: true) }
+        }
+    }
+
+    private func addTask() {
+        guard reminders.hasAccess else { return }
+        let title = newTask
+        newTask = ""
+        Task { await reminders.add(title) }
     }
 }
 
@@ -59,14 +195,14 @@ private struct WidgetCard<Content: View>: View {
     var body: some View {
         content
             .padding(.horizontal, 14)
-            .padding(.vertical, 10)
+            .padding(.vertical, 12)
             .frame(minWidth: 108, minHeight: 62, alignment: .leading)
-            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14))
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
             .overlay {
-                RoundedRectangle(cornerRadius: 14)
+                RoundedRectangle(cornerRadius: 16)
                     .stroke(Color.primary.opacity(0.08), lineWidth: 1)
             }
-            .contentShape(RoundedRectangle(cornerRadius: 14))
+            .contentShape(RoundedRectangle(cornerRadius: 16))
             .onTapGesture { onTap?() }
     }
 }
@@ -137,39 +273,11 @@ private struct LauncherWeatherWidget: View {
 /// the launcher is dismissed by the tap anyway, so a transport built into this
 /// card would be gone the moment you used it.
 private struct LauncherVinylWidget: View {
-    @ObservedObject private var music = MusicManager.shared
-
     var body: some View {
-        WidgetCard(onTap: {
-            Defaults[.enableVinylWidget] = true
-            VinylWidgetWindowManager.shared.sync()
-        }) {
-            HStack(spacing: 10) {
-                ZStack {
-                    Circle().fill(Color.black.opacity(0.85))
-                    Image(nsImage: music.albumArt)
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                        .frame(width: 26, height: 26)
-                        .clipShape(Circle())
-                    Circle()
-                        .fill(Color.primary.opacity(0.9))
-                        .frame(width: 5, height: 5)
-                }
-                .frame(width: 38, height: 38)
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(music.songTitle)
-                        .font(.system(size: 12, weight: .medium))
-                        .lineLimit(1)
-                    Text(music.artistName)
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
-                .frame(maxWidth: 140, alignment: .leading)
-            }
-        }
-        .help("Open the vinyl player")
+        LauncherPlayerWidget(onOpen: {
+            Defaults[.enablePlayerWidget] = true
+            PlayerWindowManager.shared.sync()
+        })
+        .help("Open the desktop player")
     }
 }

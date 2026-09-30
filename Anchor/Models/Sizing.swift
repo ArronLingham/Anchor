@@ -325,12 +325,12 @@ func addShadowPadding(to size: CGSize, isMinimalistic: Bool) -> CGSize {
 /// shape instead of the standard notch shape.
 ///
 /// Returns `true` only when ALL of these conditions are met:
-/// 1. The user has selected `.dynamicIsland` in `externalDisplayStyle`
+/// 1. The user has selected the pill style or enabled a persistent external pill
 /// 2. The screen does NOT have a physical notch (safeAreaInsets.top == 0)
 ///
 /// Screens with a physical notch always use the standard notch shape.
 func shouldUseDynamicIslandMode(for screenName: String?) -> Bool {
-    guard Defaults[.externalDisplayStyle] == .dynamicIsland else {
+    guard Defaults[.externalDisplayStyle] == .dynamicIsland || Defaults[.alwaysShowOnExternalDisplays] else {
         return false
     }
 
@@ -427,5 +427,9 @@ func getClosedNotchSize(screen: String? = nil) -> CGSize {
         }
     }
 
-    return .init(width: notchWidth, height: notchHeight)
+    return ExternalPillPolicy.closedSize(
+        CGSize(width: notchWidth, height: notchHeight),
+        persistent: ExternalPillPolicy.isPersistent(
+            enabled: Defaults[.alwaysShowOnExternalDisplays],
+            safeAreaTop: selectedScreen?.safeAreaInsets.top))
 }

@@ -52,8 +52,8 @@ private struct LyricsLookupKey: Hashable {
 }
 
 let defaultImage: NSImage = .init(
-    systemSymbolName: "heart.fill",
-    accessibilityDescription: "Album Art"
+    systemSymbolName: "music.note",
+    accessibilityDescription: "No album art"
 )!
 
 private struct ITunesExplicitnessSearchResponse: Decodable {
@@ -453,7 +453,7 @@ class MusicManager: ObservableObject {
 
     // Helper to check if macOS has removed support for NowPlayingController
     public private(set) var isNowPlayingDeprecated: Bool = false
-    private let mediaChecker = MediaChecker()
+    @MainActor private lazy var mediaChecker = MediaChecker()
 
     // Active controller
     private var activeController: (any MediaControllerProtocol)?
@@ -463,11 +463,11 @@ class MusicManager: ObservableObject {
     private var isPearDesktopAutoSwitched: Bool = false
 
     // Published properties for UI
-    @Published var songTitle: String = "I'm Handsome"
-    @Published var artistName: String = "Me"
+    @Published var songTitle: String = ""
+    @Published var artistName: String = ""
     @Published var albumArt: NSImage = defaultImage
     @Published var isPlaying = false
-    @Published var album: String = "Self Love"
+    @Published var album: String = ""
     @Published var isPlayerIdle: Bool = true
     @Published var isCurrentTrackExplicit: Bool = false
 
@@ -552,9 +552,9 @@ class MusicManager: ObservableObject {
     private var liveStreamCompletionReleaseCount: Int = 0
 
     // Store last values at the time artwork was changed
-    private var lastArtworkTitle: String = "I'm Handsome"
-    private var lastArtworkArtist: String = "Me"
-    private var lastArtworkAlbum: String = "Self Love"
+    private var lastArtworkTitle: String = ""
+    private var lastArtworkArtist: String = ""
+    private var lastArtworkAlbum: String = ""
     private var lastArtworkBundleIdentifier: String? = nil
     private var lastArtworkContentIdentifier: String? = nil
     private var lastArtworkContentURL: String? = nil
@@ -583,6 +583,11 @@ class MusicManager: ObservableObject {
             .sink { [weak self] change in
                 self?.handleLyricsPreferenceChange(isEnabled: change.newValue)
             }
+            .store(in: &cancellables)
+
+        Defaults.publisher(.colorExtractionMode)
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in self?.calculateAverageColor() }
             .store(in: &cancellables)
 
         // Observe Pear Desktop launch/terminate for auto-detection
@@ -699,9 +704,11 @@ class MusicManager: ObservableObject {
             controller.playbackStatePublisher
                 .receive(on: DispatchQueue.main)
                 .sink { [weak self] state in
-                    guard let self = self,
-                          self.activeController === controller else { return }
-                    self.updateFromPlaybackState(state)
+                    MainActor.assumeIsolated {
+                        guard let self = self,
+                              self.activeController === controller else { return }
+                        self.updateFromPlaybackState(state)
+                    }
                 }
                 .store(in: &controllerCancellables)
         }
@@ -1143,7 +1150,7 @@ class MusicManager: ObservableObject {
             debounceIdleTask?.cancel()
         } else {
             debounceIdleTask?.cancel()
-            debounceIdleTask = Task { [weak self] in
+            debounceIdleTask = Task { @MainActor [weak self] in
                 guard let self = self else { return }
                 try? await Task.sleep(for: .seconds(Defaults[.waitInterval]))
                 withAnimation {
@@ -1160,9 +1167,7 @@ class MusicManager: ObservableObject {
         workItem = DispatchWorkItem { [weak self] in
             withAnimation(.smooth) {
                 self?.albumArt = newAlbumArt
-                if Defaults[.coloredSpectrogram] {
-                    self?.calculateAverageColor()
-                }
+                self?.calculateAverageColor()
             }
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.4, execute: workItem!)

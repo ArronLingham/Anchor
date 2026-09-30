@@ -87,6 +87,35 @@ final class AudioRouteManager: ObservableObject {
             name: .systemAudioRouteDidChange,
             object: nil
         )
+        installHardwareListeners()
+    }
+
+    /// Ask CoreAudio directly.
+    ///
+    /// This class observed `.systemAudioRouteDidChange` and **nothing posted
+    /// it** — in Anchor that came from `SystemMediaControllers`, a HUD and
+    /// brightness file that was not part of this extraction. So the device list
+    /// was whatever it happened to be at launch, and an output element sat
+    /// showing a device you had already switched away from.
+    ///
+    /// Event-driven, not polled: `AudioObjectAddPropertyListenerBlock` calls
+    /// back when the hardware actually changes.
+    private func installHardwareListeners() {
+        for selector in [
+            kAudioHardwarePropertyDevices,
+            kAudioHardwarePropertyDefaultOutputDevice,
+        ] {
+            var address = AudioObjectPropertyAddress(
+                mSelector: selector,
+                mScope: kAudioObjectPropertyScopeGlobal,
+                mElement: kAudioObjectPropertyElementMain)
+            AudioObjectAddPropertyListenerBlock(
+                AudioObjectID(kAudioObjectSystemObject), &address, queue
+            ) { [weak self] _, _ in
+                self?.refreshDevices()
+                NotificationCenter.default.post(name: .systemAudioRouteDidChange, object: nil)
+            }
+        }
     }
 
     deinit {

@@ -71,16 +71,24 @@ final class MenuBarShrinkManager: NSResponder, ObservableObject {
     private var expanderItem: NSStatusItem?
     private var expanderWidthConstraint: NSLayoutConstraint?
 
-    /// The optional second expander. Items to *its* left stay hidden even when
-    /// the first section is showing — Ice calls this the "always hidden"
-    /// section.
-    private var alwaysHiddenDivider: NSStatusItem?
+    @Published private(set) var isAlwaysHiddenRevealed = false
+
+    /// The visible handle for the always-hidden section (slash / icon).
+    /// Can be ⌘-dragged anywhere to set the boundary of the always-hidden section.
+    private var alwaysHiddenItem: NSStatusItem?
+
+    /// The expander for the always-hidden section, positioned immediately to the left
+    /// of `alwaysHiddenItem` (+0.01). Stays 10,000pt wide until revealed.
+    private var alwaysHiddenExpanderItem: NSStatusItem?
+    private var alwaysHiddenExpanderWidthConstraint: NSLayoutConstraint?
 
     private var lastKnownChevronPos: CGFloat?
+    private var lastKnownAlwaysHiddenPos: CGFloat?
     private var rehideMonitor: Any?
     private var rehideTimer: DispatchSourceTimer?
     private var hoverTracking: NSTrackingArea?
     private var chevronMovementCancellable: AnyCancellable?
+    private var alwaysHiddenMovementCancellable: AnyCancellable?
     private var cancellables = Set<AnyCancellable>()
     private var started = false
 
@@ -149,6 +157,13 @@ final class MenuBarShrinkManager: NSResponder, ObservableObject {
         // BEFORE any status item or scene is created, so AppKit/WindowServer reads it immediately.
         StatusItemDefaults[.preferredPosition, Self.dividerAutosaveName] = chevronPos + 0.01
 
+        if Defaults[.menuBarAlwaysHiddenSection] {
+            let alwaysHiddenPos = StatusItemDefaults[.preferredPosition, Self.alwaysHiddenAutosaveName]
+                ?? (chevronPos + 200)
+            StatusItemDefaults[.preferredPosition, Self.alwaysHiddenAutosaveName] = alwaysHiddenPos
+            StatusItemDefaults[.preferredPosition, Self.alwaysHiddenExpanderAutosaveName] = alwaysHiddenPos + 0.01
+        }
+
         // If Anchor's own icon (Item-0) has no position saved yet, seed it on the visible side (0)
         if Defaults[.menubarIcon] && StatusItemDefaults[.preferredPosition, "Item-0"] == nil {
             StatusItemDefaults[.preferredPosition, "Item-0"] = 0
@@ -157,6 +172,8 @@ final class MenuBarShrinkManager: NSResponder, ObservableObject {
 
     static let dividerAutosaveName = "AnchorMenuBarDivider"
     static let chevronAutosaveName = "AnchorMenuBarChevron"
+    static let alwaysHiddenAutosaveName = "AnchorMenuBarAlwaysHiddenDivider"
+    static let alwaysHiddenExpanderAutosaveName = "AnchorMenuBarAlwaysHiddenExpander"
 
     private func activate() {
         guard chevronItem == nil else { return }
@@ -199,18 +216,21 @@ final class MenuBarShrinkManager: NSResponder, ObservableObject {
     }
 
     private func deactivate() {
+        arrangementState = nil
         cancelAutoHide()
         removeHoverTracking()
         chevronMovementCancellable?.cancel()
         chevronMovementCancellable = nil
-        for item in [chevronItem, expanderItem, alwaysHiddenDivider].compactMap({ $0 }) {
+        for item in [chevronItem, expanderItem].compactMap({ $0 }) {
             StatusItemDefaults.removeStatusItemPreservingPosition(item)
         }
         chevronItem = nil
         expanderItem = nil
         expanderWidthConstraint = nil
-        alwaysHiddenDivider = nil
         lastKnownChevronPos = nil
+
+        removeAlwaysHiddenItems()
+
         isActive = false
     }
 
@@ -218,20 +238,58 @@ final class MenuBarShrinkManager: NSResponder, ObservableObject {
         guard isActive else { return }
 
         if Defaults[.menuBarAlwaysHiddenSection] {
-            guard alwaysHiddenDivider == nil else { return }
-            let item = NSStatusBar.system.statusItem(withLength: Self.collapsedLength)
-            item.autosaveName = "AnchorMenuBarAlwaysHiddenDivider"
+            guard alwaysHiddenItem == nil else { return }
+
+            let chevronPos = StatusItemDefaults[.preferredPosition, Self.chevronAutosaveName] ?? 1
+            let currentPos = StatusItemDefaults[.preferredPosition, Self.alwaysHiddenAutosaveName]
+                ?? (chevronPos + 200)
+            StatusItemDefaults[.preferredPosition, Self.alwaysHiddenAutosaveName] = currentPos
+            lastKnownAlwaysHiddenPos = currentPos
+
+            let expanderPos = currentPos + 0.01
+            StatusItemDefaults[.preferredPosition, Self.alwaysHiddenExpanderAutosaveName] = expanderPos
+
+            let item = NSStatusBar.system.statusItem(withLength: Self.chevronLength)
+            item.autosaveName = Self.alwaysHiddenAutosaveName
             item.behavior = []
             item.isVisible = true
-            item.button?.image = nil
-            item.button?.window?.ignoresMouseEvents = true
-            item.button?.toolTip = String(
-                localized: "Items to the left of this are always hidden")
-            alwaysHiddenDivider = item
-        } else if let existing = alwaysHiddenDivider {
-            StatusItemDefaults.removeStatusItemPreservingPosition(existing)
-            alwaysHiddenDivider = nil
+            item.button?.image = Self.alwaysHiddenGlyph(expanded: isAlwaysHiddenRevealed)
+            item.button?.imagePosition = .imageOnly
+            item.button?.target = self
+            item.button?.action = #selector(alwaysHiddenClicked)
+            item.button?.sendAction(on: [.leftMouseDown, .rightMouseUp])
+            item.button?.toolTip = isAlwaysHiddenRevealed
+                ? String(localized: "Hide always-hidden menu bar items")
+                : String(localized: "Show always-hidden menu bar items (⌘-drag to move divider)")
+            alwaysHiddenItem = item
+            observeAlwaysHiddenMovement()
+
+            let expander = NSStatusBar.system.statusItem(withLength: 0)
+            expander.autosaveName = Self.alwaysHiddenExpanderAutosaveName
+            expander.behavior = []
+            expander.isVisible = true
+            expander.button?.image = nil
+            expander.button?.window?.ignoresMouseEvents = true
+            alwaysHiddenExpanderItem = expander
+            cacheAlwaysHiddenExpanderWidthConstraint()
+
+            applyAlwaysHiddenLengths()
+        } else {
+            removeAlwaysHiddenItems()
         }
+    }
+
+    private func removeAlwaysHiddenItems() {
+        alwaysHiddenMovementCancellable?.cancel()
+        alwaysHiddenMovementCancellable = nil
+        for item in [alwaysHiddenItem, alwaysHiddenExpanderItem].compactMap({ $0 }) {
+            StatusItemDefaults.removeStatusItemPreservingPosition(item)
+        }
+        alwaysHiddenItem = nil
+        alwaysHiddenExpanderItem = nil
+        alwaysHiddenExpanderWidthConstraint = nil
+        lastKnownAlwaysHiddenPos = nil
+        isAlwaysHiddenRevealed = false
     }
 
     // MARK: - Expander Alignment
@@ -252,6 +310,24 @@ final class MenuBarShrinkManager: NSResponder, ObservableObject {
             .debounce(for: .milliseconds(150), scheduler: RunLoop.main)
             .sink { [weak self] in
                 self?.syncExpanderPositionIfChevronMoved()
+            }
+    }
+
+    private func observeAlwaysHiddenMovement() {
+        alwaysHiddenMovementCancellable?.cancel()
+        guard let window = alwaysHiddenItem?.button?.window else { return }
+
+        let moveNotification = NotificationCenter.default
+            .publisher(for: NSWindow.didMoveNotification, object: window)
+            .map { _ in () }
+        let framePublisher = window
+            .publisher(for: \.frame)
+            .map { _ in () }
+
+        alwaysHiddenMovementCancellable = Publishers.Merge(moveNotification, framePublisher)
+            .debounce(for: .milliseconds(150), scheduler: RunLoop.main)
+            .sink { [weak self] in
+                self?.syncAlwaysHiddenExpanderPositionIfMoved()
             }
     }
 
@@ -300,6 +376,42 @@ final class MenuBarShrinkManager: NSResponder, ObservableObject {
         applyLengths()
     }
 
+    func syncAlwaysHiddenExpanderPositionIfMoved() {
+        guard isActive, Defaults[.menuBarAlwaysHiddenSection] else { return }
+
+        let currentPos = StatusItemDefaults[.preferredPosition, Self.alwaysHiddenAutosaveName]
+            ?? (lastKnownAlwaysHiddenPos ?? ((lastKnownChevronPos ?? 1) + 200))
+        let last = lastKnownAlwaysHiddenPos ?? currentPos
+        let shifted = abs(currentPos - last) >= 0.001
+
+        guard alwaysHiddenExpanderItem == nil || shifted else { return }
+
+        lastKnownAlwaysHiddenPos = currentPos
+        let targetDividerPos = currentPos + 0.01
+        realignAlwaysHiddenExpander(to: targetDividerPos)
+    }
+
+    private func realignAlwaysHiddenExpander(to targetPos: CGFloat) {
+        if let existing = alwaysHiddenExpanderItem {
+            alwaysHiddenExpanderWidthConstraint = nil
+            NSStatusBar.system.removeStatusItem(existing)
+            alwaysHiddenExpanderItem = nil
+        }
+
+        StatusItemDefaults[.preferredPosition, Self.alwaysHiddenExpanderAutosaveName] = targetPos
+
+        let expander = NSStatusBar.system.statusItem(withLength: 0)
+        expander.autosaveName = Self.alwaysHiddenExpanderAutosaveName
+        expander.behavior = []
+        expander.isVisible = true
+        expander.button?.image = nil
+        expander.button?.window?.ignoresMouseEvents = true
+        alwaysHiddenExpanderItem = expander
+        cacheAlwaysHiddenExpanderWidthConstraint()
+
+        applyAlwaysHiddenLengths()
+    }
+
     // MARK: - Hover
 
     private func syncHoverTracking() {
@@ -340,7 +452,16 @@ final class MenuBarShrinkManager: NSResponder, ObservableObject {
 
     @objc private func chevronClicked() {
         guard !NSEvent.modifierFlags.contains(.command) else { return }
-        toggle()
+        if NSEvent.modifierFlags.contains(.option) {
+            toggleAlwaysHidden()
+        } else {
+            toggle()
+        }
+    }
+
+    @objc private func alwaysHiddenClicked() {
+        guard !NSEvent.modifierFlags.contains(.command) else { return }
+        toggleAlwaysHidden()
     }
 
     func toggle() {
@@ -352,11 +473,35 @@ final class MenuBarShrinkManager: NSResponder, ObservableObject {
             // If the chevron shifted, ensure the divider position is synced asynchronously.
             DispatchQueue.main.async { [weak self] in
                 self?.syncExpanderPositionIfChevronMoved()
+                self?.syncAlwaysHiddenExpanderPositionIfMoved()
             }
         } else {
             // Collapsing: ensure divider is positioned before expanding.
             syncExpanderPositionIfChevronMoved()
             setCollapsed(true)
+        }
+    }
+
+    func toggleAlwaysHidden() {
+        guard isActive, Defaults[.menuBarAlwaysHiddenSection] else { return }
+        if isCollapsed {
+            isCollapsed = false
+            isAlwaysHiddenRevealed = true
+            applyLengths()
+            scheduleAutoHide()
+            DispatchQueue.main.async { [weak self] in
+                self?.syncExpanderPositionIfChevronMoved()
+                self?.syncAlwaysHiddenExpanderPositionIfMoved()
+            }
+        } else {
+            isAlwaysHiddenRevealed.toggle()
+            applyAlwaysHiddenLengths()
+            if isAlwaysHiddenRevealed {
+                scheduleAutoHide()
+                DispatchQueue.main.async { [weak self] in
+                    self?.syncAlwaysHiddenExpanderPositionIfMoved()
+                }
+            }
         }
     }
 
@@ -367,6 +512,9 @@ final class MenuBarShrinkManager: NSResponder, ObservableObject {
 
     private func setCollapsed(_ collapsed: Bool) {
         isCollapsed = collapsed
+        if collapsed {
+            isAlwaysHiddenRevealed = false
+        }
         applyLengths()
         if collapsed { cancelAutoHide() } else { scheduleAutoHide() }
     }
@@ -380,12 +528,21 @@ final class MenuBarShrinkManager: NSResponder, ObservableObject {
         expanderWidthConstraint = constraints.first(where: { $0.secondItem === button.superview })
     }
 
+    private func cacheAlwaysHiddenExpanderWidthConstraint() {
+        guard let button = alwaysHiddenExpanderItem?.button,
+              let contentView = button.window?.contentView
+        else { return }
+
+        let constraints = contentView.constraintsAffectingLayout(for: .horizontal)
+        alwaysHiddenExpanderWidthConstraint = constraints.first(where: { $0.secondItem === button.superview })
+    }
+
     private func applyLengths() {
         // The chevron always maintains standard length so it is ALWAYS visible.
         chevronItem?.button?.image = Self.chevron(collapsed: isCollapsed)
         chevronItem?.button?.toolTip = isCollapsed
-            ? String(localized: "Show hidden menu bar items")
-            : String(localized: "Hide menu bar items")
+            ? String(localized: "Show hidden menu bar items (⌥-click for always-hidden)")
+            : String(localized: "Hide menu bar items (⌥-click for always-hidden)")
 
         // Ensure expander exists if active
         if expanderItem == nil && isActive {
@@ -425,7 +582,99 @@ final class MenuBarShrinkManager: NSResponder, ObservableObject {
             }
         }
 
-        alwaysHiddenDivider?.length = Self.collapsedLength
+        applyAlwaysHiddenLengths()
+    }
+
+    private func applyAlwaysHiddenLengths() {
+        guard Defaults[.menuBarAlwaysHiddenSection], isActive else { return }
+
+        alwaysHiddenItem?.button?.image = Self.alwaysHiddenGlyph(expanded: isAlwaysHiddenRevealed)
+        alwaysHiddenItem?.button?.toolTip = isAlwaysHiddenRevealed
+            ? String(localized: "Hide always-hidden menu bar items")
+            : String(localized: "Show always-hidden menu bar items (⌘-drag to move divider)")
+
+        // Ensure always-hidden expander exists
+        if alwaysHiddenExpanderItem == nil && alwaysHiddenItem != nil {
+            let targetPos = (lastKnownAlwaysHiddenPos ?? ((lastKnownChevronPos ?? 1) + 200)) + 0.01
+            realignAlwaysHiddenExpander(to: targetPos)
+            return
+        }
+
+        guard let expander = alwaysHiddenExpanderItem else { return }
+
+        if alwaysHiddenExpanderWidthConstraint == nil {
+            cacheAlwaysHiddenExpanderWidthConstraint()
+        }
+
+        if !isAlwaysHiddenRevealed {
+            expander.length = Self.collapsedLength
+            alwaysHiddenExpanderWidthConstraint?.isActive = true
+            if let button = expander.button {
+                button.cell?.isEnabled = false
+                button.isHighlighted = false
+                button.image = nil
+                button.window?.ignoresMouseEvents = true
+            }
+        } else {
+            expander.length = 0
+            alwaysHiddenExpanderWidthConstraint?.isActive = false
+            if let window = expander.button?.window {
+                var size = window.frame.size
+                size.width = 1
+                window.setContentSize(size)
+            }
+            if let button = expander.button {
+                button.cell?.isEnabled = true
+            }
+        }
+    }
+
+    private var arrangementState: (collapsed: Bool, revealed: Bool)?
+
+    func beginArrangingItems() {
+        guard isActive, arrangementState == nil else { return }
+        arrangementState = (isCollapsed, isAlwaysHiddenRevealed)
+        cancelAutoHide()
+        isCollapsed = false
+        isAlwaysHiddenRevealed = true
+        applyLengths()
+    }
+
+    func endArrangingItems() {
+        guard let previous = arrangementState else { return }
+        arrangementState = nil
+        isCollapsed = previous.collapsed
+        // Always-hidden icons are concealed after leaving arrangement settings.
+        isAlwaysHiddenRevealed = false
+        applyLengths()
+        if !isCollapsed { scheduleAutoHide() }
+    }
+
+    private func quartzFrame(_ item: NSStatusItem?) -> CGRect? {
+        guard let rect = item?.button?.window?.frame, let screen = NSScreen.screens.first else { return nil }
+        return CGRect(x: rect.minX, y: screen.frame.maxY - rect.maxY, width: rect.width, height: rect.height)
+    }
+
+    func isDividerFrame(_ rect: CGRect) -> Bool {
+        [chevronItem, expanderItem, alwaysHiddenItem, alwaysHiddenExpanderItem]
+            .compactMap { quartzFrame($0) }.contains { abs($0.midX - rect.midX) < 2 }
+    }
+
+    func section(for rect: CGRect) -> MenuBarItemArranger.Section {
+        if let always = quartzFrame(alwaysHiddenItem), rect.midX < always.midX { return .alwaysHidden }
+        if let normal = quartzFrame(chevronItem), rect.midX < normal.midX { return .hidden }
+        return .visible
+    }
+
+    func destination(for section: MenuBarItemArranger.Section) -> CGPoint? {
+        guard let normal = quartzFrame(chevronItem) else { return nil }
+        switch section {
+        case .visible: return CGPoint(x: normal.maxX + 2, y: normal.midY)
+        case .hidden: return CGPoint(x: normal.minX - 2, y: normal.midY)
+        case .alwaysHidden:
+            guard let always = quartzFrame(alwaysHiddenItem) else { return nil }
+            return CGPoint(x: always.minX - 2, y: always.midY)
+        }
     }
 
     // MARK: - Auto-hide
@@ -433,6 +682,7 @@ final class MenuBarShrinkManager: NSResponder, ObservableObject {
     /// Re-hides the section after the user leaves the menu bar, matching Ice's rehide strategy.
     private func scheduleAutoHide() {
         cancelAutoHide()
+        guard arrangementState == nil else { return }
         let seconds = Defaults[.menuBarAutoHideSeconds]
         guard seconds > 0 else { return }
 
@@ -496,6 +746,19 @@ final class MenuBarShrinkManager: NSResponder, ObservableObject {
             accessibilityDescription: collapsed
                 ? String(localized: "Show hidden menu bar items")
                 : String(localized: "Hide menu bar items"))
+        image?.isTemplate = true
+        return image
+    }
+
+    /// The glyph for the always-hidden divider: a slash (line.diagonal) when collapsed,
+    /// and a collapse arrow (chevron.compact.left) when expanded.
+    private static func alwaysHiddenGlyph(expanded: Bool) -> NSImage? {
+        let name = expanded ? "chevron.compact.left" : "line.diagonal"
+        let image = NSImage(
+            systemSymbolName: name,
+            accessibilityDescription: expanded
+                ? String(localized: "Hide always-hidden menu bar items")
+                : String(localized: "Show always-hidden menu bar items"))
         image?.isTemplate = true
         return image
     }

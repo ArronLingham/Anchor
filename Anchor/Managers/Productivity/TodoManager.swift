@@ -17,6 +17,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
+import AppKit
 import Combine
 import Defaults
 import Foundation
@@ -32,31 +33,49 @@ import Foundation
 final class TodoManager: ObservableObject {
     static let shared = TodoManager()
 
-    @Published var items: [TodoItem] = [] {
+    @Published private(set) var items: [TodoItem] = [] {
         didSet {
             guard !isLoading else { return }
-            Defaults[.savedTodos] = items
+            persist()
         }
     }
+
+    @Published private(set) var storageError: String?
+    @Published private(set) var storageNeedsRecovery = false
 
     private var isLoading = false
     private var cancellables = Set<AnyCancellable>()
 
     private init() {
         isLoading = true
-        items = Defaults[.savedTodos]
+        do { items = try TodoStorage.load() }
+        catch {
+            storageError = error.localizedDescription
+            storageNeedsRecovery = true
+        }
         isLoading = false
 
-        // Another window (or a future import) writing the key directly should
-        // still show up here.
-        Defaults.publisher(.savedTodos)
-            .sink { [weak self] change in
-                guard let self, change.newValue != self.items else { return }
-                self.isLoading = true
-                self.items = change.newValue
-                self.isLoading = false
+        // Ensure changes are flushed on app termination
+        NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)
+            .sink { [weak self] _ in
+                guard let self else { return }
+                guard !self.storageNeedsRecovery else { return }
+                self.persist()
             }
             .store(in: &cancellables)
+
+        // Trigger updates when sort preferences change
+        Publishers.Merge4(
+            Defaults.publisher(.todoSortOrder).map { _ in () },
+            Defaults.publisher(.todoSortInverted).map { _ in () },
+            Defaults.publisher(.todoSecondarySortOrder).map { _ in () },
+            Defaults.publisher(.todoSecondarySortInverted).map { _ in () }
+        )
+        .receive(on: DispatchQueue.main)
+        .sink { [weak self] _ in
+            self?.objectWillChange.send()
+        }
+        .store(in: &cancellables)
     }
 
     // MARK: - Derived
@@ -77,35 +96,20 @@ final class TodoManager: ObservableObject {
     /// `.manual` returns the array as stored, which is what drag-to-reorder
     /// writes; every other case is a pure sort over a copy.
     private var sorted: [TodoItem] {
-        switch Defaults[.todoSortOrder] {
-        case .manual:
-            return items
-        case .created:
-            return items.sorted { $0.createdAt > $1.createdAt }
-        case .priority:
-            return items.sorted {
-                $0.priority == $1.priority
-                    ? $0.createdAt < $1.createdAt
-                    : $0.priority > $1.priority
-            }
-        case .dueDate:
-            // Items with no due date sort last rather than first, which is what
-            // `nil` would do if it were treated as the distant past.
-            return items.sorted { lhs, rhs in
-                switch (lhs.dueDate, rhs.dueDate) {
-                case let (l?, r?): return l == r ? lhs.createdAt < rhs.createdAt : l < r
-                case (nil, _?): return false
-                case (_?, nil): return true
-                case (nil, nil): return lhs.createdAt < rhs.createdAt
-                }
-            }
-        }
+        TodoSortOrder.sort(
+            items,
+            order: Defaults[.todoSortOrder],
+            inverted: Defaults[.todoSortInverted],
+            secondary: Defaults[.todoSecondarySortOrder],
+            secondaryInverted: Defaults[.todoSecondarySortInverted]
+        )
     }
 
     // MARK: - Mutation
 
     @discardableResult
     func add(_ title: String, dueDate: Date? = nil, priority: Int = 0) -> TodoItem? {
+        guard !storageNeedsRecovery else { return nil }
         let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
         let item = TodoItem(title: trimmed, dueDate: dueDate, priority: priority)
@@ -127,38 +131,39 @@ final class TodoManager: ObservableObject {
 
     @Published private(set) var lastCompletion: CompletionUndo?
 
-    /// Completes an item and takes it off the list.
-    ///
-    /// The item is not deleted until another completion replaces it in the undo
-    /// slot, so ⌘Z puts it back exactly where it was rather than at the end.
+    /// Completion is stored on disk too, so a crash cannot erase the done pile.
     func complete(_ item: TodoItem) {
-        guard let index = items.firstIndex(where: { $0.id == item.id }) else { return }
-        var completed = items[index]
-        completed.isDone = true
-        completed.completedAt = Date()
-        lastCompletion = CompletionUndo(item: completed, index: index)
-        items.remove(at: index)
+        guard !storageNeedsRecovery, let index = items.firstIndex(where: { $0.id == item.id }) else { return }
+        lastCompletion = CompletionUndo(item: items[index], index: index)
+        var updated = items[index]
+        updated.isDone = true
+        updated.completedAt = Date()
+        items[index] = updated
     }
 
-    /// Puts the last completed item back where it was.
     @discardableResult
     func undoLastCompletion() -> Bool {
-        guard let undo = lastCompletion else { return false }
-        var restored = undo.item
-        restored.isDone = false
-        restored.completedAt = nil
-        items.insert(restored, at: min(undo.index, items.count))
+        guard !storageNeedsRecovery, let undo = lastCompletion,
+              let index = items.firstIndex(where: { $0.id == undo.item.id }) else { return false }
+        var restored = items[index]
+        restored.isDone = undo.item.isDone
+        restored.completedAt = undo.item.completedAt
+        items[index] = restored
         lastCompletion = nil
         return true
     }
 
     func toggle(_ item: TodoItem) {
+        guard !storageNeedsRecovery else { return }
         guard let index = items.firstIndex(where: { $0.id == item.id }) else { return }
-        items[index].isDone.toggle()
-        items[index].completedAt = items[index].isDone ? Date() : nil
+        var updated = items[index]
+        updated.isDone.toggle()
+        updated.completedAt = updated.isDone ? Date() : nil
+        items[index] = updated
     }
 
     func setTitle(_ title: String, for item: TodoItem) {
+        guard !storageNeedsRecovery else { return }
         let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty,
               let index = items.firstIndex(where: { $0.id == item.id })
@@ -167,26 +172,93 @@ final class TodoManager: ObservableObject {
     }
 
     func setDueDate(_ date: Date?, for item: TodoItem) {
+        guard !storageNeedsRecovery else { return }
         guard let index = items.firstIndex(where: { $0.id == item.id }) else { return }
         items[index].dueDate = date
     }
 
     func setPriority(_ priority: Int, for item: TodoItem) {
+        guard !storageNeedsRecovery else { return }
         guard let index = items.firstIndex(where: { $0.id == item.id }) else { return }
         items[index].priority = max(0, min(3, priority))
     }
 
     func delete(_ item: TodoItem) {
+        guard !storageNeedsRecovery else { return }
         items.removeAll { $0.id == item.id }
     }
 
+    func deleteAll() {
+        guard !storageNeedsRecovery else { return }
+        lastCompletion = nil
+        items.removeAll()
+    }
+
     func clearCompleted() {
+        guard !storageNeedsRecovery else { return }
         items.removeAll(where: \.isDone)
     }
 
     /// Moves items within the open list. Only meaningful in manual order.
     func move(fromOffsets source: IndexSet, toOffset destination: Int) {
+        guard !storageNeedsRecovery else { return }
         guard Defaults[.todoSortOrder] == .manual else { return }
-        items.move(fromOffsets: source, toOffset: destination)
+        var open = openItems
+        open.move(fromOffsets: source, toOffset: destination)
+        var iterator = open.makeIterator()
+        items = items.map { $0.isDone ? $0 : (iterator.next() ?? $0) }
+    }
+
+    /// Restores items from a backup file or snapshot URL.
+    @discardableResult
+    func restore(from url: URL) -> Bool {
+        do {
+            applyRestored(try TodoStorage.restore(from: url))
+            return true
+        } catch { storageError = error.localizedDescription; return false }
+    }
+
+    @discardableResult
+    func restoreLatestBackup() -> Bool {
+        do {
+            applyRestored(try TodoStorage.restoreLatestSnapshot())
+            return true
+        } catch { storageError = error.localizedDescription; return false }
+    }
+
+    private func applyRestored(_ restored: [TodoItem]) {
+        isLoading = true
+        items = restored
+        lastCompletion = nil
+        storageNeedsRecovery = false
+        storageError = nil
+        isLoading = false
+    }
+
+    func applySyncedItems(_ updated: [TodoItem]) throws {
+        guard !storageNeedsRecovery else { throw TodoFileStore.StorageError.unreadable }
+        guard updated != items else { return }
+        try TodoStorage.save(updated)
+        isLoading = true
+        items = updated
+        isLoading = false
+        storageError = nil
+    }
+
+    func retryStorage() {
+        if storageNeedsRecovery {
+            do { applyRestored(try TodoStorage.load()) }
+            catch { storageError = error.localizedDescription }
+        } else { persist() }
+    }
+
+    private func persist() {
+        do { try TodoStorage.save(items); storageError = nil }
+        catch { storageError = "Your latest changes could not be fully saved. " + error.localizedDescription }
+    }
+
+    /// Exports todos to a specified file URL.
+    func export(to url: URL) throws {
+        try TodoStorage.export(items: items, to: url)
     }
 }

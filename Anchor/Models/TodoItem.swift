@@ -23,11 +23,8 @@ import SwiftUI
 
 /// One line on the to-do list.
 ///
-/// Deliberately *not* an `EKReminder`. Anchor already reads Apple Reminders
-/// through `CalendarManager`, and that stays the way to see what other apps put
-/// on your list. This is the other half: somewhere to write a checklist item
-/// down without EventKit's write permission, a chosen list, or a round trip to
-/// Reminders.app. The two are shown separately for that reason.
+/// Stored locally first. Optional Reminders sync provides phone access without
+/// making local task capture depend on account access or network availability.
 struct TodoItem: Codable, Identifiable, Defaults.Serializable, Hashable {
     var id: UUID = UUID()
     var title: String
@@ -60,6 +57,72 @@ struct TodoItem: Codable, Identifiable, Defaults.Serializable, Hashable {
         self.priority = priority
     }
 
+    enum CodingKeys: String, CodingKey {
+        case id, title, isDone, createdAt, completedAt, dueDate, priority
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        title = try container.decode(String.self, forKey: .title)
+        guard !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw DecodingError.dataCorruptedError(forKey: .title, in: container, debugDescription: "Empty task title")
+        }
+        isDone = try container.decodeIfPresent(Bool.self, forKey: .isDone) ?? false
+        // Old Defaults used reference-date numbers; Gemini's disk writer used ISO-8601.
+        // Accept both without silently throwing away dates that cannot be decoded.
+        func date(_ key: CodingKeys) throws -> Date? {
+            guard container.contains(key), try !container.decodeNil(forKey: key) else { return nil }
+            if let number = try? container.decode(Double.self, forKey: key), number.isFinite {
+                return Date(timeIntervalSinceReferenceDate: number)
+            }
+            let string = try container.decode(String.self, forKey: key)
+            let formatter = ISO8601DateFormatter()
+            formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            if let value = formatter.date(from: string) { return value }
+            formatter.formatOptions = [.withInternetDateTime]
+            guard let value = formatter.date(from: string) else {
+                throw DecodingError.dataCorruptedError(forKey: key, in: container, debugDescription: "Invalid date")
+            }
+            return value
+        }
+        createdAt = try date(.createdAt) ?? Date(timeIntervalSinceReferenceDate: 0)
+        completedAt = try date(.completedAt)
+        dueDate = try date(.dueDate)
+        priority = max(0, min(3, try container.decodeIfPresent(Int.self, forKey: .priority) ?? 0))
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(title, forKey: .title)
+        try container.encode(isDone, forKey: .isDone)
+        try container.encode(createdAt, forKey: .createdAt)
+        try container.encodeIfPresent(completedAt, forKey: .completedAt)
+        try container.encodeIfPresent(dueDate, forKey: .dueDate)
+        try container.encode(priority, forKey: .priority)
+    }
+
+    /// Safely decodes a list of TodoItems even if individual items or properties are malformed.
+    static func safeDecodeList(from data: Data) -> [TodoItem] {
+        let decoder = JSONDecoder()
+        if let items = try? decoder.decode([TodoItem].self, from: data) {
+            return items
+        }
+        guard let rawArray = try? JSONSerialization.jsonObject(with: data) as? [Any] else {
+            return []
+        }
+        var recovered: [TodoItem] = []
+        for value in rawArray {
+            guard let dict = value as? [String: Any] else { continue }
+            if let itemData = try? JSONSerialization.data(withJSONObject: dict),
+               let item = try? decoder.decode(TodoItem.self, from: itemData) {
+                recovered.append(item)
+            }
+        }
+        return recovered
+    }
+
     /// True when the item has a due date that has passed and is not done.
     var isOverdue: Bool {
         guard !isDone, let dueDate else { return false }
@@ -86,6 +149,144 @@ enum TodoSortOrder: String, Codable, CaseIterable, Defaults.Serializable {
         case .dueDate: return String(localized: "Due date")
         case .priority: return String(localized: "Priority")
         case .created: return String(localized: "Date added")
+        }
+    }
+
+    func directionLabel(inverted: Bool) -> String {
+        switch self {
+        case .manual:
+            return String(localized: "Default")
+        case .dueDate:
+            return inverted ? String(localized: "Latest first") : String(localized: "Earliest first")
+        case .priority:
+            return inverted ? String(localized: "Lowest first") : String(localized: "Highest first")
+        case .created:
+            return inverted ? String(localized: "Oldest first") : String(localized: "Newest first")
+        }
+    }
+
+    /// Compares two items under a single criterion.
+    static func compareCriterion(
+        _ lhs: TodoItem,
+        _ rhs: TodoItem,
+        criterion: TodoSortOrder,
+        inverted: Bool
+    ) -> ComparisonResult {
+        switch criterion {
+        case .manual:
+            return .orderedSame
+
+        case .priority:
+            if lhs.priority == rhs.priority {
+                return .orderedSame
+            }
+            if inverted {
+                return lhs.priority < rhs.priority ? .orderedAscending : .orderedDescending
+            } else {
+                return lhs.priority > rhs.priority ? .orderedAscending : .orderedDescending
+            }
+
+        case .dueDate:
+            switch (lhs.dueDate, rhs.dueDate) {
+            case let (l?, r?):
+                if l == r {
+                    return .orderedSame
+                }
+                if inverted {
+                    return l > r ? .orderedAscending : .orderedDescending
+                } else {
+                    return l < r ? .orderedAscending : .orderedDescending
+                }
+            case (_?, nil):
+                return .orderedAscending
+            case (nil, _?):
+                return .orderedDescending
+            case (nil, nil):
+                return .orderedSame
+            }
+
+        case .created:
+            if lhs.createdAt == rhs.createdAt {
+                return .orderedSame
+            }
+            if inverted {
+                return lhs.createdAt < rhs.createdAt ? .orderedAscending : .orderedDescending
+            } else {
+                return lhs.createdAt > rhs.createdAt ? .orderedAscending : .orderedDescending
+            }
+        }
+    }
+
+    /// Sorts a collection of TodoItems using primary and secondary criteria with optional inversions.
+    static func sort(
+        _ items: [TodoItem],
+        order: TodoSortOrder,
+        inverted: Bool = false,
+        secondary: TodoSecondarySortOrder = .none,
+        secondaryInverted: Bool = false
+    ) -> [TodoItem] {
+        guard order != .manual else { return items }
+
+        let secondaryCriterion: TodoSortOrder?
+        switch secondary {
+        case .none: secondaryCriterion = nil
+        case .dueDate: secondaryCriterion = .dueDate
+        case .priority: secondaryCriterion = .priority
+        case .created: secondaryCriterion = .created
+        }
+
+        return items.sorted { lhs, rhs in
+            // 1. Primary sort
+            let primaryResult = compareCriterion(lhs, rhs, criterion: order, inverted: inverted)
+            if primaryResult != .orderedSame {
+                return primaryResult == .orderedAscending
+            }
+
+            // 2. Secondary sort (if active and not identical to primary)
+            if let secondaryCriterion, secondaryCriterion != order {
+                let secondaryResult = compareCriterion(lhs, rhs, criterion: secondaryCriterion, inverted: secondaryInverted)
+                if secondaryResult != .orderedSame {
+                    return secondaryResult == .orderedAscending
+                }
+            }
+
+            // 3. Fallback tie-breaker: oldest created item first
+            if lhs.createdAt != rhs.createdAt {
+                return lhs.createdAt < rhs.createdAt
+            }
+
+            // 4. Stable tie-breaker
+            return lhs.id.uuidString < rhs.id.uuidString
+        }
+    }
+}
+
+/// Secondary sort options for breaking ties when items share the same primary value.
+enum TodoSecondarySortOrder: String, Codable, CaseIterable, Defaults.Serializable {
+    case none
+    case dueDate
+    case priority
+    case created
+
+    var label: String {
+        switch self {
+        case .none: return String(localized: "None")
+        case .dueDate: return String(localized: "Due date")
+        case .priority: return String(localized: "Priority")
+        case .created: return String(localized: "Date added")
+        }
+    }
+
+    func directionLabel(inverted: Bool) -> String {
+        switch self {
+        case .none:
+            return String(localized: "Default")
+        case .dueDate:
+            return inverted ? String(localized: "Latest first") : String(localized: "Earliest first")
+        case .priority:
+            return inverted ? String(localized: "Lowest first") : String(localized: "Highest first")
+        case .created:
+            return inverted ? String(localized: "Oldest first") : String(localized: "Newest first")
         }
     }
 }

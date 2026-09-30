@@ -78,6 +78,7 @@ struct ContentView: View {
     @Default(.showStandardMediaControls) var showStandardMediaControls
     @Default(.externalDisplayStyle) var externalDisplayStyle
     @Default(.hideNonNotchUntilHover) var hideNonNotchUntilHover
+    @Default(.alwaysShowOnExternalDisplays) var alwaysShowOnExternalDisplays
     @Default(.terminalStickyMode) var terminalStickyMode
     
     // Battery settings reactivity
@@ -365,7 +366,7 @@ struct ContentView: View {
     /// Whether the notch/island should hide off-screen when closed on a non-notch display.
     /// Temporarily reveals the notch when a sneakPeek HUD (volume, brightness, music, etc.) is active.
     private var shouldHideUntilHover: Bool {
-        hideNonNotchUntilHover && isNonNotchScreen && vm.notchState == .closed && !isSneakPeekVisibleOnCurrentScreen
+        hideNonNotchUntilHover && !alwaysShowOnExternalDisplays && isNonNotchScreen && vm.notchState == .closed && !isSneakPeekVisibleOnCurrentScreen
     }
 
     /// Whether the fallback top-edge hover detector should run.
@@ -473,7 +474,11 @@ struct ContentView: View {
 
     private var mainLayoutBase: some View {
         NotchLayout()
-            .frame(alignment: .top)
+            .frame(
+                minWidth: alwaysShowOnExternalDisplays && isNonNotchScreen && vm.notchState == .closed ? max(0, vm.closedNotchSize.width - 2 * notchHorizontalPadding) : nil,
+                minHeight: alwaysShowOnExternalDisplays && isNonNotchScreen && vm.notchState == .closed ? vm.effectiveClosedNotchHeight : nil,
+                alignment: .top
+            )
             .padding(.horizontal, notchHorizontalPadding)
             .padding([.horizontal, .bottom], vm.notchState == .open ? 12 : 0)
             .background(.black)
@@ -926,8 +931,6 @@ struct ContentView: View {
                             .transition(closedLiveActivitySwapTransition)
                     } else if (!isCurrentScreenExpansionVisible || currentScreenExpansionType == .privacy) && vm.notchState == .closed && privacyManager.hasAnyIndicator && (Defaults[.enableCameraDetection] || Defaults[.enableMicrophoneDetection]) && !vm.hideOnClosed {
                         PrivacyLiveActivity()
-                      } else if false {
-                      } else if !coordinator.expandingView.show && vm.notchState == .closed && (!musicManager.isPlaying && musicManager.isPlayerIdle) && Defaults[.showNotHumanFace] && !vm.hideOnClosed  {
                       } else if !isCurrentScreenExpansionVisible && vm.notchState == .closed && (!musicManager.isPlaying && musicManager.isPlayerIdle) && Defaults[.showNotHumanFace] && !vm.hideOnClosed  {
                           AnchorFaceAnimation().animation(.interactiveSpring, value: musicManager.isPlayerIdle)
                       } else if vm.notchState == .open {
@@ -1843,7 +1846,8 @@ struct ContentView: View {
          vm.isStatsPopoverActive ||
          vm.isTimerPopoverActive ||
          vm.isMediaOutputPopoverActive ||
-         vm.isReminderPopoverActive
+         vm.isReminderPopoverActive ||
+         vm.isTodoPopoverActive
     }
 
     private func shouldPreventAutoClose() -> Bool {

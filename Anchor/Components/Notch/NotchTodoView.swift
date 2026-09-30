@@ -23,10 +23,18 @@ import SwiftUI
 
 /// The to-do tab: type a line, tick it off.
 struct NotchTodoView: View {
+    @EnvironmentObject private var vm: AnchorViewModel
     @ObservedObject private var todo = TodoManager.shared
     @Default(.todoShowCompleted) private var showCompleted
+    @Default(.todoSortOrder) private var sortOrder
+    @Default(.todoSortInverted) private var sortInverted
+    @Default(.todoSecondarySortOrder) private var secondarySortOrder
+    @Default(.todoSecondarySortInverted) private var secondarySortInverted
 
     @State private var draft = ""
+    @State private var draftDueDate: Date? = nil
+    @State private var isDraftCalendarOpen: Bool = false
+    @State private var activeCalendarItemID: UUID? = nil
     @State private var editingID: UUID?
     @State private var editingText = ""
     @FocusState private var draftFocused: Bool
@@ -39,12 +47,18 @@ struct NotchTodoView: View {
 
     var body: some View {
         VStack(spacing: 6) {
-            entryField
+            if let error = todo.storageError {
+                HStack {
+                    Text(error).font(.caption).foregroundStyle(.orange)
+                    Button("Retry") { todo.retryStorage() }
+                }
+            }
+            entryField.disabled(todo.storageNeedsRecovery)
 
-            if todo.items.isEmpty {
+            if todo.openCount == 0 && (!showCompleted || todo.doneItems.isEmpty) {
                 empty
             } else {
-                list
+                list.disabled(todo.storageNeedsRecovery)
             }
 
             if showUndoBar, todo.lastCompletion != nil {
@@ -55,6 +69,12 @@ struct NotchTodoView: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
         .animation(.easeInOut(duration: 0.16), value: todo.lastCompletion?.item.id)
+        .onChange(of: activeCalendarItemID) { _, id in
+            vm.isTodoPopoverActive = (id != nil || isDraftCalendarOpen)
+        }
+        .onChange(of: isDraftCalendarOpen) { _, isOpen in
+            vm.isTodoPopoverActive = (isOpen || activeCalendarItemID != nil)
+        }
         .onAppear(perform: installUndoMonitor)
         .onDisappear(perform: removeUndoMonitor)
     }
@@ -102,7 +122,7 @@ struct NotchTodoView: View {
         }
 
         if item.isDone {
-            todo.complete(item)
+            todo.toggle(item)
             return
         }
 
@@ -186,6 +206,9 @@ struct NotchTodoView: View {
         }
         completionTasks.removeAll()
         completingIDs.removeAll()
+        activeCalendarItemID = nil
+        isDraftCalendarOpen = false
+        vm.isTodoPopoverActive = false
     }
 
     // MARK: - Entry
@@ -202,6 +225,40 @@ struct NotchTodoView: View {
                 .foregroundStyle(.white)
                 .focused($draftFocused)
                 .onSubmit(commitDraft)
+
+            Button {
+                isDraftCalendarOpen.toggle()
+            } label: {
+                if let due = draftDueDate {
+                    HStack(spacing: 3) {
+                        Image(systemName: "calendar")
+                            .font(.system(size: 8))
+                        Text(dueLabel(due))
+                            .font(.system(size: 9, weight: .medium))
+                    }
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(
+                        Capsule()
+                            .fill(Color.accentColor.opacity(0.25))
+                    )
+                    .foregroundStyle(Color.accentColor)
+                } else {
+                    Image(systemName: "calendar")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.white.opacity(0.45))
+                }
+            }
+            .buttonStyle(.plain)
+            .help(draftDueDate != nil ? "Change due date" : "Add custom due date")
+            .popover(isPresented: $isDraftCalendarOpen, arrowEdge: .bottom) {
+                TodoCalendarPopover(
+                    dueDate: $draftDueDate,
+                    itemTitle: draft.isEmpty ? nil : draft
+                ) {
+                    isDraftCalendarOpen = false
+                }
+            }
 
             if !todo.doneItems.isEmpty {
                 Button {
@@ -223,8 +280,10 @@ struct NotchTodoView: View {
     }
 
     private func commitDraft() {
-        todo.add(draft)
+        guard !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        todo.add(draft, dueDate: draftDueDate)
         draft = ""
+        draftDueDate = nil
         // Keep focus so several items can be typed in a row.
         draftFocused = true
     }
@@ -302,10 +361,59 @@ struct NotchTodoView: View {
 
             Spacer(minLength: 4)
 
-            if let due = item.dueDate, !done {
-                Text(dueLabel(due))
-                    .font(.system(size: 9, weight: .medium))
-                    .foregroundStyle(item.isOverdue ? .red : .white.opacity(0.45))
+            Group {
+                Button {
+                    if activeCalendarItemID == item.id {
+                        activeCalendarItemID = nil
+                    } else {
+                        activeCalendarItemID = item.id
+                    }
+                } label: {
+                    if let due = item.dueDate {
+                        HStack(spacing: 3) {
+                            Image(systemName: "calendar")
+                                .font(.system(size: 8))
+                            Text(dueLabel(due))
+                                .font(.system(size: 9, weight: .medium))
+                        }
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 2)
+                        .background(
+                            Capsule()
+                                .fill(item.isOverdue ? Color.red.opacity(0.25) : Color.white.opacity(0.12))
+                        )
+                        .foregroundStyle(item.isOverdue ? .red : .white.opacity(0.8))
+                    } else {
+                        Image(systemName: "calendar")
+                            .font(.system(size: 10))
+                            .foregroundStyle(.white.opacity(0.35))
+                    }
+                }
+                .buttonStyle(.plain)
+                .help(item.dueDate != nil ? "Change due date" : "Set custom due date")
+                .popover(
+                    isPresented: Binding(
+                        get: { activeCalendarItemID == item.id },
+                        set: { isPresented in
+                            if !isPresented && activeCalendarItemID == item.id {
+                                activeCalendarItemID = nil
+                            }
+                        }
+                    ),
+                    arrowEdge: .bottom
+                ) {
+                    TodoCalendarPopover(
+                        dueDate: Binding(
+                            get: { todo.items.first(where: { $0.id == item.id })?.dueDate },
+                            set: { newDate in
+                                todo.setDueDate(newDate, for: item)
+                            }
+                        ),
+                        itemTitle: item.title
+                    ) {
+                        activeCalendarItemID = nil
+                    }
+                }
             }
 
             if let color = item.priority.todoPriorityColor, !item.isDone {
@@ -337,16 +445,32 @@ struct NotchTodoView: View {
                     Button(level.todoPriorityLabel) { todo.setPriority(level, for: item) }
                 }
             }
-            Button("Due today") {
-                todo.setDueDate(Calendar.current.startOfDay(for: Date()), for: item)
-            }
-            Button("Due tomorrow") {
+            Menu("Due Date") {
+                let today = Calendar.current.date(
+                    bySettingHour: 23, minute: 59, second: 59, of: Date()) ?? Date()
+                Button("Due Today") {
+                    todo.setDueDate(today, for: item)
+                }
                 let tomorrow = Calendar.current.date(
-                    byAdding: .day, value: 1, to: Calendar.current.startOfDay(for: Date()))
-                todo.setDueDate(tomorrow, for: item)
-            }
-            if item.dueDate != nil {
-                Button("Clear due date") { todo.setDueDate(nil, for: item) }
+                    byAdding: .day, value: 1, to: today) ?? Date()
+                Button("Due Tomorrow") {
+                    todo.setDueDate(tomorrow, for: item)
+                }
+                let nextWeek = Calendar.current.date(
+                    byAdding: .day, value: 7, to: today) ?? Date()
+                Button("Due Next Week") {
+                    todo.setDueDate(nextWeek, for: item)
+                }
+                Divider()
+                Button("Custom Date…") {
+                    vm.isTodoPopoverActive = true
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                        activeCalendarItemID = item.id
+                    }
+                }
+                if item.dueDate != nil {
+                    Button("Clear Due Date") { todo.setDueDate(nil, for: item) }
+                }
             }
             Divider()
             Button("Delete", role: .destructive) { todo.delete(item) }

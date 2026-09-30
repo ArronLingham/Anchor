@@ -57,9 +57,11 @@ class SpotifyController: MediaControllerProtocol {
     private let trackMetadataResolver = SpotifyTrackMetadataResolver()
     private var artistMetadataFetchTask: Task<Void, Never>?
     private var currentArtistTrackURI: String?
+    private var launchObserver: NSObjectProtocol?
 
     init() {
         setupPlaybackStateChangeObserver()
+        setupAppLaunchObserver()
         setupSessionChangeObserver()
         Task {
             if isActive() {
@@ -70,13 +72,29 @@ class SpotifyController: MediaControllerProtocol {
 
     private func setupPlaybackStateChangeObserver() {
         notificationTask = Task { @Sendable [weak self] in
-            let notifications = DistributedNotificationCenter.default().notifications(
-                named: NSNotification.Name("com.spotify.client.PlaybackStateChanged")
-            )
-
-            for await _ in notifications {
-                await self?.updatePlaybackInfo()
+            while !Task.isCancelled {
+                let notifications = DistributedNotificationCenter.default().notifications(
+                    named: NSNotification.Name("com.spotify.client.PlaybackStateChanged")
+                )
+                for await _ in notifications {
+                    await self?.updatePlaybackInfo()
+                }
+                guard self != nil, !Task.isCancelled else { return }
+                try? await Task.sleep(for: .seconds(1))
             }
+        }
+    }
+
+    private func setupAppLaunchObserver() {
+        launchObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didLaunchApplicationNotification,
+            object: nil, queue: .main
+        ) { [weak self] note in
+            guard let app = note.userInfo?[NSWorkspace.applicationUserInfoKey]
+                    as? NSRunningApplication,
+                  app.bundleIdentifier == "com.spotify.client"
+            else { return }
+            Task { await self?.updatePlaybackInfo() }
         }
     }
 
@@ -101,6 +119,9 @@ class SpotifyController: MediaControllerProtocol {
     }
 
     deinit {
+        if let launchObserver {
+            NSWorkspace.shared.notificationCenter.removeObserver(launchObserver)
+        }
         notificationTask?.cancel()
         artworkFetchTask?.cancel()
         canvasFetchTask?.cancel()
@@ -683,7 +704,7 @@ private enum SpotifyCanvasProtobuf {
     }
 
     private static func varint(for value: Int) -> Data {
-        var remaining = UInt64(value)
+        var remaining = UInt64(max(0, value))
         var buffer = Data()
 
         repeat {

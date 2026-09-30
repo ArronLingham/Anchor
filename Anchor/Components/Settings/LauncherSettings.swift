@@ -35,11 +35,15 @@ struct LauncherSettings: View {
     @Default(.launcherRecallSeconds) private var launcherRecallSeconds
     @Default(.launcherCustomOrder) private var launcherCustomOrder
     @Default(.launcherFolders) private var launcherFolders
-    @Default(.launcherGridColumns) private var columns
-    @Default(.launcherGridRows) private var rows
+    @Default(.launcherShowVinylWidget) private var showMusicWidget
+    @Default(.launcherWidgetSize) private var musicWidgetSize
+    @Default(.playerWindowLevel) private var playerWindowLevel
+    @Default(.playerBackgroundOpacity) private var playerBackgroundOpacity
+    @Default(.lockFullBackground) private var fullPlayerBackground
 
     @State private var didClearHistory = false
     @State private var didClearIcons = false
+    @State private var showingPlayerLayoutEditor = false
 
     @Default(.enableAppSwitcher) private var enableAppSwitcher
     @Default(.appSwitcherRingDiameter) private var appSwitcherRingDiameter
@@ -65,6 +69,11 @@ struct LauncherSettings: View {
                 KeyboardShortcuts.Recorder("Open launcher:", name: .toggleLauncher)
                     .disabled(!enableLauncher)
                     .settingsHighlight(id: highlightID("Open launcher"))
+
+                Button("Preview launcher") {
+                    LauncherPanelManager.shared.show()
+                }
+                .disabled(!enableLauncher)
             } header: {
                 Text("Launcher")
             } footer: {
@@ -88,7 +97,7 @@ struct LauncherSettings: View {
                     .settingsHighlight(id: highlightID("Open switcher backwards"))
                     .settingsInfo("Steps backwards through the ring, the way ⌘⇧Tab does. Defaults to ⌥⇧Tab.")
 
-                Slider(value: $appSwitcherRingDiameter, in: 300...640, step: 20) {
+                Slider(value: $appSwitcherRingDiameter, in: 280...560, step: 20) {
                     Text("Ring size")
                 } minimumValueLabel: {
                     Text("S").font(.caption)
@@ -101,7 +110,7 @@ struct LauncherSettings: View {
                 Text("App switcher")
             } footer: {
                 Text(
-                    "Running apps in a ring, most recently used first — hold the "
+                    "The ring opens at your pointer and stays within the active display. Running apps are most recently used first — hold the "
                     + "shortcut and tap Tab to go round, release to switch. Return "
                     + "confirms, Escape cancels, W closes the highlighted app, and "
                     + "the pointer can pick any of them directly.\n\n"
@@ -122,21 +131,6 @@ struct LauncherSettings: View {
                 .settingsHighlight(id: highlightID("Show all apps when the field is empty"))
 
                 if showGrid {
-                    // LabeledContent wrapping the Stepper, rather than the other
-                    // way round, so the value sits on the trailing edge like
-                    // every other value row instead of butting against its label.
-                    LabeledContent("Columns") {
-                        Stepper("\(columns)", value: $columns, in: 3...12)
-                    }
-                    .disabled(!enableLauncher)
-                    .settingsHighlight(id: highlightID("Columns"))
-
-                    LabeledContent("Rows") {
-                        Stepper("\(rows)", value: $rows, in: 2...8)
-                    }
-                    .disabled(!enableLauncher)
-                    .settingsHighlight(id: highlightID("Rows"))
-
                     Picker("When typing", selection: $launcherLayoutMode) {
                         ForEach(LauncherLayoutMode.allCases) { mode in
                             Text(mode.localizedName).tag(mode)
@@ -193,7 +187,7 @@ struct LauncherSettings: View {
                     .settingsHighlight(id: highlightID("Remove all folders"))
                     .settingsInfo("Removing a folder puts its apps back in the grid; nothing is uninstalled.")
 
-                    Text("\(columns * rows) apps per page.")
+                    Text("Grid automatically fills your screen with an optimal amount of apps.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 } else {
@@ -265,16 +259,63 @@ struct LauncherSettings: View {
                 Defaults.Toggle(key: .launcherShowWeatherWidget) { Text("Weather") }
                     .disabled(!enableLauncher)
                     .settingsHighlight(id: highlightID("Weather"))
+                Defaults.Toggle(key: .launcherShowCalendarWidget) { Text("Calendar") }
+                    .disabled(!enableLauncher)
+                Defaults.Toggle(key: .launcherShowRemindersWidget) { Text("Reminders") }
+                    .disabled(!enableLauncher)
                 Defaults.Toggle(key: .launcherShowVinylWidget) { Text("Now playing") }
                     .disabled(!enableLauncher)
                     .settingsHighlight(id: highlightID("Now playing"))
-                    .settingsInfo("A record showing what is playing. Clicking it opens the vinyl player on the desktop.")
+                    .settingsInfo("A music player in the launcher with playback controls and seeking.")
+                if showMusicWidget {
+                    Picker("Music player size", selection: $musicWidgetSize) {
+                        ForEach(LauncherPlayerWidget.Size.allCases, id: \.self) { size in
+                            Text(size.label).tag(size)
+                        }
+                    }
+                    Defaults.Toggle(key: .launcherAlwaysShowsControls) {
+                        Text("Always show music controls")
+                    }
+                }
             } header: {
                 Text("Widgets")
             } footer: {
-                Text("All three are off by default — the launcher's job is finding an app, so anything sitting permanently above the grid has to earn the space.")
+                Text("Choose the cards and controls that are useful in your launcher.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+            }
+
+            Section("Cadence player") {
+                Defaults.Toggle(key: .enablePlayerWidget) {
+                    Text("Show desktop music player")
+                }
+                Picker("Desktop position", selection: $playerWindowLevel) {
+                    ForEach(PlayerWindowLevel.allCases, id: \.self) { level in
+                        Text(level.label).tag(level)
+                    }
+                }
+                Defaults.Toggle(key: .playerUsesGlass) { Text("Glass background") }
+                Defaults.Toggle(key: .playerTintsWithAlbum) { Text("Tint from album art") }
+                LabeledContent("Background opacity") {
+                    Slider(value: $playerBackgroundOpacity, in: 0.15...1)
+                        .frame(width: 180)
+                }
+                Defaults.Toggle(key: .hoverGrowsWidget) { Text("Grow for controls on hover") }
+                Defaults.Toggle(key: .playerFollowsSpaces) { Text("Show on all desktops") }
+                Defaults.Toggle(key: .volumeControlsApp) { Text("Control app volume") }
+                Defaults.Toggle(key: .useCadenceLockLayouts) {
+                    Text("Use Cadence layouts on the lock screen")
+                }
+                Picker("Full-screen background", selection: $fullPlayerBackground) {
+                    Text("Blurred artwork").tag(LockFullBackground.blurredArtwork)
+                    Text("Album colour").tag(LockFullBackground.albumColour)
+                }
+                Button("Customize all player layouts…") {
+                    showingPlayerLayoutEditor = true
+                }
+                .sheet(isPresented: $showingPlayerLayoutEditor) {
+                    LayoutEditorView()
+                }
             }
 
             Section {
@@ -338,4 +379,5 @@ struct LauncherSettings: View {
             }
         }
     }
+
 }

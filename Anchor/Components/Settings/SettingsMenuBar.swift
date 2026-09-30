@@ -27,6 +27,8 @@ struct MenuBarSettings: View {
     @Default(.menuBarAlwaysHiddenSection) private var alwaysHidden
     @Default(.menuBarExpandOnHover) private var expandOnHover
 
+    @StateObject private var arranger = MenuBarItemArranger()
+
     @ObservedObject private var manager = MenuBarShrinkManager.shared
 
     private func highlightID(_ title: String) -> String {
@@ -67,18 +69,19 @@ struct MenuBarSettings: View {
                 if enabled {
                     KeyboardShortcuts.Recorder("Show or hide:", name: .toggleMenuBarSection)
                         .settingsHighlight(id: highlightID("Show or hide"))
+
+                    if alwaysHidden {
+                        KeyboardShortcuts.Recorder("Always-hidden:", name: .toggleAlwaysHiddenSection)
+                            .settingsHighlight(id: highlightID("Always-hidden"))
+                    }
                 }
             } footer: {
                 Text(
                     "Adds a chevron to the menu bar. Anything you ⌘-drag to the "
                     + "left of it is hidden until you click it.\n\n"
-                    + "There is no API for hiding another app's menu bar item, and "
-                    + "no private one worth using. What this does instead is what "
-                    + "every app of this kind does: the menu bar lays out right to "
-                    + "left, so a very wide item pushes everything left of it off "
-                    + "the screen. Nothing is injected into another process and no "
-                    + "permission is needed — but it does mean you arrange your own "
-                    + "menu bar by dragging.")
+                    + "With 'Add an always-hidden section' enabled, a second divider (/) "
+                    + "is added. Click it or ⌥-click the chevron to reveal or hide the "
+                    + "always-hidden section while arranging icons.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
             }
@@ -101,10 +104,13 @@ struct MenuBarSettings: View {
 
                     Toggle("Add an always-hidden section", isOn: $alwaysHidden)
                         .settingsHighlight(id: highlightID("Add an always-hidden section"))
-                        .help(
-                            "A second divider. Anything dragged to the left of it stays "
-                            + "hidden even when the first section is showing — for items "
-                            + "you never want to see but cannot remove.")
+                        .settingsInfo(
+                            "Adds a second divider (/). Click it or ⌥-click the chevron to show or "
+                            + "hide always-hidden items while arranging.")
+                }
+
+                if alwaysHidden {
+                    iconArrangementSection
                 }
 
                 Section("Now") {
@@ -119,8 +125,61 @@ struct MenuBarSettings: View {
                     }
                     .disabled(!manager.isActive)
                     .settingsHighlight(id: highlightID("Show Items"))
+
+                    if alwaysHidden {
+                        LabeledContent("Always-hidden") {
+                            Text(manager.isActive
+                                 ? (manager.isAlwaysHiddenRevealed ? "Showing" : "Collapsed")
+                                 : "Not installed")
+                            .foregroundStyle(.secondary)
+                        }
+                        Button(manager.isAlwaysHiddenRevealed ? "Hide Always-Hidden" : "Show Always-Hidden") {
+                            manager.toggleAlwaysHidden()
+                        }
+                        .disabled(!manager.isActive)
+                        .settingsHighlight(id: highlightID("Show Always-Hidden"))
+                    }
                 }
             }
         }
+        .onDisappear { arranger.end() }
+        .onChange(of: enabled) { _, _ in arranger.end() }
+        .onChange(of: alwaysHidden) { _, _ in arranger.end() }
     }
+    private var iconArrangementSection: some View {
+        Section {
+            Button(arranger.isArranging ? "Refresh Icons" : "Choose Icons…") {
+                arranger.begin()
+            }
+            .disabled(arranger.isMoving || arranger.isRefreshing)
+            .settingsHighlight(id: highlightID("Choose Menu Bar Icons"))
+            if arranger.isRefreshing { ProgressView().controlSize(.small) }
+            if arranger.isArranging {
+                ForEach(arranger.items) { item in
+                    HStack {
+                        if let icon = item.icon {
+                            Image(nsImage: icon).resizable().frame(width: 18, height: 18)
+                        }
+                        Picker(item.name, selection: Binding(
+                            get: { item.section },
+                            set: { arranger.move(item, to: $0) }
+                        )) {
+                            ForEach(MenuBarItemArranger.Section.allCases) { section in
+                                Text(section.label).tag(section)
+                            }
+                        }
+                    }
+                    .disabled(arranger.isMoving || arranger.isRefreshing)
+                }
+                Button("Done Arranging") { arranger.end() }
+                    .disabled(arranger.isMoving || arranger.isRefreshing)
+            }
+            if let error = arranger.error { Text(error).foregroundStyle(.orange).font(.caption) }
+        } header: {
+            Text("Choose Menu Bar Icons")
+        } footer: {
+            Text("Choose an icon and set it to Always hidden. Icons are temporarily revealed while arranging, then hidden again when you finish. macOS requires Accessibility access to move icons; fixed system controls cannot be moved.")
+        }
+    }
+
 }

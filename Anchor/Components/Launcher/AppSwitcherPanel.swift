@@ -104,27 +104,35 @@ final class AppSwitcherPanelManager {
     }
 
     private func present() {
-        let diameter = switcher.ringDiameter
-        let host = NSHostingView(rootView: AppSwitcherView())
+        let mouse = NSEvent.mouseLocation
+        let screen = NSScreen.screens.first { $0.frame.contains(mouse) } ?? NSScreen.main
+        let visibleFrame = screen?.visibleFrame ?? NSScreen.main?.frame ?? .zero
+        let diameter = min(switcher.ringDiameter,
+                           max(220, min(visibleFrame.width, visibleFrame.height) - 24))
+        let host = NSHostingView(rootView: AppSwitcherView(diameter: diameter))
         host.frame = NSRect(x: 0, y: 0, width: diameter, height: diameter)
 
         let panel = AppSwitcherPanel(contentView: host, diameter: diameter)
-        positionOnActiveScreen(panel, diameter: diameter)
+        positionNearPointer(panel, diameter: diameter, mouse: mouse, visibleFrame: visibleFrame)
         panel.orderFrontRegardless()
         self.panel = panel
 
         installMonitors()
     }
 
-    /// Centred on whichever screen holds the pointer — a ring centred on a
-    /// display the user is not looking at would be worse than useless.
-    private func positionOnActiveScreen(_ panel: NSPanel, diameter: CGFloat) {
-        let mouse = NSEvent.mouseLocation
-        let screen = NSScreen.screens.first { $0.frame.contains(mouse) } ?? NSScreen.main
-        guard let frame = screen?.frame else { return }
+    /// Open at the pointer, keeping the entire switcher on the active display.
+    /// Near an edge the center shifts only as far as needed to avoid clipping.
+    private func positionNearPointer(_ panel: NSPanel, diameter: CGFloat,
+                                     mouse: NSPoint, visibleFrame: NSRect) {
+        guard !visibleFrame.isEmpty else { return }
+        let margin: CGFloat = 8
+        let minX = visibleFrame.minX + margin
+        let minY = visibleFrame.minY + margin
+        let maxX = max(minX, visibleFrame.maxX - diameter - margin)
+        let maxY = max(minY, visibleFrame.maxY - diameter - margin)
         panel.setFrameOrigin(NSPoint(
-            x: frame.midX - diameter / 2,
-            y: frame.midY - diameter / 2))
+            x: min(max(mouse.x - diameter / 2, minX), maxX),
+            y: min(max(mouse.y - diameter / 2, minY), maxY)))
     }
 
     func dismiss(activating: Bool) {

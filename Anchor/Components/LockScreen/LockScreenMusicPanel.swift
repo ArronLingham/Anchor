@@ -74,6 +74,10 @@ struct LockScreenMusicPanel: View {
     @Default(.lockScreenMusicFullscreenArtworkEnabled) private var fullscreenArtworkEnabled
     @Default(.lockScreenKeepAlbumArtVisibleDuringFullscreenArtwork) private var keepAlbumArtVisibleDuringFullscreenArtwork
     @Default(.lockScreenMusicFullscreenVideoArtwork) private var fullscreenVideoArtwork
+    @Default(.useCadenceLockLayouts) private var useCadenceLockLayouts
+    @Default(.playerLayouts) private var cadenceLayouts
+    @Default(.sliderColor) private var cadenceSliderColor
+    @Default(.accentColor) private var cadenceAccentColor
 
     init(animator: LockScreenPanelAnimator) {
         _animator = ObservedObject(wrappedValue: animator)
@@ -175,7 +179,13 @@ struct LockScreenMusicPanel: View {
                     .allowsHitTesting(!isImmersive)
 
                 if isImmersive {
-                    LockScreenImmersivePlayer(onDismiss: { setImmersive(false) })
+                    Group {
+                        if useCadenceLockLayouts {
+                            CadenceLockFullView(onDismiss: { setImmersive(false) })
+                        } else {
+                            LockScreenImmersivePlayer(onDismiss: { setImmersive(false) })
+                        }
+                    }
                         .frame(width: currentSize.width, height: currentSize.height)
                         .transition(.opacity)
                         .onExitCommand { setImmersive(false) }
@@ -291,7 +301,15 @@ struct LockScreenMusicPanel: View {
     @ViewBuilder
     private var panelForeground: some View {
         Group {
-            if isExpanded {
+            if useCadenceLockLayouts && !isExpanded {
+                PlayerSurfaceView(
+                    layout: cadenceLayouts.lockWidget,
+                    style: .forSurface(
+                        .lockWidget, albumColor: musicManager.avgColor, tinted: false,
+                        scale: cadenceLayouts.lockWidget.geometry.contentScale,
+                        sliderColor: cadenceSliderColor, accentColor: cadenceAccentColor),
+                    onExpand: { setImmersive(true) })
+            } else if isExpanded {
                 expandedLayout
             } else {
                 collapsedLayout

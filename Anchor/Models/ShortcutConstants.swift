@@ -98,6 +98,8 @@ extension KeyboardShortcuts.Name {
         "appSwitcherReverse", default: .init(.tab, modifiers: [.option, .shift]))
     /// Shows or hides the menu bar items behind Anchor's divider.
     static let toggleMenuBarSection = Self("toggleMenuBarSection", default: .init(.m, modifiers: [.option, .command]))
+    /// Shows or hides the always-hidden menu bar items behind the second divider.
+    static let toggleAlwaysHiddenSection = Self("toggleAlwaysHiddenSection", default: nil)
     /// Pins the notch open, so it stops closing on hover-out or a click
     /// elsewhere. Press again to unpin and let it close normally.
     static let togglePinNotch = Self("togglePinNotch", default: .init(.k, modifiers: [.command, .shift]))

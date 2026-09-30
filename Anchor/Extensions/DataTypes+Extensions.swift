@@ -85,7 +85,7 @@ extension Double {
     }
     
     @inline(__always) @inlinable var i: Int {
-        Int(self)
+        Int(exactly: rounded(.towardZero)) ?? 0
     }
     
     var evenInt: Int {
@@ -100,7 +100,7 @@ extension CGFloat {
     }
     
     @inline(__always) @inlinable var i: Int {
-        Int(self)
+        Int(exactly: rounded(.towardZero)) ?? 0
     }
     
     var evenInt: Int {

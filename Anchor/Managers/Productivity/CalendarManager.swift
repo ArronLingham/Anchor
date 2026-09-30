@@ -40,6 +40,8 @@ class CalendarManager: ObservableObject {
     @Published var calendarAuthorizationStatus: EKAuthorizationStatus = .notDetermined
     @Published var reminderAuthorizationStatus: EKAuthorizationStatus = .notDetermined
     @Published var lockScreenEvents: [EventModel] = []
+    @Published private(set) var launcherEvents: [EventModel] = []
+    private var lastLauncherEventsFetchDate: Date?
 
     private var lockScreenPreviewEvents: [EventModel]?
 
@@ -63,6 +65,8 @@ class CalendarManager: ObservableObject {
 
     private init() {
         currentWeekStartDate = CalendarManager.startOfDay(Date())
+        calendarAuthorizationStatus = EKEventStore.authorizationStatus(for: .event)
+        reminderAuthorizationStatus = EKEventStore.authorizationStatus(for: .reminder)
         setupEventStoreChangedObserver()
         startLockScreenRefreshLoop()
         Task {
@@ -94,6 +98,7 @@ class CalendarManager: ObservableObject {
     }
 
     private func handleEventStoreChanged() {
+        lastLauncherEventsFetchDate = nil
         Logger.log("CalendarManager: Event store changed notification received", category: .lifecycle)
         let now = Date()
         guard now >= ignoreEventStoreChangesUntil else { return }
@@ -245,6 +250,7 @@ class CalendarManager: ObservableObject {
         }
 
         Defaults[.calendarSelectionState] = selectionState
+        lastLauncherEventsFetchDate = nil
         updateSelectedCalendars()
         await updateEvents(force: true)
         await updateLockScreenEvents(force: true)
@@ -258,6 +264,25 @@ class CalendarManager: ObservableObject {
         currentWeekStartDate = Calendar.current.startOfDay(for: date)
         await updateEvents(force: true)
         await updateLockScreenEvents(force: true)
+    }
+
+    /// The launcher shows the next few events across the coming week, rather
+    /// than inheriting the lock screen's short notification lookahead.
+    func updateLauncherEvents(force: Bool = false) async {
+        if !force, let last = lastLauncherEventsFetchDate,
+           Date().timeIntervalSince(last) < 30 { return }
+        guard hasCalendarAccess,
+              let end = Calendar.current.date(byAdding: .day, value: 7, to: Date())
+        else {
+            launcherEvents = []
+            return
+        }
+        let calendarIDs = selectedCalendars.filter { !$0.isReminder }.map(\.id)
+        launcherEvents = await calendarService.events(
+            from: Date(), to: end, calendars: calendarIDs)
+            .filter { $0.type.isEvent }
+            .sorted { $0.start < $1.start }
+        lastLauncherEventsFetchDate = Date()
     }
 
     func updateLockScreenEvents(force: Bool = false) async {

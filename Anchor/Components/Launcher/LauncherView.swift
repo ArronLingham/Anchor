@@ -49,6 +49,7 @@ struct LauncherView: View {
     @Default(.launcherFolders) private var folders
     @Default(.launcherEnableCalculator) private var calculatorEnabled
 
+    @State private var gridColumns: Int = LauncherGridLayout.calculate().columns
     @State private var selectedTab: LauncherTab = .apps
 
     private enum LauncherTab: String, CaseIterable {
@@ -149,6 +150,7 @@ struct LauncherView: View {
                         folders: resolvedFolders,
                         allowsReorder: !gridIsFiltered,
                         selection: $selection,
+                        onColumnsChanged: { gridColumns = $0 },
                         onLaunch: onLaunch
                     )
                 }
@@ -159,8 +161,8 @@ struct LauncherView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .padding(.top, presentationMode == .fullscreen ? 90 : 20)
-        .padding(.horizontal, presentationMode == .fullscreen ? 90 : 24)
+        .padding(.top, presentationMode == .fullscreen ? 72 : 22)
+        .padding(.horizontal, presentationMode == .fullscreen ? 72 : 22)
         .padding(.bottom, presentationMode == .fullscreen ? 30 : 16)
         .background {
             if presentationMode == .fullscreen {
@@ -169,11 +171,11 @@ struct LauncherView: View {
             } else {
                 ZStack {
                     LauncherWallpaperBlur()
-                    RoundedRectangle(cornerRadius: 32, style: .continuous)
-                        .strokeBorder(Color.white.opacity(0.20), lineWidth: 1)
+                    RoundedRectangle(cornerRadius: 26, style: .continuous)
+                        .strokeBorder(Color.white.opacity(0.14), lineWidth: 1)
                 }
-                .clipShape(RoundedRectangle(cornerRadius: 32, style: .continuous))
-                .shadow(color: Color.black.opacity(0.35), radius: 24, y: 12)
+                .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
+                .shadow(color: Color.black.opacity(0.25), radius: 28, y: 12)
             }
         }
         .defaultFocus($queryFocused, true)
@@ -222,12 +224,12 @@ struct LauncherView: View {
     private var searchField: some View {
         HStack(spacing: 12) {
             Image(systemName: calculation == nil ? "magnifyingglass" : "equal.square")
-                .font(.system(size: 18, weight: .medium))
+                .font(.system(size: 17, weight: .medium))
                 .foregroundStyle(.secondary)
 
             TextField("Search applications", text: $query)
                 .textFieldStyle(.plain)
-                .font(.system(size: 22, weight: .regular))
+                .font(.system(size: 19, weight: .regular))
                 .focused($queryFocused)
                 .onSubmit(activateSelection)
                 .onKeyPress(.upArrow) { move(by: -stride); return .handled }
@@ -250,8 +252,14 @@ struct LauncherView: View {
             }
         }
         .frame(maxWidth: 680)
-        .frame(height: 62)
-        .padding(.horizontal, 24)
+        .frame(height: 54)
+        .padding(.horizontal, 20)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 17, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 17, style: .continuous)
+                .strokeBorder(Color.primary.opacity(0.09), lineWidth: 1)
+        }
+        .padding(.bottom, 12)
         .contentShape(Rectangle())
         .onTapGesture {
             queryFocused = true
@@ -300,7 +308,7 @@ struct LauncherView: View {
     }
 
     /// In the grid, ↑/↓ move a whole row; in the list they move one item.
-    private var stride: Int { showingGrid ? Defaults[.launcherGridColumns] : 1 }
+    private var stride: Int { showingGrid ? gridColumns : 1 }
 
     private func calculatorRow(_ value: String) -> some View {
         VStack(spacing: 10) {

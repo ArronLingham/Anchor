@@ -267,6 +267,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // Saves where the user dragged the record to; the panel is torn down
         // before AppKit would autosave it.
         VinylWidgetWindowManager.shared.persistFrame()
+        PlayerWindowManager.shared.persistFrame()
         SystemOSDManager.resumeOSDUIHelperForTermination()
 
         // Cancel any pending window size updates
@@ -327,6 +328,64 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
     
+    /// Reconcile actual windows when either setting changes the display strategy.
+    @MainActor
+    private func reconcileDisplayWindows() {
+        if shouldUseMultiWindow, let window {
+            vm.onViewTeardown?()
+            vm.onViewTeardown = nil
+            NotchSpaceManager.shared.notchSpace.windows.remove(window)
+            window.close()
+            self.window = nil
+        } else if !shouldUseMultiWindow {
+            for (screen, window) in windows {
+                viewModels[screen]?.onViewTeardown?()
+                viewModels[screen]?.onViewTeardown = nil
+                NotchSpaceManager.shared.notchSpace.windows.remove(window)
+                window.close()
+            }
+            windows.removeAll()
+            viewModels.removeAll()
+        }
+        adjustWindowPosition(changeAlpha: true)
+        syncNotchSpaceMembership()
+    }
+
+    #if DEBUG
+    /// Exercises the same reconciliation used by both display setting observers.
+    /// Called only by the opt-in snapshot harness, with volatile preferences.
+    @MainActor
+    func verifyExternalPillWindowTransitions() -> String {
+        let original = UserDefaults.standard.volatileDomain(forName: UserDefaults.argumentDomain)
+        var arguments = original
+        arguments["automaticallySwitchDisplay"] = true
+        var transitions = 0
+        for (persistent, allDisplays) in [(false, false), (true, false), (true, true), (false, true), (false, false)] {
+            arguments["alwaysShowOnExternalDisplays"] = persistent
+            arguments["showOnAllDisplays"] = allDisplays
+            UserDefaults.standard.setVolatileDomain(arguments, forName: UserDefaults.argumentDomain)
+            reconcileDisplayWindows()
+            if persistent || allDisplays {
+                assert(window == nil)
+                assert(windows.count == NSScreen.screens.count)
+                assert(viewModels.count == windows.count)
+                if persistent {
+                    for (screen, panel) in windows where screen.safeAreaInsets.top == 0 {
+                        assert(NotchSpaceManager.shared.notchSpace.windows.contains(panel))
+                        assert(viewModels[screen]!.closedNotchSize.height >= 32)
+                    }
+                }
+            } else {
+                assert(window != nil && windows.isEmpty && viewModels.isEmpty)
+            }
+            transitions += 1
+        }
+        cleanupWindows()
+        UserDefaults.standard.setVolatileDomain(original, forName: UserDefaults.argumentDomain)
+        return "Passed \(transitions) live window transitions across \(NSScreen.screens.count) connected displays."
+    }
+    #endif
+
     private func cleanupWindows(shouldInvert: Bool = false) {
         if shouldInvert ? !shouldUseMultiWindow : shouldUseMultiWindow {
             for (screen, window) in windows {
@@ -350,8 +409,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// Rebuilds the notch's CGSSpace membership from the current hide option and the
     /// live windows. The space pins the notch above every space (fullscreen included)
-    /// and is used **only** for "Never hide"; the hide options keep the set empty so
-    /// FullscreenMediaDetector can hide the notch. Assigning the whole set lets the
+    /// contains all windows for "Never hide", or just persistent external pills
+    /// when fullscreen hiding is enabled. Assigning the whole set lets the
     /// CGSSpace diff additions/removals, so this is safe to call on any change.
     @MainActor
     private func syncNotchSpaceMembership() {
@@ -669,6 +728,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
+        if !AppRuntimeEnvironment.isUITesting { _ = TodoRemindersSyncManager.shared }
+
         LockScreenLiveActivityWindowManager.shared.configure(viewModel: vm)
         LockScreenManager.shared.configure(viewModel: vm)
         LauncherWallpaperCache.shared.prewarmAll()
@@ -868,7 +929,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             // Creates its window only when the feature is on. The record's
             // rotation is a CABasicAnimation, so a spinning record costs this
             // process nothing per frame.
+            CadenceLayoutMigration.importIfNeeded()
             VinylWidgetWindowManager.shared.start()
+            PlayerWindowManager.shared.start()
             // Watches the audio process list through CoreAudio property
             // listeners — no timer — and re-applies any stored per-app volume,
             // mute or EQ as apps appear.
@@ -948,7 +1011,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         Defaults.publisher(.alwaysShowOnExternalDisplays, options: []).sink { [weak self] _ in
             Task { @MainActor [weak self] in
-                self?.syncNotchSpaceMembership()
+                self?.reconcileDisplayWindows()
             }
         }.store(in: &cancellables)
         
@@ -1012,17 +1075,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             forName: Notification.Name.showOnAllDisplaysChanged, object: nil, queue: nil
         ) { [weak self] _ in
             guard let self = self else { return }
-            self.cleanupWindows(shouldInvert: true)
-
-            if !shouldUseMultiWindow {
-                let viewModel = self.vm
-                let window = self.createDynamicIslandWindow(
-                    for: NSScreen.main ?? NSScreen.screens.first!, with: viewModel)
-                self.window = window
-                self.adjustWindowPosition(changeAlpha: true)
-            } else {
-                self.adjustWindowPosition()
-            }
+            self.reconcileDisplayWindows()
         }
 
         DistributedNotificationCenter.default().addObserver(
@@ -1477,6 +1530,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             MenuBarShrinkManager.shared.toggle()
         }
 
+        KeyboardShortcuts.onKeyDown(for: .toggleAlwaysHiddenSection) {
+            MenuBarShrinkManager.shared.toggleAlwaysHidden()
+        }
+
         KeyboardShortcuts.onKeyDown(for: .togglePinNotch) { [weak self] in
             let pinned = !Defaults[.notchPinnedOpen]
             Defaults[.notchPinnedOpen] = pinned
@@ -1639,6 +1696,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 if let window = windows[screen] {
                     viewModels[screen]?.onViewTeardown?()
                     viewModels[screen]?.onViewTeardown = nil
+                    NotchSpaceManager.shared.notchSpace.windows.remove(window)
                     window.close()
                     windows.removeValue(forKey: screen)
                     viewModels.removeValue(forKey: screen)
@@ -1876,4 +1934,3 @@ private func isAnchorLog(_ url: URL) -> Bool {
     let name = url.lastPathComponent
     return name.contains("Anchor") || name.contains("Atoll")
 }
-

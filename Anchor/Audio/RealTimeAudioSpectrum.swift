@@ -47,29 +47,91 @@ class RealTimeAudioSpectrum: NSView {
         setupBars()
     }
 
+    /// Rebuilt on every size change and whenever the bar count changes.
+    ///
+    /// It used to run exactly once, from `init`, and pin `frame.size` to a
+    /// hardcoded 14pt height with bars laid out for that height. The element is
+    /// placed with `.frame(maxWidth: .infinity, maxHeight: .infinity)`, so the
+    /// layers had no relationship to the space actually given to them — the
+    /// bars drew at the wrong size and in the wrong place, which is the
+    /// "glitches out" half of the report. Changing `visualizerBarCount` did
+    /// nothing at all, because nothing ever rebuilt them.
     private func setupBars() {
-        let barWidth: CGFloat = 2
-        let barCount = Defaults[.visualizerBarCount]
-        let spacing: CGFloat = barWidth
-        let totalWidth = CGFloat(barCount) * (barWidth + spacing)
-        let totalHeight: CGFloat = 14
-        frame.size = CGSize(width: totalWidth, height: totalHeight)
+        barLayers.forEach { $0.removeFromSuperlayer() }
+        barLayers.removeAll()
+
+        let barCount = max(1, Defaults[.visualizerBarCount])
+        let height = max(4, bounds.height)
+        let width = max(CGFloat(barCount), bounds.width)
+        // Half the slot is bar, half is gap — the proportion the fixed 2pt/2pt
+        // version encoded, expressed against the space actually given to us.
+        let slot = width / CGFloat(barCount)
+        let barWidth = max(1, slot * 0.5)
+        let colour = barColor.cgColor
 
         for i in 0 ..< barCount {
-            let xPosition = CGFloat(i) * (barWidth + spacing)
+            let xPosition = CGFloat(i) * slot + (slot - barWidth) / 2
             let barLayer = CAShapeLayer()
-            barLayer.frame = CGRect(x: xPosition, y: 0, width: barWidth, height: totalHeight)
-            barLayer.position = CGPoint(x: xPosition + barWidth / 2, y: totalHeight / 2)
-            barLayer.fillColor = NSColor.white.cgColor
-            
-            let path = NSBezierPath(roundedRect: CGRect(x: 0, y: 0, width: barWidth, height: totalHeight),
-                                    xRadius: barWidth / 2,
-                                    yRadius: barWidth / 2)
+            barLayer.frame = CGRect(x: xPosition, y: 0, width: barWidth, height: height)
+            barLayer.position = CGPoint(x: xPosition + barWidth / 2, y: height / 2)
+            barLayer.fillColor = colour
+
+            let path = NSBezierPath(
+                roundedRect: CGRect(x: 0, y: 0, width: barWidth, height: height),
+                xRadius: barWidth / 2, yRadius: barWidth / 2)
             barLayer.path = path.cgPath
-            
+
             barLayers.append(barLayer)
             layer?.addSublayer(barLayer)
         }
+    }
+
+    /// White, or the album's colour when `coloredSpectrogram` is on — which is
+    /// what that setting has always claimed to do and never did. It gated
+    /// album-colour EXTRACTION in `MusicManager` instead, so the one control
+    /// named after the visualiser was the one thing it did not affect.
+    private var barColor: NSColor {
+        Defaults[.coloredSpectrogram]
+            ? SurfaceStyle.vivid(MusicManager.shared.avgColor) : .white
+    }
+
+    private var lastLaidOutSize: CGSize = .zero
+
+    override func layout() {
+        super.layout()
+        guard bounds.size != lastLaidOutSize else { return }
+        lastLaidOutSize = bounds.size
+        // Actions disabled: otherwise every resize animates each bar's implicit
+        // position change and the spectrum visibly swells when the window moves
+        // between displays. The same rule the record already follows.
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        setupBars()
+        CATransaction.commit()
+        appliedBarCount = max(1, Defaults[.visualizerBarCount])
+        appliedColour = barColor
+    }
+
+    /// Rebuild only when the appearance actually changed.
+    ///
+    /// `updateNSView` runs on every SwiftUI update of the wrapper — including
+    /// every play/pause, since `isPlaying` is a binding on it. Rebuilding every
+    /// CAShapeLayer and NSBezierPath on each of those is pure waste: the guard
+    /// turns a per-update teardown into one that fires only when the stepper or
+    /// the toggle moves.
+    private var appliedBarCount = 0
+    private var appliedColour: NSColor?
+
+    func refreshAppearance() {
+        let wantedCount = max(1, Defaults[.visualizerBarCount])
+        let wantedColour = barColor
+        guard wantedCount != appliedBarCount || wantedColour != appliedColour else { return }
+        appliedBarCount = wantedCount
+        appliedColour = wantedColour
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        setupBars()
+        CATransaction.commit()
     }
     
     override func viewDidMoveToWindow() {
@@ -159,6 +221,10 @@ class RealTimeAudioSpectrum: NSView {
 /// SwiftUI wrapper for RealTimeAudioSpectrum
 struct RealTimeAudioSpectrumView: NSViewRepresentable {
     @Binding var isPlaying: Bool
+    // Declared so SwiftUI re-runs `updateNSView` when they change. The AppKit
+    // view reads `Defaults` itself; these exist to make the change observed.
+    @Default(.visualizerBarCount) private var barCount
+    @Default(.coloredSpectrogram) private var colouredBars
     
     func makeNSView(context: Context) -> RealTimeAudioSpectrum {
         let spectrum = RealTimeAudioSpectrum()
@@ -168,6 +234,10 @@ struct RealTimeAudioSpectrumView: NSViewRepresentable {
     
     func updateNSView(_ nsView: RealTimeAudioSpectrum, context: Context) {
         nsView.setPlaying(isPlaying)
+        // The bar count and the colour are observed by the SwiftUI wrapper, so
+        // a change re-runs this; the view rebuilds its layers from it. Without
+        // this the stepper moved and nothing on screen changed.
+        nsView.refreshAppearance()
     }
 
     static func dismantleNSView(_ nsView: RealTimeAudioSpectrum, coordinator: ()) {

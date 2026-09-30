@@ -65,6 +65,19 @@ enum UISnapshotHarness {
             let highlight = SettingsHighlightCoordinator()
             let viewModel = AnchorViewModel()
 
+            #if DEBUG
+            if ProcessInfo.processInfo.environment["ANCHOR_PILL_REVIEW"] == "1" {
+                await captureExternalPillReview(into: directory)
+                NSApp.terminate(nil)
+                return
+            }
+            if ProcessInfo.processInfo.environment["ANCHOR_TODO_TEST_DIRECTORY"] != nil {
+                await captureTodoReview(into: directory, viewModel: viewModel, highlight: highlight)
+                NSApp.terminate(nil)
+                return
+            }
+            #endif
+
             // The lyrics tab renders an "off" placeholder unless the feature is
             // enabled, and the key defaults to false. Flip it for the render and
             // put it back before exiting — this runs against the real defaults
@@ -159,7 +172,7 @@ enum UISnapshotHarness {
                 Defaults[.appSwitcherRingDiameter] = 420
                 AppSwitcherManager.shared.show()
                 await capture(
-                    AppSwitcherView().background(Color.black.opacity(0.35)),
+                    AppSwitcherView(diameter: 420).background(Color.black.opacity(0.35)),
                     size: CGSize(width: 460, height: 460),
                     scheme: scheme,
                     to: directory.appendingPathComponent("app-switcher-\(suffix).png"))
@@ -345,6 +358,86 @@ enum UISnapshotHarness {
         }
         return AnyView(LockScreenImmersivePlayer())
     }
+
+    #if DEBUG
+    @MainActor
+    private static func captureExternalPillReview(into directory: URL) async {
+        guard let screen = NSScreen.screens.first(where: { $0.safeAreaInsets.top == 0 }) else {
+            NSLog("Pill review requires an unnotched display")
+            return
+        }
+        let original = UserDefaults.standard.volatileDomain(forName: UserDefaults.argumentDomain)
+        var arguments = original
+        arguments["firstLaunch"] = false
+        arguments["alwaysShowOnExternalDisplays"] = true
+        arguments["hideNonNotchUntilHover"] = true // Deliberately conflicting legacy preference.
+        arguments["externalDisplayStyle"] = ExternalDisplayStyle.bridge.serialize(.notch)
+        arguments["nonNotchHeightMode"] = WindowHeightMode.bridge.serialize(.custom)
+        arguments["nonNotchHeight"] = 0
+        arguments["enableDoNotDisturbDetection"] = true
+        arguments["showDoNotDisturbIndicator"] = true
+        UserDefaults.standard.setVolatileDomain(arguments, forName: UserDefaults.argumentDomain)
+        defer { UserDefaults.standard.setVolatileDomain(original, forName: UserDefaults.argumentDomain) }
+        let transitions = AppDelegate().verifyExternalPillWindowTransitions()
+        try? transitions.write(to: directory.appendingPathComponent("window-transitions.txt"), atomically: true, encoding: .utf8)
+        MusicManager.shared.isPlaying = false
+        MusicManager.shared.isPlayerIdle = true
+        let model = AnchorViewModel(screen: screen.localizedName)
+        assert(model.closedNotchSize.height >= 32)
+        assert(shouldUseDynamicIslandMode(for: screen.localizedName))
+        for (name, face, focus) in [("idle-face", true, false), ("idle-plain", false, false), ("focus", false, true), ("focus-off", false, false)] {
+            arguments["showNotHumanFace"] = face
+            UserDefaults.standard.setVolatileDomain(arguments, forName: UserDefaults.argumentDomain)
+            DoNotDisturbManager.shared.isDoNotDisturbActive = focus
+            DoNotDisturbManager.shared.currentFocusModeName = focus ? "Focus" : ""
+            await capture(ContentView().environmentObject(model).background(Color.gray),
+                          size: CGSize(width: 600, height: 180), scheme: .dark,
+                          to: directory.appendingPathComponent("external-pill-\(name).png"))
+        }
+    }
+
+    /// Focused fixture renders use a separate to-do directory and launch-argument
+    /// preference overrides, so visual verification cannot edit the real list.
+    @MainActor
+    private static func captureTodoReview(into directory: URL, viewModel: AnchorViewModel,
+                                          highlight: SettingsHighlightCoordinator) async {
+        let originalArguments = UserDefaults.standard.volatileDomain(forName: UserDefaults.argumentDomain)
+        var arguments = originalArguments
+        arguments["enableTodoFeature"] = true
+        arguments["enableMenuBarShrink"] = true
+        arguments["menuBarAlwaysHiddenSection"] = true
+        arguments["todoShowCompleted"] = true
+        arguments["todoSortOrder"] = TodoSortOrder.bridge.serialize(.priority)
+        arguments["todoSecondarySortOrder"] = TodoSecondarySortOrder.bridge.serialize(.dueDate)
+        arguments["todoSortInverted"] = false
+        arguments["todoSecondarySortInverted"] = true
+        UserDefaults.standard.setVolatileDomain(arguments, forName: UserDefaults.argumentDomain)
+        defer { UserDefaults.standard.setVolatileDomain(originalArguments, forName: UserDefaults.argumentDomain) }
+        let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: Date())!
+        try? TodoManager.shared.applySyncedItems([
+            TodoItem(title: "Book the dentist", dueDate: tomorrow, priority: 3),
+            TodoItem(title: "Plan the weekend", priority: 2),
+            TodoItem(title: "A finished task", isDone: true, completedAt: Date())
+        ])
+        await capture(NotchTodoView().environmentObject(viewModel).background(Color.black),
+                      size: CGSize(width: 480, height: 300), scheme: .dark,
+                      to: directory.appendingPathComponent("todo-list.png"))
+        await capture(TodoCalendarPopover(dueDate: .constant(tomorrow), itemTitle: "Book the dentist", onDismiss: {})
+                        .background(Color(nsColor: .windowBackgroundColor)).environment(\.colorScheme, .dark),
+                      size: CGSize(width: 294, height: 390), scheme: .dark,
+                      to: directory.appendingPathComponent("todo-calendar.png"))
+        await capture(TodoSettings().formStyle(.grouped).environmentObject(highlight),
+                      size: CGSize(width: 490, height: 2000), scheme: .dark,
+                      to: directory.appendingPathComponent("todo-settings.png"))
+        await capture(MenuBarSettings().formStyle(.grouped).environmentObject(highlight),
+                      size: CGSize(width: 490, height: 1300), scheme: .dark,
+                      to: directory.appendingPathComponent("menu-bar-settings.png"))
+        for size in [CGSize(width: 1440, height: 900), CGSize(width: 860, height: 560)] {
+            await capture(LauncherView(onLaunch: { _ in }, onDismiss: {}), size: size, scheme: .dark,
+                          to: directory.appendingPathComponent("launcher-\(Int(size.width)).png"))
+        }
+    }
+    #endif
 
     @MainActor
     private static func capture<V: View>(

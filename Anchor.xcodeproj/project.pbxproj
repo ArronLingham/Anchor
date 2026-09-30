@@ -605,8 +605,8 @@
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				INFOPLIST_KEY_NSLocationUsageDescription = "Anchor uses your location to display accurate lock screen weather.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Anchor uses your location to display accurate lock screen weather.";
-				INFOPLIST_KEY_NSRemindersFullAccessUsageDescription = "Anchor needs Reminders access to show your reminders";
-				INFOPLIST_KEY_NSRemindersUsageDescription = "Anchor needs Reminders access to show your reminders";
+				INFOPLIST_KEY_NSRemindersFullAccessUsageDescription = "Anchor uses Reminders to display reminders and sync your to-do list with your iPhone when enabled";
+				INFOPLIST_KEY_NSRemindersUsageDescription = "Anchor uses Reminders to display reminders and sync your to-do list with your iPhone when enabled";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
@@ -678,8 +678,8 @@
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				INFOPLIST_KEY_NSLocationUsageDescription = "Anchor uses your location to display accurate lock screen weather.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Anchor uses your location to display accurate lock screen weather.";
-				INFOPLIST_KEY_NSRemindersFullAccessUsageDescription = "Anchor needs Reminders access to show your reminders";
-				INFOPLIST_KEY_NSRemindersUsageDescription = "Anchor needs Reminders access to show your reminders";
+				INFOPLIST_KEY_NSRemindersFullAccessUsageDescription = "Anchor uses Reminders to display reminders and sync your to-do list with your iPhone when enabled";
+				INFOPLIST_KEY_NSRemindersUsageDescription = "Anchor uses Reminders to display reminders and sync your to-do list with your iPhone when enabled";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",

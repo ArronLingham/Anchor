@@ -569,14 +569,14 @@ struct GeneralSettings: View {
                 Text("Show a pill on displays without a notch")
             }
             .settingsHighlight(id: highlightID("Show a pill on displays without a notch"))
-            .settingsInfo("Puts a permanent pill at the top centre of every display that has no physical notch — an external monitor — and pins it above other windows. Hover it to open the notch on that display. Without this the pill is either absent or drawn behind whatever window is in front, which looks like it is missing.")
+            .settingsInfo("Keeps a pill at the top centre of every display without a physical notch, including when Focus is off or an app is fullscreen. Overrides hover hiding and the external display style. Hover the pill to open Anchor.")
 
             Defaults.Toggle(key: .hideNonNotchUntilHover) {
                 Text("Hide until hovered on non-notch displays")
             }
             .settingsHighlight(id: highlightID("Hide until hovered"))
             .settingsInfo("Makes that pill slide up out of sight until the pointer reaches the top edge, instead of sitting there permanently. Turn this off to keep it always visible.")
-            .disabled(!alwaysShowOnExternalDisplays)
+            .disabled(alwaysShowOnExternalDisplays)
 
             Defaults.Toggle(key: .extendHoverArea) {
                 Text("Extend hover area")
@@ -614,8 +614,9 @@ struct GeneralSettings: View {
             .onChange(of: externalDisplayStyle) {
                 NotificationCenter.default.post(name: Notification.Name.notchHeightChanged, object: nil)
             }
+            .disabled(alwaysShowOnExternalDisplays)
             .settingsHighlight(id: highlightID("External display style"))
-            Text(externalDisplayStyle.description)
+            Text(alwaysShowOnExternalDisplays ? "The persistent option uses a pill with a minimum height of 32 points." : externalDisplayStyle.description)
                 .font(.caption)
                 .foregroundStyle(.secondary)
         } header: {

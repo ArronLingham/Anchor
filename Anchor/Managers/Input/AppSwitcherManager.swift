@@ -200,53 +200,60 @@ final class AppSwitcherManager: ObservableObject {
     }
 
     func select(_ index: Int) {
-        guard apps.indices.contains(index) else { return }
+        guard apps.indices.contains(index), selectedIndex != index else { return }
         selectedIndex = index
     }
 
     /// Brings the highlighted app forward and closes the ring.
     ///
-    /// Three separate things can be standing between the user and the window
-    /// they picked:
-    ///
-    /// - it is behind other windows;
-    /// - the whole app is hidden with ⌘H;
-    /// - its windows are minimised to the Dock.
-    ///
-    /// **Order matters, and getting it wrong is exactly the bug this replaced.**
-    /// Calling `activate()` first, then un-minimising, brought the app forward
-    /// with nothing to show — a running app with zero visible windows does not
-    /// gain focus on the window that then pops out of the Dock, because
-    /// un-minimising through the accessibility API does not raise a window the
-    /// way clicking its Dock icon does. Restoring and raising the window
-    /// *before* activating is what makes the app that comes forward be the one
-    /// with the newly-visible window in it.
+    /// Activate visible apps immediately. Window restoration is only needed
+    /// for an app whose every window is minimised, and runs off the main thread
+    /// so an unresponsive app cannot freeze the switcher.
     func activateSelection() {
         defer { hide() }
         guard apps.indices.contains(selectedIndex) else { return }
         let target = apps[selectedIndex]
 
-        // Reversing (Shift+Tab) can land back on the app that was already
-        // frontmost when the ring opened — there is nothing to switch to.
-        // Raising and activating it anyway would still reorder its own
-        // windows (deminiaturiseAndRaise runs across all of them), which
-        // disturbs whatever you were doing even though you never left.
+        // Reversing can land back on the app that was already frontmost.
         guard target.pid != originalFrontmostPID else { return }
 
         guard let app = NSRunningApplication(processIdentifier: target.pid) else { return }
 
         if app.isHidden { app.unhide() }
-        deminiaturiseAndRaise(pid: target.pid)
-        // A perpetually-background accessory app handing activation straight to
-        // a third app is the unreliable case — the window gets raised but the
-        // previously-focused app stays frontmost. Claiming activation for Anchor
-        // itself first, then immediately handing it to `app`, is the two-hop
-        // pattern that actually works. Anchor draws no visible window during
-        // this — the panel is already ordered out by the time this runs — so
-        // there is nothing to flicker.
-        NSApp.activate()
-        app.activate(options: [.activateAllWindows])
+        // The common path is an ordinary visible window. Activate it now;
+        // querying another process's Accessibility tree before this call can
+        // stall the switcher for hundreds of milliseconds (or indefinitely
+        // when that process is unresponsive).
+        let previousPID = originalFrontmostPID
+        if !app.activate(options: [.activateAllWindows]) {
+            NSApp.activate()
+            app.activate(options: [.activateAllWindows])
+        } else {
+            // A background accessory app can get an accepted activation that
+            // never actually changes focus. Retry the two-hop handoff only if
+            // the original app is still frontmost after the handoff settles.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.06) {
+                guard NSWorkspace.shared.frontmostApplication?.processIdentifier == previousPID,
+                      let retry = NSRunningApplication(processIdentifier: target.pid)
+                else { return }
+                NSApp.activate()
+                retry.activate(options: [.activateAllWindows])
+            }
+        }
         noteActivation(target.pid)
+
+        // A fully minimised app needs its window restored. Check on a worker
+        // queue so a slow AX client never holds up the ring or its next key.
+        if AXIsProcessTrusted() {
+            let pid = target.pid
+            DispatchQueue.global(qos: .userInitiated).async {
+                guard Self.restoreMinimisedWindows(pid: pid) else { return }
+                DispatchQueue.main.async {
+                    guard NSWorkspace.shared.frontmostApplication?.processIdentifier == pid else { return }
+                    NSRunningApplication(processIdentifier: pid)?.activate(options: [.activateAllWindows])
+                }
+            }
+        }
     }
 
     /// Restores minimised windows and raises them.
@@ -260,30 +267,30 @@ final class AppSwitcherManager: ObservableObject {
     ///
     /// Needs Accessibility; without it this quietly does nothing and the app
     /// still comes forward, just with its windows left in the Dock.
-    private func deminiaturiseAndRaise(pid: pid_t) {
-        guard AXIsProcessTrusted() else { return }
-
+    private nonisolated static func restoreMinimisedWindows(pid: pid_t) -> Bool {
         let element = AXUIElementCreateApplication(pid)
         var value: CFTypeRef?
         guard AXUIElementCopyAttributeValue(
             element, kAXWindowsAttribute as CFString, &value) == .success,
             let windows = value as? [AXUIElement]
-        else { return }
+        else { return false }
 
-        // AX returns windows front-to-back for the app; raising in reverse
-        // leaves index 0 — the app's own frontmost window — on top at the end,
-        // rather than whichever happened to be raised last.
-        for window in windows.reversed() {
+        // Do not reshuffle an app's windows when it already has one visible.
+        // Restore only when every window is minimised.
+        guard !windows.isEmpty else { return false }
+        for window in windows {
             var minimised: CFTypeRef?
-            if AXUIElementCopyAttributeValue(
+            guard AXUIElementCopyAttributeValue(
                 window, kAXMinimizedAttribute as CFString, &minimised) == .success,
                 (minimised as? Bool) == true
-            {
-                AXUIElementSetAttributeValue(
-                    window, kAXMinimizedAttribute as CFString, kCFBooleanFalse)
-            }
+            else { return false }
+        }
+        for window in windows.reversed() {
+            AXUIElementSetAttributeValue(
+                window, kAXMinimizedAttribute as CFString, kCFBooleanFalse)
             AXUIElementPerformAction(window, kAXRaiseAction as CFString)
         }
+        return true
     }
 
     /// Closes the highlighted app. Bound to W, matching the convention the ⌘Tab

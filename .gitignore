@@ -142,7 +142,9 @@ PrivateWorks
 *.sh
 
 # Testing & Measurement (Not needed to run Anchor)
-tests/
+tests/*
+!tests/TodoStorageTests.swift
+!tests/run_todo_storage_tests.sh
 AnchorUITests/
 TESTING.md
 scripts/
@@ -178,3 +180,6 @@ default.profraw
 
 # Build/coverage artefacts that kept reappearing at the repo root
 *.profraw
+
+!tests/ExternalPillPolicyTests.swift
+!tests/run_external_pill_tests.sh

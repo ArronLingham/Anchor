@@ -75,8 +75,8 @@ final class LauncherPanel: NSPanel {
             return screen.frame
         case .floaty:
             let visible = screen.visibleFrame
-            let targetWidth = min(1040, visible.width * 0.88)
-            let targetHeight = min(820, visible.height * 0.88)
+            let targetWidth = min(900, visible.width * 0.86)
+            let targetHeight = min(760, visible.height * 0.86)
             let x = visible.midX - targetWidth / 2
             let y = visible.midY - targetHeight / 2
             return NSRect(x: x, y: y, width: targetWidth, height: targetHeight)
