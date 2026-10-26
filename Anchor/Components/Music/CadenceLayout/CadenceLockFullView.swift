@@ -28,7 +28,7 @@ struct CadenceLockFullView: View {
 
             PlayerSurfaceView(
                 layout: GridSolver.fullscreenLayout(layouts.lockFull,
-                    lyricsVisible: enableLyrics && !music.syncedLyrics.isEmpty),
+                    lyricsVisible: enableLyrics && music.showLyrics && !music.syncedLyrics.isEmpty),
                 style: .forSurface(
                     .lockFull, albumColor: music.avgColor, tinted: false,
                     scale: layouts.lockFull.geometry.contentScale,

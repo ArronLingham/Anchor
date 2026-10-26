@@ -280,7 +280,7 @@ public struct UtilityLaunchAtLoginControl: View {
                     if loginPending { ProgressView().controlSize(.small) }
                     // Waiting on approval it is still registered, so it reads on and
                     // switching it off unregisters it, which also clears the note.
-                    NativeLoginSwitch(isOn: Binding(
+                    LoginSwitch(isOn: Binding(
                         get: { loginRegistration != .off },
                         set: { setLaunchAtLogin($0) }
                     ), title: l10n.s.launchAtLogin, enabled: !loginPending)
@@ -345,28 +345,31 @@ public struct UtilityLaunchAtLoginControl: View {
 
 }
 
-/// NSSwitch owns its white thumb and track; inherited SwiftUI button styles
-/// cannot paint the entire switch blue or freeze its thumb during async work.
-private struct NativeLoginSwitch: NSViewRepresentable {
+/// Explicit geometry avoids platform switch rendering and inherited tints.
+/// The accessibility representation retains native toggle semantics.
+private struct LoginSwitch: View {
     @Binding var isOn: Bool
     let title: String
     let enabled: Bool
-    func makeCoordinator() -> Coordinator { Coordinator(self) }
-    func makeNSView(context: Context) -> NSSwitch {
-        let view = NSSwitch()
-        view.target = context.coordinator
-        view.action = #selector(Coordinator.changed(_:))
-        return view
-    }
-    func updateNSView(_ view: NSSwitch, context: Context) {
-        context.coordinator.parent = self
-        view.state = isOn ? .on : .off
-        view.isEnabled = enabled
-        view.setAccessibilityLabel(title)
-    }
-    final class Coordinator: NSObject {
-        var parent: NativeLoginSwitch
-        init(_ parent: NativeLoginSwitch) { self.parent = parent }
-        @objc func changed(_ sender: NSSwitch) { parent.isOn = sender.state == .on }
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    var body: some View {
+        Button { isOn.toggle() } label: {
+            ZStack(alignment: .leading) {
+                Capsule().fill(isOn ? Color.blue : Color.gray.opacity(0.4))
+                Circle().fill(Color.white)
+                    .frame(width: 18, height: 18)
+                    .shadow(color: .black.opacity(0.2), radius: 1, y: 1)
+                    .offset(x: isOn ? 18 : 2)
+            }
+            .frame(width: 38, height: 22)
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .disabled(!enabled)
+        .opacity(enabled ? 1 : 0.55)
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.15), value: isOn)
+        .accessibilityRepresentation {
+            Toggle(title, isOn: $isOn).toggleStyle(.switch).disabled(!enabled)
+        }
     }
 }

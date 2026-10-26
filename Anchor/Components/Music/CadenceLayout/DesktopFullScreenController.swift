@@ -101,7 +101,7 @@ private struct DesktopFullScreenView: View {
             backdrop
             PlayerSurfaceView(
                 layout: GridSolver.fullscreenLayout(layouts.desktopFull,
-                    lyricsVisible: enableLyrics && !music.syncedLyrics.isEmpty),
+                    lyricsVisible: enableLyrics && music.showLyrics && !music.syncedLyrics.isEmpty),
                 style: .forSurface(
                     .desktopFull, albumColor: music.avgColor, tinted: false,
                     scale: layouts.desktopFull.geometry.contentScale,

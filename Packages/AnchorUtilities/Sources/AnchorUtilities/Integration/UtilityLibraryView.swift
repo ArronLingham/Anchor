@@ -82,7 +82,8 @@ public struct UtilityLibraryView: View {
                     Label(workspace.commandBarShortcutHint, systemImage: "command")
                         .font(.caption).foregroundStyle(.secondary)
                     Spacer()
-                    Button("All controls & permissions…") { workspace.showControls() }
+                    Button("Tool settings & permissions…") { workspace.showControls() }
+                        .help("Opens tool settings in this same Anchor Settings window.")
                         .font(.caption)
                 }
             }.padding(22)

@@ -304,6 +304,7 @@ struct SettingsView: View {
             if workspace.controlsVisible { UtilityControlsView() }
             else { primarySettings }
         }
+        .onChange(of: navigation.requestID) { _, _ in searchText = "" }
     }
 
     private var primarySettings: some View {

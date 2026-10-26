@@ -32,11 +32,13 @@ final class SettingsNavigationState: ObservableObject {
     static let shared = SettingsNavigationState()
 
     @Published var selectedTab: SettingsTab = .general
+    @Published private(set) var requestID = UUID()
     let highlightCoordinator = SettingsHighlightCoordinator()
 
     private init() {}
 
     func select(tab: SettingsTab, highlightID: String? = nil) {
+        requestID = UUID()
         selectedTab = tab
         if let highlightID {
             highlightCoordinator.focus(onHighlightID: highlightID, in: tab)
@@ -204,6 +206,7 @@ class SettingsWindowController: NSWindowController {
     }
     
     private func relinquishFocus() {
+        UtilityWorkspace.shared.controlsVisible = false
         window?.orderOut(nil)
         
         if let window { AnchorApplicationPresentation.shared.unregister(window) }

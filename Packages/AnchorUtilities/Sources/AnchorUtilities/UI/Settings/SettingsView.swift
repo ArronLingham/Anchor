@@ -166,6 +166,7 @@ struct SettingsView: View {
             }
         }
         .navigationSplitViewStyle(.balanced)
+        .toolbar(removing: .sidebarToggle)
         .toolbar {
             ToolbarItem(placement: .navigation) {
                 Button("Anchor Settings", systemImage: "gearshape") {

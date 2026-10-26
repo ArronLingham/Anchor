@@ -80,7 +80,7 @@ struct AnchorToggleStyle: ToggleStyle {
             HStack(spacing: 18) {
                 configuration.label.foregroundStyle(AnchorDesign.text)
                 Spacer(minLength: 12)
-                Capsule().fill(configuration.isOn ? AnchorDesign.accent : AnchorDesign.inset)
+                Capsule().fill(configuration.isOn ? Color.blue : AnchorDesign.inset)
                     .frame(width: 38, height: 22)
                     .overlay(Capsule().strokeBorder(.white.opacity(0.13)))
                     .overlay(alignment: configuration.isOn ? .trailing : .leading) {

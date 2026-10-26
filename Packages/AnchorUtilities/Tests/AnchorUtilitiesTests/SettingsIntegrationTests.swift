@@ -21,6 +21,7 @@ final class SettingsIntegrationTests: XCTestCase {
         XCTAssertEqual(settingsVisits, 1)
         XCTAssertEqual(libraryVisits, 2)
         XCTAssertEqual(islandVisits, 2)
+        XCTAssertTrue(FeatureVisibilitySupport.isPageVisible(.notch, isAvailable: { _ in false }))
     }
 
     func testImportedRendererCannotStartAnotherIsland() {

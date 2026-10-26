@@ -435,6 +435,9 @@ enum FeatureVisibilitySupport {
     static func isPageVisible(_ page: SettingsPage,
                               isAvailable: (AppFeature) -> Bool) -> Bool {
         if [.about, .releaseNotes, .support].contains(page) { return false }
+        // This entry routes to Anchor's canonical island settings, even though
+        // the imported island engine itself is retired.
+        if page == .notch { return true }
         let gate = features(for: page)
         return gate.isEmpty || gate.contains(where: isAvailable)
     }
