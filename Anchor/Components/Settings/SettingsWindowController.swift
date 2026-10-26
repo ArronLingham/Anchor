@@ -22,6 +22,7 @@
  */
 
 import AppKit
+import AnchorUtilities
 import Defaults
 import SwiftUI
 import Sparkle
@@ -163,6 +164,7 @@ class SettingsWindowController: NSWindowController {
     }
 
     private func presentWindow() {
+        UtilityWorkspace.shared.controlsVisible = false
         // Ensure window exists
         _ = window
         if let window {

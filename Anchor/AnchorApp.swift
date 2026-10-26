@@ -357,9 +357,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func setUtilityIslandActive(_ active: Bool) {
-        guard utilityIslandActive != active else { return }
-        utilityIslandActive = active
-        if active {
+        let suppressed = active || !Defaults[.enableDynamicIsland]
+        guard utilityIslandActive != suppressed else { return }
+        utilityIslandActive = suppressed
+        if suppressed {
             vm.close()
             for model in viewModels.values { model.close() }
             MusicControlWindowManager.hideAll()

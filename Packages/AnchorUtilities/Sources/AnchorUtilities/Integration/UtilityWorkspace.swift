@@ -26,6 +26,9 @@ public final class UtilityWorkspace: ObservableObject {
     @Published public private(set) var featureNotice: String?
     @Published public private(set) var featureToEnable: String?
     public var onControlOwnershipChange: ((Set<String>) -> Void)?
+    @Published public var controlsVisible = false
+    public var onOpenControls: (() -> Void)?
+    public var onOpenIslandSettings: (() -> Void)?
     public var onOpenAnchorSettings: (() -> Void)?
     public var onOpenFeatureLibrary: (() -> Void)?
     public var onShowAnchorMenuIcon: (() -> Void)?
@@ -55,6 +58,9 @@ public final class UtilityWorkspace: ObservableObject {
     public func start() {
         guard !started else { return }
         started = true
+        LaunchAtLogin.repairAtStartup()
+        // Anchor owns the one island. Keep imported choices, but retire its renderer.
+        UtilityPreferences.standard.set(false, forKey: DefaultsKey.notchEnabled)
         GlobalShortcut.startObservingKeyboardLayout()
         NotchControlItem.keyboardLightIsSupported = { BrightnessService.keyboardLightIsSupported }
         AXUIElementSetMessagingTimeout(AXUIElementCreateSystemWide(), 0.35)
@@ -134,7 +140,7 @@ public final class UtilityWorkspace: ObservableObject {
                         DefaultsKey.windowLayoutShortcutsEnabled].contains {
                     UtilityPreferences.standard.bool(forKey: $0)
                 }
-            case .notch: return UtilityPreferences.standard.bool(forKey: DefaultsKey.notchEnabled)
+            case .notch: return false
             default:
                 return feature.enabledKeys.isEmpty || feature.enabledKeys.contains {
                     UtilityPreferences.standard.bool(forKey: $0)
@@ -164,7 +170,7 @@ public final class UtilityWorkspace: ObservableObject {
         let language = L10n.shared.language
         let s = L10n.shared.s
         let hub = FeatureStrings.hub(language)
-        return AppFeature.allCases.map { feature in
+        return AppFeature.allCases.filter { !$0.rawValue.hasPrefix("notch") }.map { feature in
             UtilityFeature(
                 id: feature.rawValue, title: feature.hubTitle(s, hub: hub),
                 summary: feature.hubDescription(hub), symbol: feature.symbolName,
@@ -226,6 +232,7 @@ public final class UtilityWorkspace: ObservableObject {
     }
 
     public func showFeature(_ id: String) {
+        if id == "notch", let onOpenIslandSettings { onOpenIslandSettings(); return }
         guard let feature = AppFeature(rawValue: id) else { return }
         if feature.isAvailable {
             SettingsRouter.shared.request(feature.settingsDestination)
@@ -240,8 +247,17 @@ public final class UtilityWorkspace: ObservableObject {
         showControls()
     }
 
+    /// Shared by sidebar, search and panel deep links.
+    @discardableResult
+    func routeNativeSettingsPage(_ page: SettingsPage, hasSection: Bool = false) -> Bool {
+        if page == .general, !hasSection, let open = onOpenAnchorSettings { open(); return true }
+        if page == .features, let open = onOpenFeatureLibrary { open(); return true }
+        if page == .notch || page == .notchMascot, let open = onOpenIslandSettings { open(); return true }
+        return false
+    }
+
     public func showControls() {
-        SettingsRouter.shared.page = .features
+        SettingsRouter.shared.request(FeatureSettingsDestination(.quickTools))
         host.openSettingsWindow()
     }
 
@@ -330,5 +346,20 @@ public final class UtilityWorkspace: ObservableObject {
         if AppFeature.keepAwake.isAvailable { KeepAwakeManager.shared.deactivate(reason: .quit) }
         FanControlService.restoreBeforeTerminationIfNeeded()
         SystemShortcutTakeover.restoreAll()
+    }
+}
+
+public struct UtilityControlsView: View {
+    public init() {}
+    public var body: some View {
+        SettingsView().defaultAppStorage(UtilityPreferences.standard)
+            .onAppear {
+                SettingsWindowVisibility.shared.set(true)
+                SecureInputMonitor.shared.setSettingsWindowOpen(true)
+            }
+            .onDisappear {
+                SettingsWindowVisibility.shared.set(false)
+                SecureInputMonitor.shared.setSettingsWindowOpen(false)
+            }
     }
 }

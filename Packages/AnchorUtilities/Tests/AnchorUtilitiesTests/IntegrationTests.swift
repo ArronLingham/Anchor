@@ -60,7 +60,7 @@ final class IntegrationTests: XCTestCase {
 
     func testCatalogCanBeAuditedWithoutStartingEngines() throws {
         let features = UtilityWorkspace.shared.features
-        XCTAssertEqual(Set(features.map(\.id)), Set(AppFeature.allCases.map(\.rawValue)))
+        XCTAssertEqual(Set(features.map(\.id)), Set(AppFeature.allCases.filter { !$0.rawValue.hasPrefix("notch") }.map(\.rawValue)))
         let rows: [[String: Any]] = features.map { item in
             let feature = AppFeature(rawValue: item.id)!
             return ["id": item.id, "title": item.title, "summary": item.summary,

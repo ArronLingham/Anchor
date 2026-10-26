@@ -223,7 +223,10 @@ extension AppFeature {
     }
 
     func isAvailable(in defaults: UserDefaults) -> Bool {
-        defaults.bool(forKey: availabilityKey)
+        // Anchor owns the island and its modules. Saved imported settings stay
+        // intact, but must not start a second renderer or its background services.
+        guard !rawValue.hasPrefix("notch") else { return false }
+        return defaults.bool(forKey: availabilityKey)
     }
 
     /// The feature's own enable keys; any one being true means the feature is

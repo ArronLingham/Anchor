@@ -2,6 +2,7 @@ import AnchorUtilities
 import AppKit
 import Combine
 import Defaults
+import SwiftUI
 
 extension Notification.Name {
     static let utilityControlOwnershipChanged = Notification.Name("AnchorUtilityControlOwnershipChanged")
@@ -14,6 +15,7 @@ final class UtilityIntegration: ObservableObject {
     private let savedChoicesKey = "Anchor.utilitySuspendedControls.v1"
     private var handover: UtilityOwnership
     private var changingOwnership = false
+    private var islandSubscription: AnyCancellable?
     private var subscription: AnyCancellable?
     private var started = false
     private var pausedInputUID: String? = UserDefaults.standard.string(forKey: "Anchor.utilityPausedInputUID")
@@ -54,7 +56,19 @@ final class UtilityIntegration: ObservableObject {
             }
         }
         workspace.onShowAnchorMenuIcon = { Defaults[.menubarIcon] = true }
-        workspace.onOpenAnchorSettings = { SettingsWindowController.shared.showWindow() }
+        workspace.onOpenControls = {
+            SettingsWindowController.shared.showWindow(tab: .features)
+            workspace.controlsVisible = true
+        }
+        workspace.onOpenAnchorSettings = { SettingsWindowController.shared.showWindow(tab: .general) }
+        workspace.onOpenIslandSettings = {
+            SettingsWindowController.shared.showWindow(tab: .general,
+                highlightID: SettingsTab.general.highlightID(for: "Dynamic Island"))
+        }
+        islandSubscription = Defaults.publisher(.enableDynamicIsland, options: [])
+            .sink { [weak delegate] _ in
+                Task { @MainActor in delegate?.setUtilityIslandActive(false) }
+            }
         workspace.onOpenFeatureLibrary = { SettingsWindowController.shared.showWindow(tab: .features) }
         workspace.onWindowActivityChange = { active in
             MainActor.assumeIsolated {

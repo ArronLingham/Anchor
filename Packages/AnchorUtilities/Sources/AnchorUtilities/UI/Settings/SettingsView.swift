@@ -120,6 +120,7 @@ struct SettingsView: View {
         guard let selectedID else { return }
         sidebarPick = nil
         guard let item = sidebarItems.first(where: { $0.id == selectedID }) else { return }
+        if UtilityWorkspace.shared.routeNativeSettingsPage(item.destination.page, hasSection: item.destination.sectionAnchor != nil) { return }
         let feature: AppFeature?
         if case .feature(let selectedFeature) = selectedID {
             feature = selectedFeature
@@ -159,12 +160,18 @@ struct SettingsView: View {
             // when asked for an unconstrained ideal size, breaking the chain.
             GeometryReader { geometry in
                 detail
+                    .id(router.requestID)
                     .settingsSectionFocus(for: router.page)
                     .frame(width: geometry.size.width, height: geometry.size.height, alignment: .top)
             }
         }
         .navigationSplitViewStyle(.balanced)
         .toolbar {
+            ToolbarItem(placement: .navigation) {
+                Button("Anchor Settings", systemImage: "gearshape") {
+                    UtilityWorkspace.shared.onOpenAnchorSettings?()
+                }
+            }
             // SwiftUI adds its sidebar button only to windows it creates, and
             // this one is AppKit's. Without it, a sidebar dragged shut could
             // only be dragged back from a one-point strip at the window's
@@ -199,6 +206,7 @@ struct SettingsView: View {
         }
         .frame(minWidth: 772, maxWidth: .infinity, minHeight: 528, maxHeight: .infinity)
         .onAppear {
+            UtilityWorkspace.shared.routeNativeSettingsPage(router.page, hasSection: router.destination.sectionAnchor != nil)
             ensureVisiblePage()
             expandSelectedSection()
         }
@@ -207,6 +215,7 @@ struct SettingsView: View {
             updateSearchSelection(previous: previous, current: current)
         }
         .onChange(of: router.requestID) { _, _ in
+            UtilityWorkspace.shared.routeNativeSettingsPage(router.page, hasSection: router.destination.sectionAnchor != nil)
             searchQuery = ""
             activeSearchIndex = nil
             ensureVisiblePage()
@@ -349,6 +358,10 @@ struct SettingsView: View {
                                 .frame(width: 18)
                             Text(item.title)
                         }
+                        .contentShape(Rectangle())
+                        .simultaneousGesture(TapGesture().onEnded {
+                            if selectedID == item.id { routeSidebarPick(item.id) }
+                        })
                         .tag(item.id)
                         .id(item.id)
                         .help(item.title)

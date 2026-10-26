@@ -5,6 +5,7 @@
 //  Created by Richard Kunkli on 07/08/2024.
 //
 import AppKit
+import AnchorUtilities
 import AVFoundation
 import Combine
 import Defaults
@@ -287,6 +288,7 @@ private struct SettingsForm<Content: View>: View {
 }
 
 struct SettingsView: View {
+    @ObservedObject private var workspace = UtilityWorkspace.shared
     @ObservedObject private var navigation = SettingsNavigationState.shared
     @State private var searchText: String = ""
     @Default(.enableMinimalisticUI) var enableMinimalisticUI
@@ -298,6 +300,13 @@ struct SettingsView: View {
     }
 
     var body: some View {
+        Group {
+            if workspace.controlsVisible { UtilityControlsView() }
+            else { primarySettings }
+        }
+    }
+
+    private var primarySettings: some View {
         HStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 18) {
                 HStack(spacing: 12) {

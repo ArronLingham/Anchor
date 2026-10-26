@@ -23,7 +23,7 @@ import Combine
 import Defaults
 import EventKit
 import KeyboardShortcuts
-import LaunchAtLogin
+import AnchorUtilities
 import LottieUI
 import Sparkle
 import SwiftUI
@@ -371,13 +371,15 @@ struct GeneralSettings: View {
             }
 
             Section {
+                Defaults.Toggle(key: .enableDynamicIsland) { Text("Dynamic Island") }
+                    .settingsHighlight(id: highlightID("Dynamic Island"))
+                Text("One Anchor island for your music and tools. Turning it off hides it on every display.")
+                    .font(.caption).foregroundStyle(.secondary)
                 Defaults.Toggle(key: .menubarIcon) {
                     Text("Menubar icon")
                 }
                 .settingsHighlight(id: highlightID("Menubar icon"))
-                LaunchAtLogin.Toggle {
-                    Text("Launch at login")
-                }
+                UtilityLaunchAtLoginControl()
                 .settingsHighlight(id: highlightID("Launch at login"))
                 Defaults.Toggle(key: .showOnAllDisplays) {
                     Text("Show on all displays")

@@ -44,6 +44,12 @@ final class AppDelegate: NSObject, NSWindowDelegate, UNUserNotificationCenterDel
     }
 
     func openSettingsWindow(preservingNotch: Bool = false) {
+        if UtilityWorkspace.shared.routeNativeSettingsPage(SettingsRouter.shared.page, hasSection: SettingsRouter.shared.destination.sectionAnchor != nil) { return }
+        if let open = UtilityWorkspace.shared.onOpenControls {
+            panelWindow?.close()
+            open()
+            return
+        }
         if !preservingNotch, NotchSupport.isEnabled() { NotchService.shared.collapse() }
         let window: NSWindow
         if let existing = settingsWindow { window = existing }
@@ -124,11 +130,15 @@ final class AppDelegate: NSObject, NSWindowDelegate, UNUserNotificationCenterDel
 
     func openFeedbackWindow(kind: FeedbackKind = .bug) {
         let alert = NSAlert()
-        alert.messageText = "Anchor diagnostics"
-        alert.informativeText = "Copy a local diagnostic summary to include with a bug report. It contains the app version, macOS version and installed feature names."
-        alert.addButton(withTitle: "Copy Summary")
+        alert.messageText = "Anchor feedback"
+        alert.informativeText = "Open Anchor’s GitHub issue page to write a bug report or suggestion. Nothing is submitted automatically. Copy Diagnostics only copies a local summary of the app version, macOS version and enabled feature names."
+        alert.addButton(withTitle: "Open GitHub Issues")
+        alert.addButton(withTitle: "Copy Diagnostics")
         alert.addButton(withTitle: "Cancel")
-        if alert.runModal() == .alertFirstButtonReturn {
+        let response = alert.runModal()
+        if response == .alertFirstButtonReturn {
+            NSWorkspace.shared.open(URL(string: "https://github.com/ArronLingham/Anchor/issues/new")!)
+        } else if response == .alertSecondButtonReturn {
             let report = "Anchor \(AppInfo.version)\n\(ProcessInfo.processInfo.operatingSystemVersionString)\nFeatures: "
                 + UtilityWorkspace.shared.features.filter(\.isAvailable).map(\.id).joined(separator: ", ")
             NSPasteboard.general.clearContents()

@@ -27,10 +27,12 @@ struct GeneralToolSettings: View {
                         MenuBarIconSymbolRow()
                         Divider()
                         SettingsRow(symbol: nil, title: text.iconMissingTitle,
-                                    caption: text.iconMissingCaption) {
-                            Button(l10n.s.showMenuBarIcon) {
+                                    caption: "Restores Anchor’s icon in the macOS menu bar so you can open its menu and Quick Panel. Features continue running when the icon is hidden.") {
+                            Button("Restore Anchor menu bar icon") {
+                                UtilityPreferences.standard.set(false, forKey: DefaultsKey.notchHidesMenuBarIcon)
                                 appDelegate()?.reshowStatusItem()
                             }
+                            .help("Shows Anchor’s icon in the macOS menu bar. It opens Anchor’s menu and Quick Panel; it does not enable or disable features.")
                         }
                     }
                     .settingsSectionAnchor(.panelConfiguration, cornerRadius: 16)

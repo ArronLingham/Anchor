@@ -634,6 +634,7 @@ enum ColorExtractionMode: String, CaseIterable, Identifiable, Defaults.Serializa
 }
 
 extension Defaults.Keys {
+    static let enableDynamicIsland = Key<Bool>("enableDynamicIsland", default: true)
         // MARK: General
     static let updateChannel = Key<UpdateChannel>("updateChannel", default: .stable)
     static let logLevel = Key<LogLevel>("logLevel", default: .none)

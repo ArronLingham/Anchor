@@ -84,7 +84,7 @@ struct AnchorToggleStyle: ToggleStyle {
                     .frame(width: 38, height: 22)
                     .overlay(Capsule().strokeBorder(.white.opacity(0.13)))
                     .overlay(alignment: configuration.isOn ? .trailing : .leading) {
-                        Circle().fill(configuration.isOn ? AnchorDesign.canvas : AnchorDesign.muted)
+                        Circle().fill(Color.white)
                             .frame(width: 16, height: 16).padding(3)
                             .shadow(color: .black.opacity(0.3), radius: 2, y: 1)
                     }
