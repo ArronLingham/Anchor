@@ -611,7 +611,12 @@ struct ContentView: View {
             .onChange(of: vm.notchState) { _, newState in
                 // Reset hover state when notch state changes
                 if newState == .closed && isHovering {
-                    withAnimation {
+                    // Closing already animates the whole surface. A second
+                    // hover spring briefly gives the returning icons their
+                    // enlarged hover size before shrinking them again.
+                    var transaction = Transaction(animation: nil)
+                    transaction.disablesAnimations = true
+                    withTransaction(transaction) {
                         isHovering = false
                     }
                 }
@@ -821,7 +826,7 @@ struct ContentView: View {
 
     @ViewBuilder
       func NotchLayout() -> some View {
-          VStack(alignment: .leading) {
+          VStack(alignment: .leading, spacing: vm.notchState == .open ? 8 : 0) {
               VStack(alignment: .leading) {
                   if coordinator.firstLaunch {
                       Spacer()
@@ -1054,6 +1059,11 @@ struct ContentView: View {
                       .transition(tabSwitchTransition)
                   }
               }
+              // SwiftUI retains the outgoing tab for its transition. Keep it
+              // from contributing height alongside the returning compact
+              // activity, which otherwise makes the surface grow on close.
+              .frame(height: vm.notchState == .open ? nil : 0, alignment: .top)
+              .clipped()
               .zIndex(1)
               .allowsHitTesting(vm.notchState == .open)
               .blur(radius: abs(gestureProgress) > 0.3 ? min(abs(gestureProgress), 8) : 0)
