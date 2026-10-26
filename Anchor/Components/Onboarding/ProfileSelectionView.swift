@@ -64,6 +64,7 @@ struct ProfileSelectionView: View {
     ]
     
     var body: some View {
+        Group {
         VStack(spacing: 24) {
             // Header
             VStack(spacing: 8) {
@@ -110,7 +111,7 @@ struct ProfileSelectionView: View {
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 12)
             }
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(AnchorButtonStyle(prominent: true))
             .disabled(selectedProfiles.isEmpty)
             .padding(.horizontal, 24)
             .padding(.bottom, 24)
@@ -120,6 +121,9 @@ struct ProfileSelectionView: View {
             VisualEffectView(material: .underWindowBackground, blendingMode: .behindWindow)
                 .ignoresSafeArea()
         )
+            }
+        .anchorTheme()
+        .background(AnchorCanvas())
     }
     
     private func toggleProfile(_ profileId: String) {

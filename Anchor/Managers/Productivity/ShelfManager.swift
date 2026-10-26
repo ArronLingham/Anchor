@@ -41,14 +41,16 @@ final class ShelfManager: ObservableObject {
         let id: UUID
         /// Security-scoped bookmark. Resolved lazily, because a volume that is
         /// no longer mounted should not block launch.
-        let bookmark: Data
-        let name: String
+        var bookmark: Data
+        var name: String
+        var isPinned: Bool? = nil
         let addedAt: Date
 
         static func == (a: Item, b: Item) -> Bool { a.id == b.id }
     }
 
     @Published private(set) var items: [Item] = []
+    @Published private(set) var storageError: String?
     /// Thumbnails, generated once per item and held only while the shelf exists.
     @Published private(set) var thumbnails: [UUID: NSImage] = [:]
 
@@ -67,12 +69,12 @@ final class ShelfManager: ObservableObject {
 
     func add(urls: [URL]) {
         var added = false
-        for url in urls {
+        for url in urls where url.isFileURL {
             guard let bookmark = try? url.bookmarkData(
                 options: .withSecurityScope,
                 includingResourceValuesForKeys: nil,
                 relativeTo: nil)
-            else { continue }
+            else { storageError = "Could not add \(url.lastPathComponent). Check file access."; continue }
             // Same file twice is a no-op rather than a duplicate row.
             if items.contains(where: { resolve($0)?.standardizedFileURL == url.standardizedFileURL }) {
                 continue
@@ -92,6 +94,38 @@ final class ShelfManager: ObservableObject {
         thumbnails[item.id] = nil
         items.removeAll { $0.id == item.id }
         save()
+    }
+
+    func togglePin(_ item: Item) {
+        guard let index = items.firstIndex(where: { $0.id == item.id }) else { return }
+        items[index].isPinned = !(items[index].isPinned ?? false)
+        save()
+    }
+
+    func clearUnpinned() {
+        for item in items where item.isPinned != true { remove(item) }
+    }
+
+    func pasteFiles() {
+        let urls = NSPasteboard.general.readObjects(forClasses: [NSURL.self],
+            options: [.urlReadingFileURLsOnly: true]) as? [URL] ?? []
+        if urls.isEmpty { storageError = "Copy files in Finder, then paste them here." }
+        else { add(urls: urls) }
+    }
+
+    func chooseFiles() {
+        let panel = NSOpenPanel(); panel.allowsMultipleSelection = true
+        panel.canChooseFiles = true; panel.canChooseDirectories = true
+        panel.prompt = "Add to shelf"
+        if panel.runModal() == .OK { add(urls: panel.urls) }
+    }
+
+    func copyFiles(_ selected: [Item]) {
+        let urls = selected.compactMap { resolve($0) }
+        guard !urls.isEmpty else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.writeObjects(urls as [NSPasteboardWriting])
+        ClipboardManager.shared.ignoreChangeCount(NSPasteboard.general.changeCount)
     }
 
     func clear() {
@@ -151,18 +185,27 @@ final class ShelfManager: ObservableObject {
     // MARK: - Persistence
 
     private func load() {
-        guard let data = try? Data(contentsOf: storeURL),
-              let stored = try? JSONDecoder().decode([Item].self, from: data)
-        else { return }
-        // Drop anything whose file no longer exists, so the shelf does not
-        // accumulate rows that cannot be opened.
-        items = stored.filter { resolve($0) != nil }
-        if items.count != stored.count { save() }
+        guard FileManager.default.fileExists(atPath: storeURL.path) else { return }
+        let previous = storeURL.appendingPathExtension("previous")
+        do {
+            items = try JSONDecoder().decode([Item].self, from: Data(contentsOf: storeURL))
+        } catch {
+            if let data = try? Data(contentsOf: previous), let recovered = try? JSONDecoder().decode([Item].self, from: data) {
+                items = recovered
+                storageError = "Recovered the previous shelf. The unreadable file has been preserved."
+            } else { storageError = "The shelf could not be loaded. Its saved file has been preserved." }
+        }
         items.forEach { generateThumbnail(for: $0) }
     }
 
     private func save() {
-        guard let data = try? JSONEncoder().encode(items) else { return }
-        try? data.write(to: storeURL, options: .atomic)
+        do {
+            let data = try JSONEncoder().encode(items)
+            if let prior = try? Data(contentsOf: storeURL), (try? JSONDecoder().decode([Item].self, from: prior)) != nil {
+                try prior.write(to: storeURL.appendingPathExtension("previous"), options: .atomic)
+            }
+            try data.write(to: storeURL, options: .atomic)
+            storageError = nil
+        } catch { storageError = "Could not save the shelf: " + error.localizedDescription }
     }
 }

@@ -53,6 +53,7 @@ struct LockScreenLiveActivityOverlay: View {
     @State private var isHovering: Bool = false
 
 	var body: some View {
+        Group {
 		HStack(spacing: 0) {
 			Color.clear
 				.overlay(alignment: .leading) {
@@ -95,7 +96,9 @@ struct LockScreenLiveActivityOverlay: View {
                 NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .default)
             }
         }
-	}
+	        }
+        .anchorTheme()
+    }
 }
 
 extension LockScreenLiveActivityOverlay {

@@ -46,6 +46,8 @@ enum SettingsTabGroup: String, CaseIterable, Identifiable {
 }
 
 enum SettingsTab: String, CaseIterable, Identifiable {
+    case features
+    case connections
     case general
     case liveActivities
     case appearance
@@ -60,6 +62,8 @@ enum SettingsTab: String, CaseIterable, Identifiable {
     case menuBar
     case dictation
     case launcher
+    case docks
+    case workspaceModes
     case claudeUsage
     case clipboard
     case downloads
@@ -80,9 +84,9 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         case .general, .appearance:                                          return .core
         case .media, .liveActivities, .lockScreen, .devices, .vinyl:         return .mediaAndDisplay
         case .hudAndOSD, .battery, .menuBar:                                 return .system
-        case .timer, .calendar, .notes, .todo:                               return .productivity
-        case .cleanup:                                                       return .utilities
-        case .gemini:                                                        return .integrations
+        case .timer, .calendar, .notes, .todo, .docks, .workspaceModes:                               return .productivity
+        case .cleanup, .features:                                            return .utilities
+        case .gemini, .connections:                                          return .integrations
         case .dictation, .launcher, .claudeUsage:                            return .integrations
         case .clipboard, .downloads, .shortcuts:                             return .utilities
         case .terminal, .gitCommit:                                          return .developer
@@ -92,6 +96,8 @@ enum SettingsTab: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
+        case .features: return "Features & Tools"
+        case .connections: return "Connections"
         case .general: return String(localized: "General")
         case .liveActivities: return String(localized: "Live Activities")
         case .appearance: return String(localized: "Appearance")
@@ -105,8 +111,10 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         case .battery: return String(localized: "Battery")
         case .menuBar: return String(localized: "Menu Bar")
         case .dictation: return String(localized: "Dictation")
+        case .docks: return String(localized: "Docks")
+        case .workspaceModes: return String(localized: "Workspace Modes")
         case .launcher: return String(localized: "Launcher")
-        case .claudeUsage: return String(localized: "Claude Usage")
+        case .claudeUsage: return String(localized: "AI Usage & Recovery")
         case .clipboard: return String(localized: "Clipboard")
         case .downloads: return String(localized: "Downloads")
         case .shortcuts: return String(localized: "Shortcuts")
@@ -122,6 +130,8 @@ enum SettingsTab: String, CaseIterable, Identifiable {
 
     var systemImage: String {
         switch self {
+        case .features: return "square.grid.2x2"
+        case .connections: return "link"
         case .general: return "gear"
         case .liveActivities: return "waveform.path.ecg"
         case .appearance: return "paintpalette"
@@ -135,6 +145,8 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         case .battery: return "battery.100.bolt"
         case .menuBar: return "menubar.rectangle"
         case .dictation: return "mic.fill"
+        case .docks: return "dock.rectangle"
+        case .workspaceModes: return "rectangle.3.group"
         case .launcher: return "square.grid.3x3.fill"
         case .claudeUsage: return "hourglass"
         case .clipboard: return "clipboard"
@@ -150,35 +162,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         }
     }
 
-    var tint: Color {
-        switch self {
-        case .general: return .blue
-        case .liveActivities: return .pink
-        case .appearance: return .purple
-        case .lockScreen: return .orange
-        case .media: return .green
-        case .vinyl: return Color(red: 0.86, green: 0.32, blue: 0.55, opacity: 1.000)
-        case .devices: return Color(red: 0.1, green: 0.11, blue: 0.12)
-        case .timer: return .red
-        case .calendar: return .cyan
-        case .hudAndOSD: return .indigo
-        case .battery: return Color(red: 0.202, green: 0.783, blue: 0.348, opacity: 1.000)
-        case .menuBar: return Color(red: 0.45, green: 0.55, blue: 0.95, opacity: 1.000)
-        case .dictation: return .teal
-        case .launcher: return .blue
-        case .claudeUsage: return Color(red: 0.85, green: 0.47, blue: 0.28)
-        case .clipboard: return .mint
-        case .downloads: return .gray
-        case .shortcuts: return .orange
-        case .notes: return Color(red: 0.979, green: 0.716, blue: 0.153, opacity: 1.000)
-        case .todo: return Color(red: 0.30, green: 0.72, blue: 0.45, opacity: 1.000)
-        case .cleanup: return Color(red: 0.42, green: 0.55, blue: 0.68, opacity: 1.000)
-        case .gemini: return Color(red: 0.55, green: 0.44, blue: 0.85, opacity: 1.000)
-        case .terminal: return Color(red: 0.2, green: 0.8, blue: 0.4)
-        case .gitCommit: return Color(red: 0.95, green: 0.45, blue: 0.25, opacity: 1.000)
-        case .about: return .secondary
-        }
-    }
+    var tint: Color { AnchorDesign.accent }
 
     func highlightID(for title: String) -> String {
         "\(rawValue)-\(title)"
@@ -242,7 +226,7 @@ final class SettingsHighlightCoordinator: ObservableObject {
 private struct SettingsHighlightModifier: ViewModifier {
     let id: String
     @EnvironmentObject private var highlightCoordinator: SettingsHighlightCoordinator
-    @State private var animatePulse = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var isActive: Bool {
         highlightCoordinator.activeHighlightID == id
@@ -251,39 +235,23 @@ private struct SettingsHighlightModifier: ViewModifier {
     func body(content: Content) -> some View {
         content
             .id(id)
-            .background(highlightBackground)
-            .onChange(of: isActive) { _, active in
-                animatePulse = active
-            }
-            .onAppear {
-                if isActive {
-                    animatePulse = true
-                }
-            }
-    }
-
-    private var highlightBackground: some View {
-        RoundedRectangle(cornerRadius: 12, style: .continuous)
-            .stroke(
-                Color.accentColor.opacity(isActive ? (animatePulse ? 0.95 : 0.4) : 0),
-                lineWidth: 2
-            )
-            .background(
+            .background {
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(Color.accentColor.opacity(isActive ? 0.08 : 0))
-            )
-            .padding(-4)
-            .shadow(color: Color.accentColor.opacity(isActive ? 0.25 : 0), radius: animatePulse ? 8 : 2)
-            .animation(
-                isActive ? .easeInOut(duration: 0.8).repeatForever(autoreverses: true) : .default,
-                value: animatePulse
-            )
+                    .fill(AnchorDesign.accent.opacity(isActive ? 0.08 : 0))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .stroke(AnchorDesign.accent.opacity(isActive ? 0.8 : 0), lineWidth: 2)
+                    }
+                    .padding(-4)
+                    .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: isActive)
+            }
     }
 }
 
 extension View {
     func settingsHighlight(id: String) -> some View {
         modifier(SettingsHighlightModifier(id: id))
+            .containerValue(\.anchorSettingsID, id)
     }
 
     @ViewBuilder
@@ -330,98 +298,83 @@ struct SettingsView: View {
     }
 
     var body: some View {
-        NavigationSplitView {
-            VStack(spacing: 12) {
-                SettingsSidebarSearchBar(
-                    text: $searchText,
-                    suggestions: searchSuggestions,
-                    onSuggestionSelected: handleSearchSuggestionSelection
-                )
-                .padding(.horizontal, 12)
-                .padding(.top, 12)
-
-                Divider()
-                    .padding(.horizontal, 12)
-
-                List(selection: selectionBinding) {
+        HStack(spacing: 0) {
+            VStack(alignment: .leading, spacing: 18) {
+                HStack(spacing: 12) {
+                    Image(systemName: "mountain.2.fill").font(.system(size: 22)).foregroundStyle(AnchorDesign.accent)
+                        .frame(width: 44, height: 44).background(AnchorSurface(depth: .raised, radius: 14))
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("ANCHOR").font(.system(size: 10, weight: .bold)).tracking(3).foregroundStyle(AnchorDesign.muted)
+                        Text("Settings").font(.system(size: 21, weight: .semibold, design: .rounded))
+                    }
+                }.padding(.horizontal, 20).padding(.top, 28)
+                SettingsSidebarSearchBar(text: $searchText, suggestions: searchSuggestions, onSuggestionSelected: handleSearchSuggestionSelection)
+                    .padding(.horizontal, 14)
+                List {
                     ForEach(groupedFilteredTabs, id: \.group) { section in
                         Section {
                             ForEach(section.tabs) { tab in
-                                NavigationLink(value: tab) {
+                                Button { searchText = ""; navigation.selectedTab = tab } label: {
                                     sidebarRow(for: tab)
-                                }
-                                // A pane is one long Form, and its sections are
-                                // the only structure inside it — so the sidebar
-                                // could get you to "Controls" but not to the
-                                // "Step size" part of it. The selected tab's
-                                // sections are listed here; choosing one scrolls
-                                // to it and flashes the highlight, the same
-                                // path search results already use.
-                                //
-                                // Only the selected tab expands: showing all 97
-                                // at once would bury the tabs themselves.
-                                if tab == navigation.selectedTab {
-                                    ForEach(SettingsSectionIndex.sections(for: tab)) { entry in
-                                        sectionRow(entry, in: tab)
-                                    }
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .padding(.horizontal, 10).padding(.vertical, 5)
+                                        .background {
+                                            if tab == resolvedSelection { AnchorSurface(depth: .raised, radius: 12) }
+                                        }
+                                }.buttonStyle(.plain)
+                                    .accessibilityAddTraits(tab == resolvedSelection ? .isSelected : [])
+                                    .listRowInsets(EdgeInsets(top: 3, leading: 8, bottom: 3, trailing: 8))
+                                    .listRowBackground(Color.clear)
+                                    .listRowSeparator(.hidden)
+                                if tab == resolvedSelection {
+                                    ForEach(SettingsSectionIndex.sections(for: tab)) { entry in sectionRow(entry, in: tab) }
+                                        .listRowBackground(Color.clear)
+                                    .listRowSeparator(.hidden)
                                 }
                             }
                         } header: {
                             if let title = section.group.title {
-                                Text(title)
+                                Text(title.uppercased()).font(.system(size: 9, weight: .bold)).tracking(1.5).foregroundStyle(AnchorDesign.muted)
                             }
                         }
                     }
-                }
-                .listStyle(SidebarListStyle())
-                .frame(minWidth: 200)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .toolbar(removing: .sidebarToggle)
-                .navigationSplitViewColumnWidth(min: 200, ideal: 210, max: 240)
-                .environment(\.defaultMinListRowHeight, 44)
+                }.listStyle(.plain).scrollContentBackground(.hidden)
+                Button { DashboardWindowController.shared.show() } label: {
+                    Label("Open dashboard", systemImage: "square.grid.2x2").frame(maxWidth: .infinity)
+                }.padding(.horizontal, 16).padding(.bottom, 18)
+            }.frame(width: 238).background(AnchorDesign.canvas.opacity(0.65))
+            Rectangle().fill(AnchorDesign.edge).frame(width: 1)
+            VStack(alignment: .leading, spacing: 0) {
+                AnchorPageHeader(title: resolvedSelection.title, subtitle: settingsSubtitle, symbol: resolvedSelection.systemImage)
+                    .padding(.horizontal, 28).padding(.top, 28).padding(.bottom, 20)
+                Rectangle().fill(AnchorDesign.edge).frame(height: 1).padding(.horizontal, 28)
+                detailView(for: resolvedSelection).frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        } detail: {
-            detailView(for: resolvedSelection)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .navigationSplitViewStyle(.balanced)
-        .toolbar(removing: .sidebarToggle)
-        .toolbar { toolbarSpacingShim }
+        .background(AnchorCanvas().ignoresSafeArea())
         .environmentObject(navigation.highlightCoordinator)
-        .formStyle(.grouped)
-        .frame(width: 700)
+        .formStyle(AnchorFormStyle())
+        .frame(minWidth: 900, idealWidth: 980, minHeight: 640)
+        .anchorTheme()
         .onChange(of: searchText) { _, newValue in
             let matches = tabsMatchingSearch(newValue)
             guard let firstMatch = matches.first else { return }
-            if !matches.contains(resolvedSelection) {
-                navigation.selectedTab = firstMatch
-            }
+            if !matches.contains(resolvedSelection) { navigation.selectedTab = firstMatch }
         }
-        .onChange(of: navigation.selectedTab) { _, _ in
-            if !searchText.isEmpty {
-                searchText = ""
-            }
-        }
-        .background {
-            Group {
-                if #available(macOS 26.0, *) {
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .glassEffect(
-                            .clear
-                                .tint(Color.white.opacity(0.1))
-                                .interactive(),
-                            in: .rect(cornerRadius: 18)
-                        )
-                } else {
-                    ZStack {
-                        Color(NSColor.windowBackgroundColor)
-                        RoundedRectangle(cornerRadius: 18, style: .continuous)
-                            .fill(.ultraThinMaterial)
-                    }
-                }
-            }
-            .ignoresSafeArea()
+    }
+
+    private var settingsSubtitle: String {
+        switch resolvedSelection {
+        case .general: return "Make Anchor feel at home on your Mac."
+        case .appearance: return "Shape the surfaces, spacing, and personality of your workspace."
+        case .connections: return "Your services, connected and ready."
+        case .launcher: return "Your apps, widgets, and shortcuts, within reach."
+        case .hudAndOSD: return "Quiet, tactile controls for sound and display."
+        case .clipboard: return "A thoughtful place for the things you copy."
+        case .lockScreen: return "Useful information, even when you step away."
+        case .timer: return "Find your rhythm. Make time for a break."
+        case .media, .vinyl: return "A comfortable home for what is playing."
+        default: return "Fine-tune \(resolvedSelection.title.lowercased()) for the way you work."
         }
     }
 
@@ -466,29 +419,11 @@ struct SettingsView: View {
 
     @ViewBuilder
     private func sidebarIcon(for tab: SettingsTab) -> some View {
-        RoundedRectangle(cornerRadius: 8, style: .continuous)
-            .fill(
-                LinearGradient(
-                    colors: [
-                        tab.tint.opacity(1),
-                        tab.tint.opacity(0.7)
-                    ],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-            )
-            .frame(width: 26, height: 26)
-            .overlay {
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .strokeBorder(Color.white.opacity(0.2), lineWidth: 0.7)
-                    .blendMode(.plusLighter)
-            }
-            .shadow(color: tab.tint.opacity(0.35), radius: 2, x: 0, y: 1)
-            .overlay {
-                Image(systemName: tab.systemImage)
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(Color.white)
-            }
+        Image(systemName: tab.systemImage)
+            .font(.system(size: 13, weight: .medium))
+            .foregroundStyle(tab == resolvedSelection ? AnchorDesign.accent : AnchorDesign.muted)
+            .frame(width: 28, height: 28)
+            .background(AnchorSurface(depth: .inset, radius: 9))
     }
 
     /// One of the selected pane's own sections, in the sidebar.
@@ -498,7 +433,7 @@ struct SettingsView: View {
     @ViewBuilder
     private func sectionRow(_ entry: SettingsSectionIndex.Section, in tab: SettingsTab) -> some View {
         Button {
-            navigation.highlightCoordinator.focus(onHighlightID: entry.anchor, in: tab)
+            navigation.highlightCoordinator.focus(onHighlightID: tab.highlightID(for: entry.anchor), in: tab)
         } label: {
             HStack(spacing: 8) {
                 Rectangle()
@@ -515,6 +450,7 @@ struct SettingsView: View {
         }
         .buttonStyle(.plain)
         .listRowInsets(EdgeInsets(top: 1, leading: 8, bottom: 1, trailing: 8))
+        .listRowSeparator(.hidden)
     }
 
     @ViewBuilder
@@ -526,23 +462,23 @@ struct SettingsView: View {
                 Spacer()
                 Text("BETA")
                     .font(.system(size: 9, weight: .bold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(AnchorDesign.canvas)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
                     .background(
                         Capsule()
-                            .fill(Color.blue)
+                            .fill(AnchorDesign.accent)
                     )
             } else if false {
                 Spacer()
                 Text("BETA")
                     .font(.system(size: 9, weight: .bold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(AnchorDesign.canvas)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
                     .background(
                         Capsule()
-                            .fill(Color.blue)
+                            .fill(AnchorDesign.accent)
                     )
             }
         }
@@ -567,13 +503,17 @@ struct SettingsView: View {
             .battery,
             .menuBar,
             // Productivity
+            .docks,
+            .workspaceModes,
             .timer,
             .calendar,
             .notes,
             .todo,
             .cleanup,
+            .connections,
             .gemini,
             // Utilities
+            .features,
             .clipboard,
             .downloads,
             .shortcuts,
@@ -637,6 +577,7 @@ struct SettingsView: View {
 
     private func handleSearchSuggestionSelection(_ suggestion: SettingsSearchEntry) {
         guard suggestion.tab != .downloads else { return }
+        searchText = ""
         navigation.highlightCoordinator.focus(on: suggestion)
         navigation.selectedTab = suggestion.tab
     }
@@ -772,22 +713,27 @@ struct SettingsView: View {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return [] }
 
-        return settingsSearchIndex
-            .filter { availableTabs.contains($0.tab) }
-            .filter { entry in
+        let visibleTabs = Set(availableTabs)
+        return Self.settingsSearchIndex.filter { entry in
+            visibleTabs.contains(entry.tab) && (
                 entry.title.localizedCaseInsensitiveContains(trimmed) ||
-                entry.keywords.contains { $0.localizedCaseInsensitiveContains(trimmed) }
-            }
+                entry.keywords.contains { $0.localizedCaseInsensitiveContains(trimmed) })
+        }
     }
 
-    private var settingsSearchIndex: [SettingsSearchEntry] {
-        [
+    private static let settingsSearchIndex: [SettingsSearchEntry] = [
+            SettingsSearchEntry(tab: .docks, title: "Add Dock", keywords: ["dock", "multiple", "left", "right", "floating", "vertical", "horizontal"], highlightID: SettingsTab.docks.highlightID(for: "Add Dock")),
+            SettingsSearchEntry(tab: .workspaceModes, title: "Automatically switch modes", keywords: ["travel", "desktop", "monitor", "charging", "power", "automation"], highlightID: SettingsTab.workspaceModes.highlightID(for: "Automatically switch modes")),
+            SettingsSearchEntry(tab: .workspaceModes, title: "Choose a mode", keywords: ["workspace", "apps", "layout", "capture", "sizing", "profile"], highlightID: SettingsTab.workspaceModes.highlightID(for: "Choose a mode")),
             // General
             SettingsSearchEntry(tab: .vinyl, title: "Show the vinyl widget", keywords: ["vinyl", "record", "turntable", "desktop widget", "album art"], highlightID: SettingsTab.vinyl.highlightID(for: "Show the vinyl widget")),
             SettingsSearchEntry(tab: .menuBar, title: "Shrink the menu bar", keywords: ["menu bar", "menubar", "ice", "bartender", "hide icons", "status items"], highlightID: SettingsTab.menuBar.highlightID(for: "Shrink the menu bar")),
             SettingsSearchEntry(tab: .launcher, title: "Enable app switcher", keywords: ["cmd tab", "command tab", "alt tab", "switcher", "ring", "radial"], highlightID: SettingsTab.launcher.highlightID(for: "Enable app switcher")),
+            SettingsSearchEntry(tab: .launcher, title: "Use ⌘Tab for Anchor’s app switcher", keywords: ["cmd tab", "command tab", "replace", "system shortcut"], highlightID: SettingsTab.launcher.highlightID(for: "Use ⌘Tab for Anchor’s app switcher")),
+            SettingsSearchEntry(tab: .launcher, title: "Use ⌘Space for Launchpad", keywords: ["cmd space", "command space", "spotlight", "replace", "system shortcut"], highlightID: SettingsTab.launcher.highlightID(for: "Use ⌘Space for Launchpad")),
             SettingsSearchEntry(tab: .gitCommit, title: "Commit once a day", keywords: ["git", "commit", "daily", "streak", "contribution"], highlightID: SettingsTab.gitCommit.highlightID(for: "Commit once a day")),
             SettingsSearchEntry(tab: .launcher, title: "Show Apple Shortcuts", keywords: ["shortcuts", "apple shortcuts", "workflow", "automation", "run shortcut"], highlightID: SettingsTab.launcher.highlightID(for: "Show Apple Shortcuts")),
+            SettingsSearchEntry(tab: .connections, title: "Connections", keywords: ["lunar", "spotify", "calendar", "reminders", "repair", "integration", "reconnect"], highlightID: nil),
             SettingsSearchEntry(tab: .gemini, title: "AI Assistant", keywords: ["gemini", "ai", "assistant", "chat", "google ai", "llm"], highlightID: SettingsTab.gemini.highlightID(for: "AI Assistant")),
             SettingsSearchEntry(tab: .gemini, title: "API key", keywords: ["gemini key", "api key", "google ai studio"], highlightID: SettingsTab.gemini.highlightID(for: "API key")),
             SettingsSearchEntry(tab: .gemini, title: "Model", keywords: ["model", "gemini", "gpt", "claude", "llm", "which model", "model list"], highlightID: SettingsTab.gemini.highlightID(for: "Model")),
@@ -1064,6 +1010,7 @@ struct SettingsView: View {
             SettingsSearchEntry(tab: .calendar, title: "Enable third-party calendar app launch", keywords: ["third-party", "calendar", "app", "launch"], highlightID: SettingsTab.calendar.highlightID(for: "Enable third-party calendar app launch")),
             SettingsSearchEntry(tab: .calendar, title: "Fantastical Default View", keywords: ["fantastical", "default", "view", "calendar"], highlightID: SettingsTab.calendar.highlightID(for: "Fantastical Default View")),
             SettingsSearchEntry(tab: .claudeUsage, title: "Resume the halted session automatically", keywords: ["resume", "halted", "session", "automatically", "claude usage"], highlightID: SettingsTab.claudeUsage.highlightID(for: "Resume the halted session automatically")),
+            SettingsSearchEntry(tab: .claudeUsage, title: "Codex recovery", keywords: ["codex", "ai", "tracker", "reset", "usage", "auto", "resume", "continue"], highlightID: SettingsTab.claudeUsage.highlightID(for: "Codex recovery")),
             SettingsSearchEntry(tab: .claudeUsage, title: "Resume with", keywords: ["resume", "claude usage"], highlightID: SettingsTab.claudeUsage.highlightID(for: "Resume with")),
             SettingsSearchEntry(tab: .claudeUsage, title: "Show in the notch", keywords: ["notch", "claude usage"], highlightID: SettingsTab.claudeUsage.highlightID(for: "Show in the notch")),
             SettingsSearchEntry(tab: .claudeUsage, title: "Watch for usage limits", keywords: ["watch", "usage", "limits", "claude usage"], highlightID: SettingsTab.claudeUsage.highlightID(for: "Watch for usage limits")),
@@ -1092,7 +1039,7 @@ struct SettingsView: View {
             SettingsSearchEntry(tab: .general, title: "Show desktop number", keywords: ["desktop", "number", "general"], highlightID: SettingsTab.general.highlightID(for: "Show desktop number")),
             SettingsSearchEntry(tab: .general, title: "Snap windows to screen edges", keywords: ["snap", "windows", "screen", "edges", "general"], highlightID: SettingsTab.general.highlightID(for: "Snap windows to screen edges")),
             SettingsSearchEntry(tab: .general, title: "Stay unlocked for", keywords: ["stay", "unlocked", "general"], highlightID: SettingsTab.general.highlightID(for: "Stay unlocked for")),
-            SettingsSearchEntry(tab: .general, title: "System stats", keywords: ["system", "stats", "general"], highlightID: SettingsTab.general.highlightID(for: "System stats")),
+            SettingsSearchEntry(tab: .general, title: "System stats", keywords: ["system", "stats", "general", "cpu", "gpu", "temperature", "network", "memory pressure", "battery"], highlightID: SettingsTab.general.highlightID(for: "System stats")),
             SettingsSearchEntry(tab: .gitCommit, title: "Add Repository…", keywords: ["add", "repository…", "git commit"], highlightID: SettingsTab.gitCommit.highlightID(for: "Add Repository…")),
             SettingsSearchEntry(tab: .gitCommit, title: "Also commit uncommitted changes", keywords: ["also", "commit", "uncommitted", "changes", "git commit"], highlightID: SettingsTab.gitCommit.highlightID(for: "Also commit uncommitted changes")),
             SettingsSearchEntry(tab: .gitCommit, title: "Commit Now", keywords: ["commit", "now", "git commit"], highlightID: SettingsTab.gitCommit.highlightID(for: "Commit Now")),
@@ -1172,7 +1119,6 @@ struct SettingsView: View {
             SettingsSearchEntry(tab: .vinyl, title: "Size", keywords: ["size", "vinyl"], highlightID: SettingsTab.vinyl.highlightID(for: "Size")),
             SettingsSearchEntry(tab: .vinyl, title: "Tint with the album colour", keywords: ["tint", "album", "colour", "vinyl"], highlightID: SettingsTab.vinyl.highlightID(for: "Tint with the album colour")),
             SettingsSearchEntry(tab: .launcher, title: "Clock", keywords: ["clock", "launcher"], highlightID: SettingsTab.launcher.highlightID(for: "Clock")),
-            SettingsSearchEntry(tab: .launcher, title: "Fill the screen", keywords: ["fill", "screen", "launcher"], highlightID: SettingsTab.launcher.highlightID(for: "Fill the screen")),
             SettingsSearchEntry(tab: .launcher, title: "Now playing", keywords: ["now", "playing", "launcher"], highlightID: SettingsTab.launcher.highlightID(for: "Now playing")),
             SettingsSearchEntry(tab: .launcher, title: "Order", keywords: ["order", "launcher"], highlightID: SettingsTab.launcher.highlightID(for: "Order")),
             SettingsSearchEntry(tab: .launcher, title: "Paging", keywords: ["paging", "launcher"], highlightID: SettingsTab.launcher.highlightID(for: "Paging")),
@@ -1184,8 +1130,30 @@ struct SettingsView: View {
             SettingsSearchEntry(tab: .hudAndOSD, title: "Drag the HUD to set the value", keywords: ["drag", "hud", "set", "value", "hud and o s d"], highlightID: SettingsTab.hudAndOSD.highlightID(for: "Drag the HUD to set the value")),
             SettingsSearchEntry(tab: .launcher, title: "Remove all folders", keywords: ["remove", "all", "folders", "launcher"], highlightID: SettingsTab.launcher.highlightID(for: "Remove all folders")),
             SettingsSearchEntry(tab: .launcher, title: "Reset custom order", keywords: ["reset", "custom", "order", "launcher"], highlightID: SettingsTab.launcher.highlightID(for: "Reset custom order")),
+            SettingsSearchEntry(tab: .launcher, title: "Background style", keywords: ["background", "style", "launcher"], highlightID: SettingsTab.launcher.highlightID(for: "Background style")),
+            SettingsSearchEntry(tab: .launcher, title: "Hot corner trigger", keywords: ["hot", "corner", "trigger", "launcher"], highlightID: SettingsTab.launcher.highlightID(for: "Hot corner trigger")),
+            SettingsSearchEntry(tab: .launcher, title: "Presentation mode", keywords: ["presentation", "mode", "launcher"], highlightID: SettingsTab.launcher.highlightID(for: "Presentation mode")),
+            SettingsSearchEntry(tab: .launcher, title: "Show categories tab", keywords: ["categories", "tab", "launcher"], highlightID: SettingsTab.launcher.highlightID(for: "Show categories tab")),
+            SettingsSearchEntry(tab: .menuBar, title: "Always-hidden", keywords: ["always-hidden", "menu bar"], highlightID: SettingsTab.menuBar.highlightID(for: "Always-hidden")),
+            SettingsSearchEntry(tab: .menuBar, title: "Show Always-Hidden", keywords: ["always-hidden", "menu bar"], highlightID: SettingsTab.menuBar.highlightID(for: "Show Always-Hidden")),
+            SettingsSearchEntry(tab: .todo, title: "Secondary direction", keywords: ["secondary", "direction", "todo"], highlightID: SettingsTab.todo.highlightID(for: "Secondary direction")),
+            SettingsSearchEntry(tab: .clipboard, title: "Clipboard history retention", keywords: ["clipboard", "history", "retention"], highlightID: SettingsTab.clipboard.highlightID(for: "Clipboard history retention")),
+            SettingsSearchEntry(tab: .clipboard, title: "Export clipboard backup", keywords: ["export", "clipboard", "backup"], highlightID: SettingsTab.clipboard.highlightID(for: "Export clipboard backup")),
+            SettingsSearchEntry(tab: .clipboard, title: "Import clipboard backup", keywords: ["import", "clipboard", "backup"], highlightID: SettingsTab.clipboard.highlightID(for: "Import clipboard backup")),
+            SettingsSearchEntry(tab: .clipboard, title: "Pause clipboard capture", keywords: ["pause", "clipboard", "capture"], highlightID: SettingsTab.clipboard.highlightID(for: "Pause clipboard capture")),
+            SettingsSearchEntry(tab: .clipboard, title: "Skip private clipboard copies", keywords: ["skip", "private", "clipboard", "copies"], highlightID: SettingsTab.clipboard.highlightID(for: "Skip private clipboard copies")),
+            SettingsSearchEntry(tab: .hudAndOSD, title: "Circular diameter", keywords: ["circular", "diameter", "hud and o s d"], highlightID: SettingsTab.hudAndOSD.highlightID(for: "Circular diameter")),
+            SettingsSearchEntry(tab: .hudAndOSD, title: "Circular percentage", keywords: ["circular", "percentage", "hud and o s d"], highlightID: SettingsTab.hudAndOSD.highlightID(for: "Circular percentage")),
+            SettingsSearchEntry(tab: .hudAndOSD, title: "Circular preview", keywords: ["circular", "preview", "hud and o s d"], highlightID: SettingsTab.hudAndOSD.highlightID(for: "Circular preview")),
+            SettingsSearchEntry(tab: .hudAndOSD, title: "Circular ring thickness", keywords: ["circular", "ring", "thickness", "hud and o s d"], highlightID: SettingsTab.hudAndOSD.highlightID(for: "Circular ring thickness")),
+            SettingsSearchEntry(tab: .hudAndOSD, title: "Circular size preset", keywords: ["circular", "size", "preset", "hud and o s d"], highlightID: SettingsTab.hudAndOSD.highlightID(for: "Circular size preset")),
+            SettingsSearchEntry(tab: .launcher, title: "Add quicklink", keywords: ["add", "quicklink", "launcher"], highlightID: SettingsTab.launcher.highlightID(for: "Add quicklink")),
+            SettingsSearchEntry(tab: .timer, title: "Automatic focus phases", keywords: ["automatic", "focus", "phases", "timer"], highlightID: SettingsTab.timer.highlightID(for: "Automatic focus phases")),
+            SettingsSearchEntry(tab: .timer, title: "Focus duration", keywords: ["focus", "duration", "timer"], highlightID: SettingsTab.timer.highlightID(for: "Focus duration")),
+            SettingsSearchEntry(tab: .timer, title: "Focus rounds", keywords: ["focus", "rounds", "timer"], highlightID: SettingsTab.timer.highlightID(for: "Focus rounds")),
+            SettingsSearchEntry(tab: .timer, title: "Long break duration", keywords: ["long", "break", "duration", "timer"], highlightID: SettingsTab.timer.highlightID(for: "Long break duration")),
+            SettingsSearchEntry(tab: .timer, title: "Short break duration", keywords: ["short", "break", "duration", "timer"], highlightID: SettingsTab.timer.highlightID(for: "Short break duration")),
         ]
-    }
 
     private func isTabVisible(_ tab: SettingsTab) -> Bool {
         switch tab {
@@ -1251,6 +1219,12 @@ struct SettingsView: View {
             SettingsForm(tab: .dictation) {
                 DictationSettings()
             }
+        case .connections:
+            SettingsForm(tab: .connections) { SettingsIntegrations() }
+        case .docks:
+            SettingsForm(tab: .docks) { Form { SettingsDocks() } }
+        case .workspaceModes:
+            SettingsForm(tab: .workspaceModes) { Form { SettingsWorkspaceModes() } }
         case .launcher:
             SettingsForm(tab: .launcher) {
                 LauncherSettings()
@@ -1277,6 +1251,8 @@ struct SettingsView: View {
             }
         case .cleanup:
             SettingsCleanup()
+        case .features:
+            SettingsFeatures()
         case .gemini:
             AIAssistantSettings()
         case .todo:
@@ -1362,4 +1338,3 @@ func warningBadge(_ text: String, _ description: String) -> some View {
         }
     }
 }
-

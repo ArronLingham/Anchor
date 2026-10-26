@@ -22,6 +22,9 @@ import Combine
 import CoreAudio
 import Defaults
 import Foundation
+#if canImport(AnchorUtilities)
+import AnchorUtilities
+#endif
 
 // MARK: - Pure decisions
 
@@ -198,7 +201,17 @@ final class AudioDeviceToolsManager: ObservableObject {
     /// that is not the system default, and "mute all microphones" that leaves
     /// one live is worse than not offering it.
     func toggleMuteAllInputs() {
+        #if canImport(AnchorUtilities)
+        UtilityWorkspace.shared.setGlobalMicrophoneMuted(!allInputsMuted)
+        #else
         allInputsMuted ? unmuteAllInputs() : muteAllInputs()
+        #endif
+    }
+
+    func updateGlobalMicrophoneMute(_ muted: Bool) {
+        guard allInputsMuted != muted else { return }
+        allInputsMuted = muted
+        announceMicMute(muted: muted)
     }
 
     private func muteAllInputs() {

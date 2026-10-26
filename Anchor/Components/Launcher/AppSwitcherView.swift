@@ -36,7 +36,6 @@ import SwiftUI
 /// roughly at the right app" work reliably.
 struct AppSwitcherView: View {
     @ObservedObject private var switcher = AppSwitcherManager.shared
-    @State private var initialHoverPoint: CGPoint?
     let diameter: CGFloat
 
     /// Scales with how many apps are open — see `AppSwitcherManager.ringDiameter`.
@@ -62,6 +61,7 @@ struct AppSwitcherView: View {
     private var deadZoneRadius: CGFloat { diameter * 0.16 }
 
     var body: some View {
+        Group {
         ZStack {
             backdrop
             wedgeHighlight
@@ -73,25 +73,12 @@ struct AppSwitcherView: View {
         }
         .frame(width: diameter, height: diameter)
         .contentShape(Circle())
-        .onContinuousHover(coordinateSpace: .local) { phase in
-            guard case .active(let location) = phase else {
-                initialHoverPoint = nil
-                return
-            }
-            if initialHoverPoint == nil {
-                initialHoverPoint = location
-                return
-            }
-            if let origin = initialHoverPoint,
-               hypot(location.x - origin.x, location.y - origin.y) < 2 {
-                return
-            }
-            selectWedge(at: location)
-        }
         .onTapGesture { location in
             selectWedge(at: location)
             AppSwitcherPanelManager.shared.dismiss(activating: true)
         }
+            }
+        .anchorTheme()
     }
 
     /// Maps a point in the view's own coordinate space to the wedge it falls
@@ -107,23 +94,9 @@ struct AppSwitcherView: View {
     /// exactly the mismatch that would make a highlighted wedge visibly not
     /// line up with its icon.
     private func selectWedge(at point: CGPoint) {
-        let count = switcher.apps.count
-        guard count > 0 else { return }
-
-        let centrePoint = CGPoint(x: diameter / 2, y: diameter / 2)
-        let dx = point.x - centrePoint.x
-        let dy = point.y - centrePoint.y
-        guard (dx * dx + dy * dy) > deadZoneRadius * deadZoneRadius else { return }
-
-        // atan2 is 0 at three o'clock, positive going clockwise in SwiftUI's
-        // y-down space. Icons start at twelve o'clock, so rotate the reading by
-        // a quarter turn before dividing into wedges.
-        var angle = atan2(dy, dx) + .pi / 2
-        if angle < 0 { angle += 2 * .pi }
-
-        let steps = Double(count) * angle / (2 * .pi)
-        let index = Int(steps.rounded()) % count
-        switcher.select(index)
+        if let index = AppSwitcherPointerSelection.wedge(at: point, diameter: diameter, count: switcher.apps.count) {
+            switcher.select(index)
+        }
     }
 
     /// Angle of icon `index`'s wedge centre, in the same atan2-based
@@ -141,8 +114,8 @@ struct AppSwitcherView: View {
     private var backdrop: some View {
         let ringWidth = diameter / 2 - deadZoneRadius
         return ZStack {
-            Circle().strokeBorder(.black.opacity(0.80), lineWidth: ringWidth)
-            Circle().strokeBorder(.white.opacity(0.055), lineWidth: ringWidth)
+            Circle().strokeBorder(AnchorDesign.surface, lineWidth: ringWidth)
+            Circle().strokeBorder(LinearGradient(colors: [.white.opacity(0.08), .black.opacity(0.2)], startPoint: .topLeading, endPoint: .bottomTrailing), lineWidth: ringWidth)
             Circle().strokeBorder(.white.opacity(0.18), lineWidth: 1)
             Circle()
                 .stroke(.white.opacity(0.18), lineWidth: 1)
@@ -164,7 +137,7 @@ struct AppSwitcherView: View {
                 innerRadius: deadZoneRadius,
                 outerRadius: diameter / 2
             )
-            .fill(.white.opacity(0.10))
+            .fill(AnchorDesign.accent.opacity(0.16))
             .allowsHitTesting(false)
         }
     }
@@ -184,7 +157,7 @@ struct AppSwitcherView: View {
         return ZStack {
             if isSelected {
                 Circle()
-                    .fill(.white.opacity(0.20))
+                    .fill(AnchorDesign.accent.opacity(0.23))
                     .frame(width: iconSize * 1.38, height: iconSize * 1.38)
             }
 
@@ -201,14 +174,18 @@ struct AppSwitcherView: View {
         }
         .scaleEffect(isSelected ? 1.06 : 1)
         .offset(offset)
-        .animation(.easeOut(duration: 0.08), value: switcher.selectedIndex)
+        .animation(LauncherMotion.reduced ? nil : .easeOut(duration: 0.08), value: switcher.selectedIndex)
         .allowsHitTesting(false)
         .help(app.name)
     }
 
     @ViewBuilder
     private var selectedAppLabel: some View {
-        if switcher.apps.indices.contains(switcher.selectedIndex) {
+        if !switcher.query.isEmpty {
+            Text(switcher.apps.isEmpty ? "No matches for “\(switcher.query)”" : switcher.query)
+                .font(.caption).lineLimit(2).frame(width: deadZoneRadius * 1.8)
+                .allowsHitTesting(false)
+        } else if switcher.apps.indices.contains(switcher.selectedIndex) {
             Text(switcher.apps[switcher.selectedIndex].name)
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(.primary)

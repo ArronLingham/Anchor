@@ -33,7 +33,7 @@ struct UpdateProgressView: View {
     }
 
     private var channelColor: Color {
-        Color(channel.badgeColor)
+        AnchorDesign.accent
     }
 
     private var progressPercent: Int {
@@ -173,7 +173,7 @@ struct UpdateProgressView: View {
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 8)
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(AnchorButtonStyle(prominent: true))
                 .tint(channelColor)
                 .controlSize(.large)
                 .padding(.horizontal, 40)

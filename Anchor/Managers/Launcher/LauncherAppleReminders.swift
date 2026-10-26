@@ -69,19 +69,21 @@ final class LauncherAppleReminders: ObservableObject {
         }
     }
 
-    func add(_ title: String) async {
+    func add(_ title: String) async -> Bool {
         let title = title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard hasAccess, !title.isEmpty,
               let calendar = store.defaultCalendarForNewReminders()
-        else { return }
+        else { errorMessage = "Choose a default list in Reminders and allow access."; return false }
         let reminder = EKReminder(eventStore: store)
         reminder.calendar = calendar
         reminder.title = title
         do {
             try store.save(reminder, commit: true)
             await refresh(force: true)
+            return true
         } catch {
             errorMessage = error.localizedDescription
+            return false
         }
     }
 

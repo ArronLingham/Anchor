@@ -89,6 +89,7 @@ struct TimerSettings: View {
             timerFeatureSection
 
             if enableTimerFeature {
+                FocusSettingsSection()
                 timerConfigurationSections
             }
         }
@@ -329,14 +330,14 @@ struct TimerSettings: View {
                 Button(action: addPreset) {
                     Label("Add Preset", systemImage: "plus")
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(AnchorButtonStyle())
 
                 Spacer()
 
                 Button(role: .destructive, action: { showingResetConfirmation = true }) {
                     Label("Restore Defaults", systemImage: "arrow.counterclockwise")
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(AnchorButtonStyle())
                 .confirmationDialog("Restore default timer presets?", isPresented: $showingResetConfirmation, titleVisibility: .visible) {
                     Button("Restore", role: .destructive, action: resetPresets)
                 }
@@ -357,7 +358,7 @@ struct TimerSettings: View {
                         .font(.system(size: 16, weight: .medium))
                     Spacer()
                     Button("Choose File", action: selectCustomTimerSound)
-                        .buttonStyle(.bordered)
+                        .buttonStyle(AnchorButtonStyle())
                 }
 
                 if let customTimerSoundPath = UserDefaults.standard.string(forKey: "customTimerSoundPath") {
@@ -373,7 +374,7 @@ struct TimerSettings: View {
                 Button("Reset to Default") {
                     UserDefaults.standard.removeObject(forKey: "customTimerSoundPath")
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(AnchorButtonStyle())
                 .disabled(UserDefaults.standard.string(forKey: "customTimerSoundPath") == nil)
             }
         } header: {
@@ -576,7 +577,7 @@ private struct TimerPresetEditorRow: View {
                     )
 
                 TextField("Preset name", text: $preset.name)
-                    .textFieldStyle(.roundedBorder)
+                    .textFieldStyle(AnchorFieldStyle())
 
                 Spacer()
 
@@ -598,13 +599,13 @@ private struct TimerPresetEditorRow: View {
                 Button(action: moveUp) {
                     Label("Move Up", systemImage: "chevron.up")
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(AnchorButtonStyle())
                 .disabled(isFirst)
 
                 Button(action: moveDown) {
                     Label("Move Down", systemImage: "chevron.down")
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(AnchorButtonStyle())
                 .disabled(isLast)
 
                 Spacer()
@@ -612,7 +613,7 @@ private struct TimerPresetEditorRow: View {
                 Button(role: .destructive, action: remove) {
                     Label("Delete", systemImage: "trash")
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(AnchorButtonStyle())
             }
             .font(.system(size: 12, weight: .medium))
         }

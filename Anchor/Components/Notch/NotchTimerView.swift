@@ -43,11 +43,20 @@ struct NotchTimerView: View {
     @State private var customMinutes: Int = 10
     @State private var customSeconds: Int = 0
     @State private var isSyncingCustomDuration = false
+    @AppStorage("AnchorTimerWorkspace") private var workspaceMode = "timer"
     @State private var lockedAccentColor: Color?
 
     var body: some View {
         Group {
             if enableTimerFeature {
+                VStack(spacing: 2) {
+                    Picker("Timer mode", selection: $workspaceMode) {
+                        Text("Timer").tag("timer")
+                        Text("Focus").tag("focus")
+                    }.pickerStyle(.segmented).frame(width: 180)
+                    if workspaceMode == "focus" {
+                        FocusSessionView()
+                    } else {
                 HStack(alignment: .top, spacing: timerManager.isTimerActive ? 0 : 20) {
                     leftColumn
                     if shouldShowPresetColumn {
@@ -60,6 +69,8 @@ struct NotchTimerView: View {
                 .frame(maxHeight: maxTabContentHeight, alignment: .top)
                 .padding(.horizontal, 16)
                     .padding(.vertical, 6)
+                    }
+                }
                 .transition(.opacity.combined(with: .blurReplace))
                 .onAppear { syncCustomDuration(with: customTimerDuration) }
                 .onChange(of: customTimerDuration) { _, newValue in syncCustomDuration(with: newValue) }

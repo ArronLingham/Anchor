@@ -158,7 +158,7 @@ struct SettingsCleanup: View {
                     .foregroundStyle(.secondary)
             }
         }
-        .formStyle(.grouped)
+        .formStyle(AnchorFormStyle())
         .confirmationDialog(
             "Move \(CleanupSafety.formatBytes(manager.selectedBytes)) to the Trash?",
             isPresented: $isConfirming, titleVisibility: .visible

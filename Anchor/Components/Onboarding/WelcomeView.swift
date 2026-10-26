@@ -27,85 +27,30 @@ import SwiftUIIntrospect
 struct WelcomeView: View {
     var onGetStarted: (() -> Void)? = nil
     var body: some View {
-        ZStack(alignment: .top) {
-            ZStack {
-                Image("spotlight")
-                    .resizable()
-                    .aspectRatio(contentMode: .fit)
-                    .padding(.bottom)
-                    .blur(radius: 3)
-                    .offset(y: -5)
-                    .background(SparkleView().opacity(0.6))
-                VStack(spacing: 8) {
-                    Image("logo2")
-                        .resizable()
-                        .aspectRatio(contentMode: .fit)
-                        .frame(width: 100, height: 100)
-                        .padding(.bottom, 8)
-                    Text("Atoll")
-                        .font(.system(.largeTitle, design: .default))
-                        .fontWeight(.semibold)
-                    Text("Welcome")
-                        .font(.title)
-                        .foregroundStyle(.secondary)
-                        .padding(.bottom, 30)
-                    if false {
-                        Text("PRO")
-                            .font(.system(size: 18, design: .rounded))
-                            .fontWeight(.bold)
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 3)
-                            .background(
-                                Capsule()
-                                    .fill(LinearGradient(colors: [.white.opacity(0.7), .white.opacity(0.3)], startPoint: .topLeading, endPoint: .bottomTrailing))
-                                    .strokeBorder(LinearGradient(stops: [.init(color: .white.opacity(0.7), location: 0.3), .init(color: .clear, location: 0.6)], startPoint: .topLeading, endPoint: .bottomTrailing))
-                                    .blendMode(.overlay)
-                            )
-                            .padding(.bottom, 30)
-                    }
-
-
-                    Button {
-                        onGetStarted?()
-                    } label: {
-                        Text("Get started")
-                            .padding(.horizontal, 20)
-                            .padding(.vertical, 6)
-                    }
-                    .buttonStyle(BorderedProminentButtonStyle())
-                    
-                    // Privacy Policy Link
-                    Button(action: {
-                        if let url = URL(string: "https://ebullioscopic.github.io/DynamicIsland/privacy-policy") {
-                            NSWorkspace.shared.open(url)
-                        }
-                    }) {
-                        Text("Privacy Policy")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
-                    .buttonStyle(.plain)
-                    .padding(.top, 8)
+        ZStack {
+            AnchorCanvas().ignoresSafeArea()
+            VStack(spacing: 26) {
+                Image(systemName: "mountain.2.fill")
+                    .font(.system(size: 46, weight: .medium)).foregroundStyle(AnchorDesign.accent)
+                    .frame(width: 112, height: 112).background(AnchorSurface(depth: .raised, radius: 32))
+                VStack(spacing: 10) {
+                    Text("Welcome to Anchor").font(.system(size: 32, weight: .semibold, design: .rounded))
+                    Text("A calmer space for your Mac.").font(.system(size: 15)).foregroundStyle(AnchorDesign.muted)
                 }
-                .padding(.top)
-            }
-            
-            Image("ebullioscopic")
-                .resizable()
-                .aspectRatio(contentMode: .fit)
-                .frame(height: 22)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-                .padding()
-                .padding(.bottom, 36)
-                .blendMode(.overlay)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .ignoresSafeArea()
-        .background {
-            VisualEffectView(material: .hudWindow, blendingMode: .behindWindow)
-                .ignoresSafeArea()
-        }
+                VStack(alignment: .leading, spacing: 22) {
+                    Label("Your apps, one shortcut away", systemImage: "square.grid.2x2")
+                    Label("Music and controls, within reach", systemImage: "slider.horizontal.3")
+                    Label("A little room to focus", systemImage: "scope")
+                }.font(.system(size: 13, weight: .medium)).padding(26).frame(maxWidth: .infinity, alignment: .leading)
+                    .background(AnchorSurface())
+                Button { onGetStarted?() } label: {
+                    HStack { Text("Get started"); Spacer(); Image(systemName: "arrow.right") }.padding(.vertical, 3)
+                }.buttonStyle(AnchorButtonStyle(prominent: true)).keyboardShortcut(.defaultAction)
+                Button("Privacy policy") {
+                    if let url = URL(string: "https://ebullioscopic.github.io/DynamicIsland/privacy-policy") { NSWorkspace.shared.open(url) }
+                }.buttonStyle(.plain).font(.caption).foregroundStyle(AnchorDesign.muted)
+            }.frame(maxWidth: 390).padding(40)
+        }.anchorTheme()
     }
 }
 

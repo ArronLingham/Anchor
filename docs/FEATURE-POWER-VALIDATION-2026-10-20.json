@@ -1,0 +1,116 @@
+{
+  "verified_at_utc": "2026-10-20T14:01:53.934626+00:00",
+  "installed_at_utc": "2026-10-20T13:52:13Z",
+  "app_path": "/Applications/Anchor.app",
+  "bundle_identifier": "com.arronlingham.Anchor",
+  "version": "2.3.3",
+  "build": "1160",
+  "signing_team": "KLWHJX56T3",
+  "deep_strict_signature_valid": true,
+  "running_pid": 93517,
+  "backup_path": "/private/tmp/anchor-feature-power-install.iPWbXH",
+  "components": {
+    "Contents/MacOS/Anchor": {
+      "built_sha256": "535caeaaa2e0578df65e7fe16df7f45aff62f68c5ac8c21ff50d7b1d6eaaf784",
+      "installed_sha256": "535caeaaa2e0578df65e7fe16df7f45aff62f68c5ac8c21ff50d7b1d6eaaf784",
+      "match": true
+    },
+    "Contents/Frameworks/libAnchorUtilitiesNowPlaying.dylib": {
+      "built_sha256": "7d39e8e0ee6c0669acde6a8c313ccfe421c915679dbde973597e4d0bd3a81e2c",
+      "installed_sha256": "7d39e8e0ee6c0669acde6a8c313ccfe421c915679dbde973597e4d0bd3a81e2c",
+      "match": true
+    },
+    "Contents/Library/LaunchServices/com.arronlingham.Anchor.fan-control": {
+      "built_sha256": "97bfd0cac737c4b2eb5adf7fb2ba96004e366de49f654ae6718b272998ea1617",
+      "installed_sha256": "97bfd0cac737c4b2eb5adf7fb2ba96004e366de49f654ae6718b272998ea1617",
+      "match": true
+    }
+  },
+  "feature_catalog_count": 77,
+  "releasable_services": 17,
+  "profiles": {
+    "com.arronlingham.Anchor.utilities": {
+      "availability_values_preserved": 77,
+      "enabled": 19
+    },
+    "com.arronlingham.Anchor.dev.utilities": {
+      "availability_values_preserved": 77,
+      "enabled": 19
+    }
+  },
+  "automated_tests": {
+    "xctest_cases": 32,
+    "failures": 0,
+    "resource_lifecycle_cases": 11,
+    "imported_behavior_checks": 21913,
+    "log": "/private/tmp/anchor-feature-power-tests-final.log"
+  },
+  "live_checks": {
+    "debug": [
+      "All/Disabled filtering",
+      "master switches",
+      "Disable all persisted all 77 gates off",
+      "disabled choices survived cold relaunch",
+      "empty Quick Panel",
+      "configured global shortcut on/off/on with temporary launch-only combination",
+      "original profile restored"
+    ],
+    "installed": [
+      "All/Disabled filtering",
+      "Command Bar on/off/open",
+      "Quick Launcher on/off/open",
+      "Quick Panel close targeting above notch and after app switch",
+      "focus after app switch",
+      "close inactive panel",
+      "Escape",
+      "Command-W",
+      "section switch",
+      "tall section fits display",
+      "minimized panel restoration",
+      "Controls dismisses panel",
+      "original availability choices preserved"
+    ],
+    "no_pointer_movement": true,
+    "no_lock_or_capture_camera_actions": true,
+    "default_shortcut_conflict": "Option-Space encountered another running app; not counted as a successful default-key check",
+    "excluded_probes": [
+      "cross-process Carbon collision probe is inconclusive",
+      "initial search automation used unreliable synthetic Command-A; final harness selects AX text range",
+      "initial close hit blocked by stale development Keychain request; denied without access grant",
+      "focus harness now activates before raising the panel"
+    ]
+  },
+  "idle_measurements": {
+    "before": {
+      "pid": 84114,
+      "duration_seconds": 60,
+      "samples": 29,
+      "cpu_mean_percent": 0.3,
+      "cpu_median_percent": 0.0,
+      "cpu_p90_percent": 0.48,
+      "cpu_max_percent": 2.41,
+      "rss_mean_mb": 36.0,
+      "rss_max_mb": 37.2,
+      "process_age": "over 10 hours",
+      "log": "/private/tmp/anchor-feature-power-before-refresh.txt"
+    },
+    "after": {
+      "pid": 93517,
+      "duration_seconds": 60,
+      "samples": 29,
+      "cpu_mean_percent": 0.12,
+      "cpu_median_percent": 0.0,
+      "cpu_p90_percent": 0.48,
+      "cpu_max_percent": 1.44,
+      "rss_mean_mb": 183.4,
+      "rss_max_mb": 209.5,
+      "process_age": "about 7 to 8 minutes, after live UI checks",
+      "log": "/private/tmp/anchor-feature-power-after.txt"
+    },
+    "conditions": "Same 19 enabled library features; primary windows closed; no builds during either measurement. Old process had substantially more idle/compression time. No causal percentage memory reduction is claimed."
+  },
+  "scope": "The Features & Tools library. Native core settings continue to govern original Anchor features. Stable OS bridges stop work immediately but may finish releasing shared memory on restart.",
+  "running_production_copies": 1,
+  "running_development_copies": 0,
+  "launch_services_application": "/Applications/Anchor.app"
+}

@@ -1,0 +1,120 @@
+{
+  "verified_at_utc": "2026-10-21T17:52:21.709755+00:00",
+  "installed_at_utc": "2026-10-21T17:44:51Z",
+  "installed_app": "/Applications/Anchor.app",
+  "bundle_id": "com.arronlingham.Anchor",
+  "version": "2.3.3",
+  "build": "1160",
+  "installed_pid": 15661,
+  "running_production_copies": 1,
+  "running_development_copies": 0,
+  "launch_services_path": "/Applications/Anchor.app",
+  "deep_strict_signature_valid": true,
+  "components": {
+    "Contents/MacOS/Anchor": {
+      "sha256": "99266b8150dc338d5eab2cec8b5c71ec769b772384443aa969b266870d34e9b4",
+      "built_installed_match": true
+    },
+    "Contents/Frameworks/libAnchorUtilitiesNowPlaying.dylib": {
+      "sha256": "626ceed85e036276b72e6c9e840e084a8917591a2aa4898e881145e0e43d0a1b",
+      "built_installed_match": true
+    },
+    "Contents/Library/LaunchServices/com.arronlingham.Anchor.fan-control": {
+      "sha256": "03d63b3e735dc2baba583aa06bd9d3676ff0d1fb4a892edcce2a66f138d40605",
+      "built_installed_match": true
+    }
+  },
+  "previous_executable_sha256": "535caeaaa2e0578df65e7fe16df7f45aff62f68c5ac8c21ff50d7b1d6eaaf784",
+  "backup_path": "/private/tmp/anchor-top-click-install.PHocOZ",
+  "reproduction": {
+    "window_points": {
+      "x": 445,
+      "y": 0,
+      "width": 580,
+      "height": 218
+    },
+    "window_level": 27,
+    "blocked_header_points": 12,
+    "before_log": "/private/tmp/anchor-top-click-before.txt",
+    "stopped_log": "/private/tmp/anchor-top-click-stopped.txt"
+  },
+  "installed_browser_checks": {
+    "previously_blocked_points": 12,
+    "now_target_browser": 12,
+    "after_log": "/private/tmp/anchor-top-click-after.txt",
+    "physical_pointer_moved_by_test": false
+  },
+  "tests": {
+    "native_click_routing_checks": 71,
+    "display_policy_checks": 79,
+    "ownership_checks": 29,
+    "rendered_integration_checks": 13,
+    "rendered_integration_failures": 0,
+    "rendered_layout": [
+      {
+        "closed": {
+          "height": 32,
+          "width": 191,
+          "x": 639.5,
+          "y": 924
+        },
+        "closedAgain": {
+          "height": 32,
+          "width": 191,
+          "x": 639.5,
+          "y": 924
+        },
+        "opened": {
+          "height": 68,
+          "width": 580,
+          "x": 445,
+          "y": 888
+        },
+        "timer": {
+          "height": 250,
+          "width": 600,
+          "x": 435,
+          "y": 706
+        }
+      }
+    ],
+    "native_test_log": "/private/tmp/anchor-top-click-tests.txt",
+    "integration_log": "/private/tmp/anchor-top-click-review/click-routing.json"
+  },
+  "preferences": {
+    "original_availability_values_preserved": 77,
+    "enabled_library_features_preserved": 19,
+    "display_choices_preserved": true
+  },
+  "implementation": {
+    "new_polling_loops": 0,
+    "new_timers": 0,
+    "mouse_event_suppression_or_replay": false,
+    "one_monitor_pair_for_all_native_notch_windows": true,
+    "signature_team": "KLWHJX56T3"
+  },
+  "validation_limits": [
+    "One built-in display was physically connected. Negative and scaled display coordinates are covered by native tests.",
+    "Browser validation uses read-only Accessibility hit targeting, not a synthetic hardware click.",
+    "The original process was closed before a fresh before-fix idle sample could be collected; the broken app was left closed while building. No comparative performance gain is claimed."
+  ],
+  "idle_usage": {
+    "pid": 15661,
+    "requested_duration_seconds": 60,
+    "samples": 29,
+    "process_settled_for_at_least_seconds": 300,
+    "cpu_percent": {
+      "mean": 0.05,
+      "median": 0.0,
+      "p90": 0.0,
+      "max": 1.44
+    },
+    "rss_megabytes": {
+      "mean": 111.6,
+      "max": 111.6
+    },
+    "log": "/private/tmp/anchor-top-click-after-usage.txt",
+    "conditions": "Normal installed application after more than five minutes, with no build or review fixture running. No synthetic mouse interaction. The user continued using their Mac.",
+    "before_comparison_available": false
+  }
+}

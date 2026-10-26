@@ -1,0 +1,131 @@
+{
+  "installedAtUTC": "2026-10-20T03:16:27.035703+00:00",
+  "app": "/Applications/Anchor.app",
+  "bundleIdentifier": "com.arronlingham.Anchor",
+  "version": "2.3.3",
+  "build": "1160",
+  "components": {
+    "Contents/MacOS/Anchor": {
+      "built": "792c65f9426aa26b3688b69f46b5be29211f6e66e98c5d3240aed5acbfffdde9",
+      "installed": "792c65f9426aa26b3688b69f46b5be29211f6e66e98c5d3240aed5acbfffdde9"
+    },
+    "Contents/Frameworks/libAnchorUtilitiesNowPlaying.dylib": {
+      "built": "120f34c447274f7a0d82c3a209f9abeba4795cf7d411360b4ff36046e327ed02",
+      "installed": "120f34c447274f7a0d82c3a209f9abeba4795cf7d411360b4ff36046e327ed02"
+    },
+    "Contents/Library/LaunchServices/com.arronlingham.Anchor.fan-control": {
+      "built": "b3fa0dbeb392a003783f45636bda2d02604af71c3018b53cd841a430516ad3ad",
+      "installed": "b3fa0dbeb392a003783f45636bda2d02604af71c3018b53cd841a430516ad3ad"
+    }
+  },
+  "resourceHashesMatchUpstream": true,
+  "strictSignatureVerified": true,
+  "backup": "/private/tmp/anchor-quick-panel-install.ws2l92/Anchor.previous.app",
+  "originalBundle": "/private/tmp/anchor-quick-panel-install.ws2l92/Anchor.replaced.app",
+  "featureCount": 77,
+  "packageTests": {
+    "cases": 21,
+    "behaviorChecks": 21913,
+    "failures": 0,
+    "nativeWindowCases": 5
+  },
+  "credentialChecks": {
+    "checks": 24,
+    "failures": 0,
+    "realKeychainAccess": false
+  },
+  "nowPlayingBridge": {
+    "exit": 0,
+    "json": true,
+    "fieldCount": 10,
+    "metadataLogged": false
+  },
+  "globalCommandBarShortcutVerified": true,
+  "dashboardCardChoices": 11,
+  "realLockInvoked": false,
+  "realPointerMovedByTests": false,
+  "registeredApplication": "/Applications/Anchor.app",
+  "runningCopies": 1,
+  "runtimePID": 84114,
+  "settledUsage": {
+    "before": {
+      "pid": 67642,
+      "seconds": 40,
+      "cpuMean": 0.4,
+      "cpuMedian": 0.48,
+      "cpuP90": 0.48,
+      "cpuMax": 1.86,
+      "rssMeanMB": 16.0,
+      "rssMaxMB": 43.7
+    },
+    "after": {
+      "pid": 81301,
+      "seconds": 60,
+      "settledMinutesMinimum": 13,
+      "cpuMean": 0.21,
+      "cpuMedian": 0.0,
+      "cpuP90": 0.0,
+      "cpuMax": 5.27,
+      "rssMeanMB": 44.2,
+      "rssMaxMB": 44.4
+    },
+    "mainWindowsClosed": true,
+    "allOptionalFeaturesActive": false,
+    "buildNote": "These usage samples describe the original integration build (PID 81301), before the Quick Panel follow-up."
+  },
+  "manualChecksRemaining": [
+    "real capture with system and microphone audio",
+    "camera and Continuity Camera",
+    "physical displays and brightness",
+    "Bluetooth sleep and wake",
+    "fan-equipped hardware and administrator authorization",
+    "lock and unlock presentation and sound",
+    "temporary sharing server round trip"
+  ],
+  "initialInstallation": {
+    "installedAtUTC": "2026-10-20T02:29:43.257002+00:00",
+    "components": {
+      "Contents/MacOS/Anchor": {
+        "built": "80ba46740fbe2ab810c650708d6db8e750687df6cd47ba3f310b1e6857160f72",
+        "installed": "80ba46740fbe2ab810c650708d6db8e750687df6cd47ba3f310b1e6857160f72"
+      },
+      "Contents/Frameworks/libAnchorUtilitiesNowPlaying.dylib": {
+        "built": "120f34c447274f7a0d82c3a209f9abeba4795cf7d411360b4ff36046e327ed02",
+        "installed": "120f34c447274f7a0d82c3a209f9abeba4795cf7d411360b4ff36046e327ed02"
+      },
+      "Contents/Library/LaunchServices/com.arronlingham.Anchor.fan-control": {
+        "built": "b3fa0dbeb392a003783f45636bda2d02604af71c3018b53cd841a430516ad3ad",
+        "installed": "b3fa0dbeb392a003783f45636bda2d02604af71c3018b53cd841a430516ad3ad"
+      }
+    },
+    "backup": "/private/tmp/anchor-utilities-install/Anchor.previous.app",
+    "originalBundle": "/private/tmp/anchor-utilities-install/Anchor.replaced.app",
+    "runtimePID": 81301
+  },
+  "quickPanel": {
+    "closeButtonReceivesHitAtOriginalNotchOverlap": true,
+    "closeButtonReceivesHitAfterSwitchingApps": true,
+    "focusAfterSwitchingApps": true,
+    "closeAndReopen": true,
+    "closeWhileAnotherAppIsActive": true,
+    "escapeCloses": true,
+    "commandWCloses": true,
+    "minimizedPanelRestoredOnOpen": true,
+    "settingsDismissesPanelAndOpensControls": true,
+    "tallSectionFitsCurrentDisplay": true,
+    "worksAsOnlyPrimaryWindow": true,
+    "lastWindowCloseReturnsToAccessoryPolicy": true,
+    "signatureValidAfterInteraction": true,
+    "panelWindowLevel": 28,
+    "nativeNotchWindowLevel": 27,
+    "finalFrame": {
+      "x": 569,
+      "y": 263,
+      "width": 332,
+      "height": 432
+    },
+    "realPointerMoved": false,
+    "realLockInvoked": false,
+    "note": "Accessibility hit testing and actions plus keyboard events addressed to Anchor. No physical pointer clicks were synthesized."
+  }
+}

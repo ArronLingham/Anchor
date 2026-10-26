@@ -106,6 +106,7 @@ struct MusicControlOverlay: View {
     }
 
     var body: some View {
+        Group {
         let verticalPadding = max(8, notchHeight * 0.12)
 
         let backwardGestureTrigger = skipGestureTrigger(for: .backward)
@@ -157,12 +158,14 @@ struct MusicControlOverlay: View {
         .frame(minWidth: buttonSide * 3.2)
         .background {
             RoundedRectangle(cornerRadius: windowCornerRadius, style: .continuous)
-            .fill(Color.black)
+            .fill(AnchorDesign.surface)
         }
         .compositingGroup()
         .animation(.smooth(duration: 0.2), value: musicManager.isPlaying)
         .animation(.smooth(duration: 0.2), value: musicSkipBehavior)
         .animation(.smooth(duration: 0.2), value: controlsEnabled)
+            }
+        .anchorTheme()
     }
 
     private struct ButtonConfig {
@@ -201,7 +204,7 @@ private struct FloatingMediaButton: View {
                 .frame(width: frameSize.width, height: frameSize.height)
                 .background(
                     RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                        .fill(isHovering && isEnabled ? Color.white.opacity(0.18) : .clear)
+                        .fill(isHovering && isEnabled ? AnchorDesign.raised : AnchorDesign.inset)
                 )
                 .contentShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
         }

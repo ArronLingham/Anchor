@@ -50,6 +50,7 @@ class LockScreenManager: ObservableObject {
     private var collapseTask: Task<Void, Never>?
     private var postUnlockMusicHUDTask: Task<Void, Never>?
     private var lockStatePollTask: Task<Void, Never>?
+    private var lockPresentationTask: Task<Void, Never>?
     
     // MARK: - Helpers
     
@@ -72,6 +73,7 @@ class LockScreenManager: ObservableObject {
         collapseTask?.cancel()
         postUnlockMusicHUDTask?.cancel()
         lockStatePollTask?.cancel()
+        lockPresentationTask?.cancel()
     }
     
     // MARK: - Setup
@@ -110,6 +112,10 @@ class LockScreenManager: ObservableObject {
     // MARK: - Event Handlers
     
     @objc private func screenLocked() {
+        guard LockScreenEventPolicy.accepts(isLockedEvent: true, sessionIsLocked: Self.sessionLockStatus()) else {
+            Logger.log("Ignored stale screen-lock notification: macOS is unlocked", category: .lifecycle)
+            return
+        }
         guard !isLocked else {
             print("[\(timestamp())] LockScreenManager: 🔁 Duplicate LOCK event ignored")
             return
@@ -140,14 +146,19 @@ class LockScreenManager: ObservableObject {
             coordinator.toggleSneakPeek(status: false, type: coordinator.sneakPeek.type)
         }
         
-        // Show panel FIRST (creates and shows window on lock screen)
-        print("[\(timestamp())] LockScreenManager: 🎵 Showing lock screen panel")
-        LockScreenPanelManager.shared.showPanel()
+        // Start the small lock indicator before constructing optional panels.
+        // Let macOS commit its lock transition before the heavier SwiftUI work.
         LockScreenLiveActivityWindowManager.shared.showLocked()
-        LockScreenWeatherManager.shared.showWeatherWidget()
-        LockScreenTimerWidgetManager.shared.handleLockStateChange(isLocked: true)
         TimerControlWindowManager.shared.hide(animated: false)
-        
+        lockPresentationTask?.cancel()
+        lockPresentationTask = Task { [weak self] in
+            do { try await Task.sleep(for: .milliseconds(250)) } catch { return }
+            guard let self, self.isLocked, !Task.isCancelled, Self.sessionLockStatus() != false else { return }
+            LockScreenPanelManager.shared.showPanel()
+            LockScreenWeatherManager.shared.showWeatherWidget()
+            LockScreenTimerWidgetManager.shared.handleLockStateChange(isLocked: true)
+        }
+
         // THEN trigger lock icon in Atoll (only if enabled in settings)
         if Defaults[.enableLockScreenLiveActivity] {
             print("[\(timestamp())] LockScreenManager: 🔴 Starting lock icon live activity")
@@ -162,12 +173,18 @@ class LockScreenManager: ObservableObject {
     }
 
     @objc private func screenUnlocked() {
+        guard LockScreenEventPolicy.accepts(isLockedEvent: false, sessionIsLocked: Self.sessionLockStatus()) else {
+            Logger.log("Ignored stale screen-unlock notification: macOS is locked", category: .lifecycle)
+            return
+        }
         guard isLocked else {
             print("[\(timestamp())] LockScreenManager: 🔁 Unlock event ignored (already unlocked)")
             return
         }
         print("[\(timestamp())] LockScreenManager: 🔓 Screen UNLOCKED event received")
         Logger.log("LockScreenManager: Screen unlocked", category: .lifecycle)
+        lockPresentationTask?.cancel()
+        lockPresentationTask = nil
         LockSoundPlayer.shared.playUnlockChime()
         LockScreenDisplayContextProvider.shared.refresh(reason: "screen-unlocked")
         lastUpdated = Date()
@@ -204,7 +221,7 @@ class LockScreenManager: ObservableObject {
         
         // Hide panel window immediately and synchronously
         print("[\(timestamp())] LockScreenManager: 🚪 Hiding panel window")
-        LockScreenPanelManager.shared.hidePanel()
+        LockScreenPanelManager.shared.hidePanel(animated: false)
         FullScreenArtworkWindowManager.shared.hide()
         LockScreenLiveActivityWindowManager.shared.showUnlockAndScheduleHide()
         LockScreenWeatherManager.shared.hideWeatherWidget()
@@ -234,9 +251,9 @@ class LockScreenManager: ObservableObject {
     // locked, poll the canonical session-lock state and fire `screenUnlocked()`
     // the moment the OS flips. The handler's duplicate-event guard makes this
     // safe to call alongside any later-arriving notification.
-    private static func isSessionScreenLocked() -> Bool {
+    private static func sessionLockStatus() -> Bool? {
         guard let session = CGSessionCopyCurrentDictionary() as? [String: Any] else {
-            return false
+            return nil
         }
         return session["CGSSessionScreenIsLocked"] as? Bool ?? false
     }
@@ -249,7 +266,7 @@ class LockScreenManager: ObservableObject {
                 if Task.isCancelled { return }
                 await MainActor.run {
                     guard let self, self.isLocked else { return }
-                    if !Self.isSessionScreenLocked() {
+                    if Self.sessionLockStatus() == false {
                         print("[\(self.timestamp())] LockScreenManager: 🔓 Polling detected unlock ahead of notification")
                         self.screenUnlocked()
                     }
@@ -295,6 +312,11 @@ class LockScreenManager: ObservableObject {
 extension LockScreenManager {
     func configure(viewModel: AnchorViewModel) {
         self.viewModel = viewModel
+        LockSoundPlayer.shared.prepare()
+        Defaults.observe(.enableLockSounds) { change in
+            guard change.newValue else { return }
+            Task { @MainActor in LockSoundPlayer.shared.prepare() }
+        }.tieToLifetime(of: self)
     }
     
     /// Get current lock status without async
@@ -313,60 +335,21 @@ extension LockScreenManager {
 @MainActor
 final class LockSoundPlayer {
     static let shared = LockSoundPlayer()
-    private let throttleInterval: TimeInterval = 0.25
-    private var players: [SoundType: AVAudioPlayer] = [:]
-    private var lastPlaybackDates: [SoundType: Date] = [:]
-
+    private let audio = LockSoundAudio()
     private init() {}
 
+    func prepare() {
+        guard Defaults[.enableLockSounds] else { return }
+        audio.prepare()
+    }
+
     func playLockChime() {
-        play(.lock)
+        guard Defaults[.enableLockSounds] else { return }
+        audio.play(.lock)
     }
 
     func playUnlockChime() {
-        play(.unlock)
-    }
-
-    private func play(_ type: SoundType) {
         guard Defaults[.enableLockSounds] else { return }
-        guard shouldPlay(type) else { return }
-        guard let player = resolvePlayer(for: type) else { return }
-
-        player.currentTime = 0
-        player.play()
-        lastPlaybackDates[type] = Date()
-    }
-
-    private func shouldPlay(_ type: SoundType) -> Bool {
-        guard let last = lastPlaybackDates[type] else { return true }
-        return Date().timeIntervalSince(last) >= throttleInterval
-    }
-
-    private func resolvePlayer(for type: SoundType) -> AVAudioPlayer? {
-        if let cached = players[type] {
-            return cached
-        }
-
-        guard let url = Bundle.main.url(forResource: type.resourceName, withExtension: "mp3") else {
-            Logger.log("Missing \(type.resourceName).mp3 in bundle", category: .warning)
-            return nil
-        }
-
-        do {
-            let player = try AVAudioPlayer(contentsOf: url)
-            player.prepareToPlay()
-            players[type] = player
-            return player
-        } catch {
-            Logger.log("Failed to initialize lock sound player for \(type.resourceName): \(error.localizedDescription)", category: .error)
-            return nil
-        }
-    }
-
-    private enum SoundType: String {
-        case lock
-        case unlock
-
-        var resourceName: String { rawValue }
+        audio.play(.unlock)
     }
 }

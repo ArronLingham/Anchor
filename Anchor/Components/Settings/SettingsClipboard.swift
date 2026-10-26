@@ -67,6 +67,7 @@ struct ClipboardSettings: View {
             }
 
             if enableClipboardManager {
+                ClipboardPrivacySettingsSection()
                 Section {
                     Defaults.Toggle(key: .showClipboardIcon) {
                         Text("Show Clipboard Icon")
@@ -94,6 +95,11 @@ struct ClipboardSettings: View {
                             Text("5 items").tag(5)
                             Text("7 items").tag(7)
                             Text("10 items").tag(10)
+                            Text("25 items").tag(25)
+                            Text("50 items").tag(50)
+                            Text("100 items").tag(100)
+                            Text("250 items").tag(250)
+                            Text("500 items").tag(500)
                         }
                         .pickerStyle(.menu)
                         .frame(minWidth: 100)
@@ -176,8 +182,7 @@ struct ClipboardSettings: View {
                     .disabled(clipboardManager.clipboardHistory.isEmpty)
 
                     Button("Clear Pinned Items") {
-                        clipboardManager.pinnedItems.removeAll()
-                        clipboardManager.savePinnedItemsToDefaults()
+                        clipboardManager.clearPinnedItems()
                     }
                     .foregroundColor(.red)
                     .disabled(clipboardManager.pinnedItems.isEmpty)
@@ -215,7 +220,7 @@ struct ClipboardSettings: View {
                 }
             }
         }
-        .formStyle(.grouped)
+        .formStyle(AnchorFormStyle())
         .navigationTitle("Clipboard")
         .onAppear {
             if enableClipboardManager && !clipboardManager.isMonitoring {

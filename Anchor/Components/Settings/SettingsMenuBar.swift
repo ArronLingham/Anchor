@@ -20,6 +20,7 @@
 import Defaults
 import KeyboardShortcuts
 import SwiftUI
+import AnchorUtilities
 
 struct MenuBarSettings: View {
     @Default(.enableMenuBarShrink) private var enabled
@@ -27,6 +28,7 @@ struct MenuBarSettings: View {
     @Default(.menuBarAlwaysHiddenSection) private var alwaysHidden
     @Default(.menuBarExpandOnHover) private var expandOnHover
 
+    @ObservedObject private var monitoring = UtilitySystemStats.shared
     @StateObject private var arranger = MenuBarItemArranger()
 
     @ObservedObject private var manager = MenuBarShrinkManager.shared
@@ -52,10 +54,13 @@ struct MenuBarSettings: View {
                     Text("Show network throughput")
                 }
                 .settingsHighlight(id: highlightID("Show network throughput"))
+                Toggle("Keep monitoring when panels are closed", isOn: Binding(
+                    get: { monitoring.backgroundMonitoringEnabled },
+                    set: { monitoring.setBackgroundMonitoringEnabled($0) }))
             } header: {
                 Text("Live readout")
             } footer: {
-                Text("Adds a CPU, memory and network readout to the menu bar. The text is fixed-width, so nothing to its left shifts as the numbers change. Sampling runs only while at least one of these is on and stops while the display sleeps \u{2014} with all three off nothing is measured.")
+                Text("Live readings share the Stats panel’s sampler. By default they pause when the panel closes. Enable closed-panel monitoring above to keep menu bar readings and background alerts active. Sampling stops while the display sleeps.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }

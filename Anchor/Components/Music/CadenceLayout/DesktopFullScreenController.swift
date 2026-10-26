@@ -95,6 +95,7 @@ private struct DesktopFullScreenView: View {
     @Default(.lockFullBackground) private var background
 
     var body: some View {
+        Group {
         ZStack {
             backdrop
             PlayerSurfaceView(
@@ -115,6 +116,8 @@ private struct DesktopFullScreenView: View {
         // view whose only exit is one small target reads as a trap.
         .onTapGesture { DesktopFullScreenController.shared.close() }
         .animation(.easeInOut(duration: 0.28), value: music.avgColor)
+            }
+        .anchorTheme()
     }
 
     @ViewBuilder private var backdrop: some View {

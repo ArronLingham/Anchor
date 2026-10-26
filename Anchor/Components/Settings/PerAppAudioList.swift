@@ -306,7 +306,7 @@ struct PerAppAudioList: View {
                         next.isEnabled = on
                         manager.setEQ(next, for: app)
                     }))
-                .toggleStyle(.switch)
+                .toggleStyle(AnchorToggleStyle())
                 .controlSize(.mini)
 
                 Spacer()

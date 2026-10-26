@@ -25,6 +25,7 @@ import KeyboardShortcuts
 import SwiftUI
 
 extension KeyboardShortcuts.Name {
+    static let toggleDashboard = Self("toggleDashboard", default: nil)
     static let clipboardHistoryPanel = Self("clipboardHistoryPanel", default: .init(.c, modifiers: [.shift, .command]))
     /// Opens the application launcher panel.
     static let toggleLauncher = Self("toggleLauncher", default: .init(.space, modifiers: [.option]))
@@ -78,10 +79,8 @@ extension KeyboardShortcuts.Name {
 
     /// Opens the ring-shaped application switcher.
     ///
-    /// Option-Tab rather than Command-Tab: taking over ⌘Tab means swallowing it
-    /// with an event tap, and an app that swallows ⌘Tab and then hangs leaves
-    /// the user with no way to switch apps at all. The system switcher stays
-    /// where it is and this sits beside it.
+    /// The configurable additional binding. The opt-in ⌘Tab replacement is
+    /// handled by SystemNavigationShortcutManager before macOS consumes it.
     static let appSwitcher = Self("appSwitcher", default: .init(.tab, modifiers: [.option]))
     /// Opens the ring going *backwards*, and steps backwards while it is open —
     /// ⌥⇧Tab, mirroring ⌘⇧Tab in the system switcher.

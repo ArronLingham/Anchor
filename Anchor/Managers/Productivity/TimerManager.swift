@@ -123,12 +123,19 @@ class TimerManager: ObservableObject {
         }
     }
     
+    private var timerDeadline: Date?
+    private var timerGeneration = UUID()
+    private var focusCompletion: (() -> Void)?
+    private var focusInterruption: (() -> Void)?
+    private var focusPauseChange: ((Bool, TimeInterval) -> Void)?
     private var timerInstance: Timer?
     private var cancellables = Set<AnyCancellable>()
     private var soundPlayer: AVAudioPlayer?
     // MARK: - Initialization
     private init() {
-        // Simple initialization
+        DispatchQueue.main.async {
+            Task { @MainActor in FocusSessionManager.shared.restoreIfNeeded() }
+        }
     }
     
     deinit {
@@ -139,66 +146,72 @@ class TimerManager: ObservableObject {
     
     // MARK: - Timer Methods
     func startTimer(duration: TimeInterval, name: String = "Timer", preset: TimerPreset? = nil) {
-        if activeSource == .external {
-            endExternalTimer(triggerSmoothClose: false)
-        }
-
-        // Stop any existing timer
+        guard duration.isFinite, duration > 0, duration <= 7 * 24 * 3600 else { return }
+        interruptFocusTimer()
+        if activeSource == .external { endExternalTimer(triggerSmoothClose: false) }
         timerInstance?.invalidate()
-        
-        // Start new timer
-        withAnimation(.smooth) {
-            isTimerActive = true
-        }
+        soundPlayer?.stop()
+        timerGeneration = UUID()
+        withAnimation(.smooth) { isTimerActive = true }
         activeSource = .manual
-        isFinished = false
-        isOvertime = false
-        timerName = name
-        totalDuration = duration
-        remainingTime = duration
-        elapsedTime = 0
-        isPaused = false
-        lastUpdated = Date()
+        isFinished = false; isOvertime = false; isPaused = false
+        timerName = name; totalDuration = duration; remainingTime = duration; elapsedTime = 0
+        timerDeadline = Date().addingTimeInterval(duration)
+        lastUpdated = Date(); activePresetId = preset?.id
+        scheduleCountdown()
+    }
 
-        activePresetId = preset?.id
-        
-        // Start countdown timer
-        let scheduled = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
-            guard let self = self else { return }
-            
-            Task { @MainActor in
-                if !self.isPaused {
-                    if self.remainingTime > 0 {
-                        // Normal countdown
-                        self.remainingTime -= 1
-                        self.elapsedTime = self.totalDuration - self.remainingTime
-                        self.lastUpdated = Date()
-                    } else if self.remainingTime == 0 {
-                        // Timer just finished - play sound and start overtime
-                        self.isFinished = true
-                        self.isOvertime = true
-                        self.playTimerSound()
-                        self.remainingTime = -1
-                        self.lastUpdated = Date()
-                    } else {
-                        // Overtime - count negative
-                        self.remainingTime -= 1
-                        self.lastUpdated = Date()
-                    }
-                }
-            }
+    func startFocusTimer(duration: TimeInterval, name: String,
+                         onFinish: @escaping () -> Void, onInterrupt: @escaping () -> Void,
+                         onPause: @escaping (Bool, TimeInterval) -> Void) {
+        startTimer(duration: max(0.1, duration), name: name)
+        activeSource = .focus
+        focusCompletion = onFinish; focusInterruption = onInterrupt; focusPauseChange = onPause
+    }
+
+    private func scheduleCountdown() {
+        timerInstance?.invalidate()
+        let scheduled = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.updateCountdown() }
         }
-        // A 1 s countdown tolerates 100 ms of drift and lets the timer
-        // coalesce with other wakeups instead of forcing its own.
         scheduled.tolerance = 0.1
         timerInstance = scheduled
     }
-    
+
+    private func updateCountdown() {
+        guard isTimerActive, !isPaused, let deadline = timerDeadline else { return }
+        remainingTime = ceil(deadline.timeIntervalSinceNow)
+        elapsedTime = max(0, totalDuration - remainingTime)
+        lastUpdated = Date()
+        guard remainingTime <= 0 else { return }
+        if activeSource == .focus {
+            let completion = focusCompletion
+            clearFocusCallbacks()
+            timerInstance?.invalidate(); timerInstance = nil
+            resetTimer()
+            completion?()
+        } else if !isFinished {
+            isFinished = true; isOvertime = true
+            playTimerSound()
+        }
+    }
+
+    private func clearFocusCallbacks() {
+        focusCompletion = nil; focusInterruption = nil; focusPauseChange = nil
+    }
+
+    private func interruptFocusTimer() {
+        let interruption = focusInterruption
+        clearFocusCallbacks()
+        interruption?()
+    }
+
     func startDemoTimer(duration: TimeInterval) {
         startTimer(duration: duration, name: "Demo Timer")
     }
     
     func stopTimer() {
+        interruptFocusTimer()
         if activeSource == .external {
             endExternalTimer(triggerSmoothClose: true)
             return
@@ -217,6 +230,7 @@ class TimerManager: ObservableObject {
     }
     
     func forceStopTimer() {
+        interruptFocusTimer()
         if activeSource == .external {
             endExternalTimer(triggerSmoothClose: false)
             return
@@ -233,53 +247,25 @@ class TimerManager: ObservableObject {
     }
     
     func pauseTimer() {
-        guard activeSource == .manual else { return }
-        guard isTimerActive && !isPaused else { return }
+        guard activeSource == .manual || activeSource == .focus, isTimerActive, !isPaused else { return }
+        updateCountdown()
+        guard isTimerActive else { return }
         isPaused = true
-        timerInstance?.invalidate()
-        timerInstance = nil
+        timerInstance?.invalidate(); timerInstance = nil; timerDeadline = nil
+        focusPauseChange?(true, remainingTime)
     }
-    
+
     func resumeTimer() {
-        guard activeSource == .manual else { return }
-        guard isTimerActive && isPaused else { return }
+        guard activeSource == .manual || activeSource == .focus, isTimerActive, isPaused else { return }
         isPaused = false
+        timerDeadline = Date().addingTimeInterval(remainingTime)
         lastUpdated = Date()
-        
-        // Resume countdown timer with same logic as start timer
-        let scheduled = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
-            guard let self = self else { return }
-            
-            Task { @MainActor in
-                if !self.isPaused {
-                    if self.remainingTime > 0 {
-                        // Normal countdown
-                        self.remainingTime -= 1
-                        self.elapsedTime = self.totalDuration - self.remainingTime
-                        self.lastUpdated = Date()
-                    } else if self.remainingTime == 0 {
-                        // Timer just finished - play sound and start overtime
-                        self.isFinished = true
-                        self.isOvertime = true
-                        self.playTimerSound()
-                        self.remainingTime = -1
-                        self.lastUpdated = Date()
-                    } else {
-                        // Overtime - count negative
-                        self.remainingTime -= 1
-                        self.lastUpdated = Date()
-                    }
-                }
-            }
-        }
-        // A 1 s countdown tolerates 100 ms of drift and lets the timer
-        // coalesce with other wakeups instead of forcing its own.
-        scheduled.tolerance = 0.1
-        timerInstance = scheduled
+        focusPauseChange?(false, remainingTime)
+        scheduleCountdown()
     }
 
     func adoptExternalTimer(name: String, totalDuration: TimeInterval, remaining: TimeInterval, isPaused: Bool) {
-        guard activeSource != .manual else { return }
+        guard activeSource != .manual && activeSource != .focus else { return }
 
         timerInstance?.invalidate()
         timerInstance = nil
@@ -351,6 +337,7 @@ class TimerManager: ObservableObject {
     }
     
     private func resetTimer() {
+        timerDeadline = nil
         withAnimation(.smooth) {
             isTimerActive = false
         }
@@ -376,7 +363,7 @@ class TimerManager: ObservableObject {
     }
 
     var hasManualTimerRunning: Bool {
-        activeSource == .manual && isTimerActive
+        (activeSource == .manual || activeSource == .focus) && isTimerActive
     }
 
     var allowsManualInteraction: Bool {
@@ -386,12 +373,15 @@ class TimerManager: ObservableObject {
     enum TimerSource: String {
         case none
         case manual
+        case focus
         case external
     }
 
     private func scheduleSmoothClose() {
+        let generation = timerGeneration
         // Wait 3 seconds then smoothly close the live activity
         DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
+            guard self.timerGeneration == generation else { return }
             withAnimation(.easeInOut(duration: 1.0)) {
                 self.isTimerActive = false
             }

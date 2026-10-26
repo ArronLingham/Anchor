@@ -96,23 +96,16 @@ enum MenuBarReadoutFormatter {
 ///
 /// ## Cost
 ///
-/// This is the one feature in the app that deliberately holds a periodic
-/// sampler open: a live readout is the whole point, so `SystemStatsManager` is
-/// `acquire()`d while the readout is visible and `release()`d the moment it is
-/// switched off. That is the existing reference-counted pattern, so turning
-/// this off returns the machine to exactly the cost it had before — and with
-/// the readout off, nothing samples at all.
-///
-/// The sampler is also released while the display sleeps, via the same
-/// `SystemActivityGate` every other poller uses.
+/// Shares the visible sampler while Stats is open. Closed-panel sampling is a
+/// separate explicit preference; otherwise the menu bar reports “Stats paused”.
 @MainActor
 final class MenuBarReadoutManager {
     static let shared = MenuBarReadoutManager()
 
     private var statusItem: NSStatusItem?
     private var cancellables = Set<AnyCancellable>()
-    private var statsCancellable: AnyCancellable?
     private var holdsSampler = false
+    private var statsCancellable: AnyCancellable?
     private var started = false
 
     /// The font is monospaced-digit rather than the system default, because a
@@ -165,20 +158,25 @@ final class MenuBarReadoutManager {
             statusItem = item
         }
         if !holdsSampler {
-            SystemStatsManager.shared.acquire()
+            SystemStatsManager.shared.acquire(background: true)
             holdsSampler = true
         }
         statsCancellable = SystemStatsManager.shared.$current
+            .combineLatest(SystemStatsManager.shared.$isSampling)
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] sample in
-                MainActor.assumeIsolated { self?.render(sample) }
+            .sink { [weak self] sample, sampling in
+                MainActor.assumeIsolated {
+                    guard let self else { return }
+                    if sampling { self.render(sample) }
+                    else { self.statusItem?.button?.title = "Stats paused" }
+                }
             }
     }
 
     private func remove() {
         statsCancellable = nil
         if holdsSampler {
-            SystemStatsManager.shared.release()
+            SystemStatsManager.shared.release(background: true)
             holdsSampler = false
         }
         if let statusItem {
@@ -195,7 +193,7 @@ final class MenuBarReadoutManager {
             netIn: Defaults[.menuBarShowNetwork] ? sample.networkInBytesPerSecond : nil,
             netOut: Defaults[.menuBarShowNetwork] ? sample.networkOutBytesPerSecond : nil)
 
-        guard let text else { remove(); return }
+        guard let text else { button.title = "Measuring…"; return }
         button.attributedTitle = NSAttributedString(
             string: text, attributes: [.font: Self.font])
     }

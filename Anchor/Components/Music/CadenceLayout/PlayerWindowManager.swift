@@ -322,6 +322,7 @@ private struct PlayerRootView: View {
     @State private var showingCloseChoice = false
 
     var body: some View {
+        Group {
         PlayerSurfaceView(
             layout: layouts.desktop,
             style: .forSurface(
@@ -331,10 +332,13 @@ private struct PlayerRootView: View {
             hovering: manager.isHovering,
             onExpand: { DesktopFullScreenController.shared.toggle() }
         )
-        .background(card)
+        .background(AnchorSurface(depth: usesGlass ? .glass : .raised, radius: 22).opacity(backgroundOpacity))
+        .overlay(RoundedRectangle(cornerRadius: 22).fill(cardColor.opacity(tinted && music.hasActiveSession ? 0.08 : 0)).allowsHitTesting(false))
         .overlay(alignment: .topTrailing) { closeButton }
         .contextMenu { menu }
         .animation(.easeInOut(duration: 0.35), value: music.avgColor)
+            }
+        .anchorTheme()
     }
 
     @ViewBuilder private var card: some View {

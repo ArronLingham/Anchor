@@ -77,12 +77,12 @@ struct SettingsPermissionCallout: View {
                 Button(LocalizedStringKey(requestButtonTitle)) {
                     requestAction()
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(AnchorButtonStyle(prominent: true))
 
                 Button(LocalizedStringKey(openSettingsButtonTitle)) {
                     openSettingsAction()
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(AnchorButtonStyle())
             }
             .controlSize(.small)
         }

@@ -59,14 +59,17 @@ class ScreenRecordingManager: ObservableObject {
     // MARK: - Published Properties
     @Published var isRecording: Bool = false
     @Published var isMonitoring: Bool = false
-    @Published var recordingDuration: TimeInterval = 0
+    /// Derived on demand: a duration read must not invalidate every notch view.
+    var recordingDuration: TimeInterval {
+        recordingStartTime.map { Date().timeIntervalSince($0) } ?? lastRecordingDuration
+    }
     @Published var isRecorderIdle: Bool = true
     @Published var lastUpdated: Date = .distantPast
     
     // MARK: - Private Properties
     private var cancellables = Set<AnyCancellable>()
     private var recordingStartTime: Date?
-    private var durationTimer: Timer?
+    private var lastRecordingDuration: TimeInterval = 0
     private var debounceIdleTask: Task<Void, Never>?
     
     // MARK: - Configuration
@@ -81,7 +84,6 @@ class ScreenRecordingManager: ObservableObject {
         // Clean up monitoring state
         // Note: We can't call async methods in deinit, so we just clean up local state
         debounceIdleTask?.cancel()
-        durationTimer?.invalidate()
     }
     
     // MARK: - Public Methods
@@ -164,6 +166,7 @@ class ScreenRecordingManager: ObservableObject {
     
     /// Check current recording status using private API
     func checkRecordingStatus() {
+        guard isMonitoring else { return }
         let currentRecordingState = CGSIsScreenWatcherPresent()
         
         // Debug: Always log current check
@@ -197,43 +200,22 @@ class ScreenRecordingManager: ObservableObject {
         }
     }
     
-    /// Start tracking recording duration
+    /// Keep timestamps without scheduling updates for a readout that is not visible.
     private func startDurationTracking() {
         recordingStartTime = Date()
-        recordingDuration = 0
-        
-        let timer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
-            Task { @MainActor in
-                self?.updateDuration()
-            }
-        }
-        // A recording-duration readout is not worth defeating timer coalescing.
-        timer.tolerance = 0.05
-        durationTimer = timer
-        
-        print("ScreenRecordingManager: ⏱️ Started duration tracking")
+        lastRecordingDuration = 0
     }
-    
-    /// Stop tracking recording duration
+
     private func stopDurationTracking() {
-        durationTimer?.invalidate()
-        durationTimer = nil
+        lastRecordingDuration = recordingDuration
         recordingStartTime = nil
-        
-        // Keep the last duration for a moment before resetting
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in
-            self?.recordingDuration = 0
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
+            guard let self, self.recordingStartTime == nil else { return }
+            self.lastRecordingDuration = 0
         }
-        
-        print("ScreenRecordingManager: ⏹️ Stopped duration tracking")
     }
-    
-    /// Update the current recording duration
-    private func updateDuration() {
-        guard let startTime = recordingStartTime else { return }
-        recordingDuration = Date().timeIntervalSince(startTime)
-    }
-    
+
     /// Copy EXACT music idle state logic
     private func updateIdleState(recording: Bool) {
         if recording {

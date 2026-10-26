@@ -1,5 +1,5 @@
 {
-  "originHash" : "59eab1be248d1e6f03132e1c2152389e9397d426bbeb99a71b6960b2ed9c15e7",
+  "originHash" : "61983d5f3db4df09cb31e827b733ebc6c3f30e227253b76aea1deed931adc4a3",
   "pins" : [
     {
       "identity" : "defaults",
@@ -24,7 +24,6 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/sindresorhus/LaunchAtLogin-Modern",
       "state" : {
-        "branch" : "main",
         "revision" : "a04ec1c363be3627734f6dad757d82f5d4fa8fcc"
       }
     },
@@ -42,7 +41,6 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/jasudev/LottieUI.git",
       "state" : {
-        "branch" : "main",
         "revision" : "0cd5b54a1c8467b19c01f56395aec179087b62e2"
       }
     },
@@ -78,7 +76,6 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/Lakr233/SkyLightWindow",
       "state" : {
-        "branch" : "main",
         "revision" : "4a7e8628c85e6b2ec429b57657a556a2171a4864"
       }
     },

@@ -1,0 +1,76 @@
+{
+  "date": "2026-10-23",
+  "installedApp": "/Applications/Anchor.app",
+  "pid": 67921,
+  "build": {
+    "configuration": "Release",
+    "optimization": "-O",
+    "compilationModeOverride": "incremental",
+    "succeeded": true
+  },
+  "signature": {
+    "deepStrictVerified": true,
+    "identifier": "com.arronlingham.Anchor",
+    "team": "KLWHJX56T3"
+  },
+  "executableSHA256": "42c1931e833f60862a5d53516e832261f9e9433a4bf9e35fe559b68a2814c3a8",
+  "builtInstalledMatch": true,
+  "backup": "/var/folders/96/05cq_fd555z193zn1cx___j80000gn/T/anchor-system-tools-install.brr2rzc1",
+  "tests": {
+    "selectedPackageCases": 31,
+    "failures": 0,
+    "metricsBehaviorAssertions": 373,
+    "nativeCleanup": 92,
+    "nativeUninstaller": 16,
+    "claudeWatcher": 7,
+    "menuBarFormatting": 28,
+    "settingsSearch": 5,
+    "nativeSnapGeometry": 68
+  },
+  "installedUI": {
+    "codexRecoveryControls": true,
+    "codexWatchingStatus": true,
+    "codexAutomaticContinuationEnabled": true,
+    "statsEnabledForUnsetPreference": true,
+    "backgroundMonitoringOff": true,
+    "cleanerStorageReviewVisible": true,
+    "storageReviewStartsIdleWithNoSelection": true,
+    "uninstallerVisible": true
+  },
+  "phone": {
+    "topicConfigured": true,
+    "realNotificationSentDuringValidation": true,
+    "iphoneSubscribed": true,
+    "testMessagesReceivedOnIPhone": 2,
+    "iosNotificationPermissionEnabled": true,
+    "backgroundBannerVisuallyVerified": false,
+    "setupVerifiedAt": "2026-10-23T17:11:00-04:00"
+  },
+  "liveAIContinuationTested": false,
+  "performance": {
+    "sampleSeconds": 20,
+    "samples": 10,
+    "before": {
+      "meanCPU": 0.05,
+      "medianCPU": 0.0,
+      "meanRSS_MB": 37.1
+    },
+    "after": {
+      "meanCPU": 0.24,
+      "medianCPU": 0.0,
+      "p90CPU": 0.96,
+      "maxCPU": 1.44,
+      "meanRSS_MB": 99.7,
+      "maxRSS_MB": 130.6
+    },
+    "controlledComparison": false,
+    "percentageImprovementClaimed": false
+  },
+  "limits": [
+    "Storage review inventories accessible metadata and offers up to 200 large local files; it does not infer that personal files are unused.",
+    "Codex threads with desktop-only tools require continuation in their owning app.",
+    "Phone alerts need a Keychain topic and subscribed phone. Resets beyond three days require Anchor to reach the ntfy scheduling window.",
+    "Keyboard cleaning lock and actual window snapping were not activated during live validation.",
+    "Native Stats layout was compiled; live hardware readings and lease shutdown were verified through the shared production service tests."
+  ]
+}

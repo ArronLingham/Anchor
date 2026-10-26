@@ -493,6 +493,12 @@ struct LockScreenWeatherWidget: View {
 	}
 
 	var body: some View {
+        designedWeatherContent.anchorTheme()
+    }
+
+    @ViewBuilder
+    private var designedWeatherContent: some View {
+
 		VStack(alignment: .leading, spacing: focusWidgetSpacing) {
 			ForEach(Array(enabledRowKinds.enumerated()), id: \.offset) { index, kind in
 				rowView(for: kind)
@@ -573,7 +579,8 @@ struct LockScreenWeatherWidget: View {
 		}
 		.accessibilityElement(children: .ignore)
 		.accessibilityLabel(accessibilityLabel)
-	}
+
+    }
 
 	private func offsetForRow(index: Int) -> CGFloat {
 		if enabledRowKinds.count != 3 { return 0 }
@@ -1022,7 +1029,7 @@ struct LockScreenWeatherWidget: View {
 		}
 		.layoutPriority(1)
 	}
-    
+
     private func inlineBatterySegment(for info: LockScreenWeatherSnapshot.BatteryInfo) -> some View {
         let level = clampedBatteryLevel(info.batteryLevel)
 

@@ -28,6 +28,7 @@ struct OnboardingFinishView: View {
     let onOpenSettings: () -> Void
 
     var body: some View {
+        Group {
         VStack(spacing: 20) {
             Spacer()
 
@@ -57,7 +58,7 @@ struct OnboardingFinishView: View {
                 .controlSize(.large)
 
                 Button("Finish", action: onFinish)
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(AnchorButtonStyle(prominent: true))
                     .controlSize(.large)
                     .keyboardShortcut(.defaultAction)
                 
@@ -81,6 +82,9 @@ struct OnboardingFinishView: View {
             VisualEffectView(material: .underWindowBackground, blendingMode: .behindWindow)
                 .ignoresSafeArea()
         )
+            }
+        .anchorTheme()
+        .background(AnchorCanvas())
     }
 }
 

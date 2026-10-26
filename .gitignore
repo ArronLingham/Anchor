@@ -145,6 +145,12 @@ PrivateWorks
 tests/*
 !tests/TodoStorageTests.swift
 !tests/run_todo_storage_tests.sh
+!tests/NotchClickRoutingTests.swift
+!tests/run_notch_click_tests.sh
+!tests/audio_diagnostics/
+!tests/audio_diagnostics/**
+!tests/focus_diagnostics/
+!tests/focus_diagnostics/**
 AnchorUITests/
 TESTING.md
 scripts/
@@ -183,3 +189,25 @@ default.profraw
 
 !tests/ExternalPillPolicyTests.swift
 !tests/run_external_pill_tests.sh
+!tests/LauncherExperienceTests.swift
+!tests/run_launcher_experience_tests.sh
+
+# Research workflow regression harnesses
+!tests/ProductivityWorkflowTests.swift
+!tests/run_productivity_workflow_tests.sh
+!tests/ShelfFileActionTests.swift
+!tests/run_shelf_file_action_tests.sh
+
+# Switcher corner navigation and Dashboard customization regressions
+!tests/SwitcherDashboardTests.swift
+!tests/run_switcher_dashboard_tests.sh
+
+!tests/LockSoundAudioTests.swift
+!tests/run_lock_sound_tests.sh
+
+# Native utility integration support is part of the reproducible app build.
+!Packages/AnchorUtilities/Support/*.sh
+!tests/UtilityOwnershipTests.swift
+!tests/run_utility_ownership_tests.sh
+!tests/AIAssistantCredentialTests.swift
+!tests/run_ai_credential_tests.sh

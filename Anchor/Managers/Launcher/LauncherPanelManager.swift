@@ -50,6 +50,7 @@ final class LauncherPanelManager: ObservableObject {
 
         let hosting = FirstMouseHostingView(
             rootView: LauncherView(
+                widgetProfileID: LauncherWidgetProfile.screenID(screen),
                 onLaunch: { [weak self] app in
                     AppIndex.shared.launch(app)
                     // The launched app takes focus itself, so do not restore.
@@ -70,6 +71,7 @@ final class LauncherPanelManager: ObservableObject {
         panel.makeKeyAndOrderFront(nil as Any?)
         panel.makeFirstResponder(hosting)
         NSApp.activate(ignoringOtherApps: true)
+        panel.animatePresentation()
     }
 
     func hide(restoringFocus: Bool = true) {

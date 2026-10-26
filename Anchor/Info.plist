@@ -10,9 +10,17 @@
 	<key>NSAppleMusicUsageDescription</key>
 	<string>Anchor uses Apple Music to fetch animated artwork for the lock screen wallpaper.</string>
 	<key>NSAudioCaptureUsageDescription</key>
-	<string>Anchor needs audio capture permission to display the real-time music waveform visualizer.</string>
+	<string>Anchor captures app audio for per-app volume controls, music visualizers and screen recordings you start. Recordings stay on your Mac unless you choose to share them.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Anchor uses the microphone for push-to-talk dictation. Audio is transcribed on-device and never leaves your Mac.</string>
+	<string>Anchor uses the microphone for on-device dictation and, when you enable it, screen recording. Dictation stays on your Mac. Recordings stay local unless you choose to share them.</string>
+	<key>NSCameraUseContinuityCameraDeviceType</key>
+	<true/>
+	<key>NSDesktopFolderUsageDescription</key>
+	<string>Anchor accesses desktop files only for file tools and cleanup locations you choose.</string>
+	<key>NSNetworkVolumesUsageDescription</key>
+	<string>Anchor accesses network folders when you select them for file tools, capture exports or organization.</string>
+	<key>NSRemovableVolumesUsageDescription</key>
+	<string>Anchor accesses removable drives when you select them for file tools, capture exports or organization.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
 	<string>Anchor transcribes your dictation on-device using Apple's speech recognition.</string>
 	<key>SUAutomaticallyUpdate</key>

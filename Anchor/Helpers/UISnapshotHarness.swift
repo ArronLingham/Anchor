@@ -62,10 +62,121 @@ enum UISnapshotHarness {
             // a sheet of placeholder rectangles.
             try? await Task.sleep(for: .seconds(4))
 
+            #if DEBUG
+            if ProcessInfo.processInfo.environment["ANCHOR_SEARCH_REVIEW"] == "1" {
+                let index = AppIndex.shared
+                var lines = ["Indexed apps: \(index.apps.count)"]
+                var failures = 0
+                let cases = [
+                    ("saf", "com.apple.Safari"),
+                    ("safrai", "com.apple.Safari"),
+                    ("ss", "com.apple.systempreferences"),
+                    ("system preferences", "com.apple.systempreferences"),
+                    ("monitor activity", "com.apple.ActivityMonitor"),
+                    ("task manager", "com.apple.ActivityMonitor"),
+                    ("disk utility", "com.apple.DiskUtility")
+                ]
+                for (query, identifier) in cases {
+                    let results = index.search(query)
+                    let passed = results.first?.app.bundleIdentifier == identifier
+                    if !passed { failures += 1 }
+                    lines.append("\(passed ? "PASS" : "FAIL") \(query): " + results.prefix(5).map { $0.app.name }.joined(separator: ", "))
+                }
+                let home = index.search("", limit: Int.max)
+                if home.contains(where: { $0.app.isSearchOnly }) { failures += 1 }
+                lines.append("Home excludes search-only utilities: \(!home.contains(where: { $0.app.isSearchOnly }))")
+                let begin = Date()
+                for _ in 0..<20 { for (query, _) in cases { _ = index.search(query) } }
+                lines.append("Actual AppIndex mean query ms: \(Date().timeIntervalSince(begin) * 1000 / 140)")
+                lines.append("Failures: \(failures)")
+                try? lines.joined(separator: "\n").write(to: directory.appendingPathComponent("search-results.txt"), atomically: true, encoding: .utf8)
+                NSApplication.shared.terminate(nil)
+                return
+            }
+            #endif
+
             let highlight = SettingsHighlightCoordinator()
             let viewModel = AnchorViewModel()
 
             #if DEBUG
+            if ProcessInfo.processInfo.environment["ANCHOR_CORNER_REVIEW"] == "1" {
+                await AppSwitcherPanelManager.shared.reviewCornerNavigation(into: directory)
+                let index = AppIndex.shared
+                var launcherChecks: [String] = []
+                func checkLauncher(_ name: String, _ passed: Bool) {
+                    launcherChecks.append("\(passed ? "PASS" : "FAIL"): \(name)")
+                }
+                checkLauncher("explicit lock commands remain searchable", ["lock", "lock screen", "lock mac", "secure mac"].allSatisfy { query in
+                    LauncherCommand.search(query).contains { $0.id == "toggle.lockScreen" }
+                })
+                checkLauncher("ambiguous queries cannot offer lock", ["s", "screen", "away", "secure", "clock"].allSatisfy { query in
+                    !LauncherCommand.search(query).contains { $0.id == "toggle.lockScreen" }
+                })
+                checkLauncher("utility apps are indexed", index.apps.contains { $0.bundleIdentifier == "com.apple.FontBook" }
+                    && index.apps.contains { $0.bundleIdentifier == "com.apple.DiskUtility" })
+                checkLauncher("home results hide utilities", !index.search("", limit: Int.max).contains { $0.app.isSearchOnly })
+                checkLauncher("all categories hide utilities", AppCategory.allCases.allSatisfy { category in
+                    !index.apps(in: category).contains { $0.isSearchOnly }
+                })
+                for (query, identifier) in [("Font Book", "com.apple.FontBook"), ("Disk Utility", "com.apple.DiskUtility")] {
+                    checkLauncher("\(query) remains searchable", index.search(query, limit: Int.max).contains { $0.app.bundleIdentifier == identifier })
+                }
+                for (query, identifier) in [("Font Book", "com.apple.FontBook"), ("Disk Utility", "com.apple.DiskUtility")] {
+                    checkLauncher("explicit utility name ranks first for \(query)", index.search(query).first?.app.bundleIdentifier == identifier)
+                }
+                launcherChecks.append("Search-only tools: " + index.apps.filter(\.isSearchOnly).map(\.name).joined(separator: ", "))
+                try? launcherChecks.joined(separator: "\n").write(to: directory.appendingPathComponent("launcher-results.txt"), atomically: true, encoding: .utf8)
+                let originalArguments = UserDefaults.standard.volatileDomain(forName: UserDefaults.argumentDomain)
+                defer { UserDefaults.standard.setVolatileDomain(originalArguments, forName: UserDefaults.argumentDomain) }
+                var arguments = originalArguments
+                arguments["AnchorDashboardLayout"] = Data()
+                UserDefaults.standard.setVolatileDomain(arguments, forName: UserDefaults.argumentDomain)
+                if ProcessInfo.processInfo.environment["ANCHOR_TODO_TEST_DIRECTORY"] != nil {
+                    _ = TodoManager.shared.add("Send the project update", priority: 3)
+                    _ = TodoManager.shared.add("Review the next milestone", priority: 2)
+                    _ = TodoManager.shared.add("Organize reference notes", priority: 1)
+                    _ = TodoManager.shared.add("Plan tomorrow")
+                }
+                let hardware = DashboardHardwareState()
+                await capture(DashboardView(hardware: hardware), size: CGSize(width: 1040, height: 900), scheme: .dark,
+                              to: directory.appendingPathComponent("dashboard.png"))
+                await capture(DashboardView(hardware: hardware), size: CGSize(width: 620, height: 800), scheme: .dark,
+                              to: directory.appendingPathComponent("dashboard-narrow.png"))
+                await capture(DashboardCustomizationView(section: .overview, savedLayout: .constant(Data()), onDone: {}),
+                              size: CGSize(width: 340, height: 470), scheme: .dark,
+                              to: directory.appendingPathComponent("dashboard-customize.png"))
+                var layout = DashboardLayout()
+                for card in DashboardCard.allCases { layout.setVisible(false, card: card, in: .overview) }
+                arguments["AnchorDashboardLayout"] = layout.data
+                UserDefaults.standard.setVolatileDomain(arguments, forName: UserDefaults.argumentDomain)
+                await capture(DashboardView(hardware: hardware), size: CGSize(width: 620, height: 650), scheme: .dark,
+                              to: directory.appendingPathComponent("dashboard-empty.png"))
+                layout.setVisible(true, card: .tasks, in: .overview)
+                layout.setVisible(true, card: .soundDisplay, in: .overview)
+                arguments["AnchorDashboardLayout"] = layout.data
+                UserDefaults.standard.setVolatileDomain(arguments, forName: UserDefaults.argumentDomain)
+                await capture(DashboardView(hardware: hardware), size: CGSize(width: 1040, height: 800), scheme: .dark,
+                              to: directory.appendingPathComponent("dashboard-custom-layout.png"))
+                await capture(LauncherView(onLaunch: { _ in }, onDismiss: {}), size: CGSize(width: 1040, height: 800), scheme: .dark,
+                              to: directory.appendingPathComponent("launcher-home.png"))
+                NSApp.terminate(nil)
+                return
+            }
+            if ProcessInfo.processInfo.environment["ANCHOR_WORKSPACE_REVIEW"] == "1" {
+                await WorkspaceReviewHarness.run(into: directory)
+                NSApp.terminate(nil)
+                return
+            }
+            if ProcessInfo.processInfo.environment["ANCHOR_DESIGN_REVIEW"] == "1" {
+                await captureDesignReview(into: directory, highlight: highlight, viewModel: viewModel)
+                NSApp.terminate(nil)
+                return
+            }
+            if ProcessInfo.processInfo.environment["ANCHOR_RESEARCH_REVIEW"] == "1" {
+                await captureResearchReview(into: directory, highlight: highlight)
+                NSApp.terminate(nil)
+                return
+            }
             if ProcessInfo.processInfo.environment["ANCHOR_PILL_REVIEW"] == "1" {
                 await captureExternalPillReview(into: directory)
                 NSApp.terminate(nil)
@@ -94,12 +205,12 @@ enum UISnapshotHarness {
                     scheme: scheme,
                     to: directory.appendingPathComponent("launcher-grid-\(suffix).png"))
 
-                // Settings panes are Forms; without .formStyle(.grouped) and a
+                // Settings panes are Forms; without .formStyle(AnchorFormStyle()) and a
                 // window background they render as unstyled floating labels,
                 // which is nothing like how they appear in the real window.
                 await capture(
                     DictationSettings()
-                        .formStyle(.grouped)
+                        .formStyle(AnchorFormStyle())
                         .environmentObject(highlight),
                     size: CGSize(width: 720, height: 720),
                     scheme: scheme,
@@ -107,7 +218,7 @@ enum UISnapshotHarness {
 
                 await capture(
                     LauncherSettings()
-                        .formStyle(.grouped)
+                        .formStyle(AnchorFormStyle())
                         .environmentObject(highlight),
                     size: CGSize(width: 720, height: 780),
                     scheme: scheme,
@@ -115,7 +226,7 @@ enum UISnapshotHarness {
 
                 await capture(
                     ClaudeUsageSettings()
-                        .formStyle(.grouped)
+                        .formStyle(AnchorFormStyle())
                         .environmentObject(highlight),
                     size: CGSize(width: 720, height: 860),
                     scheme: scheme,
@@ -238,7 +349,7 @@ enum UISnapshotHarness {
         func pane<V: View>(_ name: String, _ view: V) -> (String, CGSize, AnyView) {
             (name, size, AnyView(
                 view
-                    .formStyle(.grouped)
+                    .formStyle(AnchorFormStyle())
                     .environmentObject(highlight)
                     .environmentObject(viewModel)))
         }
@@ -258,12 +369,13 @@ enum UISnapshotHarness {
         func narrowPane<V: View>(_ name: String, _ view: V) -> (String, CGSize, AnyView) {
             (name, realWidth, AnyView(
                 view
-                    .formStyle(.grouped)
+                    .formStyle(AnchorFormStyle())
                     .environmentObject(highlight)
                     .environmentObject(viewModel)))
         }
 
         return [
+            pane("features", SettingsFeatures()),
             pane("general", GeneralSettings()),
             pane("charge", Charge()),
             pane("downloads", Downloads()),
@@ -298,6 +410,10 @@ enum UISnapshotHarness {
             pane("git-commit", GitCommitSettings()),
             pane("menu-bar", MenuBarSettings()),
             pane("vinyl", VinylSettings()),
+            pane("connections", SettingsIntegrations()),
+            pane("launcher", LauncherSettings()),
+            pane("dictation", DictationSettings()),
+            pane("claude-usage", ClaudeUsageSettings()),
         ]
     }
 
@@ -426,10 +542,10 @@ enum UISnapshotHarness {
                         .background(Color(nsColor: .windowBackgroundColor)).environment(\.colorScheme, .dark),
                       size: CGSize(width: 294, height: 390), scheme: .dark,
                       to: directory.appendingPathComponent("todo-calendar.png"))
-        await capture(TodoSettings().formStyle(.grouped).environmentObject(highlight),
+        await capture(TodoSettings().formStyle(AnchorFormStyle()).environmentObject(highlight),
                       size: CGSize(width: 490, height: 2000), scheme: .dark,
                       to: directory.appendingPathComponent("todo-settings.png"))
-        await capture(MenuBarSettings().formStyle(.grouped).environmentObject(highlight),
+        await capture(MenuBarSettings().formStyle(AnchorFormStyle()).environmentObject(highlight),
                       size: CGSize(width: 490, height: 1300), scheme: .dark,
                       to: directory.appendingPathComponent("menu-bar-settings.png"))
         for size in [CGSize(width: 1440, height: 900), CGSize(width: 860, height: 560)] {
@@ -440,7 +556,107 @@ enum UISnapshotHarness {
     #endif
 
     @MainActor
-    private static func capture<V: View>(
+    private static func captureResearchReview(into directory: URL, highlight: SettingsHighlightCoordinator) async {
+        let hardware = DashboardHardwareState()
+        hardware.start()
+        let priorSize = Defaults[.circularHUDSize]
+        let priorStroke = Defaults[.circularHUDStrokeWidth]
+        let priorPercentage = Defaults[.circularHUDShowValue]
+        let timerWasEnabled = Defaults[.enableTimerFeature]
+        Defaults[.enableTimerFeature] = true
+        let oldStyles = (Defaults[.enableSystemHUD], Defaults[.enableCustomOSD], Defaults[.enableVerticalHUD], Defaults[.enableCircularHUD])
+        Defaults[.enableSystemHUD] = false; Defaults[.enableCustomOSD] = false
+        Defaults[.enableVerticalHUD] = false; Defaults[.enableCircularHUD] = true
+        defer {
+            hardware.stop()
+            Defaults[.circularHUDSize] = priorSize
+            Defaults[.circularHUDStrokeWidth] = priorStroke
+            Defaults[.circularHUDShowValue] = priorPercentage
+            Defaults[.enableTimerFeature] = timerWasEnabled
+            Defaults[.enableSystemHUD] = oldStyles.0; Defaults[.enableCustomOSD] = oldStyles.1
+            Defaults[.enableVerticalHUD] = oldStyles.2; Defaults[.enableCircularHUD] = oldStyles.3
+        }
+        for scheme in [ColorScheme.dark, .light] {
+            let suffix = scheme == .dark ? "dark" : "light"
+            await capture(DashboardView(hardware: hardware), size: CGSize(width: 940, height: 780), scheme: scheme,
+                to: directory.appendingPathComponent("dashboard-\(suffix).png"))
+            await capture(HUDAndOSDSettingsView().environmentObject(highlight), size: CGSize(width: 520, height: 760), scheme: scheme,
+                to: directory.appendingPathComponent("controls-settings-\(suffix).png"))
+            await capture(DashboardView(hardware: hardware), size: CGSize(width: 620, height: 720), scheme: scheme,
+                to: directory.appendingPathComponent("dashboard-narrow-\(suffix).png"))
+            await capture(FocusSessionView(), size: CGSize(width: 420, height: 150), scheme: scheme,
+                to: directory.appendingPathComponent("focus-ready-\(suffix).png"))
+            let lockAnimator = LockScreenPanelAnimator()
+            lockAnimator.isPresented = true
+            lockAnimator.contentSize = LockScreenMusicPanel.collapsedSize
+            await capture(LockScreenMusicPanel(animator: lockAnimator), size: LockScreenMusicPanel.collapsedSize, scheme: scheme,
+                to: directory.appendingPathComponent("lock-player-\(suffix).png"))
+            await capture(ClipboardPanelView(onClose: {}), size: CGSize(width: 340, height: 420), scheme: scheme,
+                to: directory.appendingPathComponent("clipboard-\(suffix).png"))
+        }
+        Defaults[.circularHUDShowValue] = true
+        for diameter in [CGFloat(40), 65, 90, 200] {
+            Defaults[.circularHUDSize] = diameter
+            Defaults[.circularHUDStrokeWidth] = min(4, diameter * 0.12)
+            let layout = CircularHUDLayout(diameter: diameter)
+            for value in [CGFloat(0), 0.06, 0.65, 1] {
+                for type in [SneakContentType.volume, .brightness] {
+                    let name = type == .volume ? "volume" : "brightness"
+                    await capture(CircularHUDView(type: .constant(type), value: .constant(value), icon: .constant(""), isPreview: true),
+                        size: CGSize(width: layout.canvasSize, height: layout.canvasSize), scheme: .dark,
+                        to: directory.appendingPathComponent("circular-\(name)-\(Int(diameter))-\(Int(value * 100)).png"))
+                }
+            }
+        }
+    }
+
+    #if DEBUG
+    @MainActor
+    private static func captureDesignReview(into directory: URL, highlight: SettingsHighlightCoordinator,
+                                            viewModel: AnchorViewModel) async {
+        let hardware = DashboardHardwareState()
+        hardware.start()
+        defer { hardware.stop() }
+        await capture(DashboardView(hardware: hardware), size: CGSize(width: 1040, height: 900), scheme: .dark,
+                      to: directory.appendingPathComponent("dashboard.png"))
+        await capture(DashboardView(hardware: hardware), size: CGSize(width: 620, height: 800), scheme: .dark,
+                      to: directory.appendingPathComponent("dashboard-narrow.png"))
+        await capture(SettingsView(), size: CGSize(width: 980, height: 760), scheme: .dark,
+                      to: directory.appendingPathComponent("settings-window.png"))
+        for pane in settingsPanes(highlight: highlight, viewModel: viewModel) {
+            await capture(pane.view.formStyle(AnchorFormStyle()).anchorTheme().background(AnchorCanvas()),
+                          size: CGSize(width: 700, height: 950), scheme: .dark,
+                          to: directory.appendingPathComponent("settings-\(pane.name).png"))
+        }
+        await capture(LauncherView(onLaunch: { _ in }, onDismiss: {}), size: CGSize(width: 1200, height: 850), scheme: .dark,
+                      to: directory.appendingPathComponent("launcher.png"))
+        await capture(ClipboardPanelView(onClose: {}), size: CGSize(width: 380, height: 480), scheme: .dark,
+                      to: directory.appendingPathComponent("clipboard.png"))
+        await capture(CircularHUDView(type: .constant(.volume), value: .constant(0.65), icon: .constant(""), isPreview: true),
+                      size: CGSize(width: 240, height: 240), scheme: .dark,
+                      to: directory.appendingPathComponent("hud.png"))
+        await capture(OnboardingView(onFinish: {}, onOpenSettings: {}), size: CGSize(width: 800, height: 620), scheme: .dark,
+                      to: directory.appendingPathComponent("onboarding.png"))
+        MusicManager.shared.songTitle = "Evening session"
+        MusicManager.shared.artistName = "Anchor"
+        MusicManager.shared.songDuration = 240
+        MusicManager.shared.elapsedTime = 75
+        MusicManager.shared.isPlaying = true
+        let animator = LockScreenPanelAnimator()
+        animator.isPresented = true
+        animator.contentSize = LockScreenMusicPanel.collapsedSize
+        await capture(LockScreenMusicPanel(animator: animator), size: LockScreenMusicPanel.collapsedSize, scheme: .dark,
+                      to: directory.appendingPathComponent("lock-player.png"))
+        await capture(FocusSessionView().padding(24).anchorTheme().background(AnchorCanvas()), size: CGSize(width: 450, height: 240), scheme: .dark,
+                      to: directory.appendingPathComponent("focus.png"))
+        await capture(ContentView().environmentObject(viewModel), size: CGSize(width: 650, height: 340), scheme: .dark,
+                      to: directory.appendingPathComponent("notch.png"))
+
+    }
+    #endif
+
+    @MainActor
+    static func capture<V: View>(
         _ view: V, size: CGSize, scheme: ColorScheme, to url: URL
     ) async {
         let hosting = NSHostingView(rootView: AnyView(view))

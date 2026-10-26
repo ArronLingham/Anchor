@@ -542,7 +542,7 @@ struct Appearance: View {
                             iconImportError = nil
                             isIconImporterPresented = true
                         }
-                        .buttonStyle(.borderedProminent)
+                        .buttonStyle(AnchorButtonStyle(prominent: true))
 
                         Button("Remove selected") {
                             if let id = selectedAppIconID,
@@ -550,7 +550,7 @@ struct Appearance: View {
                                 removeCustomIcon(icon)
                             }
                         }
-                        .buttonStyle(.bordered)
+                        .buttonStyle(AnchorButtonStyle())
                         .disabled(selectedAppIconID == nil)
                     }
 
@@ -784,7 +784,7 @@ struct Appearance: View {
                         openNotchWidth = recommendedMin
                     }
                     .disabled(abs(openNotchWidth - recommendedMin) < 0.5)
-                    .buttonStyle(.bordered)
+                    .buttonStyle(AnchorButtonStyle())
                 }
 
                 let description = enableMinimalisticUI

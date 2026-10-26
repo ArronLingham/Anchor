@@ -22,6 +22,7 @@ import CoreGraphics
 import Defaults
 import AppKit
 import AVFoundation
+import AnchorUtilities
 
 final class SystemChangesObserver: MediaKeyInterceptorDelegate {
     private weak var coordinator: AnchorViewCoordinator?
@@ -55,12 +56,33 @@ final class SystemChangesObserver: MediaKeyInterceptorDelegate {
     private var volumeEnabled = false
     private var brightnessEnabled = false
     private var keyboardBacklightEnabled = false
+    private var requestedControls = (volume: false, brightness: false, keyboard: false)
+    private var observing = false
+    private var utilityOwnershipObserver: NSObjectProtocol?
 
     init(coordinator: AnchorViewCoordinator) {
         self.coordinator = coordinator
+        utilityOwnershipObserver = NotificationCenter.default.addObserver(
+            forName: .utilityControlOwnershipChanged, object: nil, queue: .main
+        ) { [weak self] _ in
+            guard let self, self.observing else { return }
+            self.update(volumeEnabled: self.requestedControls.volume,
+                        brightnessEnabled: self.requestedControls.brightness,
+                        keyboardBacklightEnabled: self.requestedControls.keyboard)
+        }
+    }
+
+    deinit {
+        if let utilityOwnershipObserver { NotificationCenter.default.removeObserver(utilityOwnershipObserver) }
     }
 
     func startObserving(volumeEnabled: Bool, brightnessEnabled: Bool, keyboardBacklightEnabled: Bool) {
+        observing = true
+        requestedControls = (volumeEnabled, brightnessEnabled, keyboardBacklightEnabled)
+        let owners = UtilityWorkspace.shared.controlOwners
+        let volumeEnabled = volumeEnabled && !owners.contains("volumeKeys") && !owners.contains("notch")
+        let brightnessEnabled = brightnessEnabled && !owners.contains("brightness") && !owners.contains("notch")
+        let keyboardBacklightEnabled = keyboardBacklightEnabled && !owners.contains("brightness") && !owners.contains("notch")
         self.volumeEnabled = volumeEnabled
         self.brightnessEnabled = brightnessEnabled
         self.keyboardBacklightEnabled = keyboardBacklightEnabled
@@ -107,6 +129,11 @@ final class SystemChangesObserver: MediaKeyInterceptorDelegate {
     }
 
     func update(volumeEnabled: Bool, brightnessEnabled: Bool, keyboardBacklightEnabled: Bool) {
+        requestedControls = (volumeEnabled, brightnessEnabled, keyboardBacklightEnabled)
+        let owners = UtilityWorkspace.shared.controlOwners
+        let volumeEnabled = volumeEnabled && !owners.contains("volumeKeys") && !owners.contains("notch")
+        let brightnessEnabled = brightnessEnabled && !owners.contains("brightness") && !owners.contains("notch")
+        let keyboardBacklightEnabled = keyboardBacklightEnabled && !owners.contains("brightness") && !owners.contains("notch")
         self.volumeEnabled = volumeEnabled
         self.brightnessEnabled = brightnessEnabled
         let backlightStateChanged = self.keyboardBacklightEnabled != keyboardBacklightEnabled
@@ -136,6 +163,7 @@ final class SystemChangesObserver: MediaKeyInterceptorDelegate {
     }
 
     func stopObserving() {
+        observing = false
         mediaKeyInterceptor.stop()
         mediaKeyInterceptor.delegate = nil
 

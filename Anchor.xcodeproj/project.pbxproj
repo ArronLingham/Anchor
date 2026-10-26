@@ -29,6 +29,7 @@
 		7EF19C172F577040005B9929 /* SwiftTerm in Frameworks */ = {isa = PBXBuildFile; productRef = 7EF19C162F577040005B9929 /* SwiftTerm */; };
 		A3C83CAF84544DCE386C3BB8 /* AnchorUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54078F29304A9DBBEFBDF932 /* AnchorUITests.swift */; };
 		F910B9C812C7AEFE2293F7D2 /* Cocoa.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4A9C58195E197C19F691DA62 /* Cocoa.framework */; };
+		ADDA11000000000000000003 /* AnchorUtilities in Frameworks */ = {isa = PBXBuildFile; productRef = ADDA11000000000000000002 /* AnchorUtilities */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -127,6 +128,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				ADDA11000000000000000003 /* AnchorUtilities in Frameworks */,
 				7EF19C172F577040005B9929 /* SwiftTerm in Frameworks */,
 				7EF10C122F817ECF004229A0 /* Accelerate.framework in Frameworks */,
 				7E1ADF1D2EA209B1001DA867 /* SkyLightWindow in Frameworks */,
@@ -248,6 +250,7 @@
 				F54406E42CD4987A00C7AFD9 /* Frameworks */,
 				F54406E52CD4987A00C7AFD9 /* Resources */,
 				7EA69B1B2F5AE13500EB2D16 /* CopyFiles */,
+				ADDA11000000000000000004 /* Native Utility Support */,
 				7EFAA8AA2F6F12F3000A99E8 /* ShellScript */,
 			);
 			buildRules = (
@@ -260,6 +263,7 @@
 			);
 			name = Anchor;
 			packageProductDependencies = (
+				ADDA11000000000000000002 /* AnchorUtilities */,
 				14D032192C68F32E0096E6A1 /* LaunchAtLogin */,
 				14D0321C2C68F3350096E6A1 /* Sparkle */,
 				B18654382C6F4990000B926A /* KeyboardShortcuts */,
@@ -300,6 +304,7 @@
 			mainGroup = F54406DE2CD4987A00C7AFD9;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
+				ADDA11000000000000000001 /* XCLocalSwiftPackageReference "Packages/AnchorUtilities" */,
 				F54407082CD4A23F00C7AFD9 /* XCRemoteSwiftPackageReference "swift-collections" */,
 				14D032182C68F32E0096E6A1 /* XCRemoteSwiftPackageReference "LaunchAtLogin-Modern" */,
 				14D0321B2C68F3350096E6A1 /* XCRemoteSwiftPackageReference "Sparkle" */,
@@ -366,6 +371,36 @@
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
 			shellScript = "if [ \"$CONFIGURATION\" != \"Release\" ] || [ \"$ACTION\" != \"install\" ]; then\n\texit 0\nfi\n\nAPP=\"$CODESIGNING_FOLDER_PATH\"\nSPARKLE=\"$APP/Contents/Frameworks/Sparkle.framework\"\nXPC_DIR=\"$SPARKLE/Versions/Current/XPCServices\"\n\nif [ ! -d \"$XPC_DIR\" ]; then\n\texit 0\nfi\n\nfor xpc in \"$XPC_DIR\"/*.xpc; do\n\t/usr/bin/codesign --force --sign \"$EXPANDED_CODE_SIGN_IDENTITY\" --timestamp --options runtime --preserve-metadata=identifier,entitlements \"$xpc\"\ndone\n\n/usr/bin/codesign --force --sign \"$EXPANDED_CODE_SIGN_IDENTITY\" --timestamp --options runtime --preserve-metadata=identifier,entitlements \"$SPARKLE\"\n";
+		};
+		ADDA11000000000000000004 /* Native Utility Support */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = ();
+			inputPaths = (
+				"$(SRCROOT)/Packages/AnchorUtilities/Support/build-support.sh",
+				"$(SRCROOT)/Packages/AnchorUtilities/Support/FanControlHelper/main.swift",
+				"$(SRCROOT)/Packages/AnchorUtilities/Support/NowPlayingAdapter/NowPlayingAdapter.swift",
+				"$(SRCROOT)/Packages/AnchorUtilities/Support/NowPlayingAdapter/NowPlayingQueue.swift",
+				"$(SRCROOT)/Packages/AnchorUtilities/Support/NowPlayingAdapter/NowPlayingSelection.swift",
+				"$(SRCROOT)/Packages/AnchorUtilities/Sources/AnchorUtilities/Services/Notch/NotchPlaybackSource.swift",
+				"$(SRCROOT)/Packages/AnchorUtilities/Sources/AnchorUtilities/Services/Notch/NotchPlaybackCommand.swift",
+				"$(SRCROOT)/Packages/AnchorUtilities/Sources/AnchorUtilities/Services/FanControl/FanControlSupport.swift",
+				"$(SRCROOT)/Packages/AnchorUtilities/Sources/AnchorUtilities/Services/FanControl/FanControlXPC.swift",
+				"$(SRCROOT)/Packages/AnchorUtilities/Sources/AnchorUtilities/Services/FanControl/FanControlHardware.swift",
+				"$(SRCROOT)/Packages/AnchorUtilities/Sources/AnchorUtilities/Services/SystemMonitor/SMCClient.swift",
+				"$(SRCROOT)/Packages/AnchorUtilities/Sources/AnchorUtilities/Services/Metrics/TemperatureSensorSelector.swift",
+				"$(SRCROOT)/Packages/AnchorUtilities/LICENSE",
+				"$(SRCROOT)/Packages/AnchorUtilities/NOTICE.md",
+			);
+			name = "Native Utility Support";
+			outputPaths = (
+				"$(TARGET_BUILD_DIR)/$(CONTENTS_FOLDER_PATH)/Library/LaunchServices/$(PRODUCT_BUNDLE_IDENTIFIER).fan-control",
+				"$(TARGET_BUILD_DIR)/$(CONTENTS_FOLDER_PATH)/Library/LaunchDaemons/$(PRODUCT_BUNDLE_IDENTIFIER).fan-control.plist",
+				"$(TARGET_BUILD_DIR)/$(CONTENTS_FOLDER_PATH)/Frameworks/libAnchorUtilitiesNowPlaying.dylib",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/bash;
+			shellScript = "bash \"$SRCROOT/Packages/AnchorUtilities/Support/build-support.sh\"\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 
@@ -595,7 +630,7 @@
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
 				INFOPLIST_KEY_LSUIElement = YES;
 				INFOPLIST_KEY_MetalCaptureEnabled = YES;
-				INFOPLIST_KEY_NSAppleEventsUsageDescription = "Anchor uses AppleScripts to control Spotify, Apple Music, and Notes.";
+				INFOPLIST_KEY_NSAppleEventsUsageDescription = "Anchor uses Automation for media playback and the file or system actions you choose, including Finder and Terminal tools.";
 				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "Anchor needs Bluetooth access to detect when audio devices connect and display their battery status in the HUD.";
 				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "Anchor shows your calendar events inside the notch.";
 				INFOPLIST_KEY_NSCalendarsUsageDescription = "Anchor shows your calendar events inside the notch.";
@@ -668,7 +703,7 @@
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
 				INFOPLIST_KEY_LSUIElement = YES;
 				INFOPLIST_KEY_MetalCaptureEnabled = YES;
-				INFOPLIST_KEY_NSAppleEventsUsageDescription = "Anchor uses AppleScripts to control Spotify, Apple Music, and Notes.";
+				INFOPLIST_KEY_NSAppleEventsUsageDescription = "Anchor uses Automation for media playback and the file or system actions you choose, including Finder and Terminal tools.";
 				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "Anchor needs Bluetooth access to detect when audio devices connect and display their battery status in the HUD.";
 				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "Anchor shows your calendar events inside the notch.";
 				INFOPLIST_KEY_NSCalendarsUsageDescription = "Anchor shows your calendar events inside the notch.";
@@ -736,6 +771,13 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		ADDA11000000000000000001 /* XCLocalSwiftPackageReference "Packages/AnchorUtilities" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/AnchorUtilities;
+		};
+/* End XCLocalSwiftPackageReference section */
 
 /* Begin XCRemoteSwiftPackageReference section */
 		146BC4352D366E9B0047C66A /* XCRemoteSwiftPackageReference "MacroVisionKit" */ = {
@@ -886,6 +928,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = B19424072CD0DB52003E5DC2 /* XCRemoteSwiftPackageReference "LottieUI" */;
 			productName = LottieUI;
+		};
+		ADDA11000000000000000002 /* AnchorUtilities */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = ADDA11000000000000000001 /* XCLocalSwiftPackageReference "Packages/AnchorUtilities" */;
+			productName = AnchorUtilities;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

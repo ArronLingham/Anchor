@@ -32,6 +32,7 @@ struct PermissionRequestView: View {
     let onSkip: () -> Void
 
     var body: some View {
+        Group {
         VStack(spacing: 28) {
             icon
                 .resizable()
@@ -63,9 +64,9 @@ struct PermissionRequestView: View {
 
             HStack {
                 Button("Not Now") { onSkip() }
-                    .buttonStyle(.bordered)
+                    .buttonStyle(AnchorButtonStyle())
                 Button("Allow Access") { onAllow() }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(AnchorButtonStyle(prominent: true))
             }
             .padding(.top, 10)
         }
@@ -74,5 +75,8 @@ struct PermissionRequestView: View {
             VisualEffectView(material: .underWindowBackground, blendingMode: .behindWindow)
                 .ignoresSafeArea()
         )
+            }
+        .anchorTheme()
+        .background(AnchorCanvas())
     }
 }

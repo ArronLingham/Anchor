@@ -44,6 +44,7 @@ struct OnboardingView: View {
     let onOpenSettings: () -> Void
 
     var body: some View {
+        Group {
         ZStack {
             switch step {
             case .welcome:
@@ -58,7 +59,7 @@ struct OnboardingView: View {
                 PermissionRequestView(
                     icon: Image(systemName: "camera.fill"),
                     title: String(localized: "Enable Camera Access"),
-                    description: String(localized: "Atoll includes a mirror feature that lets you quickly check your appearance using your camera, right from the notch. Camera access is required only to show this live preview. You can turn the mirror feature on or off at any time in the app."),
+                    description: String(localized: "Anchor includes a mirror feature that lets you quickly check your appearance using your camera, right from the notch. Camera access is required only to show this live preview. You can turn the mirror feature on or off at any time in the app."),
                     privacyNote: String(localized: "Your camera is never used without your consent, and nothing is recorded or stored."),
                     onAllow: {
                         Task {
@@ -80,7 +81,7 @@ struct OnboardingView: View {
                 PermissionRequestView(
                     icon: Image(systemName: "calendar"),
                     title: String(localized: "Enable Calendar Access"),
-                    description: String(localized: "Atoll can show all your upcoming events in one place. Access to your calendar is needed to display your schedule."),
+                    description: String(localized: "Anchor can show all your upcoming events in one place. Access to your calendar is needed to display your schedule."),
                     privacyNote: String(localized: "Your calendar data is only used to show your events and is never shared."),
                     onAllow: {
                         Task {
@@ -146,6 +147,9 @@ struct OnboardingView: View {
         } message: {
             Text("This is optional. You can change it any time from the menu bar.")
         }
+            }
+        .anchorTheme()
+        .background(AnchorCanvas())
     }
 
     // MARK: - Permission Request Logic

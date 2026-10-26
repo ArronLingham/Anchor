@@ -85,7 +85,7 @@ class SettingsWindowController: NSWindowController {
     
     private init() {
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 700, height: 600),
+            contentRect: NSRect(x: 0, y: 0, width: 980, height: 760),
             styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
             backing: .buffered,
             defer: false
@@ -110,8 +110,11 @@ class SettingsWindowController: NSWindowController {
         guard let window = window else { return }
         
         window.title = "Anchor Settings"
-        window.titlebarAppearsTransparent = false
-        window.titleVisibility = .visible
+        window.titlebarAppearsTransparent = true
+        window.titleVisibility = .hidden
+        window.appearance = NSAppearance(named: .darkAqua)
+        window.minSize = NSSize(width: 900, height: 640)
+        window.backgroundColor = NSColor(red: 0.065, green: 0.067, blue: 0.072, alpha: 1)
         window.toolbarStyle = .unified
         window.isMovableByWindowBackground = true
         window.level = .normal
@@ -162,6 +165,10 @@ class SettingsWindowController: NSWindowController {
     private func presentWindow() {
         // Ensure window exists
         _ = window
+        if let window {
+            AnchorApplicationPresentation.shared.register(window)
+            if window.isMiniaturized { window.deminiaturize(nil) }
+        }
 
         // Reassert regular window semantics in case any prior state mutated this window.
         window?.level = .normal
@@ -197,8 +204,7 @@ class SettingsWindowController: NSWindowController {
     private func relinquishFocus() {
         window?.orderOut(nil)
         
-        // Set app back to accessory mode immediately
-        NSApp.setActivationPolicy(.accessory)
+        if let window { AnchorApplicationPresentation.shared.unregister(window) }
     }
     
     deinit {
@@ -219,7 +225,7 @@ extension SettingsWindowController: NSWindowDelegate {
     
     func windowDidBecomeKey(_ notification: Notification) {
         // Ensure app is in regular mode when window becomes key
-        NSApp.setActivationPolicy(.regular)
+        if let window { AnchorApplicationPresentation.shared.register(window) }
     }
     
     func windowDidResignKey(_ notification: Notification) {

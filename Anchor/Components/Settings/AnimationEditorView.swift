@@ -132,7 +132,7 @@ struct AnimationEditorView: View {
             Button(existingAnimation != nil ? "Save Changes" : "Import") {
                 importAnimation()
             }
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(AnchorButtonStyle(prominent: true))
             .keyboardShortcut(.defaultAction)
             .disabled(name.isEmpty || isImporting)
         }
@@ -210,7 +210,7 @@ struct AnimationEditorView: View {
                     Image(systemName: "minus")
                         .frame(width: 28, height: 28)
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(AnchorButtonStyle())
                 .controlSize(.mini)
                 
                 Slider(value: $previewScale, in: 1...10)
@@ -223,7 +223,7 @@ struct AnimationEditorView: View {
                     Image(systemName: "plus")
                         .frame(width: 28, height: 28)
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(AnchorButtonStyle())
                 .controlSize(.mini)
                 
                 Button("Reset") {
@@ -231,7 +231,7 @@ struct AnimationEditorView: View {
                         previewScale = 10
                     }
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(AnchorButtonStyle())
                 .controlSize(.mini)
             }
         }
@@ -260,7 +260,7 @@ struct AnimationEditorView: View {
                                 .font(.subheadline)
                                 .fontWeight(.medium)
                             TextField("Name", text: $name)
-                                .textFieldStyle(.roundedBorder)
+                                .textFieldStyle(AnchorFieldStyle())
                         }
                         ParameterSliderRow(
                             title: "Playback Speed",
@@ -390,7 +390,7 @@ struct AnimationEditorView: View {
                                 expandWithAnimation = false
                             }
                         }
-                        .buttonStyle(.bordered)
+                        .buttonStyle(AnchorButtonStyle())
                         
                         Button("Fill Notch") {
                             withAnimation {
@@ -403,7 +403,7 @@ struct AnimationEditorView: View {
                                 expandWithAnimation = false
                             }
                         }
-                        .buttonStyle(.bordered)
+                        .buttonStyle(AnchorButtonStyle())
                         
                         Button("Scale Up 2x") {
                             withAnimation {
@@ -411,14 +411,14 @@ struct AnimationEditorView: View {
                                 expandWithAnimation = true
                             }
                         }
-                        .buttonStyle(.bordered)
+                        .buttonStyle(AnchorButtonStyle())
                         
                         Button("Scale Down") {
                             withAnimation {
                                 scale = 0.75
                             }
                         }
-                        .buttonStyle(.bordered)
+                        .buttonStyle(AnchorButtonStyle())
                         
                         Button("Reset All") {
                             withAnimation {
@@ -434,7 +434,7 @@ struct AnimationEditorView: View {
                                 expandWithAnimation = false
                             }
                         }
-                        .buttonStyle(.bordered)
+                        .buttonStyle(AnchorButtonStyle())
                         .tint(.red)
                     }
                 }
@@ -585,7 +585,7 @@ private struct ParameterSliderRow: View {
                             value = resetValue
                         }
                     }
-                    .buttonStyle(.bordered)
+                    .buttonStyle(AnchorButtonStyle())
                     .controlSize(.mini)
                 }
             }

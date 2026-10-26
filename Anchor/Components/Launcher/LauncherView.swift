@@ -21,9 +21,31 @@ import AppKit
 import Defaults
 import SwiftUI
 
+/// One ordering for display, keyboard navigation, scrolling and activation.
+private enum LauncherSearchEntry: Identifiable {
+    case app(LauncherResult)
+    case command(LauncherCommand.ScoredCommand)
+
+    var id: String {
+        switch self {
+        case .app(let result): return "app:" + result.id
+        case .command(let result): return "command:" + result.id
+        }
+    }
+    var score: Double {
+        switch self {
+        case .app(let result): return result.score
+        case .command(let result): return Double(result.score)
+        }
+    }
+    var isApp: Bool { if case .app = self { return true }; return false }
+    var isSearchOnly: Bool { if case .app(let result) = self { return result.app.isSearchOnly }; return false }
+}
+
 /// The launcher: a search field over either a filtered result list (while
 /// typing) or a Launchpad-style grid of everything (when the field is empty).
 struct LauncherView: View {
+    var widgetProfileID: String = "default"
     let onLaunch: (LauncherApp) -> Void
     let onDismiss: () -> Void
 
@@ -36,13 +58,13 @@ struct LauncherView: View {
     @State private var query = ""
     @State private var results: [LauncherResult] = []
     @State private var commands: [LauncherCommand.ScoredCommand] = []
+    @State private var entries: [LauncherSearchEntry] = []
     @State private var selection = 0
     @State private var calculation: String?
     @State private var copiedFlash = false
     @FocusState private var queryFocused: Bool
     @Default(.launcherShowGridWhenEmpty) private var showGridWhenEmpty
     @Default(.launcherLayoutMode) private var layoutMode
-    @Default(.launcherFullScreen) private var fullScreen
     @Default(.launcherPresentationMode) private var presentationMode
     @Default(.launcherShowCategoryPage) private var showCategoryPage
     @Default(.launcherRecallSeconds) private var recallSeconds
@@ -55,9 +77,10 @@ struct LauncherView: View {
     private enum LauncherTab: String, CaseIterable {
         case apps = "All Apps"
         case categories = "Categories"
+        case widgets = "Widgets"
     }
 
-    private static let rowHeight: CGFloat = 44
+    private static let rowHeight: CGFloat = 50
 
     /// The last search, and when the launcher was closed on it.
     ///
@@ -100,7 +123,7 @@ struct LauncherView: View {
     private var resolvedFolders: [(name: String, apps: [LauncherApp])] {
         // No folder tiles among search results — they answer no query.
         guard !gridIsFiltered else { return [] }
-        let byID = Dictionary(uniqueKeysWithValues: index.apps.map { ($0.id, $0) })
+        let byID = Dictionary(uniqueKeysWithValues: index.openingApps.map { ($0.id, $0) })
         return folders
             .map { (name: $0.key, apps: $0.value.compactMap { byID[$0] }) }
             .filter { !$0.apps.isEmpty }
@@ -125,24 +148,24 @@ struct LauncherView: View {
         // `showGridWhenEmpty` is the old switch and still acts as a master off:
         // with it off there is no grid at all, whichever way round the mode is.
         guard showGridWhenEmpty else { return false }
-        return layoutMode.showsGrid(queryIsEmpty: query.trimmingCharacters(in: .whitespaces).isEmpty)
+        return commands.isEmpty && layoutMode.showsGrid(queryIsEmpty: query.trimmingCharacters(in: .whitespaces).isEmpty)
     }
 
     var body: some View {
+        Group {
         VStack(spacing: 0) {
             searchField
-            LauncherWidgetStrip()
 
-            if query.trimmingCharacters(in: .whitespaces).isEmpty && showCategoryPage && showingGrid {
+            if query.trimmingCharacters(in: .whitespaces).isEmpty && showingGrid {
                 tabSelector
             }
-
-            Divider().opacity(0.4)
 
             if let calculation {
                 calculatorRow(calculation)
             } else if showingGrid {
-                if selectedTab == .categories && showCategoryPage && query.trimmingCharacters(in: .whitespaces).isEmpty {
+                if selectedTab == .widgets && !gridIsFiltered {
+                    widgetsPage
+                } else if selectedTab == .categories && showCategoryPage && !gridIsFiltered {
                     LauncherCategoryPageView(onLaunch: onLaunch)
                 } else {
                     LauncherGridView(
@@ -158,19 +181,36 @@ struct LauncherView: View {
                 emptyState
             } else {
                 resultList
+                    .frame(maxWidth: 760)
+                    .frame(maxWidth: .infinity)
             }
         }
+        .frame(maxWidth: 1160)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .padding(.top, presentationMode == .fullscreen ? 72 : 22)
-        .padding(.horizontal, presentationMode == .fullscreen ? 72 : 22)
-        .padding(.bottom, presentationMode == .fullscreen ? 30 : 16)
+        .padding(.top, presentationMode == .fullscreen ? 54 : 26)
+        .padding(.horizontal, presentationMode == .fullscreen ? 48 : 24)
+        .padding(.bottom, presentationMode == .fullscreen ? 24 : 16)
+        .overlay(alignment: .topTrailing) {
+            Button(action: onDismiss) {
+                Image(systemName: "xmark")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 30, height: 30)
+                    .contentShape(Circle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Close Launchpad")
+            .help("Close Launchpad (Esc)")
+            .padding(presentationMode == .fullscreen ? 22 : 12)
+        }
         .background {
             if presentationMode == .fullscreen {
-                LauncherWallpaperBlur()
+                ZStack { LauncherWallpaperBlur(); AnchorCanvas().opacity(0.92) }
                     .onTapGesture { onDismiss() }
             } else {
                 ZStack {
                     LauncherWallpaperBlur()
+                    AnchorSurface(depth: .inset, radius: 26).opacity(0.95)
                     RoundedRectangle(cornerRadius: 26, style: .continuous)
                         .strokeBorder(Color.white.opacity(0.14), lineWidth: 1)
                 }
@@ -178,6 +218,7 @@ struct LauncherView: View {
                 .shadow(color: Color.black.opacity(0.25), radius: 28, y: 12)
             }
         }
+        .transaction { if LauncherMotion.reduced { $0.animation = nil; $0.disablesAnimations = true } }
         .defaultFocus($queryFocused, true)
         .onAppear {
             restoreRecalledQuery()
@@ -210,13 +251,18 @@ struct LauncherView: View {
             queryFocused = true
         }
         .onDisappear { rememberQuery() }
-        .onChange(of: query) { _, _ in recompute() }
+        .onChange(of: query) { _, _ in
+            if gridIsFiltered { selectedTab = .apps }
+            recompute()
+        }
         .onChange(of: index.apps) { _, _ in recompute(resetSelection: false) }
         // `loadIfNeeded()` returns before the subprocess does. Without this the
         // results were computed once against an empty list and never revisited,
         // so the shortcuts existed, parsed correctly, and were simply never
         // shown.
         .onChange(of: shortcuts.names) { _, _ in recompute(resetSelection: false) }
+            }
+        .anchorTheme()
     }
 
     // MARK: - Pieces
@@ -237,10 +283,6 @@ struct LauncherView: View {
                 .onKeyPress(.leftArrow) { showingGrid ? move(by: -1) : nil; return showingGrid ? .handled : .ignored }
                 .onKeyPress(.rightArrow) { showingGrid ? move(by: 1) : nil; return showingGrid ? .handled : .ignored }
                 .onKeyPress(.escape) {
-                    if !query.isEmpty {
-                        query = ""
-                        return .handled
-                    }
                     onDismiss()
                     return .handled
                 }
@@ -250,16 +292,22 @@ struct LauncherView: View {
             if index.isIndexing {
                 ProgressView().controlSize(.small)
             }
+            if !query.isEmpty {
+                Button { query = ""; queryFocused = true } label: {
+                    Image(systemName: "xmark.circle.fill").foregroundStyle(.tertiary)
+                }
+                .buttonStyle(.plain).accessibilityLabel("Clear search")
+            }
         }
-        .frame(maxWidth: 680)
-        .frame(height: 54)
-        .padding(.horizontal, 20)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 17, style: .continuous))
+        .frame(maxWidth: 560)
+        .frame(height: 48)
+        .padding(.horizontal, 16)
+        .background(AnchorSurface(depth: .inset, radius: 14))
         .overlay {
-            RoundedRectangle(cornerRadius: 17, style: .continuous)
-                .strokeBorder(Color.primary.opacity(0.09), lineWidth: 1)
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(Color.primary.opacity(0.06), lineWidth: 1)
         }
-        .padding(.bottom, 12)
+        .padding(.bottom, 24)
         .contentShape(Rectangle())
         .onTapGesture {
             queryFocused = true
@@ -267,44 +315,43 @@ struct LauncherView: View {
     }
 
     private var tabSelector: some View {
-        HStack(spacing: 2) {
-            Button {
-                withAnimation(.easeInOut(duration: 0.15)) { selectedTab = .apps }
-            } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: "square.grid.2x2.fill")
-                        .font(.system(size: 11))
-                    Text("All Apps")
-                        .font(.system(size: 12, weight: selectedTab == .apps ? .semibold : .regular))
+        HStack(spacing: 24) {
+            ForEach(LauncherTab.allCases.filter { $0 != .categories || showCategoryPage }, id: \.self) { tab in
+                Button { selectedTab = tab; queryFocused = true } label: {
+                    Text(tab.rawValue)
+                        .font(.system(size: 12, weight: selectedTab == tab ? .semibold : .medium))
+                        .foregroundStyle(selectedTab == tab ? .primary : .secondary)
+                        .padding(.vertical, 12)
+                        .overlay(alignment: .bottom) {
+                            if selectedTab == tab { Rectangle().fill(.primary.opacity(0.8)).frame(height: 2) }
+                        }
                 }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 5)
-                .background(
-                    selectedTab == .apps ? Capsule().fill(Color.primary.opacity(0.12)) : Capsule().fill(Color.clear)
-                )
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(selectedTab == tab ? .isSelected : [])
             }
-            .buttonStyle(.plain)
-
-            Button {
-                withAnimation(.easeInOut(duration: 0.15)) { selectedTab = .categories }
-            } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: "folder.badge.gearshape")
-                        .font(.system(size: 11))
-                    Text("Categories")
-                        .font(.system(size: 12, weight: selectedTab == .categories ? .semibold : .regular))
-                }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 5)
-                .background(
-                    selectedTab == .categories ? Capsule().fill(Color.primary.opacity(0.12)) : Capsule().fill(Color.clear)
-                )
+            Spacer()
+            if selectedTab != .widgets {
+                Text("\(index.openingApps.count) apps").font(.system(size: 11)).foregroundStyle(.tertiary)
             }
-            .buttonStyle(.plain)
         }
-        .padding(3)
-        .background(Capsule().fill(Color.primary.opacity(0.06)))
-        .padding(.vertical, 4)
+        .padding(.horizontal, 20)
+        .overlay(alignment: .bottom) { Rectangle().fill(.white.opacity(0.07)).frame(height: 1) }
+        .padding(.bottom, 12)
+    }
+
+    private var widgetsPage: some View {
+        VStack {
+            if LauncherWidgetStrip(profileID: widgetProfileID).anyEnabled {
+                LauncherWidgetStrip(profileID: widgetProfileID)
+                    .frame(maxWidth: 900)
+            } else {
+                ContentUnavailableView("No widgets enabled", systemImage: "rectangle.3.group",
+                    description: Text("Choose widgets in Anchor’s Launcher settings."))
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.top, 16)
+        .padding(.horizontal, 20)
     }
 
     /// In the grid, ↑/↓ move a whole row; in the list they move one item.
@@ -340,43 +387,29 @@ struct LauncherView: View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(spacing: 0) {
-                    ForEach(Array(commands.enumerated()), id: \.element.id) { position, scored in
-                        LauncherCommandRow(scored: scored, isSelected: position == selection)
-                            .frame(height: Self.rowHeight)
-                            .id(scored.id)
-                            .contentShape(Rectangle())
-                            .onTapGesture {
-                                selection = position
-                                activateSelection()
+                    ForEach(Array(entries.enumerated()), id: \.element.id) { position, entry in
+                        Group {
+                            switch entry {
+                            case .command(let scored):
+                                LauncherCommandRow(scored: scored, isSelected: position == selection)
+                            case .app(let result):
+                                LauncherRow(result: result, isSelected: position == selection)
                             }
-                    }
-                    ForEach(Array(results.enumerated()), id: \.element.id) { offset, result in
-                        let position = offset + commands.count
-                        LauncherRow(result: result, isSelected: position == selection)
-                            .frame(height: Self.rowHeight)
-                            .id(result.id)
-                            .contentShape(Rectangle())
-                            .onTapGesture {
-                                selection = position
-                                activateSelection()
-                            }
+                        }
+                        .frame(height: Self.rowHeight)
+                        .id(entry.id)
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            selection = position
+                            activateSelection()
+                        }
                     }
                 }
                 .padding(.vertical, 8)
             }
             .scrollIndicators(.never)
             .onChange(of: selection) { _, new in
-                let targetId: AnyHashable?
-                if new < commands.count {
-                    targetId = commands[new].id
-                } else {
-                    let idx = new - commands.count
-                    if idx >= 0 && idx < results.count {
-                        targetId = results[idx].id
-                    } else {
-                        targetId = nil
-                    }
-                }
+                let targetId = entries.indices.contains(new) ? entries[new].id : nil
                 if let targetId {
                     withAnimation(.easeOut(duration: 0.12)) { proxy.scrollTo(targetId, anchor: .center) }
                 }
@@ -405,9 +438,13 @@ struct LauncherView: View {
     ///   of three matches instead of the first.
     private func recompute(resetSelection: Bool = true) {
         calculation = calculatorEnabled ? CalculatorAction.evaluate(query) : nil
-        commands = showingGrid ? [] : LauncherCommand.search(query)
+        commands = LauncherCommand.search(query)
         // The grid shows everything; the filtered list is capped for speed.
         results = index.search(query, limit: showingGrid ? Int.max : 40)
+        entries = (results.map(LauncherSearchEntry.app) + commands.map(LauncherSearchEntry.command)).sorted {
+            LauncherSearch.precedes(score: $0.score, isApp: $0.isApp, id: $0.id, lhsSearchOnly: $0.isSearchOnly,
+                                    score: $1.score, isApp: $1.isApp, id: $1.id, rhsSearchOnly: $1.isSearchOnly)
+        }
 
         if resetSelection || selectableCount == 0 {
             selection = 0
@@ -426,7 +463,7 @@ struct LauncherView: View {
     /// last drawn cell (no cursor anywhere) and Return launches an app that is
     /// in a folder and not on screen.
     private var selectableCount: Int {
-        showingGrid ? ungroupedApps.count : commands.count + results.count
+        showingGrid ? ungroupedApps.count : entries.count
     }
 
     private func move(by delta: Int) {
@@ -442,6 +479,7 @@ struct LauncherView: View {
     }
 
     private func activateSelection() {
+        guard gridIsFiltered || selectedTab == .apps else { return }
         if let calculation {
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(calculation, forType: .string)
@@ -451,12 +489,6 @@ struct LauncherView: View {
             }
             return
         }
-        if commands.indices.contains(selection) {
-            let command = commands[selection].command
-            onDismiss()
-            command.run()
-            return
-        }
         // Same index space as `selectableCount` — the grid addresses the apps
         // it draws, which excludes anything filed in a folder.
         if showingGrid {
@@ -464,9 +496,13 @@ struct LauncherView: View {
             onLaunch(ungroupedApps[selection])
             return
         }
-        let appIndex = selection - commands.count
-        guard results.indices.contains(appIndex) else { return }
-        onLaunch(results[appIndex].app)
+        guard entries.indices.contains(selection) else { return }
+        switch entries[selection] {
+        case .app(let result): onLaunch(result.app)
+        case .command(let result):
+            onDismiss()
+            result.command.run()
+        }
     }
 }
 

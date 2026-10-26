@@ -90,7 +90,7 @@ struct UpdateErrorView: View {
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 8)
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(AnchorButtonStyle(prominent: true))
                 .tint(.red.opacity(0.8))
                 .controlSize(.large)
 

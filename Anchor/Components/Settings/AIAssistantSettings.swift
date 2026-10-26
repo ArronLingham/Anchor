@@ -97,6 +97,19 @@ struct AIAssistantSettings: View {
 
             Section {
                 HStack {
+                    Button(manager.isLoadingSavedKeys ? "Loading saved keys…" : "Load saved keys…") {
+                        manager.loadSavedKeys()
+                    }
+                    .disabled(manager.isLoadingSavedKeys || manager.isCheckingKeys)
+                    Spacer()
+                    Text("macOS may ask for Keychain access.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                if manager.needsSavedKeyAccess(for: aiProvider) {
+                    Text("Load your saved keys before changing them.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                HStack {
                     SecureField("Add API key", text: $keyDraft,
                                 prompt: Text("Add a key for \(aiProvider.rawValue)…"))
                     Button("Add") {
@@ -107,7 +120,8 @@ struct AIAssistantSettings: View {
                         saveResult = ok ? "Key added for \(aiProvider.rawValue)." : "Could not write key."
                         keyDraft = ""
                     }
-                    .disabled(keyDraft.isEmpty)
+                    .disabled(keyDraft.isEmpty || manager.isCheckingKeys || manager.isLoadingSavedKeys
+                              || manager.needsSavedKeyAccess(for: aiProvider))
                 }
                 
                 let keys = manager.keys(for: aiProvider)
@@ -155,6 +169,6 @@ struct AIAssistantSettings: View {
             }
             }
         }
-        .formStyle(.grouped)
+        .formStyle(AnchorFormStyle())
     }
 }

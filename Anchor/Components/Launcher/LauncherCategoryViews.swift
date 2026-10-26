@@ -121,6 +121,7 @@ struct LauncherCategoryBoxView: View {
             ) {
                 ForEach(previewApps) { app in
                     LauncherMiniAppIcon(app: app)
+                        .frame(height: 66)
                         .onTapGesture {
                             onLaunch(app)
                         }
@@ -129,23 +130,22 @@ struct LauncherCategoryBoxView: View {
                 ForEach(0..<max(0, 4 - previewApps.count), id: \.self) { _ in
                     RoundedRectangle(cornerRadius: 10)
                         .fill(Color.clear)
-                        .aspectRatio(1, contentMode: .fit)
+                        .frame(height: 66)
                 }
             }
         }
+        .frame(height: 180, alignment: .top)
         .padding(14)
         .background(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .fill(.ultraThinMaterial)
+            AnchorSurface(depth: .inset, radius: 18)
                 .overlay(
                     RoundedRectangle(cornerRadius: 18, style: .continuous)
                         .strokeBorder(
-                            isHovered ? Color.accentColor.opacity(0.4) : Color.white.opacity(colorScheme == .dark ? 0.12 : 0.25),
+                            Color.white.opacity(isHovered ? 0.22 : 0.06),
                             lineWidth: 1
                         )
                 )
         )
-        .scaleEffect(isHovered ? 1.02 : 1.0)
         .animation(.easeOut(duration: 0.15), value: isHovered)
         .onHover { isHovered = $0 }
         .contentShape(RoundedRectangle(cornerRadius: 18))

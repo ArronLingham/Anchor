@@ -56,6 +56,7 @@ struct TimerControlOverlay: View {
     }
 
     var body: some View {
+        Group {
         HStack(spacing: 12) {
             if !timerManager.isOvertime {
                 ControlButton(
@@ -88,6 +89,8 @@ struct TimerControlOverlay: View {
         .animation(.smooth(duration: 0.2), value: timerManager.isPaused)
         .animation(.smooth(duration: 0.2), value: timerManager.isFinished)
         .animation(.smooth(duration: 0.2), value: timerManager.isOvertime)
+            }
+        .anchorTheme()
     }
 
     private func togglePause() {

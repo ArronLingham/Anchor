@@ -42,6 +42,7 @@ final class LauncherPanel: NSPanel {
         contentView.frame = NSRect(origin: .zero, size: frame.size)
         contentView.autoresizingMask = [.width, .height]
         self.contentView = contentView
+        appearance = NSAppearance(named: .darkAqua)
 
         isOpaque = false
         backgroundColor = .clear
@@ -104,32 +105,26 @@ final class LauncherPanel: NSPanel {
 
         setFrame(targetFrame, display: true)
         contentView?.frame = NSRect(origin: .zero, size: targetFrame.size)
+        alphaValue = LauncherMotion.reduced ? 1 : 0
+    }
 
-        // Entrance animation
-        self.alphaValue = 0
-        if mode == .fullscreen, let cView = contentView {
-            let originalOrigin = cView.frame.origin
-            cView.setFrameOrigin(NSPoint(x: originalOrigin.x, y: originalOrigin.y - 30))
-            NSAnimationContext.runAnimationGroup { context in
-                context.duration = 0.28
-                context.timingFunction = CAMediaTimingFunction(name: .easeOut)
-                self.animator().alphaValue = 1.0
-                cView.animator().setFrameOrigin(originalOrigin)
-            }
-        } else {
-            NSAnimationContext.runAnimationGroup { context in
-                context.duration = 0.22
-                context.timingFunction = CAMediaTimingFunction(name: .easeOut)
-                self.animator().alphaValue = 1.0
-            }
+    /// Start once the panel is on screen. A short compositor fade avoids
+    /// moving the entire SwiftUI layout and delaying keyboard focus.
+    func animatePresentation() {
+        guard !LauncherMotion.reduced else { alphaValue = 1; return }
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.09
+            context.timingFunction = CAMediaTimingFunction(controlPoints: 0.16, 1, 0.3, 1)
+            animator().alphaValue = 1
         }
     }
 
     func dismiss(completion: @escaping () -> Void) {
         guard !isDismissing else { return }
         isDismissing = true
+        if LauncherMotion.reduced { orderOut(nil); close(); completion(); return }
         NSAnimationContext.runAnimationGroup { context in
-            context.duration = 0.18
+            context.duration = 0.08
             context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
             self.animator().alphaValue = 0.0
         } completionHandler: {

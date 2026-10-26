@@ -32,6 +32,13 @@ enum AppSupportDirectory {
 
     /// Created on first use, with anything from the pre-rename location moved in.
     static let root: URL = {
+        #if DEBUG
+        if let path = ProcessInfo.processInfo.environment["ANCHOR_TEST_SUPPORT_DIRECTORY"] {
+            let isolated = URL(fileURLWithPath: path, isDirectory: true)
+            try? FileManager.default.createDirectory(at: isolated, withIntermediateDirectories: true)
+            return isolated
+        }
+        #endif
         let base = FileManager.default
             .urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
         let current = base.appendingPathComponent(currentName, isDirectory: true)

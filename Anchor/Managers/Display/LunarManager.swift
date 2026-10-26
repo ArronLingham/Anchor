@@ -26,15 +26,6 @@ import Network
 // MARK: - Lunar Display Data Model
 
 /// Matches the JSON structure streamed by Lunar's socket listener.
-struct LunarDisplayData: Codable {
-    var brightness: Float?
-    var contrast: Float?
-    var volume: Float?
-    var mute: Bool?
-    var nits: Float?
-    var display: Int
-}
-
 // MARK: - Lunar Control Category
 
 
@@ -76,6 +67,12 @@ final class LunarManager: ObservableObject {
     // MARK: Private
 
     private var connection: NWConnection?
+    private var displayRefreshConnection: NWConnection?
+    private var displayRefreshTimeout: Task<Void, Never>?
+    private var displayRecoveryTask: Task<Void, Never>?
+    private var displayRecoveryState = LunarDisplayRecoveryState()
+    private var launchingLunar = false
+    private var displayRefreshPending = false
     private var workspaceLaunchObserver: NSObjectProtocol?
     private var workspaceTermObserver: NSObjectProtocol?
     private var cancellables = Set<AnyCancellable>()
@@ -84,7 +81,9 @@ final class LunarManager: ObservableObject {
     /// Reconnection back-off state.
     private var reconnectTask: Task<Void, Never>?
     private var reconnectAttempts: Int = 0
-    private static let maxReconnectAttempts = 5
+    private var connectionTimeout: Task<Void, Never>?
+    private var messageStream = LunarMessageStream()
+    @Published private(set) var connectionMessage = "Not connected"
     private static let baseReconnectDelay: UInt64 = 2_000_000_000 // 2 seconds
 
     private var isLunarIntegrationEnabled: Bool {
@@ -100,6 +99,18 @@ final class LunarManager: ObservableObject {
         isRunning = Self.checkRunning()
         setupWorkspaceObservers()
         setupSettingsObserver()
+        for name in [NSWorkspace.didWakeNotification, NSWorkspace.screensDidWakeNotification] {
+            NSWorkspace.shared.notificationCenter.publisher(for: name)
+                .sink { [weak self] _ in
+                    Task { @MainActor in self?.scheduleDisplayRecovery(force: true) }
+                }
+                .store(in: &cancellables)
+        }
+        NotificationCenter.default.publisher(for: NSApplication.didChangeScreenParametersNotification)
+            .sink { [weak self] _ in
+                Task { @MainActor in self?.scheduleDisplayRecovery() }
+            }
+            .store(in: &cancellables)
     }
 
     // MARK: - Public API
@@ -147,30 +158,45 @@ final class LunarManager: ObservableObject {
     // MARK: - Socket Connection
 
     private func connectToLunar() {
-        guard connection == nil else { return }
+        guard isLunarIntegrationEnabled, isRunning, connection == nil else { return }
         guard let apiKey = Self.retrieveAPIKey() else {
-            NSLog("⚠️ Lunar: failed to retrieve API key from UserDefaults suite '\(Self.lunarDomain)'")
+            connectionMessage = "Waiting for Lunar — using its HUD"
+            setLunarHideOSD(false)
+            scheduleReconnect()
             return
         }
 
-        setLunarHideOSD(true)
-
-        let host = NWEndpoint.Host("localhost")
+        connectionMessage = "Connecting…"
+        let host = NWEndpoint.Host("127.0.0.1")
         let port = NWEndpoint.Port(23803)
         let conn = NWConnection(host: host, port: port, using: .tcp)
 
-        conn.stateUpdateHandler = { [weak self] state in
+        conn.stateUpdateHandler = { [weak self, weak conn] state in
             Task { @MainActor in
-                self?.handleConnectionState(state, apiKey: apiKey)
+                guard let self, let conn, self.connection === conn else { return }
+                self.handleConnectionState(state, apiKey: apiKey)
             }
         }
 
         connection = conn
+        messageStream = LunarMessageStream()
+        connectionTimeout?.cancel()
+        connectionTimeout = Task { @MainActor [weak self, weak conn] in
+            try? await Task.sleep(for: .seconds(8))
+            guard !Task.isCancelled, let self, let conn, self.connection === conn,
+                  !self.isConnected else { return }
+            self.connectionLost()
+        }
         conn.start(queue: DispatchQueue.global(qos: .utility))
         NSLog("🌙 Lunar: connecting to socket on \(host):\(port)…")
     }
 
     private func disconnect() {
+        connectionTimeout?.cancel()
+        displayRecoveryTask?.cancel()
+        displayRecoveryTask = nil
+        cancelDisplayRefresh()
+        displayRefreshPending = false
         reconnectTask?.cancel()
         reconnectTask = nil
         reconnectAttempts = 0
@@ -181,6 +207,7 @@ final class LunarManager: ObservableObject {
             connection = nil
         }
         isConnected = false
+        connectionMessage = "Not connected"
         setLunarHideOSD(false)
         NSLog("⏹ Lunar: socket disconnected")
     }
@@ -188,18 +215,22 @@ final class LunarManager: ObservableObject {
     private func handleConnectionState(_ state: NWConnection.State, apiKey: String) {
         switch state {
         case .ready:
+            connectionTimeout?.cancel()
             isConnected = true
+            connectionMessage = "Connected"
+            setLunarHideOSD(true)
             reconnectAttempts = 0
             NSLog("🌙 Lunar: connected to socket")
-            sendListenCommand(apiKey: apiKey)
-            receiveMessages()
+            if displayRefreshPending {
+                refreshLunarDisplays(apiKey: apiKey)
+            } else {
+                sendListenCommand(apiKey: apiKey)
+                receiveMessages()
+            }
 
         case .failed(let error):
             NSLog("🌙 Lunar: connection failed — \(error.localizedDescription)")
-            isConnected = false
-            connection?.cancel()
-            connection = nil
-            scheduleReconnect()
+            connectionLost()
 
         case .cancelled:
             isConnected = false
@@ -234,61 +265,180 @@ final class LunarManager: ObservableObject {
         })
     }
 
-    /// Receive JSON messages from Lunar's socket in a loop.
-    private func receiveMessages() {
-        guard let conn = connection else { return }
+    /// Cancel stale callbacks before scheduling a fresh authenticated stream.
+    private func connectionLost() {
+        connectionTimeout?.cancel()
+        cancelDisplayRefresh()
+        connection?.stateUpdateHandler = nil
+        connection?.cancel()
+        connection = nil
+        isConnected = false
+        messageStream = LunarMessageStream()
+        connectionMessage = "Reconnecting — Lunar HUD available"
+        setLunarHideOSD(false)
+        scheduleReconnect()
+    }
 
-        conn.receive(minimumIncompleteLength: 1, maximumLength: 4096) { [weak self] data, _, isComplete, error in
-            if let data, !data.isEmpty {
+    /// A socket reconnect alone cannot repair Lunar's cached I/O routes.
+    func repairConnection() {
+        disconnect()
+        recoverDisplays()
+    }
+
+    private static func displaySnapshot() -> Set<String> {
+        Set(NSScreen.screens.compactMap { screen in
+            guard let id = (screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value,
+                  CGDisplayIsBuiltin(id) == 0 else { return nil }
+            let uuid = CGDisplayCreateUUIDFromDisplayID(id).map {
+                CFUUIDCreateString(nil, $0.takeRetainedValue()) as String
+            } ?? "unknown"
+            return "\(id):\(uuid)"
+        })
+    }
+
+    /// No polling: react only to a changed physical display set or a wake.
+    /// Ignore resolution/EDR notification storms and let hot-plug settle first.
+    private func scheduleDisplayRecovery(force: Bool = false) {
+        guard displayRecoveryState.observe(Self.displaySnapshot(), force: force) else { return }
+        displayRecoveryTask?.cancel()
+        guard isLunarIntegrationEnabled, !Self.displaySnapshot().isEmpty else { return }
+        displayRecoveryTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(3))
+            guard !Task.isCancelled, let self, self.isLunarIntegrationEnabled,
+                  !Self.displaySnapshot().isEmpty else { return }
+            self.displayRecoveryTask = nil
+            self.disconnect()
+            self.recoverDisplays()
+        }
+    }
+
+    private func recoverDisplays() {
+        guard isLunarIntegrationEnabled else { return }
+        isDetected = Self.checkInstallation()
+        isRunning = Self.checkRunning()
+        displayRefreshPending = !Self.displaySnapshot().isEmpty
+        if isRunning {
+            connectToLunar()
+        } else if isDetected, !launchingLunar,
+                  let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: Self.bundleID) {
+            launchingLunar = true
+            connectionMessage = "Starting Lunar…"
+            let config = NSWorkspace.OpenConfiguration()
+            config.activates = false
+            NSWorkspace.shared.openApplication(at: url, configuration: config) { [weak self] _, error in
                 Task { @MainActor in
-                    self?.handleReceivedData(data)
+                    guard let self else { return }
+                    self.launchingLunar = false
+                    guard self.isLunarIntegrationEnabled else { return }
+                    self.isRunning = Self.checkRunning()
+                    if error != nil || !self.isRunning {
+                        self.connectionMessage = "Could not start Lunar — open it to restore monitor control"
+                    } else {
+                        self.refreshConnectionState()
+                    }
                 }
             }
+        } else {
+            connectionMessage = isDetected ? "Lunar is not running" : "Lunar is not installed"
+        }
+    }
 
-            if isComplete {
-                NSLog("🌙 Lunar: stream ended")
-                Task { @MainActor in
-                    self?.isConnected = false
-                    self?.connection?.cancel()
-                    self?.connection = nil
-                    self?.scheduleReconnect()
+    private func cancelDisplayRefresh() {
+        displayRefreshTimeout?.cancel()
+        displayRefreshTimeout = nil
+        displayRefreshConnection?.stateUpdateHandler = nil
+        displayRefreshConnection?.cancel()
+        displayRefreshConnection = nil
+    }
+
+    /// Lunar's supported refresh-displays command re-enumerates monitors and
+    /// restarts DDC detection and its media-key tap. Use a separate bounded
+    /// authenticated request; never interleave commands with a listen stream.
+    private func refreshLunarDisplays(apiKey: String) {
+        guard displayRefreshConnection == nil else { return }
+        let request = NWConnection(host: "127.0.0.1", port: 23803, using: .tcp)
+        displayRefreshConnection = request
+        connectionMessage = "Refreshing monitor controls…"
+        displayRefreshTimeout = Task { @MainActor [weak self, weak request] in
+            try? await Task.sleep(for: .seconds(8))
+            guard !Task.isCancelled, let self, let request,
+                  self.displayRefreshConnection === request else { return }
+            self.finishDisplayRefresh(succeeded: false)
+        }
+        request.stateUpdateHandler = { [weak self, weak request] state in
+            Task { @MainActor in
+                guard let self, let request, self.displayRefreshConnection === request else { return }
+                switch state {
+                case .ready:
+                    let command = Data([apiKey, "refresh-displays"].joined(separator: "\u{01}").utf8)
+                    request.send(content: command, completion: .contentProcessed { [weak self, weak request] error in
+                        guard error != nil else { return }
+                        Task { @MainActor in
+                            guard let self, let request, self.displayRefreshConnection === request else { return }
+                            self.finishDisplayRefresh(succeeded: false)
+                        }
+                    })
+                    self.receiveDisplayRefreshReply(from: request, buffer: Data())
+                case .failed:
+                    self.finishDisplayRefresh(succeeded: false)
+                default: break
                 }
-            } else if let error {
-                NSLog("⚠️ Lunar: receive error — \(error.localizedDescription)")
-                Task { @MainActor in
-                    self?.isConnected = false
-                    self?.connection?.cancel()
-                    self?.connection = nil
-                    self?.scheduleReconnect()
+            }
+        }
+        request.start(queue: .global(qos: .utility))
+    }
+
+    private func receiveDisplayRefreshReply(from request: NWConnection, buffer: Data) {
+        request.receive(minimumIncompleteLength: 1, maximumLength: 4096) { [weak self, weak request] data, _, complete, error in
+            Task { @MainActor in
+                guard let self, let request, self.displayRefreshConnection === request else { return }
+                var reply = buffer
+                if let data { reply.append(data) }
+                if reply.contains(10) || complete || error != nil || reply.count > 4096 {
+                    // A successful refresh returns a blank line. Treat any
+                    // auth, command or status error as a failed repair.
+                    self.finishDisplayRefresh(succeeded: error == nil && LunarDisplayRecoveryState.refreshSucceeded(reply))
+                } else {
+                    self.receiveDisplayRefreshReply(from: request, buffer: reply)
                 }
-            } else {
-                // Continue reading
-                Task { @MainActor in
-                    self?.receiveMessages()
-                }
+            }
+        }
+    }
+
+    private func finishDisplayRefresh(succeeded: Bool) {
+        cancelDisplayRefresh()
+        displayRefreshPending = false
+        guard connection != nil else { return }
+        if !succeeded {
+            connectionMessage = "Connected — monitor refresh failed; retry Reconnect Lunar"
+        } else {
+            connectionMessage = "Connected"
+        }
+        // Rebind after Lunar replaces its display objects, even if the CG ID
+        // was reused. Never advertise a successful hardware write here.
+        if let apiKey = Self.retrieveAPIKey() {
+            sendListenCommand(apiKey: apiKey)
+            receiveMessages()
+        }
+    }
+
+    private func receiveMessages() {
+        guard let conn = connection else { return }
+        conn.receive(minimumIncompleteLength: 1, maximumLength: 4096) { [weak self, weak conn] data, _, complete, error in
+            Task { @MainActor in
+                guard let self, let conn, self.connection === conn else { return }
+                if let data, !data.isEmpty { self.handleReceivedData(data) }
+                if complete || error != nil { self.connectionLost() }
+                else { self.receiveMessages() }
             }
         }
     }
 
     private func handleReceivedData(_ data: Data) {
         guard isLunarIntegrationEnabled, isRunning else { return }
-
         do {
-            let displayData = try JSONDecoder().decode(LunarDisplayData.self, from: data)
-            logDecodedPayload(displayData, source: "socket")
-            routeToHUD(displayData)
-        } catch {
-            // Lunar may send multi-line JSON or partial data; try splitting by newlines
-            let rawString = String(data: data, encoding: .utf8) ?? ""
-            let lines = rawString.components(separatedBy: .newlines).filter { !$0.isEmpty }
-            for line in lines {
-                guard let lineData = line.data(using: .utf8) else { continue }
-                if let displayData = try? JSONDecoder().decode(LunarDisplayData.self, from: lineData) {
-                    logDecodedPayload(displayData, source: "socket-line")
-                    routeToHUD(displayData)
-                }
-            }
-        }
+            for payload in try messageStream.append(data) { routeToHUD(payload) }
+        } catch { connectionLost() }
     }
 
     // MARK: - HUD Routing
@@ -452,21 +602,16 @@ final class LunarManager: ObservableObject {
 
     private func scheduleReconnect() {
         guard isLunarIntegrationEnabled, isRunning else { return }
-        guard reconnectAttempts < Self.maxReconnectAttempts else {
-            NSLog("🌙 Lunar: max reconnect attempts reached, giving up")
-            return
-        }
-
         reconnectTask?.cancel()
         let attempt = reconnectAttempts
-        reconnectAttempts += 1
+        reconnectAttempts = min(reconnectAttempts + 1, 30)
 
-        let delay = Self.baseReconnectDelay * UInt64(1 << min(attempt, 3)) // exponential back-off, max 16s
+        let delay = Self.baseReconnectDelay * UInt64(1 << min(attempt, 4)) // exponential back-off, max 32s
 
         reconnectTask = Task { @MainActor in
             try? await Task.sleep(nanoseconds: delay)
             guard !Task.isCancelled, self.isRunning, self.isLunarIntegrationEnabled else { return }
-            NSLog("🌙 Lunar: reconnect attempt \(attempt + 1)/\(Self.maxReconnectAttempts)")
+            NSLog("🌙 Lunar: reconnect attempt \(attempt + 1)")
             self.connectToLunar()
         }
     }
@@ -488,7 +633,8 @@ final class LunarManager: ObservableObject {
                 NSLog("🟢 Lunar launched (pid: \(app.processIdentifier))")
                 self?.isDetected = true
                 self?.isRunning = true
-                self?.reconnectAttempts = 0
+                self?.disconnect()
+                self?.displayRefreshPending = !Self.displaySnapshot().isEmpty
                 if self?.isLunarIntegrationEnabled == true {
                     // Give Lunar a moment to start its socket server
                     try? await Task.sleep(nanoseconds: 1_500_000_000)
@@ -516,10 +662,16 @@ final class LunarManager: ObservableObject {
     // MARK: - Settings Observer
 
     private func refreshConnectionState() {
-        if isLunarIntegrationEnabled && isRunning {
-            connectToLunar()
+        if isLunarIntegrationEnabled {
+            if !isRunning, !Self.displaySnapshot().isEmpty {
+                recoverDisplays()
+            } else {
+                connectToLunar()
+            }
+            scheduleDisplayRecovery()
         } else {
             disconnect()
+            displayRecoveryState = LunarDisplayRecoveryState()
         }
     }
 
@@ -545,6 +697,9 @@ final class LunarManager: ObservableObject {
         // Restore Lunar's native OSD synchronously on teardown
         LunarManager.writeLunarDefault(hideOSD: false)
         connection?.cancel()
+        displayRefreshConnection?.cancel()
+        displayRefreshTimeout?.cancel()
+        displayRecoveryTask?.cancel()
         reconnectTask?.cancel()
         if let workspaceLaunchObserver {
             NSWorkspace.shared.notificationCenter.removeObserver(workspaceLaunchObserver)

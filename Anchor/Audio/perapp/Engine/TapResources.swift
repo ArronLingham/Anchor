@@ -36,6 +36,7 @@ nonisolated struct TapResources {
     var tapID: AudioObjectID = .unknown
     var aggregateDeviceID: AudioObjectID = .unknown
     var deviceProcID: AudioDeviceIOProcID?
+    var renderContext: TapRenderContext?
     var tapDescription: CATapDescription?
 
     /// Whether these resources are currently active
@@ -64,6 +65,8 @@ nonisolated struct TapResources {
             }
         }
         deviceProcID = nil
+        renderContext?.report()
+        renderContext = nil
 
         // Step 3: Destroy aggregate device
         if aggID.isValid {
@@ -101,6 +104,8 @@ nonisolated struct TapResources {
         let capturedTapID = tapID
         let capturedAggregateID = aggregateDeviceID
         let capturedProcID = deviceProcID
+        let capturedContext = renderContext
+        renderContext = nil
 
         // Clear instance state immediately
         tapID = .unknown
@@ -121,6 +126,8 @@ nonisolated struct TapResources {
                     Self.logger.error("AudioDeviceDestroyIOProcID failed for aggregate \(capturedAggregateID): OSStatus \(destroyProcErr)")
                 }
             }
+
+            capturedContext?.report()
 
             // Step 3: Destroy aggregate device
             if capturedAggregateID.isValid {

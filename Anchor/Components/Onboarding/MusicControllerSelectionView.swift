@@ -41,6 +41,7 @@ struct MusicControllerSelectionView: View {
     @State private var selectedMediaController: MediaControllerType = Defaults[.mediaController]
     
     var body: some View {
+        Group {
         VStack(spacing: 20) {
             Text("Choose a Music Source")
                 .font(.title)
@@ -78,7 +79,7 @@ struct MusicControllerSelectionView: View {
                 )
                 onContinue()
             })
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(AnchorButtonStyle(prominent: true))
                 .controlSize(.large)
                 .padding(.bottom, 24)
         }
@@ -87,6 +88,9 @@ struct MusicControllerSelectionView: View {
             VisualEffectView(material: .underWindowBackground, blendingMode: .behindWindow)
                 .ignoresSafeArea()
         )
+            }
+        .anchorTheme()
+        .background(AnchorCanvas())
     }
 }
 

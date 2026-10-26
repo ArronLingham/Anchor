@@ -30,6 +30,8 @@ final class CircularHUDWindowManager {
     static let shared = CircularHUDWindowManager()
     
     private var windows: [NSScreen: OSDWindow] = [:]
+    private var screenObserver: NSObjectProtocol?
+    private var visibilityGeneration = UUID()
     private var hideWorkItem: DispatchWorkItem?
     private let displayDuration: TimeInterval = 2.0
     private let animationDuration: TimeInterval = 0.2
@@ -40,6 +42,9 @@ final class CircularHUDWindowManager {
     
     private init() {
         setupSizeObserver()
+        screenObserver = NotificationCenter.default.addObserver(forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main) { [weak self] _ in
+            Task { @MainActor in self?.reconcileScreens() }
+        }
     }
     
     private func setupSizeObserver() {
@@ -51,23 +56,23 @@ final class CircularHUDWindowManager {
         }.store(in: &cancellables)
     }
     
+    private func reconcileScreens() {
+        let connected = Set(NSScreen.screens)
+        for screen in Array(windows.keys) where !connected.contains(screen) {
+            windows.removeValue(forKey: screen)?.nsWindow.orderOut(nil)
+        }
+        updateWindowLayout()
+    }
+
     private func updateWindowLayout() {
-        guard !windows.isEmpty else { return }
-        
+        let layout = CircularHUDLayout(diameter: Defaults[.circularHUDSize])
         for (screen, window) in windows {
-            let screenFrame = screen.frame
-            let hudSize = Defaults[.circularHUDSize]
-            let windowSize = hudSize + 80 // Padding
-            
-            let x = screenFrame.midX - (windowSize / 2)
-            let y = screenFrame.midY - (windowSize / 2)
-            let newFrame = NSRect(x: x, y: y, width: windowSize, height: windowSize)
-            
-            window.nsWindow.setFrame(newFrame, display: true, animate: true)
+            window.nsWindow.setFrame(layout.frame(in: screen.visibleFrame), display: true)
+            window.hostingView.frame = NSRect(origin: .zero, size: window.nsWindow.contentLayoutRect.size)
         }
     }
-    
-    func show(type: SneakContentType, value: CGFloat, icon: String = "", onScreen targetScreen: NSScreen? = nil) {
+
+    func show(type: SneakContentType, value: CGFloat, icon: String = "", onScreen targetScreen: NSScreen? = nil, isPreview: Bool = false) {
         guard Defaults[.enableCircularHUD] else { return }
         
         // No explicit screen means the caller has no opinion, so the user's
@@ -77,18 +82,19 @@ final class CircularHUDWindowManager {
         let screens = resolved.map { [$0] } ?? NSScreen.screens
         guard !screens.isEmpty else { return }
         
+        visibilityGeneration = UUID()
+        // A change of the active display must not leave the previous HUD visible.
+        for (screen, window) in windows where !screens.contains(screen) { window.nsWindow.orderOut(nil) }
+        updateWindowLayout()
         // Show on target screen(s)
         for screen in screens {
             let windowContext = ensureWindow(for: type, screen: screen)
-            updateContent(window: windowContext, type: type, value: value, icon: icon)
+            updateContent(window: windowContext, type: type, value: value, icon: icon, screen: screen, isPreview: isPreview)
             
             // Ensure visible
             windowContext.nsWindow.orderFrontRegardless()
             
-            NSAnimationContext.runAnimationGroup { context in
-                context.duration = animationDuration
-                windowContext.nsWindow.animator().alphaValue = 1
-            }
+            windowContext.nsWindow.alphaValue = 1
         }
         
         scheduleHide()
@@ -102,16 +108,12 @@ final class CircularHUDWindowManager {
         let osdView = CircularHUDView(type: .constant(type), value: .constant(0), icon: .constant(""))
         let hostingView = NSHostingView(rootView: osdView)
         
-        let screenFrame = screen.frame
-        
-        let hudSize = Defaults[.circularHUDSize]
-        let windowSize = hudSize + 80 // Padding
-        
-        // Position at center of screen
-        let x = screenFrame.midX - (windowSize / 2)
-        let y = screenFrame.midY - (windowSize / 2)
-        let frame = NSRect(x: x, y: y, width: windowSize, height: windowSize)
-        
+        let layout = CircularHUDLayout(diameter: Defaults[.circularHUDSize])
+        let frame = layout.frame(in: screen.visibleFrame)
+        hostingView.sizingOptions = []
+        hostingView.autoresizingMask = [.width, .height]
+        hostingView.frame = NSRect(origin: .zero, size: frame.size)
+
         let win = NSWindow(
             contentRect: frame,
             styleMask: [.borderless, .nonactivatingPanel],
@@ -134,17 +136,19 @@ final class CircularHUDWindowManager {
         return windowStruct
     }
     
-    private func updateContent(window: OSDWindow, type: SneakContentType, value: CGFloat, icon: String) {
-        let osdView = CircularHUDView(type: .constant(type), value: .constant(value), icon: .constant(icon))
+    private func updateContent(window: OSDWindow, type: SneakContentType, value: CGFloat, icon: String, screen: NSScreen, isPreview: Bool) {
+        let osdView = CircularHUDView(type: .constant(type), value: .constant(CircularHUDLayout.normalized(value)), icon: .constant(icon), screen: screen, isPreview: isPreview)
         window.hostingView.rootView = osdView
     }
     
     private func scheduleHide() {
         hideWorkItem?.cancel()
         
+        let generation = visibilityGeneration
         let workItem = DispatchWorkItem { [weak self] in
             guard let self else { return }
             Task { @MainActor in
+                guard self.visibilityGeneration == generation else { return }
                 self.hideWindow()
             }
         }
@@ -155,15 +159,11 @@ final class CircularHUDWindowManager {
     
     private func hideWindow() {
         for window in windows.values {
-            NSAnimationContext.runAnimationGroup { context in
-                context.duration = animationDuration
-                window.nsWindow.animator().alphaValue = 0
-            } completionHandler: {
-                 // Keep window around but hidden for faster subsequent shows
-            }
+            window.nsWindow.alphaValue = 0
+            window.nsWindow.orderOut(nil)
         }
     }
-    
+
     // Helper struct
     private struct OSDWindow {
         let nsWindow: NSWindow

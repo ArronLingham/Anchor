@@ -1147,6 +1147,7 @@ struct MediaOutputSelectorPopover: View {
     var dismiss: () -> Void
 
     var body: some View {
+        Group {
         VStack(spacing: 16) {
             volumeSection
             Divider()
@@ -1160,6 +1161,8 @@ struct MediaOutputSelectorPopover: View {
         .onDisappear {
             onHoverChanged(false)
         }
+            }
+        .anchorTheme()
     }
 
     private var volumeSection: some View {
@@ -1276,6 +1279,7 @@ struct AirPlaySelectorPopover: View {
     var dismiss: () -> Void
 
     var body: some View {
+        Group {
         VStack(alignment: .leading, spacing: 8) {
             Text("AirPlay")
                 .font(.caption)
@@ -1340,6 +1344,8 @@ struct AirPlaySelectorPopover: View {
         .onDisappear {
             onHoverChanged(false)
         }
+            }
+        .anchorTheme()
     }
 }
 

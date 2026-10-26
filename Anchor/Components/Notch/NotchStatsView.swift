@@ -25,28 +25,53 @@ struct NotchStatsView: View {
     @ObservedObject private var stats = SystemStatsManager.shared
 
     var body: some View {
-        HStack(spacing: 14) {
-            gauge("CPU", value: stats.current.cpuPercent, unit: "%", tint: .green)
-            gauge("Memory", value: stats.current.memoryPercent, unit: "%", tint: .blue)
-            network
+        VStack(spacing: 12) {
+            HStack(spacing: 18) {
+                gauge("CPU", value: stats.current.cpuPercent, tint: .green)
+                gauge("GPU", value: stats.current.gpuPercent, tint: .purple)
+                gauge("Memory", value: stats.current.memoryTotalBytes > 0 ? stats.current.memoryPercent : nil, tint: .blue)
+                VStack(alignment: .leading, spacing: 6) {
+                    rate("arrow.down", stats.current.networkInBytesPerSecond, .cyan)
+                    rate("arrow.up", stats.current.networkOutBytesPerSecond, .orange)
+                }
+            }
+            HStack(spacing: 16) {
+                temperature("CPU", stats.current.cpuTemperature)
+                temperature("GPU", stats.current.gpuTemperature)
+                temperature("Battery", stats.current.batteryTemperature)
+                if let charge = stats.current.batteryPercent {
+                    Text("\(charge)% \(stats.current.charging ? "charging" : "battery")")
+                }
+                if let watts = stats.current.batteryWatts {
+                    Text("\(abs(watts), specifier: "%.1f") W")
+                }
+            }
+            Text("Memory pressure: \(stats.current.memoryPressure)")
+                .foregroundStyle(stats.current.memoryPressure == "Critical" ? .red : .secondary)
         }
+        .font(.system(size: 11)).monospacedDigit()
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(.horizontal, 10)
         .onAppear { stats.acquire() }
         .onDisappear { stats.release() }
     }
 
-    private func gauge(_ label: String, value: Double, unit: String, tint: Color) -> some View {
+    private func temperature(_ name: String, _ value: Double?) -> some View {
+        Text(value.map { "\(name) \(Int($0.rounded()))°C" } ?? "\(name) —")
+            .foregroundStyle(.secondary)
+    }
+
+    private func gauge(_ label: String, value: Double?, tint: Color) -> some View {
         VStack(spacing: 6) {
             ZStack {
                 Circle()
                     .stroke(Color.white.opacity(0.12), lineWidth: 5)
                 Circle()
-                    .trim(from: 0, to: min(1, max(0, value / 100)))
+                    .trim(from: 0, to: min(1, max(0, (value ?? 0) / 100)))
                     .stroke(tint, style: StrokeStyle(lineWidth: 5, lineCap: .round))
                     .rotationEffect(.degrees(-90))
                     .animation(.easeOut(duration: 0.4), value: value)
-                Text("\(Int(value.rounded()))")
+                Text(value.map { String(Int($0.rounded())) } ?? "—")
                     .font(.system(size: 13, weight: .semibold))
                     .monospacedDigit()
                     .foregroundStyle(.white)
@@ -59,20 +84,12 @@ struct NotchStatsView: View {
         }
     }
 
-    private var network: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            rate("arrow.down", stats.current.networkInBytesPerSecond, .cyan)
-            rate("arrow.up", stats.current.networkOutBytesPerSecond, .orange)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    private func rate(_ icon: String, _ bytesPerSecond: Double, _ tint: Color) -> some View {
+    private func rate(_ icon: String, _ bytesPerSecond: Double?, _ tint: Color) -> some View {
         HStack(spacing: 5) {
             Image(systemName: icon)
                 .font(.system(size: 10, weight: .semibold))
                 .foregroundStyle(tint)
-            Text(Self.formatted(bytesPerSecond))
+            Text(bytesPerSecond.map(Self.formatted) ?? "Measuring…")
                 .font(.system(size: 11, weight: .medium))
                 .monospacedDigit()
                 .foregroundStyle(.white.opacity(0.85))

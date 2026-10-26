@@ -35,6 +35,7 @@ struct LockScreenImmersivePlayer: View {
     private var hasLyrics: Bool { enableLyrics && !musicManager.syncedLyrics.isEmpty }
 
     var body: some View {
+        Group {
         GeometryReader { geo in
             // Artwork is square and sized off height, leaving the remaining
             // width for lyrics. Without lyrics it centres instead of sitting
@@ -81,6 +82,8 @@ struct LockScreenImmersivePlayer: View {
             .contentShape(Rectangle())
             .onTapGesture { onDismiss() }
         }
+            }
+        .anchorTheme()
     }
 
     // MARK: - Background

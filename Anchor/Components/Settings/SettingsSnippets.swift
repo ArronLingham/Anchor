@@ -54,7 +54,7 @@ struct SettingsSnippets: View {
                 VStack(alignment: .leading, spacing: 6) {
                     HStack {
                         TextField("Trigger", text: $snippet.trigger)
-                            .textFieldStyle(.roundedBorder)
+                            .textFieldStyle(AnchorFieldStyle())
                             .frame(width: 140)
                             .font(.system(.body, design: .monospaced))
 
@@ -63,7 +63,7 @@ struct SettingsSnippets: View {
                             .font(.caption)
 
                         TextField("Expands to", text: $snippet.expansion, axis: .vertical)
-                            .textFieldStyle(.roundedBorder)
+                            .textFieldStyle(AnchorFieldStyle())
                             .lineLimit(1...4)
 
                         Button {

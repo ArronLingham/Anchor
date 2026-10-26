@@ -18,6 +18,7 @@
  */
 
 import AVFoundation
+import AnchorUtilities
 import Combine
 import Defaults
 import KeyboardShortcuts
@@ -37,6 +38,14 @@ struct AnchorApp: App {
     private let updaterDelegate = AnchorUpdaterDelegate()
 
     init() {
+        UtilityWorkspace.prepareProcess()
+        #if DEBUG
+        if ProcessInfo.processInfo.environment["ANCHOR_UTILITY_REVIEW"] != nil {
+            var reviewArguments = UserDefaults.standard.volatileDomain(forName: UserDefaults.argumentDomain)
+            reviewArguments["menubarIcon"] = false
+            UserDefaults.standard.setVolatileDomain(reviewArguments, forName: UserDefaults.argumentDomain)
+        }
+        #endif
         // Skip Sparkle's launch-time update check during UI testing.
         // The AnchorUpdaterDelegate overrides the feed URL at runtime
         // based on the user's selected update channel.
@@ -58,6 +67,15 @@ struct AnchorApp: App {
 
     var body: some Scene {
         MenuBarExtra("dynamic.island", systemImage: "mountain.2.fill", isInserted: $showMenuBarIcon) {
+            Button("Dashboard") { DashboardWindowController.shared.show() }
+            Button("Features & Tools") { UtilityWorkspace.shared.showLibrary() }
+            Button("Command Bar") { UtilityWorkspace.shared.run("commandBar") }
+            Menu("Workspace Modes") { WorkspaceModesMenu() }
+            Menu("Monitors") {
+                Button("Disconnect External Monitors") { ExternalMonitorController.shared.disconnectExternalMonitors() }
+                Button("Reconnect Monitors") { ExternalMonitorController.shared.reconnectMonitors() }
+            }
+            Divider()
             Button("Settings") {
                 SettingsWindowController.shared.showWindow()
             }
@@ -118,6 +136,7 @@ extension AppDelegate {
 }
 
 class AppDelegate: NSObject, NSApplicationDelegate {
+    private var utilityIslandActive = false
     var shouldUseMultiWindow: Bool { Defaults[.showOnAllDisplays] || Defaults[.alwaysShowOnExternalDisplays] }
     var statusItem: NSStatusItem?
     var windows: [NSScreen: NSWindow] = [:]
@@ -179,6 +198,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+        return false
+    }
+
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        DashboardWindowController.shared.show()
         return false
     }
 
@@ -256,6 +280,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
     
     func applicationWillTerminate(_ notification: Notification) {
+        DesktopWorkspaceManager.shared.stop()
+        UtilityIntegration.shared.stop()
+        SystemNavigationShortcutManager.shared.stop()
         // Guarantee the native OSD is usable after we exit: if we were
         // suppressing it, OSDUIHelper is SIGSTOP-frozen and the async restore in
         // enableSystemHUD() would not finish before the process dies. Resume it
@@ -314,6 +341,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func restoreWindowsAfterLock() {
+        guard !utilityIslandActive else { return }
         guard windowsHiddenForLock else { return }
         windowsHiddenForLock = false
 
@@ -325,6 +353,29 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         } else if let window = window {
             window.orderFrontRegardless()
             window.alphaValue = 1
+        }
+    }
+
+    func setUtilityIslandActive(_ active: Bool) {
+        guard utilityIslandActive != active else { return }
+        utilityIslandActive = active
+        if active {
+            vm.close()
+            for model in viewModels.values { model.close() }
+            MusicControlWindowManager.hideAll()
+            for panel in Array(windows.values) + (window.map { [$0] } ?? []) {
+                panel.ignoresMouseEvents = true
+                panel.alphaValue = 0
+                panel.orderOut(nil)
+            }
+            NotchSpaceManager.shared.notchSpace.windows = []
+        } else {
+            adjustWindowPosition(changeAlpha: true)
+            for panel in Array(windows.values) + (window.map { [$0] } ?? []) {
+                panel.orderFrontRegardless()
+                (panel as? AnchorWindow)?.refreshMouseInteractivity()
+            }
+            syncNotchSpaceMembership()
         }
     }
     
@@ -414,6 +465,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     /// CGSSpace diff additions/removals, so this is safe to call on any change.
     @MainActor
     private func syncNotchSpaceMembership() {
+        guard !utilityIslandActive else {
+            NotchSpaceManager.shared.notchSpace.windows = []
+            return
+        }
         // Displays with no physical notch are opted in separately. Without
         // this the window exists but is not pinned above other spaces, so on an
         // external monitor the pill sits behind whatever is in front — which
@@ -464,11 +519,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 //.moveToSky()
         )
         
-        window.orderFrontRegardless()
+        if !utilityIslandActive { window.orderFrontRegardless() }
         // Pin above every space (fullscreen included) only for "Never hide"; the
         // hide options leave the window on the collectionBehavior path so
         // FullscreenMediaDetector can hide it. See NotchSpaceManager.
-        if Defaults[.hideNotchOption] == .never {
+        if !utilityIslandActive && Defaults[.hideNotchOption] == .never {
             NotchSpaceManager.shared.notchSpace.windows.insert(window)
         }
         //SkyLightOperator.shared.delegateWindow(window)
@@ -477,6 +532,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func positionWindow(_ window: NSWindow, on screen: NSScreen, changeAlpha: Bool = false)
     {
+        guard !utilityIslandActive else {
+            window.ignoresMouseEvents = true
+            window.alphaValue = 0
+            window.orderOut(nil)
+            return
+        }
         if changeAlpha {
             window.alphaValue = 0
         }
@@ -714,12 +775,19 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var settingsShortcutMonitor: Any?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        NSApp.appearance = NSAppearance(named: .darkAqua)
         NotchHoverManager.shared.start()
         installSettingsShortcut()
         
         // Before anything reads Defaults: the bundle identifier changed with the
         // rename, which starts UserDefaults from empty unless we carry it over.
         PreferencesMigration.runIfNeeded()
+        if UserDefaults.standard.integer(forKey: "Anchor.darkMaterialDesignVersion") < 2 {
+            Defaults[.accentColor] = .white
+            Defaults[.sliderColor] = .white
+            Defaults[.useColorCodedVolumeDisplay] = false
+            UserDefaults.standard.set(2, forKey: "Anchor.darkMaterialDesignVersion")
+        }
 
         // Development aid: render UI to PNGs and quit. No-op unless
         // ANCHOR_RENDER_UI is set to an output directory.
@@ -727,7 +795,37 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             UISnapshotHarness.renderAndExit(into: snapshotDirectory)
             return
         }
+        #if DEBUG
+        if let directory = ProcessInfo.processInfo.environment["ANCHOR_UTILITY_REVIEW"] {
+            Task { @MainActor in
+                do { try await UtilityReview.render(into: URL(fileURLWithPath: directory)) }
+                catch {
+                    try? String(describing: error).write(toFile: directory + "/review-error.txt",
+                                                        atomically: true, encoding: .utf8)
+                }
+                NSApp.terminate(nil)
+            }
+            return
+        }
+        #endif
 
+        if !AppRuntimeEnvironment.isUITesting {
+            UtilityIntegration.shared.start(delegate: self)
+            DesktopWorkspaceManager.shared.start()
+        }
+        if CommandLine.arguments.contains("--features") {
+            DispatchQueue.main.async { UtilityWorkspace.shared.showLibrary() }
+        }
+        if CommandLine.arguments.contains("--tools") {
+            DispatchQueue.main.async { UtilityWorkspace.shared.showPanel() }
+        }
+        if CommandLine.arguments.contains("--command-bar") {
+            DispatchQueue.main.async { UtilityWorkspace.shared.run("commandBar") }
+        }
+
+        if CommandLine.arguments.contains("--dashboard") {
+            DispatchQueue.main.async { DashboardWindowController.shared.show() }
+        }
         if !AppRuntimeEnvironment.isUITesting { _ = TodoRemindersSyncManager.shared }
 
         LockScreenLiveActivityWindowManager.shared.configure(viewModel: vm)
@@ -881,6 +979,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // delegate is still being built on the pre-run-loop main thread.
         DispatchQueue.main.async {
             ClaudeUsageManager.shared.start()
+            CodexUsageRecoveryManager.shared.start()
             // Touching .shared is the start: the manager schedules from its own
             // settings observer, and does nothing at all while disabled.
             _ = EyeBreakManager.shared
@@ -909,6 +1008,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             TextSnippetManager.shared.start()
             // Creates its tap only when debounce is on.
             KeyDebounceManager.shared.start()
+            SystemNavigationShortcutManager.shared.start()
+            // Index and warm cached icons before the first shortcut press.
+            if Defaults[.enableLauncher] { AppIndex.shared.refreshIfNeeded() }
             // Installs its mouse monitor only when enabled.
             FocusFollowsMouseManager.shared.start()
 
@@ -1085,6 +1187,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             self, selector: #selector(onScreenUnlocked(_:)),
             name: NSNotification.Name(rawValue: "com.apple.screenIsUnlocked"), object: nil)
 
+        KeyboardShortcuts.onKeyDown(for: .toggleDashboard) {
+            guard Defaults[.enableShortcuts] else { return }
+            DashboardWindowController.shared.toggle()
+        }
+
         KeyboardShortcuts.onKeyDown(for: .toggleLauncher) {
             guard Defaults[.enableShortcuts], Defaults[.enableLauncher] else { return }
             LauncherPanelManager.shared.toggle()
@@ -1191,6 +1298,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // changes immediately instead of waiting for the first lock event.
         let timerWidgetManager = LockScreenTimerWidgetManager.shared
         timerWidgetManager.handleLockStateChange(isLocked: LockScreenManager.shared.currentLockStatus)
+
+        #if DEBUG
+        if let directory = ProcessInfo.processInfo.environment["ANCHOR_NOTCH_CLICK_REVIEW"] {
+            Task { @MainActor in
+                await NotchClickReview.run(delegate: self, directory: URL(fileURLWithPath: directory))
+            }
+        }
+        #endif
 
     }
 
@@ -1756,6 +1871,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
     
     @objc func togglePopover(_ sender: Any?) {
+        if utilityIslandActive { UtilityWorkspace.shared.showPanel(); return }
         if window?.isVisible == true {
             window?.orderOut(nil)
         } else {
@@ -1788,13 +1904,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             window.contentView = NSHostingView(rootView: OnboardingView(
                 onFinish: {
                     window.orderOut(nil)
-                    NSApp.setActivationPolicy(.accessory)
+                    AnchorApplicationPresentation.shared.unregister(window)
                     window.close()
                     NSApp.deactivate()
                 },
                 onOpenSettings: {
                     window.close()
                     SettingsWindowController.shared.showWindow()
+                    AnchorApplicationPresentation.shared.unregister(window)
                 }
             ))
             window.isRestorable = false
@@ -1805,7 +1922,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             onboardingWindowController = NSWindowController(window: window)
         }
 
-        NSApp.setActivationPolicy(.regular)
+        if let window = onboardingWindowController?.window {
+            AnchorApplicationPresentation.shared.register(window)
+        }
         NSApp.activate(ignoringOtherApps: true)
         onboardingWindowController?.window?.makeKeyAndOrderFront(nil)
         onboardingWindowController?.window?.orderFrontRegardless()

@@ -469,7 +469,10 @@ struct ContentView: View {
     }
 
     var body: some View {
+        Group {
         installRootLifecycleHandlers(on: rootBodyView)
+            }
+        .anchorTheme()
     }
 
     private var mainLayoutBase: some View {
@@ -481,8 +484,17 @@ struct ContentView: View {
             )
             .padding(.horizontal, notchHorizontalPadding)
             .padding([.horizontal, .bottom], vm.notchState == .open ? 12 : 0)
-            .background(.black)
+            .background {
+                if vm.notchState == .open { AnchorSurface(radius: 24) }
+                else { Color.black }
+            }
+            .overlay(resolvedClipShape.stroke(AnchorDesign.edge.opacity(vm.notchState == .open ? 1 : 0), lineWidth: 1))
             .clipShape(resolvedClipShape)
+            .background {
+                NotchInteractionSurfaceReader(shape: resolvedClipShape, enabled: interactionsEnabled,
+                                               onHover: updateSurfaceHover)
+                    .allowsHitTesting(false)
+            }
             .compositingGroup()
             .shadow(
                 color: ((vm.notchState == .open || isHovering) && Defaults[.enableShadow])
@@ -543,10 +555,7 @@ struct ContentView: View {
                     // grew. Only when extending — otherwise hover stays tight
                     // to the visible shape.
                     .contentShape(resolvedClipShape)
-                    .onHover { hovering in
-                        isHoveringInsideNotch = hovering
-                        handleHover(hovering || isHoveringExtendedAreaOnThisScreen)
-                    }
+                    .onHover(perform: updateSurfaceHover)
                     // The set, not a global flag: this view exists once per
                     // screen, so it must only react to the band above ITS OWN
                     // display. A shared Bool opened every notch at once.
@@ -1724,6 +1733,13 @@ struct ContentView: View {
     }
 
     // MARK: - Hover Management
+
+    private func updateSurfaceHover(_ hovering: Bool) {
+        let inside = hovering && interactionsEnabled
+        guard isHoveringInsideNotch != inside else { return }
+        isHoveringInsideNotch = inside
+        handleHover(inside || isHoveringExtendedAreaOnThisScreen)
+    }
     
     /// Handle hover state changes with debouncing
     private func handleHover(_ hovering: Bool) {
@@ -1826,16 +1842,9 @@ struct ContentView: View {
     }
 
     private func isPointInsideNotchWindow(_ point: CGPoint) -> Bool {
-        if let appDelegate = AppDelegate.shared {
-            if Defaults[.showOnAllDisplays] {
-                return appDelegate.windows.values.contains(where: { $0.frame.contains(point) })
-            }
-            if let window = appDelegate.window {
-                return window.frame.contains(point)
-            }
-        }
-
-        return NSApp.windows.contains(where: { $0.frame.contains(point) })
+        guard let delegate = AppDelegate.shared else { return false }
+        let windows = Array(delegate.windows.values) + (delegate.window.map { [$0] } ?? [])
+        return windows.compactMap { $0 as? AnchorWindow }.contains { $0.containsInteractivePoint(point) }
     }
     
     // Helper function to check if any popovers are active

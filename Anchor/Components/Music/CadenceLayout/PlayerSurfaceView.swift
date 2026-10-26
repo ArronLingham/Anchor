@@ -38,6 +38,7 @@ struct PlayerSurfaceView: View {
     var onExpand: () -> Void = {}
 
     var body: some View {
+        Group {
         // Two bodies, and the split is the point: the live one observes
         // `MusicManager` and the frozen one does not. A single view holding an
         // `@ObservedObject` observes it unconditionally, so the settings preview
@@ -51,6 +52,8 @@ struct PlayerSurfaceView: View {
             LiveSurfaceBody(
                 layout: layout, style: style, hovering: hovering, onExpand: onExpand)
         }
+            }
+        .anchorTheme()
     }
 }
 
@@ -132,13 +135,10 @@ struct SurfaceStyle {
     /// caller holds it in an `@Default` property and passes it in.
     static func forSurface(
         _ surface: PlayerSurface, albumColor: NSColor, tinted: Bool, scale: CGFloat,
-        sliderColor: SliderColorEnum = .white, accentColor: Color = .blue
+        sliderColor: SliderColorEnum = .white, accentColor: Color = .white
     ) -> SurfaceStyle {
-        let ink: Color =
-            tinted
-            ? (SurfaceStyle.isLight(SurfaceStyle.muted(albumColor))
-                ? .black.opacity(0.82) : .white.opacity(0.92))
-            : .white
+        // Player chrome stays legible on the shared dark card, regardless of artwork brightness.
+        let ink = AnchorDesign.text
         let progress: Color
         switch sliderColor {
         case .white: progress = ink
@@ -146,7 +146,7 @@ struct SurfaceStyle {
         case .accent: progress = accentColor
         }
         return SurfaceStyle(
-            ink: ink, subtleInk: ink.opacity(0.55), accent: Color(nsColor: albumColor),
+            ink: ink, subtleInk: AnchorDesign.muted, accent: AnchorDesign.accent,
             progress: progress, textScale: scale)
     }
 

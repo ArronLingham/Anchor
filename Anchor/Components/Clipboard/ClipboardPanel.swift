@@ -85,11 +85,11 @@ class ClipboardPanel: NSPanel {
         }
         
         let hostingView = NSHostingView(rootView: contentView)
-        applyClipboardCornerMask(hostingView, radius: 12)
+        applyClipboardCornerMask(hostingView, radius: 20)
         self.contentView = hostingView
         
         // Set initial size
-        let preferredSize = CGSize(width: 320, height: 400)
+        let preferredSize = CGSize(width: 380, height: 480)
         hostingView.setFrameSize(preferredSize)
         setContentSize(preferredSize)
     }
@@ -172,17 +172,11 @@ struct ClipboardPanelView: View {
     var filteredItems: [ClipboardItem] {
         let allItems = selectedTab == .history ? clipboardManager.regularHistory : clipboardManager.pinnedItems
         
-        if searchText.isEmpty {
-            return allItems
-        } else {
-            return allItems.filter { item in
-                item.preview.localizedCaseInsensitiveContains(searchText) ||
-                item.type.displayName.localizedCaseInsensitiveContains(searchText)
-            }
-        }
+        return allItems.filter { $0.searchDocument.matches(searchText) }
     }
     
     var body: some View {
+        Group {
         VStack(spacing: 0) {
             // Header with tabs
             ClipboardPanelHeader(
@@ -191,6 +185,8 @@ struct ClipboardPanelView: View {
                 onClose: onClose
             )
             
+            ClipboardWorkflowBar(query: $searchText)
+                .padding(.horizontal, 12).padding(.vertical, 4)
             Divider()
                 .background(Color.gray.opacity(0.3))
             
@@ -217,10 +213,12 @@ struct ClipboardPanelView: View {
                 }
             }
         }
-        .frame(width: 320, height: 400)
-        .background(VisualEffectView(material: .hudWindow, blendingMode: .behindWindow))
-        .cornerRadius(12)
+        .frame(width: 380, height: 480)
+        .background(AnchorSurface(radius: 20))
+        .cornerRadius(20)
         .shadow(color: .black.opacity(0.4), radius: 20, x: 0, y: 10)
+            }
+        .anchorTheme()
     }
 }
 
@@ -242,7 +240,7 @@ struct ClipboardPanelHeader: View {
                     .foregroundColor(.primary)
                     .font(.system(size: 16, weight: .medium))
                 
-                Text("Clipboard Manager")
+                Text("Clipboard")
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundColor(.primary)
                 
@@ -253,8 +251,7 @@ struct ClipboardPanelHeader: View {
                     if selectedTab == .history {
                         clipboardManager.clearHistory()
                     } else {
-                        clipboardManager.pinnedItems.removeAll()
-                        clipboardManager.savePinnedItemsToDefaults()
+                        clipboardManager.clearPinnedItems()
                     }
                 }) {
                     Image(systemName: "trash")
@@ -287,7 +284,7 @@ struct ClipboardPanelHeader: View {
                     .foregroundColor(.secondary)
                     .font(.system(size: 12))
                 
-                TextField("Search clipboard...", text: $searchText)
+                TextField("Search text, @image, @app:Safari", text: $searchText)
                     .textFieldStyle(PlainTextFieldStyle())
                     .font(.system(size: 12))
                     .focused($isSearchFieldFocused)
@@ -358,7 +355,7 @@ struct ClipboardPanelItemRow: View {
             // Type icon
             Image(systemName: item.type.icon)
                 .font(.system(size: 14))
-                .foregroundColor(.blue)
+                .foregroundStyle(AnchorDesign.accent)
                 .frame(width: 20)
             
             // Content
@@ -370,7 +367,7 @@ struct ClipboardPanelItemRow: View {
                     .multilineTextAlignment(.leading)
                 
                 HStack {
-                    Text(item.type.displayName)
+                    Text(item.sourceAppName ?? item.type.displayName)
                         .font(.system(size: 10))
                         .foregroundColor(.secondary)
                     
@@ -423,11 +420,7 @@ struct ClipboardPanelItemRow: View {
                     
                     // Delete button
                     Button(action: {
-                        if isPinned {
-                            clipboardManager.unpinItem(item)
-                        } else {
-                            clipboardManager.deleteItem(item)
-                        }
+                        clipboardManager.deleteItem(item)
                     }) {
                         Image(systemName: "trash")
                             .font(.system(size: 11))
@@ -437,6 +430,7 @@ struct ClipboardPanelItemRow: View {
                 }
             }
         }
+        .contextMenu { ClipboardItemContextMenu(item: item) }
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
         .background(

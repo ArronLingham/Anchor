@@ -50,6 +50,7 @@ struct VerticalHUDView: View {
     @Default(.verticalHUDWidth) var hudWidth
     
     var body: some View {
+        Group {
         HStack(spacing: 16) {
             VerticalHUDPillView(
                 value: $state.value,
@@ -74,6 +75,8 @@ struct VerticalHUDView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .edgesIgnoringSafeArea(.all)
+            }
+        .anchorTheme()
     }
 }
 
@@ -325,9 +328,9 @@ struct VerticalHUDPillView: View {
                 Capsule().fill(.ultraThinMaterial)
             }
         case .solidDark:
-            Capsule().fill(Color.black.opacity(0.85))
+            Capsule().fill(AnchorDesign.inset)
         case .solidLight:
-            Capsule().fill(Color.white.opacity(0.85))
+            Capsule().fill(AnchorDesign.raised)
         case .solidAuto:
             Capsule().fill((colorScheme == .dark ? Color.black : Color.white).opacity(0.85))
         }

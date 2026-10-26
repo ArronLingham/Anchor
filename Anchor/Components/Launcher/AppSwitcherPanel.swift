@@ -43,6 +43,7 @@ final class AppSwitcherPanel: NSPanel {
         level = .popUpMenu         // above ordinary floating windows
         isMovableByWindowBackground = false
         hidesOnDeactivate = false
+        acceptsMouseMovedEvents = true
         animationBehavior = .none
         collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .transient, .ignoresCycle]
     }
@@ -77,6 +78,7 @@ final class AppSwitcherPanelManager {
     private var keyTapRunLoopSource: CFRunLoopSource?
     private var flagsMonitor: Any?
     private var releaseWatch: Timer?
+    private var invocationModifiers: NSEvent.ModifierFlags = []
 
     /// The ring's own navigation keys — everything else passes through the
     /// tap untouched, so ordinary typing elsewhere is unaffected by the tap
@@ -91,10 +93,12 @@ final class AppSwitcherPanelManager {
 
     /// The shortcut fired. Opens the ring, or advances it if already open —
     /// which is what makes holding the modifier and tapping Tab feel like ⌘Tab.
-    func invoke(reverse: Bool = false) {
-        guard Defaults[.enableAppSwitcher] else { return }
+    func invoke(reverse: Bool = false, holding modifiers: NSEvent.ModifierFlags? = nil) {
+        guard Defaults[.enableShortcuts], Defaults[.enableAppSwitcher] else { return }
+        switcher.startTracking()
 
         if panel == nil {
+            invocationModifiers = modifiers ?? Self.configuredHoldModifiers()
             switcher.show(startingReversed: reverse)
             guard !switcher.apps.isEmpty else { return }
             present()
@@ -103,36 +107,40 @@ final class AppSwitcherPanelManager {
         }
     }
 
-    private func present() {
-        let mouse = NSEvent.mouseLocation
+    private func present(at pointer: CGPoint? = nil, monitors: Bool = true) {
+        let mouse = pointer ?? NSEvent.mouseLocation
         let screen = NSScreen.screens.first { $0.frame.contains(mouse) } ?? NSScreen.main
         let visibleFrame = screen?.visibleFrame ?? NSScreen.main?.frame ?? .zero
         let diameter = min(switcher.ringDiameter,
                            max(220, min(visibleFrame.width, visibleFrame.height) - 24))
-        let host = NSHostingView(rootView: AppSwitcherView(diameter: diameter))
-        host.frame = NSRect(x: 0, y: 0, width: diameter, height: diameter)
+        let origin = originNearPointer(diameter: diameter, mouse: mouse, visibleFrame: visibleFrame)
+        // Screen coordinates are y-up; SwiftUI's local coordinates are y-down.
+        // Seed the native tracker from the clamped frame, including when the
+        // pointer starts outside the circle near a corner.
+        let host = AppSwitcherHostingView(diameter: diameter, initialPointerLocation: CGPoint(
+            x: mouse.x - origin.x, y: origin.y + diameter - mouse.y), tracksSystemPointer: monitors)
 
         let panel = AppSwitcherPanel(contentView: host, diameter: diameter)
-        positionNearPointer(panel, diameter: diameter, mouse: mouse, visibleFrame: visibleFrame)
+        panel.ignoresMouseEvents = !monitors
+        panel.setFrameOrigin(origin)
         panel.orderFrontRegardless()
         self.panel = panel
 
-        installMonitors()
+        if monitors { installMonitors() }
     }
 
     /// Open at the pointer, keeping the entire switcher on the active display.
     /// Near an edge the center shifts only as far as needed to avoid clipping.
-    private func positionNearPointer(_ panel: NSPanel, diameter: CGFloat,
-                                     mouse: NSPoint, visibleFrame: NSRect) {
-        guard !visibleFrame.isEmpty else { return }
+    private func originNearPointer(diameter: CGFloat, mouse: NSPoint, visibleFrame: NSRect) -> NSPoint {
+        guard !visibleFrame.isEmpty else { return .zero }
         let margin: CGFloat = 8
         let minX = visibleFrame.minX + margin
         let minY = visibleFrame.minY + margin
         let maxX = max(minX, visibleFrame.maxX - diameter - margin)
         let maxY = max(minY, visibleFrame.maxY - diameter - margin)
-        panel.setFrameOrigin(NSPoint(
+        return NSPoint(
             x: min(max(mouse.x - diameter / 2, minX), maxX),
-            y: min(max(mouse.y - diameter / 2, minY), maxY)))
+            y: min(max(mouse.y - diameter / 2, minY), maxY))
     }
 
     func dismiss(activating: Bool) {
@@ -154,7 +162,9 @@ final class AppSwitcherPanelManager {
     /// Installs the key tap and the modifier-release watch that drive the
     /// ring while it is up.
     private func installMonitors() {
-        installKeyTap()
+        // The tap sees modifier releases for both Anchor and other frontmost
+        // apps. Only use the older fallback when permissions prevent a tap.
+        if installKeyTap() { return }
 
         // Releasing the shortcut's modifiers commits, the way ⌘Tab does.
         // Modifier-only changes don't type anything into a focused text
@@ -174,14 +184,25 @@ final class AppSwitcherPanelManager {
     /// same as `MediaKeyInterceptor`'s tap; without it the ring still opens
     /// and the pointer still works, it just cannot be driven from the
     /// keyboard — same fallback behaviour the old monitor-based version had.
-    private func installKeyTap() {
-        guard keyTap == nil else { return }
+    private func installKeyTap() -> Bool {
+        guard keyTap == nil else { return true }
 
-        let mask = CGEventMask(1) << CGEventType.keyDown.rawValue
-        let callback: CGEventTapCallBack = { _, _, cgEvent, userInfo in
+        let mask = (CGEventMask(1) << CGEventType.keyDown.rawValue)
+            | (CGEventMask(1) << CGEventType.flagsChanged.rawValue)
+        let callback: CGEventTapCallBack = { _, type, cgEvent, userInfo in
             guard let userInfo else { return Unmanaged.passUnretained(cgEvent) }
             let manager = Unmanaged<AppSwitcherPanelManager>.fromOpaque(userInfo).takeUnretainedValue()
-            return MainActor.assumeIsolated { manager.handleTappedKeyDown(cgEvent) }
+            return MainActor.assumeIsolated {
+                if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
+                    manager.dismiss(activating: false)
+                    return Unmanaged.passUnretained(cgEvent)
+                }
+                if type == .flagsChanged {
+                    if let event = NSEvent(cgEvent: cgEvent) { manager.handleFlags(event) }
+                    return Unmanaged.passUnretained(cgEvent)
+                }
+                return manager.handleTappedKeyDown(cgEvent)
+            }
         }
 
         guard let tap = CGEvent.tapCreate(
@@ -191,7 +212,7 @@ final class AppSwitcherPanelManager {
             eventsOfInterest: mask,
             callback: callback,
             userInfo: UnsafeMutableRawPointer(Unmanaged.passUnretained(self).toOpaque())
-        ) else { return }
+        ) else { return false }
 
         keyTap = tap
         keyTapRunLoopSource = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
@@ -199,16 +220,30 @@ final class AppSwitcherPanelManager {
             CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
         }
         CGEvent.tapEnable(tap: tap, enable: true)
+        return true
     }
 
     /// Swallows the ring's own navigation keys; everything else passes
     /// through unmodified.
     private func handleTappedKeyDown(_ cgEvent: CGEvent) -> Unmanaged<CGEvent>? {
-        guard panel != nil,
-              let nsEvent = NSEvent(cgEvent: cgEvent),
-              Self.handledKeyCodes.contains(nsEvent.keyCode)
-        else {
+        guard panel != nil, let nsEvent = NSEvent(cgEvent: cgEvent) else {
             return Unmanaged.passUnretained(cgEvent)
+        }
+        if nsEvent.keyCode == 51 {
+            switcher.filter(String(switcher.query.dropLast()))
+            return nil
+        }
+        // W now belongs to search; Command-W explicitly closes an app.
+        if nsEvent.keyCode == 13 && nsEvent.modifierFlags.contains(.command) {
+            handle(nsEvent)
+            return nil
+        }
+        if !Self.handledKeyCodes.contains(nsEvent.keyCode) || nsEvent.keyCode == 13 {
+            guard let text = nsEvent.charactersIgnoringModifiers,
+                  !text.isEmpty, text.unicodeScalars.allSatisfy({ CharacterSet.alphanumerics.contains($0) || $0 == " " })
+            else { return Unmanaged.passUnretained(cgEvent) }
+            switcher.filter(switcher.query + text)
+            return nil
         }
         handle(nsEvent)
         return nil
@@ -244,7 +279,7 @@ final class AppSwitcherPanelManager {
                 guard let self else { return }
                 guard self.panel != nil else { return }
 
-                let required = Self.holdModifiers()
+                let required = self.invocationModifiers
                 // No modifier to release: the ring waits for Return or Escape.
                 guard !required.isEmpty else { return }
 
@@ -266,7 +301,7 @@ final class AppSwitcherPanelManager {
     /// works — so treating it as a hold modifier would commit the ring the
     /// instant the user let go of Shift while still holding Option, halfway
     /// through cycling backwards.
-    private static func holdModifiers() -> NSEvent.ModifierFlags {
+    private static func configuredHoldModifiers() -> NSEvent.ModifierFlags {
         let shortcut = KeyboardShortcuts.getShortcut(for: .appSwitcher)
             ?? KeyboardShortcuts.getShortcut(for: .appSwitcherReverse)
         guard let shortcut else { return [] }
@@ -313,7 +348,7 @@ final class AppSwitcherPanelManager {
     private func handleFlags(_ event: NSEvent) {
         guard panel != nil else { return }
 
-        let required = Self.holdModifiers()
+        let required = invocationModifiers
         guard !required.isEmpty else { return }
 
         let held = event.modifierFlags.intersection([.command, .option, .control, .shift])
@@ -321,4 +356,73 @@ final class AppSwitcherPanelManager {
             dismiss(activating: true)
         }
     }
+
+    #if DEBUG
+    /// Exercise native clamped coordinates without moving the real pointer or
+    /// posting system input. Real corners may trigger macOS Lock Screen.
+    func reviewCornerNavigation(into directory: URL) async {
+        var lines: [String] = []
+        var failures = 0
+        func check(_ name: String, _ condition: Bool) {
+            lines.append("\(condition ? "PASS" : "FAIL"): \(name)")
+            if !condition { failures += 1 }
+        }
+        defer { dismiss(activating: false) }
+        switcher.startTracking()
+        for (display, screen) in NSScreen.screens.enumerated() {
+            let visible = screen.visibleFrame
+            let corners = [CGPoint(x: visible.minX + 2, y: visible.minY + 2),
+                           CGPoint(x: visible.maxX - 2, y: visible.minY + 2),
+                           CGPoint(x: visible.minX + 2, y: visible.maxY - 2),
+                           CGPoint(x: visible.maxX - 2, y: visible.maxY - 2)]
+            for (corner, point) in corners.enumerated() {
+                switcher.show()
+                invocationModifiers = []
+                present(at: point, monitors: false)
+                guard let panel, let host = panel.contentView as? AppSwitcherHostingView else {
+                    check("native panel exists", false); continue
+                }
+                panel.ignoresMouseEvents = true
+                check("display \(display), corner \(corner): fully visible", visible.contains(panel.frame))
+                let initial = switcher.selectedIndex
+                try? await Task.sleep(for: .milliseconds(50))
+                check("opening preserves initial selection", switcher.selectedIndex == initial)
+                let count = switcher.apps.count
+                guard count > 1 else { check("at least two running apps", false); dismiss(activating: false); continue }
+                let target = (initial + 1) % count
+                let angle = CGFloat(target) * 2 * .pi / CGFloat(count) - .pi / 2
+                let local = CGPoint(x: panel.frame.width / 2 + cos(angle) * panel.frame.width * 0.34,
+                                    y: panel.frame.height / 2 - sin(angle) * panel.frame.height * 0.34)
+                guard let mouseEvent = NSEvent.mouseEvent(with: .mouseMoved, location: local, modifierFlags: [],
+                    timestamp: 0, windowNumber: panel.windowNumber, context: nil, eventNumber: 0,
+                    clickCount: 0, pressure: 0) else { check("native mouse event", false); continue }
+                host.mouseEntered(with: mouseEvent)
+                check("first entry maps to the visible wedge", switcher.selectedIndex == target)
+                for (flags, expected) in [(NSEvent.ModifierFlags(), (target + 1) % count), (.shift, target)] {
+                    if let event = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: flags,
+                        timestamp: 0, windowNumber: panel.windowNumber, context: nil,
+                        characters: "\t", charactersIgnoringModifiers: "\t", isARepeat: false, keyCode: 48) {
+                        handle(event)
+                        host.updateTrackingAreas()
+                        host.mouseMoved(with: mouseEvent)
+                        try? await Task.sleep(for: .milliseconds(50))
+                        check("\(flags.isEmpty ? "Tab" : "Shift-Tab") survives stationary hover", switcher.selectedIndex == expected)
+                    }
+                }
+                host.mouseExited(with: mouseEvent)
+                switcher.select((target + 1) % count)
+                host.mouseEntered(with: mouseEvent)
+                check("same-point reentry selects", switcher.selectedIndex == target)
+                if let rep = host.bitmapImageRepForCachingDisplay(in: host.bounds) {
+                    host.cacheDisplay(in: host.bounds, to: rep)
+                    try? rep.representation(using: .png, properties: [:])?.write(
+                        to: directory.appendingPathComponent("wheel-display\(display)-corner\(corner).png"))
+                }
+                dismiss(activating: false)
+            }
+        }
+        lines.append("\(failures) failures; no real pointer movement or system input")
+        try? lines.joined(separator: "\n").write(to: directory.appendingPathComponent("corner-results.txt"), atomically: true, encoding: .utf8)
+    }
+    #endif
 }

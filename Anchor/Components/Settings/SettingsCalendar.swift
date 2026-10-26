@@ -105,7 +105,7 @@ struct CalendarSettings: View {
                             await calendarManager.checkReminderAuthorization()
                         }
                     }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(AnchorButtonStyle(prominent: true))
 
                     Button("Open System Settings") {
                         if let settingsURL = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Calendars") {
@@ -415,7 +415,7 @@ struct CalendarSettings: View {
                                     }
                                 ))
                                 .labelsHidden()
-                                .toggleStyle(.switch)
+                                .toggleStyle(AnchorToggleStyle())
                                 .controlSize(.mini)
                             }) {
                                 ForEach(accountCalendars, id: \.id) { calendar in

@@ -140,7 +140,7 @@ struct TodoCalendarPopover: View {
                         bySettingHour: 23, minute: 59, second: 59, of: selectedDate) ?? selectedDate
                     onDismiss()
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(AnchorButtonStyle(prominent: true))
                 .controlSize(.small)
             }
         }

@@ -142,11 +142,11 @@ class AnchorUserDriver: NSObject, @preconcurrency SPUUserDriver {
     private func presentWindow<V: View>(with view: V) {
         dismissWindow()
         
-        let hostingController = NSHostingController(rootView: AnyView(view))
+        let hostingController = NSHostingController(rootView: AnyView(view.anchorTheme().padding(24).background(AnchorCanvas())))
         self.hostingController = hostingController
         
         let window = NSWindow(contentViewController: hostingController)
-        window.title = "Atoll Update"
+        window.title = "Anchor Update"
         window.styleMask = [.titled, .fullSizeContentView]
         window.isReleasedWhenClosed = false
         window.titlebarAppearsTransparent = true
@@ -246,7 +246,7 @@ struct UpdateCheckingView: View {
                 .font(.headline)
                 .foregroundStyle(.primary)
             
-            Text("Looking for a new version of Atoll")
+            Text("Looking for a new version of Anchor")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
             

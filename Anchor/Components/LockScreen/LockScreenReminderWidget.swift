@@ -27,6 +27,7 @@ struct LockScreenReminderWidget: View {
     private let chipWidth: CGFloat = 9
 
     var body: some View {
+        Group {
         HStack(alignment: .center, spacing: 8) {
             Image(systemName: snapshot.iconName)
                 .font(.system(size: iconSize, weight: .semibold))
@@ -83,6 +84,8 @@ struct LockScreenReminderWidget: View {
         .shadow(color: .black.opacity(0.3), radius: 8, x: 0, y: 3)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilityLabel)
+            }
+        .anchorTheme()
     }
 
     private var accentColor: Color {

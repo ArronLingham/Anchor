@@ -48,7 +48,7 @@ struct UpdateFoundView: View {
                 // App icon with animated glow
                 ZStack {
                     Circle()
-                        .fill(Color(channel.badgeColor).opacity(glowOpacity))
+                        .fill(AnchorDesign.accent.opacity(glowOpacity))
                         .frame(width: 100, height: 100)
                         .blur(radius: 20)
 
@@ -57,16 +57,12 @@ struct UpdateFoundView: View {
                         .aspectRatio(contentMode: .fit)
                         .frame(width: 72, height: 72)
                         .clipShape(RoundedRectangle(cornerRadius: 16))
-                        .shadow(color: Color(channel.badgeColor).opacity(0.3), radius: 8, y: 4)
-                }
-                .onAppear {
-                    withAnimation(.easeInOut(duration: 2.0).repeatForever(autoreverses: true)) {
-                        glowOpacity = 0.8
-                    }
+                        .shadow(color: AnchorDesign.accent.opacity(0.3), radius: 8, y: 4)
                 }
 
+
                 // Title
-                Text("A new version of Atoll is available!")
+                Text("A new version of Anchor is available!")
                     .font(.headline)
                     .multilineTextAlignment(.center)
 
@@ -91,8 +87,8 @@ struct UpdateFoundView: View {
                 }
                 .padding(.horizontal, 8)
                 .padding(.vertical, 3)
-                .background(Color(channel.badgeColor).opacity(0.15))
-                .foregroundStyle(Color(channel.badgeColor))
+                .background(AnchorDesign.accent.opacity(0.15))
+                .foregroundStyle(AnchorDesign.accent)
                 .clipShape(Capsule())
             }
             .padding(.top, 28)
@@ -144,8 +140,8 @@ struct UpdateFoundView: View {
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 8)
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(Color(channel.badgeColor))
+                .buttonStyle(AnchorButtonStyle(prominent: true))
+                .tint(AnchorDesign.accent)
                 .controlSize(.large)
 
                 HStack(spacing: 16) {
@@ -179,13 +175,13 @@ struct UpdateFoundView: View {
                 .foregroundStyle(.secondary)
             Text(version)
                 .font(.system(.callout, design: .monospaced, weight: .medium))
-                .foregroundStyle(highlighted ? Color(channel.badgeColor) : .primary)
+                .foregroundStyle(highlighted ? AnchorDesign.accent : .primary)
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
         .background(
             RoundedRectangle(cornerRadius: 8)
-                .fill(highlighted ? Color(channel.badgeColor).opacity(0.1) : Color.secondary.opacity(0.1))
+                .fill(highlighted ? AnchorDesign.accent.opacity(0.1) : Color.secondary.opacity(0.1))
         )
     }
 }

@@ -177,6 +177,7 @@ struct LockScreenTimerWidget: View {
     }
 
     var body: some View {
+        Group {
         VStack(spacing: 16) {
             HStack(alignment: .center, spacing: 0) {
                 controlButtons
@@ -204,6 +205,8 @@ struct LockScreenTimerWidget: View {
         .scaleEffect(animator.isPresented ? 1 : 0.9)
         .opacity(animator.isPresented ? 1 : 0)
         .animation(.spring(response: 0.45, dampingFraction: 0.85, blendDuration: 0.22), value: animator.isPresented)
+            }
+        .anchorTheme()
     }
 
     private var controlButtons: some View {

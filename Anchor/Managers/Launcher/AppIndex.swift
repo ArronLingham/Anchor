@@ -27,14 +27,17 @@ struct LauncherApp: Identifiable, Hashable {
     let name: String
     let bundleIdentifier: String?
     let category: AppCategory
+    let searchAliases: [String]
 
     var id: String { url.path }
+    var isSearchOnly: Bool { LauncherAppVisibility.isSearchOnly(url: url, bundleIdentifier: bundleIdentifier) }
 
-    init(url: URL, name: String, bundleIdentifier: String?, category: AppCategory = .other) {
+    init(url: URL, name: String, bundleIdentifier: String?, category: AppCategory = .other, searchAliases: [String] = []) {
         self.url = url
         self.name = name
         self.bundleIdentifier = bundleIdentifier
         self.category = category
+        self.searchAliases = searchAliases
     }
 
     static func == (lhs: LauncherApp, rhs: LauncherApp) -> Bool { lhs.url == rhs.url }
@@ -44,7 +47,14 @@ struct LauncherApp: Identifiable, Hashable {
 struct LauncherResult: Identifiable {
     let app: LauncherApp
     let matchedIndices: [Int]
+    let score: Double
     var id: String { app.id }
+
+    init(app: LauncherApp, matchedIndices: [Int], score: Double = 0) {
+        self.app = app
+        self.matchedIndices = matchedIndices
+        self.score = score
+    }
 }
 
 /// Discovers installed applications and ranks them for the launcher.
@@ -194,27 +204,37 @@ final class AppIndex: ObservableObject {
                 url: standardized,
                 name: name,
                 bundleIdentifier: bundle?.bundleIdentifier,
-                category: category
+                category: category,
+                searchAliases: [
+                    standardized.deletingPathExtension().lastPathComponent,
+                    bundle?.object(forInfoDictionaryKey: "CFBundleName") as? String ?? "",
+                    bundle?.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String ?? ""
+                ] + LauncherSearch.aliases(for: bundle?.bundleIdentifier)
             ))
     }
 
     /// Applications belonging to a given category.
     func apps(in category: AppCategory) -> [LauncherApp] {
-        apps.filter { $0.category == category }
+        openingApps.filter { $0.category == category }
     }
+
+    /// The home grid, folders and categories share the same uncluttered set.
+    /// The complete index remains available to search and the app switcher.
+    var openingApps: [LauncherApp] { apps.filter { !$0.isSearchOnly } }
 
     // MARK: - Search
 
     /// Ranked results for `query`. An empty query returns the frecency ordering.
     func search(_ query: String, limit: Int = 40) -> [LauncherResult] {
+        guard limit > 0 else { return [] }
         let history = LaunchHistory.shared
-        let trimmed = query.trimmingCharacters(in: .whitespaces)
+        let trimmed = LauncherSearch.normalizedQuery(query)
 
         guard !trimmed.isEmpty else {
             return orderedForEmptyQuery(history: history, limit: limit)
         }
 
-        var scored: [(app: LauncherApp, score: Double, indices: [Int])] = []
+        var scored: [(app: LauncherApp, match: LauncherSearch.Match)] = []
         scored.reserveCapacity(apps.count)
 
         let folders = Defaults[.launcherFolders]
@@ -226,31 +246,24 @@ final class AppIndex: ObservableObject {
         }
 
         for app in apps {
-            if let match = FuzzyMatcher.match(query: trimmed, candidate: app.name) {
-                // Frecency nudges ties without letting a favourite outrank a clearly
-                // better textual match.
-                let combined = Double(match.score) + history.score(for: app.id) * 4
-                scored.append((app: app, score: combined, indices: match.matchedIndices))
-            } else if let catMatch = FuzzyMatcher.match(query: trimmed, candidate: app.category.rawValue) {
-                let combined = Double(catMatch.score) * 0.7 + history.score(for: app.id) * 2
-                scored.append((app: app, score: combined, indices: []))
-            } else if let folderNames = appFolders[app.id] {
-                for fName in folderNames {
-                    if let fMatch = FuzzyMatcher.match(query: trimmed, candidate: fName) {
-                        let combined = Double(fMatch.score) * 0.75 + history.score(for: app.id) * 2
-                        scored.append((app: app, score: combined, indices: []))
-                        break
-                    }
-                }
+            let document = LauncherSearch.Document(
+                name: app.name, aliases: app.searchAliases,
+                context: [app.category.rawValue] + (appFolders[app.id] ?? []).sorted())
+            if let match = LauncherSearch.match(query: trimmed, document: document, frecency: history.score(for: app.id)) {
+                scored.append((app, match))
             }
         }
 
         scored.sort { lhs, rhs in
-            if lhs.score != rhs.score { return lhs.score > rhs.score }
-            return lhs.app.name.count < rhs.app.name.count
+            if lhs.match.tier != rhs.match.tier { return lhs.match.tier > rhs.match.tier }
+            if lhs.app.isSearchOnly != rhs.app.isSearchOnly { return !lhs.app.isSearchOnly }
+            if lhs.match.outranks(rhs.match) { return true }
+            if rhs.match.outranks(lhs.match) { return false }
+            let order = lhs.app.name.localizedCaseInsensitiveCompare(rhs.app.name)
+            return order == .orderedSame ? lhs.app.id < rhs.app.id : order == .orderedAscending
         }
-        return scored.prefix(limit).map {
-            LauncherResult(app: $0.app, matchedIndices: $0.indices)
+        return scored.prefix(max(0, limit)).map {
+            LauncherResult(app: $0.app, matchedIndices: $0.match.indices, score: $0.match.score)
         }
     }
 
@@ -260,6 +273,7 @@ final class AppIndex: ObservableObject {
     /// setting. Every mode falls back to alphabetical for ties, which keeps the
     /// order stable rather than reshuffling equal-scoring apps on each open.
     private func orderedForEmptyQuery(history: LaunchHistory, limit: Int) -> [LauncherResult] {
+        let apps = openingApps
         let byName: (LauncherApp, LauncherApp) -> Bool = {
             $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
         }
@@ -304,12 +318,13 @@ final class AppIndex: ObservableObject {
     // MARK: - Launching
 
     func launch(_ app: LauncherApp) {
-        LaunchHistory.shared.recordLaunch(app.id)
         let configuration = NSWorkspace.OpenConfiguration()
         configuration.activates = true
         NSWorkspace.shared.openApplication(at: app.url, configuration: configuration) { _, error in
             if let error {
                 NSLog("AppIndex: failed to launch \(app.name): \(error.localizedDescription)")
+            } else {
+                LaunchHistory.shared.recordLaunch(app.id)
             }
         }
     }

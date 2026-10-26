@@ -67,14 +67,26 @@ Anchor replaces an entire suite of third-party apps (WisprFlow, SoundSource/Fine
 | **Active Playback & Notch Expanded** | `0.85%` | `0.62%` | `1.15%` | `~28 MB` |
 | **Stress Test: All 226 Flags Active** | `2.59%` | `2.40%` | `3.36%` | `~49 MB` |
 
+These are historical measurements from earlier builds, not a benchmark of every optional tool. Current integration checks and measured conditions are recorded in the [feature integration report](docs/VORSSAINT-PARITY-2026-10-19.md).
+
 ### Core Engineering Principles
 
 - **Zero-Polling Guarantee:** Never use polling loops where an event-driven operating system API exists. The entire app reacts dynamically via `FSEventStream`, `kqueue` DispatchSources, CoreAudio HAL property listeners, `IOPSNotificationCreateRunLoopSource`, `NSWorkspace` notifications, and SkyLight window events.
 - **Reference-Counted Active Sampling:** Resource-intensive subsystems (e.g., `SystemStatsManager`, `AudioTap`) sample only when an interface view explicitly holds an active lease via `acquire()` and park immediately on `release()`.
 - **Hardware-Accelerated Animation:** Persistent animations (e.g., the spinning desktop vinyl record and live spectrum visualizer) execute via render-server Core Animation (`CABasicAnimation` on `CALayer`) rather than per-frame main-thread SwiftUI passes.
-- **Native Swift Architecture:** Pure native Swift and AppKit/SwiftUI. Zero Electron runtimes, zero Node.js processes, and zero external daemon processes.
+- **Native Swift Architecture:** Native Swift and AppKit/SwiftUI. Optional fan control and Now Playing support are bundled with the app and used by their corresponding features.
 
 ---
+
+## Dashboard and workflow additions
+
+Open **Dashboard** from Anchor’s menu, the notch grid button, or the launcher. It brings media, sound/display controls, focus sessions, tasks, files, clipboard, calendars, app audio and quick actions into one window. See the [comparative research and implementation guide](docs/FEATURE-RESEARCH-2026-10-14.md) for the new shelf actions, clipboard controls, quicklinks, and control/lock-screen fixes.
+
+## Features & Tools library
+
+Open **Features & Tools** from Anchor’s menu, Dashboard or Settings. Search the library and star the tools you want in Dashboard’s **Favorite tools** card; **Customize** controls whether that card appears on each dashboard tab. **All controls & permissions…** opens the detailed controls. **Option-Space** opens Command Bar unless you choose another shortcut.
+
+The native library covers all 77 feature areas from the released Vorssaint v3.4.1 source: recording and screenshot editors, media processing, windows and input, clipboard and Finder tools, audio/display controls, system monitoring, optional compact island features, cleanup, app updates and more. Background replacements are opt-in and hand control back to your saved Anchor choices when removed. The [feature-by-feature report](docs/VORSSAINT-PARITY-2026-10-19.md) includes source references, validation and hardware checks still requiring hands-on testing. Attribution and the upstream license are in [AnchorUtilities](Packages/AnchorUtilities/NOTICE.md).
 
 ## 🧭 Feature Tour
 
@@ -270,6 +282,10 @@ Anchor utilizes native macOS APIs without kernel extensions. Specific features r
 
 ---
 
+## Desktop Docks & Workspace Modes
+
+Create several movable docks with their own apps, orientation, and size in **Settings → Docks**. Save app/window layouts, volume, brightness, and dock visibility in **Settings → Workspace Modes**, then switch from the menu bar or opt into rules based on connected displays and power. Travel and Desktop templates are included; automation starts off. See [setup and behavior](docs/desktop-docks-and-workspace-modes.md).
+
 ## 🛠️ Building & Installation
 
 ### Release Build (Signed)
@@ -277,25 +293,21 @@ Anchor utilizes native macOS APIs without kernel extensions. Specific features r
 ```bash
 xcodebuild -project Anchor.xcodeproj -scheme Anchor \
   -configuration Release -destination 'platform=macOS,arch=arm64' \
-  CODE_SIGN_IDENTITY="Apple Development: arronlingham@icloud.com (Q4FNFX8QSH)" \
-  CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM=KLWHJX56T3 \
-  PROVISIONING_PROFILE_SPECIFIER="" build
+  -derivedDataPath build/DerivedData \
+  ENABLE_CODE_COVERAGE=NO CLANG_ENABLE_CODE_COVERAGE=NO \
+  CODE_SIGN_IDENTITY="Apple Development" DEVELOPMENT_TEAM=KLWHJX56T3 build
+bash Packages/AnchorUtilities/Support/finalize-app.sh \
+  "$PWD/build/DerivedData/Build/Products/Release/Anchor.app"
 ```
 
-Deploy to `/Applications`:
-
-```bash
-ditto <build-path>/Anchor.app /Applications/Anchor.app
-open -a /Applications/Anchor.app
-```
+The finalization step seals the host after Swift package resources are copied and signed. It also verifies the nested helpers and frameworks. Quit Anchor, keep a backup of the installed bundle, and replace it with the fresh signed bundle. Verify the installed signature and executable hash before reopening it. Do not merge an old bundle's contents into the new one.
 
 ### Debug Build (Local Development)
 
 ```bash
 xcodebuild -project Anchor.xcodeproj -scheme Anchor \
   -configuration Debug -destination 'platform=macOS,arch=arm64' \
-  CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM="" \
-  PROVISIONING_PROFILE_SPECIFIER="" build
+  CODE_SIGN_IDENTITY="Apple Development" DEVELOPMENT_TEAM=KLWHJX56T3 build
 ```
 
 > [!WARNING]

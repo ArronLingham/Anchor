@@ -24,6 +24,8 @@ import Defaults
 private final class LiquidGlassContainerView: NSView {
     weak var glassView: NSView?
     var hostingView: NSHostingView<AnyView>?
+    var appliedCornerRadius: CGFloat?
+    var appliedVariant: Int?
 
     private var observedBackdropLayers: [CALayer] = []
     private var hasScheduledBackdropSetup = false
@@ -41,6 +43,7 @@ private final class LiquidGlassContainerView: NSView {
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
+        if window == nil { removeBackdropObservers() }
         scheduleBackdropSetup()
     }
 
@@ -50,7 +53,7 @@ private final class LiquidGlassContainerView: NSView {
     }
 
     func scheduleBackdropSetup() {
-        guard !hasScheduledBackdropSetup else { return }
+        guard window != nil, !hasScheduledBackdropSetup else { return }
         hasScheduledBackdropSetup = true
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
             guard let self else { return }
@@ -60,14 +63,15 @@ private final class LiquidGlassContainerView: NSView {
     }
 
     private func configureBackdropLayers() {
-        guard let glassView else { return }
-        guard let rootLayer = glassView.layer else {
-            scheduleBackdropSetup()
-            return
-        }
+        // A later attachment/layout will retry if AppKit has not created the
+        // layer yet. A detached preview must not keep a 20 Hz retry alive.
+        guard window != nil, let rootLayer = glassView?.layer else { return }
 
         setBackdropProperties(in: rootLayer)
         let newBackdropLayers = collectBackdropLayers(in: rootLayer)
+
+        guard observedBackdropLayers.count != newBackdropLayers.count ||
+                !zip(observedBackdropLayers, newBackdropLayers).allSatisfy({ pair in pair.0 === pair.1 }) else { return }
 
         removeBackdropObservers()
         observedBackdropLayers = newBackdropLayers
@@ -79,8 +83,12 @@ private final class LiquidGlassContainerView: NSView {
 
     private func setBackdropProperties(in layer: CALayer) {
         if NSStringFromClass(type(of: layer)).contains("CABackdropLayer") {
-            layer.setValue(true, forKey: windowServerAwareKeyPath)
-            layer.setValue(1.0, forKey: scaleKeyPath)
+            if (layer.value(forKey: windowServerAwareKeyPath) as? NSNumber)?.boolValue != true {
+                layer.setValue(true, forKey: windowServerAwareKeyPath)
+            }
+            if (layer.value(forKey: scaleKeyPath) as? NSNumber)?.doubleValue != 1.0 {
+                layer.setValue(1.0, forKey: scaleKeyPath)
+            }
         }
         layer.sublayers?.forEach { setBackdropProperties(in: $0) }
     }
@@ -220,8 +228,10 @@ public struct LiquidGlassBackground<Content: View>: NSViewRepresentable {
             glass.translatesAutoresizingMaskIntoConstraints = false
             glass.setValue(cornerRadius, forKey: "cornerRadius")
             callPrivateVariantSetter(on: glass, value: variant.rawValue)
+            container.appliedCornerRadius = cornerRadius
+            container.appliedVariant = variant.rawValue
 
-            let hosting = NSHostingView(rootView: AnyView(content))
+            let hosting = NSHostingView(rootView: AnyView(content.anchorTheme()))
             hosting.translatesAutoresizingMaskIntoConstraints = false
             glass.setValue(hosting, forKey: "contentView")
 
@@ -258,10 +268,16 @@ public struct LiquidGlassBackground<Content: View>: NSViewRepresentable {
     public func updateNSView(_ nsView: NSView, context: Context) {
         if let container = nsView as? LiquidGlassContainerView,
            let glass = container.glassView {
-            container.hostingView?.rootView = AnyView(content)
-            glass.setValue(cornerRadius, forKey: "cornerRadius")
-            callPrivateVariantSetter(on: glass, value: variant.rawValue)
-            container.scheduleBackdropSetup()
+            container.hostingView?.rootView = AnyView(content.anchorTheme())
+            if container.appliedCornerRadius != cornerRadius {
+                glass.setValue(cornerRadius, forKey: "cornerRadius")
+                container.appliedCornerRadius = cornerRadius
+            }
+            if container.appliedVariant != variant.rawValue {
+                callPrivateVariantSetter(on: glass, value: variant.rawValue)
+                container.appliedVariant = variant.rawValue
+                container.scheduleBackdropSetup()
+            }
             return
         }
 

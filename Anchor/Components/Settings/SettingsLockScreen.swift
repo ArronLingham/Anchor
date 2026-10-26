@@ -176,7 +176,7 @@ struct LockScreenSettings: View {
                 Button(previewManager.isPreviewVisible ? "Hide lock screen preview" : "Preview lock screen widgets") {
                     previewManager.togglePreview()
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(AnchorButtonStyle(prominent: true))
                 .settingsHighlight(id: highlightID("Preview lock screen widgets"))
             } header: {
                 Text("Preview")
@@ -966,7 +966,7 @@ private struct LockScreenPositioningControls: View {
             Button(resetTitle) {
                 resetAction()
             }
-            .buttonStyle(.bordered)
+            .buttonStyle(AnchorButtonStyle())
         }
     }
 
@@ -994,7 +994,7 @@ private struct LockScreenPositioningControls: View {
                 Button(resetTitle) {
                     resetAction()
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(AnchorButtonStyle())
 
                 Spacer()
 

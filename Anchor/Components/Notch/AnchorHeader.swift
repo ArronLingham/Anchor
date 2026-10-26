@@ -68,6 +68,11 @@ struct AnchorHeader: View {
             }
 
             HStack(spacing: 4) {
+                if vm.notchState == .open {
+                    Button { DashboardWindowController.shared.show() } label: {
+                        Image(systemName: "square.grid.2x2").frame(width: 30, height: 30)
+                    }.buttonStyle(.plain).help("Open dashboard")
+                }
                 if vm.notchState == .open && !enableMinimalisticUI {
                     
                     if Defaults[.enableClipboardManager]

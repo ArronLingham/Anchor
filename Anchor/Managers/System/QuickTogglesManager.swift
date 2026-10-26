@@ -172,7 +172,9 @@ enum QuickToggles {
 
     // MARK: - Screen
 
-    static func lockScreen() -> Outcome {
+    enum LockRequestSource: String { case dashboard, launcher }
+
+    static func lockScreen(source requestSource: LockRequestSource) -> Outcome {
         // The keychain-lock route (`SACLockScreenImmediate`) needs a private
         // framework. Sending the same key combination macOS itself binds is
         // both public and exactly what the user would press.
@@ -184,6 +186,7 @@ enum QuickToggles {
 
         down.flags = [.maskCommand, .maskControl]
         up.flags = [.maskCommand, .maskControl]
+        Logger.log("User requested screen lock from \(requestSource.rawValue)", category: .lifecycle)
         down.post(tap: .cghidEventTap)
         up.post(tap: .cghidEventTap)
         return .success("Locking screen")

@@ -47,7 +47,7 @@ struct SpotifyAuthSettingsSection: View {
                 } label: {
                     Label("Sign in with Spotify", systemImage: "person.crop.circle.badge.checkmark")
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(AnchorButtonStyle(prominent: true))
 
                 HStack(alignment: .top, spacing: 8) {
                     Group {
@@ -62,7 +62,7 @@ struct SpotifyAuthSettingsSection: View {
                             SecureField("sp_dc cookie", text: $spotifySPDCCookie)
                         }
                     }
-                    .textFieldStyle(.roundedBorder)
+                    .textFieldStyle(AnchorFieldStyle())
                     .font(.caption.monospaced())
 
                     Button {

@@ -134,7 +134,8 @@ struct HUDAndOSDSettingsView: View {
     @Default(.circularHUDSize) var circularHUDSize
     @Default(.circularHUDStrokeWidth) var circularHUDStrokeWidth
     @Default(.circularHUDUseAccentColor) var circularHUDUseAccentColor
-    @StateObject private var previewModel = HUDPreviewViewModel()
+    @State private var circularPreviewValue: CGFloat = 0.65
+    @State private var circularPreviewType: SneakContentType = .volume
     @ObservedObject private var accessibilityPermission = AccessibilityPermissionStore.shared
 
     private enum Tab: String, CaseIterable, Identifiable {
@@ -172,195 +173,29 @@ struct HUDAndOSDSettingsView: View {
         )
     }
 
+    private func highlightID(_ title: String) -> String { SettingsTab.hudAndOSD.highlightID(for: title) }
+
     var body: some View {
         VStack(spacing: 20) {
-            // A wrapping grid, not an HStack.
-            //
-            // Five cards at a fixed 110pt plus 16pt gaps need 614pt. The
-            // Settings window is 700 wide with a ~210pt sidebar, so this pane
-            // gets about 450 — the row overflowed by enough to clip the fifth
-            // card, and because the Form was then wider than its container it
-            // pushed the whole NavigationSplitView, cutting off the sidebar.
-            //
-            // .adaptive wraps to as many rows as it needs instead, so every
-            // card stays reachable at any window width and nothing forces the
-            // window wider. A horizontal ScrollView would have hidden the
-            // fifth card behind a scroll nobody would look for.
-            LazyVGrid(
-                columns: [GridItem(.adaptive(minimum: 110), spacing: 16)],
-                spacing: 16
-            ) {
-                HUDSelectionCard(
-                    title: String(localized: "Dynamic Island"),
-                    isSelected: selectedTab == .hud,
-                    action: {
-                        selectedTab = .hud
-                        enableSystemHUD = true
-                        enableCustomOSD = false
-                        enableVerticalHUD = false
-                        enableCircularHUD = false
-                    }
-                ) {
-                    VStack {
-                        Capsule()
-                            .fill(Color.black)
-                            .frame(width: 64, height: 20)
-                            .shadow(color: .black.opacity(0.3), radius: 4, y: 2)
-                            .overlay {
-                                HStack(spacing: 6) {
-                                    Image(systemName: previewModel.iconName)
-                                        .font(.system(size: 9, weight: .semibold))
-                                        .foregroundStyle(.white)
-                                        .frame(width: 12)
-
-                                    GeometryReader { geo in
-                                        Capsule()
-                                            .fill(Color.white.opacity(0.2))
-                                            .overlay(alignment: .leading) {
-                                                Capsule()
-                                                    .fill(Color.white)
-                                                    .frame(width: geo.size.width * CGFloat(previewModel.level))
-                                                    .animation(.spring(response: 0.3), value: previewModel.level)
-                                            }
-                                    }
-                                    .frame(height: 4)
-                                }
-                                .padding(.horizontal, 8)
-                            }
-                    }
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Volume & brightness").font(.title2.bold())
+                    Text("Choose a style, then adjust how it looks and where it appears.")
+                        .font(.caption).foregroundStyle(.secondary)
                 }
-
-                HUDSelectionCard(
-                    title: String(localized: "Custom OSD"),
-                    isSelected: selectedTab == .osd,
-                    action: {
-                        selectedTab = .osd
-                        enableCustomOSD = true
-                        enableSystemHUD = false
-                        enableVerticalHUD = false
-                        enableCircularHUD = false
-                    }
-                ) {
-                    RoundedRectangle(cornerRadius: 12)
-                        .fill(.ultraThinMaterial)
-                        .overlay {
-                            RoundedRectangle(cornerRadius: 12)
-                                .stroke(.white.opacity(0.1), lineWidth: 1)
-                        }
-                        .shadow(color: .black.opacity(0.1), radius: 3, y: 1)
-                        .overlay {
-                            VStack(spacing: 6) {
-                                Image(systemName: previewModel.iconName)
-                                    .font(.system(size: 16))
-                                    .foregroundStyle(.secondary)
-                                    .symbolRenderingMode(.hierarchical)
-                                    .contentTransition(.symbolEffect(.replace))
-
-                                GeometryReader { geo in
-                                    Capsule()
-                                        .fill(Color.secondary.opacity(0.2))
-                                        .overlay(alignment: .leading) {
-                                            Capsule()
-                                                .fill(Color.primary)
-                                                .frame(width: geo.size.width * CGFloat(previewModel.level))
-                                                .animation(.spring(response: 0.3), value: previewModel.level)
-                                        }
-                                }
-                                .frame(width: 36, height: 4)
-                            }
-                        }
-                        .frame(width: 44, height: 44)
-                }
-
-                HUDSelectionCard(
-                    title: String(localized: "Vertical Bar"),
-                    isSelected: selectedTab == .vertical,
-                    action: {
-                        selectedTab = .vertical
-                        enableVerticalHUD = true
-                        enableSystemHUD = false
-                        enableCustomOSD = false
-                        enableCircularHUD = false
-                    }
-                ) {
-                    RoundedRectangle(cornerRadius: 8)
-                        .fill(.ultraThinMaterial)
-                        .overlay {
-                            RoundedRectangle(cornerRadius: 8)
-                                .stroke(.white.opacity(0.1), lineWidth: 1)
-                        }
-                        .shadow(color: .black.opacity(0.1), radius: 3, y: 1)
-                        .overlay {
-                            VStack {
-                                GeometryReader { geo in
-                                    VStack {
-                                        Spacer()
-                                        RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                            .fill(Color.white)
-                                            .frame(height: max(0, geo.size.height * CGFloat(previewModel.level)))
-                                            .animation(.spring(response: 0.3), value: previewModel.level)
-                                    }
-                                }
-                                .mask(RoundedRectangle(cornerRadius: 6, style: .continuous))
-                                .padding(.bottom, 2)
-
-                                Image(systemName: previewModel.iconName)
-                                    .font(.system(size: 9))
-                                    .foregroundStyle(previewModel.level > 0.15 ? .black : .secondary)
-                                    .symbolRenderingMode(.hierarchical)
-                                    .contentTransition(.symbolEffect(.replace))
-                            }
-                            .padding(4)
-                        }
-                        .frame(width: 22, height: 54)
-                }
-
-                HUDSelectionCard(
-                    title: String(localized: "Circular"),
-                    isSelected: selectedTab == .circular,
-                    action: {
-                        selectedTab = .circular
-                        enableCircularHUD = true
-                        enableSystemHUD = false
-                        enableCustomOSD = false
-                        enableVerticalHUD = false
-                    }
-                ) {
-                    ZStack {
-                        Circle()
-                            .stroke(Color.secondary.opacity(0.2), lineWidth: 4)
-                        Circle()
-                            .trim(from: 0, to: CGFloat(previewModel.level))
-                            .stroke(Color.accentColor, style: StrokeStyle(lineWidth: 4, lineCap: .round))
-                            .rotationEffect(.degrees(-90))
-                            .animation(.spring(response: 0.3), value: previewModel.level)
-                        Image(systemName: previewModel.iconName)
-                            .font(.system(size: 16))
-                            .foregroundStyle(.primary)
-                            .symbolRenderingMode(.hierarchical)
-                            .contentTransition(.symbolEffect(.replace))
-                    }
-                    .frame(width: 44, height: 44)
-                }
-
-                HUDSelectionCard(
-                    title: String(localized: "None"),
-                    isSelected: selectedTab == .none,
-                    action: {
-                        selectedTab = .none
-                        enableSystemHUD = false
-                        enableCustomOSD = false
-                        enableVerticalHUD = false
-                        enableCircularHUD = false
-                    }
-                ) {
-                    Image(systemName: "slash.circle")
-                        .font(.system(size: 24))
-                        .foregroundStyle(.secondary)
-                        .frame(width: 44, height: 44)
-                }
+                Spacer()
+                Picker("Style", selection: $selectedTab) {
+                    Text("In the notch").tag(Tab.hud)
+                    Text("Floating panel").tag(Tab.osd)
+                    Text("Vertical bar").tag(Tab.vertical)
+                    Text("Circular").tag(Tab.circular)
+                    Text("Use macOS controls").tag(Tab.none)
+                }.fixedSize()
+            }.padding(.horizontal, 12).padding(.top, 8)
+            .onChange(of: selectedTab) { _, style in
+                enableSystemHUD = style == .hud; enableCustomOSD = style == .osd
+                enableVerticalHUD = style == .vertical; enableCircularHUD = style == .circular
             }
-            .padding(.top, 8)
 
             switch selectedTab {
             case .none:
@@ -519,80 +354,81 @@ struct HUDAndOSDSettingsView: View {
 
             case .circular:
                 Form {
-                    if !accessibilityPermission.isAuthorized && !enableThirdPartyDDCIntegration {
-                        Section {
-                            SettingsPermissionCallout(
-                                message: "Accessibility permission is needed to intercept system controls for the Circular HUD.",
-                                requestAction: {
-                                    accessibilityPermission.requestAuthorizationPrompt()
-                                },
-                                openSettingsAction: {
-                                    accessibilityPermission.openSystemSettings()
+                    Section {
+                        VStack(spacing: 4) {
+                            Picker("Preview control", selection: $circularPreviewType) {
+                                Text("Volume").tag(SneakContentType.volume)
+                                Text("Brightness").tag(SneakContentType.brightness)
+                            }.pickerStyle(.segmented).frame(maxWidth: 250)
+                            CircularHUDView(type: $circularPreviewType, value: $circularPreviewValue, icon: .constant(""), isPreview: true)
+                                .frame(maxWidth: .infinity)
+                            Slider(value: $circularPreviewValue, in: 0...1) { Text("Preview level") }
+                        }
+                        Button("Show on screen") {
+                            CircularHUDWindowManager.shared.show(type: circularPreviewType, value: circularPreviewValue, isPreview: true)
+                        }.help("Preview without changing system volume or brightness")
+                        .settingsHighlight(id: highlightID("Circular preview"))
+                    } header: { Text("Preview") }
+                    Section {
+                        HStack {
+                            Text("Presets")
+                            Spacer()
+                            ForEach([CGFloat(50), 65, 90], id: \.self) { diameter in
+                                Button(diameter == 50 ? "Small" : diameter == 65 ? "Medium" : "Large") {
+                                    circularHUDSize = diameter
+                                    circularHUDStrokeWidth = diameter == 50 ? 3 : diameter == 65 ? 4 : 5
                                 }
-                            )
-                        } header: {
-                            Text("Accessibility")
-                        }
-                    }
-
-                    if accessibilityPermission.isAuthorized || enableThirdPartyDDCIntegration {
-                        Section {
-                            Toggle("Volume HUD", isOn: $enableVolumeHUD)
-                            Toggle("Brightness HUD", isOn: $enableBrightnessHUD)
-                            Toggle("Keyboard Backlight HUD", isOn: $enableKeyboardBacklightHUD)
-                                .disabled(enableThirdPartyDDCIntegration)
-                                .help(enableThirdPartyDDCIntegration ? "Disabled while external display integration is active — brightness keys are handled by the external app." : "")
-                        } header: {
-                            Text("Controls")
-                        } footer: {
-                            Text("Choose which system controls should display HUD notifications.")
-                                .foregroundStyle(.secondary)
-                                .font(.caption)
-                        }
-                    }
-
-                    Section {
-                        Toggle("Show Percentage", isOn: $circularHUDShowValue)
-                        Toggle("Use Accent Color", isOn: $circularHUDUseAccentColor)
-                        Defaults.Toggle(key: .useColorCodedVolumeDisplay) {
-                            Text("Color-coded Volume")
-                        }
-                        if useColorCodedVolumeDisplay {
-                            Defaults.Toggle(key: .useSmoothColorGradient) {
-                                Text("Smooth color transitions")
+                                .buttonStyle(AnchorButtonStyle())
+                                .tint(circularHUDSize == diameter ? .accentColor : .secondary)
                             }
-                        }
-                    } header: {
-                        Text("Style")
-                    }
-
+                        }.settingsHighlight(id: highlightID("Circular size preset"))
+                        LabeledContent("Diameter", value: "\(Int(circularHUDSize)) pt")
+                        Slider(value: $circularHUDSize, in: 40...200, step: 5)
+                            .settingsHighlight(id: highlightID("Circular diameter"))
+                        LabeledContent("Ring thickness", value: "\(Int(circularHUDStrokeWidth)) pt")
+                        Slider(value: $circularHUDStrokeWidth, in: 2...min(16, circularHUDSize * 0.12), step: 1)
+                            .settingsHighlight(id: highlightID("Circular ring thickness"))
+                    } header: { Text("Size") }
+                    HUDPlacementSection()
                     Section {
-                        VStack(alignment: .leading) {
-                            Text("Size: \(Int(circularHUDSize))px")
-                            Slider(value: $circularHUDSize, in: 40...200, step: 5)
+                        Toggle("Show percentage", isOn: $circularHUDShowValue)
+                            .settingsHighlight(id: highlightID("Circular percentage"))
+                        Toggle("Use accent color", isOn: $circularHUDUseAccentColor)
+                        Defaults.Toggle(key: .useColorCodedVolumeDisplay) { Text("Color volume by level") }
+                        if useColorCodedVolumeDisplay { Defaults.Toggle(key: .useSmoothColorGradient) { Text("Blend between colors") } }
+                        Defaults.Toggle(key: .enableHUDDrag) { Text("Drag the control to change its value") }
+                    } header: { Text("Appearance & interaction") }
+                    Section {
+                        Toggle("Volume", isOn: $enableVolumeHUD)
+                        Toggle("Display brightness", isOn: $enableBrightnessHUD)
+                        Toggle("Keyboard backlight", isOn: $enableKeyboardBacklightHUD).disabled(enableThirdPartyDDCIntegration)
+                    } header: { Text("Show controls for") }
+                    Section {
+                        Button("Restore circular defaults") {
+                            circularHUDSize = 65; circularHUDStrokeWidth = 4
+                            circularHUDShowValue = true; circularHUDUseAccentColor = true
                         }
-                        VStack(alignment: .leading) {
-                            Text("Line Width: \(Int(circularHUDStrokeWidth))px")
-                            Slider(value: $circularHUDStrokeWidth, in: 2...16, step: 1)
-                        }
-                        Button("Reset to Default") {
-                            circularHUDSize = 65
-                            circularHUDStrokeWidth = 4
-                        }
-                    } header: {
-                        Text("Dimensions")
                     }
-                }
+                    DisclosureGroup("External displays & keyboard steps") { ExternalDisplayIntegrationsSection() }
+                }.formStyle(AnchorFormStyle())
+
             }
 
-            HUDPlacementSection()
-
-            // Third-party display integrations (shared across all HUD variants)
-            ExternalDisplayIntegrationsSection()
+            if selectedTab != .circular {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 12) {
+                        HUDPlacementSection()
+                        DisclosureGroup("External displays & keyboard steps") { ExternalDisplayIntegrationsSection() }
+                    }.padding(.horizontal, 12)
+                }.frame(maxHeight: 180)
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(paneBackgroundColor)
         .navigationTitle("Controls")
+        .onChange(of: circularHUDSize) { _, size in
+            circularHUDStrokeWidth = min(circularHUDStrokeWidth, max(2, size * 0.12))
+        }
         .onAppear {
             if #unavailable(macOS 26.0), verticalHUDMaterial == .liquid {
                 verticalHUDMaterial = .frosted

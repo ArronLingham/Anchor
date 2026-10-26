@@ -26,6 +26,8 @@ struct CircularHUDView: View {
     @Binding var type: SneakContentType
     @Binding var value: CGFloat
     @Binding var icon: String
+    var screen: NSScreen?
+    var isPreview = false
     
     @Default(.circularHUDShowValue) var showValue
     @Default(.circularHUDSize) var size
@@ -38,79 +40,50 @@ struct CircularHUDView: View {
     @Default(.useSmoothColorGradient) var useSmoothGradient
     
     var body: some View {
+        Group {
+        let layout = CircularHUDLayout(diameter: size, stroke: strokeWidth)
+        let level = CircularHUDLayout.normalized(value)
+        let knob = layout.knobOffset(value: level)
         ZStack {
-            // Background circle (SOLO OPAQUE - No transparency)
-            Circle()
-                .fill(Color(white: 0.1))
-                .overlay {
-                    Circle()
-                        .stroke(Color(white: 0.2), lineWidth: 1)
-                }
-            
-            // 1. Static Background Track (Empty binario)
-            Circle()
-                .trim(from: 0.15, to: 0.85)
-                .stroke(Color(white: 0.15), style: StrokeStyle(lineWidth: strokeWidth * 1.5, lineCap: .round))
+            Circle().fill(LinearGradient(colors: [AnchorDesign.raised, AnchorDesign.inset], startPoint: .topLeading, endPoint: .bottomTrailing))
+                .overlay(Circle().strokeBorder(AnchorDesign.edge, lineWidth: 1))
+            Circle().trim(from: 0.15, to: 0.85)
+                .stroke(Color(white: 0.18), style: StrokeStyle(lineWidth: layout.stroke * 1.5, lineCap: .round))
                 .rotationEffect(.degrees(90))
-                .frame(width: size, height: size)
-            
-            // 2. Animated Progress Arc (Filled part)
-            Circle()
-                .trim(from: 0.15, to: 0.15 + (0.7 * value))
-                .stroke(strokeStyle, style: StrokeStyle(lineWidth: strokeWidth * 1.5, lineCap: .round))
+            Circle().trim(from: 0.15, to: 0.15 + 0.7 * level)
+                .stroke(strokeStyle, style: StrokeStyle(lineWidth: layout.stroke * 1.5, lineCap: .round))
                 .rotationEffect(.degrees(90))
-                .frame(width: size, height: size)
-                .animation(.interactiveSpring(response: 0.35, dampingFraction: 0.85, blendDuration: 0), value: value)
-            
-            // 3. The "Ball" Indicator (Oversized White Pallino)
-            GeometryReader { geometry in
-                let radius = size / 2
-                let trackWidth = strokeWidth * 1.5
-                let startAngle = 144.0
-                let currentAngle = startAngle + (252.0 * value)
-                
-                let x = radius + radius * cos(currentAngle * .pi / 180)
-                let y = radius + radius * sin(currentAngle * .pi / 180)
-                
-                Circle()
-                    .fill(.white)
-                    .frame(width: trackWidth * 1.45, height: trackWidth * 1.45)
-                    .shadow(color: .black.opacity(0.45), radius: 2, x: 0, y: 1.2)
-                    .position(x: x, y: y)
-                    .animation(.interactiveSpring(response: 0.35, dampingFraction: 0.85, blendDuration: 0), value: value)
-            }
-            .frame(width: size, height: size)
-            
-            // Central Icon
-            Image(systemName: symbolName)
-                .font(.system(size: size * 0.32, weight: .bold))
-                .symbolRenderingMode(.hierarchical)
-                .foregroundStyle(.white)
-                .contentTransition(.symbolEffect(.replace))
-                .animation(.spring(response: 0.3, dampingFraction: 0.6), value: symbolName)
-            
-            // Bottom Value Label
-            if showValue {
-                VStack {
-                    Spacer()
-                    HUDNumericLabel(
-                        value: value,
-                        font: .system(size: size * 0.15, weight: .bold, design: .rounded),
-                        color: .white.opacity(0.65)
-                    )
-                    .padding(.bottom, size * 0.03)
+                .animation(.interactiveSpring(response: 0.35, dampingFraction: 0.85), value: level)
+            Circle().fill(.white)
+                .frame(width: layout.stroke * 2.175, height: layout.stroke * 2.175)
+                .shadow(color: .black.opacity(0.45), radius: 2, y: 1)
+                .offset(x: knob.x, y: knob.y)
+                .animation(.interactiveSpring(response: 0.35, dampingFraction: 0.85), value: level)
+            VStack(spacing: layout.diameter * 0.045) {
+                Image(systemName: symbolName)
+                    .font(.system(size: layout.diameter * (showValue ? 0.27 : 0.32), weight: .semibold))
+                    .symbolRenderingMode(.hierarchical).foregroundStyle(.white)
+                    .frame(width: layout.diameter * 0.52, height: layout.diameter * 0.32, alignment: .center)
+                if showValue {
+                    HUDNumericLabel(value: level,
+                        font: .system(size: layout.diameter * 0.15, weight: .semibold, design: .rounded),
+                        color: .white.opacity(0.75), width: layout.diameter * 0.6, showsPercentSign: true)
+                        .frame(height: layout.diameter * 0.19)
                 }
-            }
-
-
-
+            }.frame(width: layout.diameter * 0.65, height: layout.diameter * 0.65, alignment: .center)
         }
-        .hudDragToSet(type: type, axis: .horizontal)
-        .frame(width: size, height: size)
-        .shadow(color: .black.opacity(0.2), radius: 15, x: 0, y: 5)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .frame(width: layout.diameter, height: layout.diameter)
+        .hudDragToSet(type: isPreview ? .music : type, axis: .horizontal, screen: screen)
+        .frame(width: layout.diameter, height: layout.diameter)
+        .shadow(color: .black.opacity(0.2), radius: 15, y: 5)
+        .frame(width: layout.canvasSize, height: layout.canvasSize, alignment: .center)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(type == .volume ? "Volume" : "Brightness")
+        .accessibilityValue(CircularHUDLayout.percentage(level) + " percent")
+            }
+        .anchorTheme()
     }
-    
+
     private var strokeStyle: AnyShapeStyle {
         if type == .volume && useColorCodedVolume {
             return ColorCodedProgressBar.shapeStyle(for: value, mode: .volume, smoothGradient: useSmoothGradient)
@@ -121,7 +94,7 @@ struct CircularHUDView: View {
         }
         
         // Default to the approved solid dark gray to match reference when not colored
-        return AnyShapeStyle(Color(white: 0.25))
+        return AnyShapeStyle(AnchorDesign.accent)
     }
     
     private var symbolName: String {

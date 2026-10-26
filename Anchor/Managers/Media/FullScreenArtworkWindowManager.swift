@@ -229,6 +229,7 @@ private struct FullScreenLyricsOverlayContent: View {
     }
 
     var body: some View {
+        Group {
         VStack {
             Text(text)
                 .font(.system(size: fontSize, weight: .semibold, design: .rounded))
@@ -244,6 +245,8 @@ private struct FullScreenLyricsOverlayContent: View {
         .padding(.horizontal, 18)
         .padding(.vertical, 8)
         .background(Color.clear)
+            }
+        .anchorTheme()
     }
 }
 
@@ -357,7 +360,7 @@ final class FullScreenArtworkWindowManager: ObservableObject {
 
     func show(artwork: NSImage, videoURL: URL? = nil, allowLiveWallpaper: Bool = false) {
         guard !isShowing else { return }
-        guard let screen = NSScreen.main else { return }
+        guard let screen = LockScreenDisplayContextProvider.shared.contextSnapshot()?.screen ?? NSScreen.main else { return }
         applyPresentation(
             artwork: artwork,
             videoURL: videoURL,
@@ -466,10 +469,13 @@ final class FullScreenArtworkWindowManager: ObservableObject {
             }
         }
 
-        let canSuspend = isShowing && isLiveWallpaperAllowed && activeLiveWallpaperFingerprint != nil
+        // WallpaperAgent also participates in macOS's lock/unlock transition.
+        // Pause our own video above; never freeze system wallpaper while locked.
+        let isLocked = LockScreenManager.shared.currentLockStatus
+        let canSuspend = !isLocked && isShowing && isLiveWallpaperAllowed && activeLiveWallpaperFingerprint != nil
         print("[FullScreenArtworkWindowManager] playback state -> isPlaying=\(isPlaying) showing=\(isShowing) liveAllowed=\(isLiveWallpaperAllowed) fingerprint=\(activeLiveWallpaperFingerprint ?? "nil")")
 
-        if isPlaying {
+        if isPlaying || isLocked {
             resumeWallpaperAgentIfNeeded()
         } else if canSuspend {
             suspendWallpaperAgent()
@@ -1496,7 +1502,8 @@ final class FullScreenArtworkWindowManager: ObservableObject {
     private func scheduleWallpaperTransitionHide(after delay: Duration) {
         wallpaperTransitionHideTask?.cancel()
         wallpaperTransitionHideTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(for: delay)
+            do { try await Task.sleep(for: delay) } catch { return }
+            guard !Task.isCancelled else { return }
             self?.hideWallpaperTransition()
         }
     }
@@ -1558,8 +1565,8 @@ final class FullScreenArtworkWindowManager: ObservableObject {
         let expectedURLString = expectedURL?.absoluteString
 
         videoWindowHideTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(for: delay)
-            guard let self else { return }
+            do { try await Task.sleep(for: delay) } catch { return }
+            guard !Task.isCancelled, let self else { return }
 
             if let expectedURLString,
                self.activeVideoWindowURL?.absoluteString != expectedURLString {
@@ -1795,8 +1802,8 @@ final class FullScreenArtworkWindowManager: ObservableObject {
     private func scheduleDeferredTrackRefresh(expectedTitle: String, expectedArtist: String) {
         deferredTrackRefreshTask?.cancel()
         deferredTrackRefreshTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(for: .milliseconds(700))
-            guard let self, self.isShowing else { return }
+            do { try await Task.sleep(for: .milliseconds(700)) } catch { return }
+            guard !Task.isCancelled, let self, self.isShowing else { return }
             guard MusicManager.shared.songTitle == expectedTitle,
                   MusicManager.shared.artistName == expectedArtist
             else { return }

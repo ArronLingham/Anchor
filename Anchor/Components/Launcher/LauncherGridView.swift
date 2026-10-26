@@ -130,7 +130,7 @@ struct LauncherGridView: View {
                     .onChange(of: scrollPage) { _, page in
                         if let page, page != currentPage { goToPage(page, layout: layout) }
                     }
-                    .scrollIndicators(.hidden)
+                    .scrollIndicators(.never)
                     .onChange(of: currentPage) { _, page in
                         withAnimation(.easeInOut(duration: 0.2)) { proxy.scrollTo(page, anchor: .center) }
                     }
@@ -469,10 +469,6 @@ struct LauncherGridView: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 6)
-        .background(
-            Capsule()
-                .fill(Color.primary.opacity(0.08))
-        )
         .animation(.spring(response: 0.28, dampingFraction: 0.75), value: currentPage)
     }
 }
@@ -483,6 +479,7 @@ private struct LauncherGridCell: View {
     let isSelected: Bool
 
     @State private var icon: NSImage?
+    @State private var hovered = false
 
     var body: some View {
         VStack(spacing: 6) {
@@ -506,14 +503,14 @@ private struct LauncherGridCell: View {
         .padding(.vertical, 8)
         .background(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(isSelected ? Color.accentColor.opacity(0.22) : .clear)
+                .fill(Color.white.opacity(isSelected ? 0.09 : hovered ? 0.04 : 0))
                 .overlay(
                     RoundedRectangle(cornerRadius: 12, style: .continuous)
                         .strokeBorder(
-                            isSelected ? Color.accentColor.opacity(0.55) : .clear, lineWidth: 1)
+                            isSelected ? Color.white.opacity(0.16) : .clear, lineWidth: 1)
                 )
         )
-        .scaleEffect(isSelected ? 1.04 : 1)
+        .onHover { hovered = $0 }
         .animation(.easeOut(duration: 0.12), value: isSelected)
         .onAppear(perform: loadIcon)
     }
@@ -681,4 +678,3 @@ private struct PageDropZone: View {
         }
     }
 }
-

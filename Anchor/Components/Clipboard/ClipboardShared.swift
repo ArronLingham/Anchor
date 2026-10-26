@@ -65,7 +65,7 @@ struct ClipboardTabButton: View {
                 if itemCount > 0 {
                     Text("\(itemCount)")
                         .font(.system(size: 9, weight: .bold))
-                        .foregroundColor(isSelected ? .white : .secondary)
+                        .foregroundColor(isSelected ? AnchorDesign.canvas : AnchorDesign.muted)
                         .padding(.horizontal, 4)
                         .padding(.vertical, 1)
                         .background(
@@ -74,12 +74,12 @@ struct ClipboardTabButton: View {
                         )
                 }
             }
-            .foregroundColor(isSelected ? .white : .secondary)
+            .foregroundColor(isSelected ? AnchorDesign.canvas : AnchorDesign.muted)
             .padding(.horizontal, 12)
             .padding(.vertical, 6)
             .background(
-                RoundedRectangle(cornerRadius: 6)
-                    .fill(isSelected ? Color.blue : Color.clear)
+                RoundedRectangle(cornerRadius: 11)
+                    .fill(isSelected ? AnchorDesign.accent : Color.clear)
             )
         }
         .buttonStyle(PlainButtonStyle())

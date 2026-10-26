@@ -1085,6 +1085,7 @@ struct NoteEditorView: View {
     @FocusState private var isContentFocused: Bool
     
     var body: some View {
+        Group {
         VStack(spacing: 0) {
             // Toolbar
             HStack {
@@ -1232,5 +1233,7 @@ struct NoteEditorView: View {
                 isContentFocused = true
             }
         }
+            }
+        .anchorTheme()
     }
 }

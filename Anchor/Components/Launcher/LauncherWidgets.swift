@@ -32,6 +32,53 @@ import SwiftUI
 /// snapshot the lock screen already fetches; the record reads `MusicManager`,
 /// which is event-driven.
 struct LauncherWidgetStrip: View {
+    let profileID: String
+    @AppStorage("launcherWidgetProfiles") private var profileData = Data()
+    @State private var editing = false
+    @State private var ready = false
+    private var profile: LauncherWidgetProfile { .load(profileData, screen: profileID) }
+    private var enabled: [String] {
+        profile.order.filter { id in
+            switch id {
+            case "clock": return showClock
+            case "weather": return showWeather
+            case "calendar": return showCalendar
+            case "reminders": return showReminders
+            case "music": return showVinyl
+            default: return false
+            }
+        }
+    }
+
+    private func update(_ change: (inout LauncherWidgetProfile) -> Void) {
+        var value = profile
+        change(&value)
+        profileData = value.saving(in: profileData, screen: profileID)
+    }
+
+    private func move(_ id: String, by offset: Int) {
+        guard let visibleIndex = enabled.firstIndex(of: id),
+              enabled.indices.contains(visibleIndex + offset),
+              let from = profile.order.firstIndex(of: id),
+              let to = profile.order.firstIndex(of: enabled[visibleIndex + offset]) else { return }
+        update { $0.order.swapAt(from, to) }
+    }
+
+    @ViewBuilder private func widget(_ id: String) -> some View {
+        switch id {
+        case "clock": LauncherClockWidget()
+        case "weather": LauncherWeatherWidget()
+        case "calendar": LauncherCalendarWidget()
+        case "reminders": LauncherRemindersWidget()
+        default: LauncherVinylWidget(size: musicSize(id))
+        }
+    }
+
+    private func musicSize(_ id: String) -> LauncherPlayerWidget.Size {
+        guard let size = profile.sizes[id] else { return Defaults[.launcherWidgetSize] }
+        return size == 0 ? .compact : size == 2 ? .wide : .regular
+    }
+
     @Default(.launcherShowClockWidget) private var showClock
     @Default(.launcherShowWeatherWidget) private var showWeather
     @Default(.launcherShowVinylWidget) private var showVinyl
@@ -42,23 +89,101 @@ struct LauncherWidgetStrip: View {
 
     var body: some View {
         if anyEnabled {
-            ScrollView(.horizontal) {
-                HStack(alignment: .top, spacing: 10) {
-                    if showClock { LauncherClockWidget() }
-                    if showWeather { LauncherWeatherWidget() }
-                    if showCalendar { LauncherCalendarWidget() }
-                    if showReminders { LauncherRemindersWidget() }
-                    if showVinyl { LauncherVinylWidget() }
-                }
+            VStack(alignment: .trailing, spacing: 4) {
+                Button(editing ? "Done" : "Edit widgets") { editing.toggle() }
+                    .buttonStyle(.plain).font(.caption).foregroundStyle(.secondary)
+                ScrollView(.vertical) {
+                    LauncherWidgetFlow(spacing: 16) {
+                        ForEach(enabled, id: \.self) { id in
+                            VStack(spacing: 6) {
+                                if ready {
+                                    widget(id)
+                                        .environment(\.launcherWidgetWidth, width(id) - 28)
+                                } else {
+                                    RoundedRectangle(cornerRadius: 16)
+                                        .fill(.quaternary).frame(width: width(id), height: 90)
+                                }
+                                if editing {
+                                    HStack {
+                                        Button { move(id, by: -1) } label: { Image(systemName: "arrow.left") }
+                                            .disabled(enabled.first == id).accessibilityLabel("Move widget left")
+                                        Menu("Size") {
+                                            ForEach(0..<3) { size in
+                                                Button(["Compact", "Regular", "Wide"][size]) {
+                                                    update { $0.sizes[id] = size }
+                                                }
+                                            }
+                                        }
+                                        Button { move(id, by: 1) } label: { Image(systemName: "arrow.right") }
+                                            .disabled(enabled.last == id).accessibilityLabel("Move widget right")
+                                    }.controlSize(.small)
+                                }
+                            }
+                        }
+                    }
+                }.scrollIndicators(.never)
+                if editing { Text("Layout saved for this display").font(.caption2).foregroundStyle(.secondary) }
             }
-            .scrollIndicators(.hidden)
-            .padding(.top, 2)
             .padding(.bottom, 12)
+            .task {
+                // Let search and app tiles present before constructing media/EventKit views.
+                await Task.yield()
+                guard !Task.isCancelled else { return }
+                ready = true
+            }
+        }
+    }
+
+    private func width(_ id: String) -> CGFloat {
+        switch profile.sizes[id] ?? 1 {
+        case 0: return 190
+        case 2: return 330
+        default: return 246
         }
     }
 }
 
+/// Wrap saved widget widths into rows instead of clipping the last widget off
+/// screen. The same stored order and size choices work in both launcher modes.
+private struct LauncherWidgetFlow: Layout {
+    var spacing: CGFloat
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let width = proposal.width ?? 900
+        return arrange(subviews, width: width).size
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        let positions = arrange(subviews, width: bounds.width).positions
+        for (index, subview) in subviews.enumerated() {
+            subview.place(at: CGPoint(x: bounds.minX + positions[index].x,
+                                     y: bounds.minY + positions[index].y),
+                          anchor: .topLeading, proposal: .unspecified)
+        }
+    }
+
+    private func arrange(_ subviews: Subviews, width: CGFloat) -> (size: CGSize, positions: [CGPoint]) {
+        var x: CGFloat = 0
+        var y: CGFloat = 0
+        var rowHeight: CGFloat = 0
+        var positions: [CGPoint] = []
+        for subview in subviews {
+            let size = subview.sizeThatFits(.unspecified)
+            if x > 0 && x + size.width > width {
+                x = 0
+                y += rowHeight + spacing
+                rowHeight = 0
+            }
+            positions.append(CGPoint(x: x, y: y))
+            x += size.width + spacing
+            rowHeight = max(rowHeight, size.height)
+        }
+        return (CGSize(width: width, height: y + rowHeight), positions)
+    }
+}
+
 private struct LauncherCalendarWidget: View {
+    @Environment(\.launcherWidgetWidth) private var width
     @ObservedObject private var calendar = CalendarManager.shared
 
     private var upcoming: [EventModel] {
@@ -84,6 +209,7 @@ private struct LauncherCalendarWidget: View {
                         .foregroundStyle(.secondary)
                 } else {
                     ForEach(upcoming) { event in
+                        HStack {
                         Button {
                             if let url = event.calendarAppURL() {
                                 _ = NSWorkspace.shared.open(url)
@@ -105,10 +231,16 @@ private struct LauncherCalendarWidget: View {
                         }
                         .buttonStyle(.plain)
                         .help("Open \(event.title) in Calendar")
+                        if let url = event.conferenceURL {
+                            Button("Join") { NSWorkspace.shared.open(url) }
+                                .buttonStyle(AnchorButtonStyle()).controlSize(.small)
+                                .help("Join \(event.title)")
+                        }
+                        }
                     }
                 }
             }
-            .frame(width: 218, alignment: .leading)
+            .frame(width: width, alignment: .leading)
         }
         .task {
             if !calendar.hasCalendarAccess {
@@ -120,6 +252,8 @@ private struct LauncherCalendarWidget: View {
 }
 
 private struct LauncherRemindersWidget: View {
+    @Environment(\.launcherWidgetWidth) private var width
+    @State private var saving = false
     @ObservedObject private var reminders = LauncherAppleReminders.shared
     @State private var newTask = ""
 
@@ -158,6 +292,9 @@ private struct LauncherRemindersWidget: View {
                         .help("Complete \(item.title)")
                     }
                 }
+                if let error = reminders.errorMessage {
+                    Text(error).font(.caption2).foregroundStyle(.red).lineLimit(2)
+                }
                 HStack(spacing: 5) {
                     TextField("New reminder", text: $newTask)
                         .textFieldStyle(.plain)
@@ -167,11 +304,11 @@ private struct LauncherRemindersWidget: View {
                         Image(systemName: "plus.circle.fill")
                     }
                     .buttonStyle(.plain)
-                    .disabled(newTask.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .disabled(saving || !reminders.hasAccess || newTask.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                     .accessibilityLabel("Add reminder")
                 }
             }
-            .frame(width: 218, alignment: .leading)
+            .frame(width: width, alignment: .leading)
         }
         .task { await reminders.refresh() }
         .onReceive(NotificationCenter.default.publisher(for: .EKEventStoreChanged)) { _ in
@@ -180,15 +317,19 @@ private struct LauncherRemindersWidget: View {
     }
 
     private func addTask() {
-        guard reminders.hasAccess else { return }
+        guard reminders.hasAccess, !saving else { return }
         let title = newTask
-        newTask = ""
-        Task { await reminders.add(title) }
+        saving = true
+        Task {
+            if await reminders.add(title), newTask == title { newTask = "" }
+            saving = false
+        }
     }
 }
 
 /// A widget's shared shell, so the three look like one set.
 private struct WidgetCard<Content: View>: View {
+    @Environment(\.launcherWidgetWidth) private var width
     var onTap: (() -> Void)?
     @ViewBuilder var content: Content
 
@@ -196,8 +337,9 @@ private struct WidgetCard<Content: View>: View {
         content
             .padding(.horizontal, 14)
             .padding(.vertical, 12)
-            .frame(minWidth: 108, minHeight: 62, alignment: .leading)
-            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
+            .frame(width: width + 28, alignment: .leading)
+            .frame(minHeight: 86, alignment: .leading)
+            .background(AnchorSurface(radius: 18))
             .overlay {
                 RoundedRectangle(cornerRadius: 16)
                     .stroke(Color.primary.opacity(0.08), lineWidth: 1)
@@ -273,8 +415,9 @@ private struct LauncherWeatherWidget: View {
 /// the launcher is dismissed by the tap anyway, so a transport built into this
 /// card would be gone the moment you used it.
 private struct LauncherVinylWidget: View {
+    var size: LauncherPlayerWidget.Size = .regular
     var body: some View {
-        LauncherPlayerWidget(onOpen: {
+        LauncherPlayerWidget(size: size, onOpen: {
             Defaults[.enablePlayerWidget] = true
             PlayerWindowManager.shared.sync()
         })

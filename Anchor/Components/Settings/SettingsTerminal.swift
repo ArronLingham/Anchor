@@ -114,7 +114,7 @@ struct TerminalSettings: View {
                         Text("Shell path")
                         Spacer()
                         TextField("", text: $terminalShellPath)
-                            .textFieldStyle(.roundedBorder)
+                            .textFieldStyle(AnchorFieldStyle())
                             .frame(width: 200)
                             .multilineTextAlignment(.trailing)
                     }

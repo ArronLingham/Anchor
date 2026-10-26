@@ -62,6 +62,9 @@ final class AppSwitcherManager: ObservableObject {
     @Published private(set) var isVisible = false
 
     /// PIDs in most-recently-used order, newest first.
+    @Published private(set) var query = ""
+    private var unfilteredApps: [SwitchableApp] = []
+    private var icons: [pid_t: NSImage] = [:]
     private var recency: [pid_t] = []
     private var observersInstalled = false
 
@@ -91,6 +94,7 @@ final class AppSwitcherManager: ObservableObject {
     func startTracking() {
         guard !observersInstalled else { return }
         observersInstalled = true
+        NSWorkspace.shared.runningApplications.forEach { cacheIcon($0) }
 
         // Seed with whatever is frontmost now, so the very first invocation
         // already has a sensible order rather than an arbitrary one.
@@ -118,6 +122,7 @@ final class AppSwitcherManager: ObservableObject {
                 // guard in `activateSelection()` could never match anything,
                 // silently defeating it every time.
                 guard app.processIdentifier != ProcessInfo.processInfo.processIdentifier else { return }
+                self?.cacheIcon(app)
                 self?.noteActivation(app.processIdentifier)
             }
         }
@@ -129,8 +134,23 @@ final class AppSwitcherManager: ObservableObject {
                 guard let app = note.userInfo?[NSWorkspace.applicationUserInfoKey]
                     as? NSRunningApplication else { return }
                 self?.recency.removeAll { $0 == app.processIdentifier }
+                self?.icons.removeValue(forKey: app.processIdentifier)
             }
         }
+    }
+
+    private func cacheIcon(_ app: NSRunningApplication) {
+        let pid = app.processIdentifier
+        guard icons[pid] == nil, let url = app.bundleURL else { return }
+        let entry = LauncherApp(url: url, name: app.localizedName ?? "", bundleIdentifier: app.bundleIdentifier)
+        if let cached = AppIconCache.shared.icon(for: entry, completion: { [weak self] image in
+            guard let self, !app.isTerminated else { return }
+            self.icons[pid] = image
+            if let index = self.apps.firstIndex(where: { $0.pid == pid }) {
+                let old = self.apps[index]
+                self.apps[index] = SwitchableApp(pid: pid, name: old.name, bundleID: old.bundleID, icon: image)
+            }
+        }) { icons[pid] = cached }
     }
 
     private func noteActivation(_ pid: pid_t) {
@@ -149,8 +169,11 @@ final class AppSwitcherManager: ObservableObject {
         let running = NSWorkspace.shared.runningApplications.filter {
             $0.activationPolicy == .regular && !$0.isTerminated
         }
+        let frontmostPID = NSWorkspace.shared.frontmostApplication?.processIdentifier
 
         let ranked = running.sorted { lhs, rhs in
+            if lhs.processIdentifier == frontmostPID { return true }
+            if rhs.processIdentifier == frontmostPID { return false }
             let l = recency.firstIndex(of: lhs.processIdentifier) ?? Int.max
             let r = recency.firstIndex(of: rhs.processIdentifier) ?? Int.max
             if l != r { return l < r }
@@ -160,11 +183,12 @@ final class AppSwitcherManager: ObservableObject {
         }
 
         return ranked.map {
-            SwitchableApp(
+            cacheIcon($0)
+            return SwitchableApp(
                 pid: $0.processIdentifier,
                 name: $0.localizedName ?? "—",
                 bundleID: $0.bundleIdentifier,
-                icon: $0.icon)
+                icon: icons[$0.processIdentifier])
         }
     }
 
@@ -174,15 +198,25 @@ final class AppSwitcherManager: ObservableObject {
     /// — which is what makes a single press behave like ⌘Tab. Opening in
     /// reverse instead starts on the *last* entry, mirroring ⌘⇧Tab.
     func show(startingReversed: Bool = false) {
-        apps = snapshot()
+        query = ""
+        unfilteredApps = snapshot()
+        apps = unfilteredApps
         guard !apps.isEmpty else { return }
-        originalFrontmostPID = recency.first ?? NSWorkspace.shared.frontmostApplication?.processIdentifier
+        originalFrontmostPID = NSWorkspace.shared.frontmostApplication?.processIdentifier
         if apps.count > 1 {
             selectedIndex = startingReversed ? apps.count - 1 : 1
         } else {
             selectedIndex = 0
         }
         isVisible = true
+    }
+
+    func filter(_ text: String) {
+        query = text
+        apps = text.isEmpty ? unfilteredApps : unfilteredApps.filter {
+            $0.name.localizedStandardContains(text)
+        }
+        selectedIndex = 0
     }
 
     func hide() {

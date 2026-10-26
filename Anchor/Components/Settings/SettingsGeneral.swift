@@ -327,7 +327,7 @@ struct GeneralSettings: View {
                     Text("System stats")
                 }
                 .settingsHighlight(id: highlightID("System stats"))
-                .settingsInfo("Adds a Stats tab showing CPU, memory and network throughput. Sampling only runs while that tab is open — nothing is measured in the background.")
+                .settingsInfo("Adds CPU and GPU load, temperatures, battery power, memory pressure and network speeds. Sampling pauses when panels close unless you explicitly enable closed-panel monitoring in Monitor settings.")
             } header: {
                 Text("Stats")
             }

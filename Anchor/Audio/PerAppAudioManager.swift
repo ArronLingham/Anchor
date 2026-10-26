@@ -49,21 +49,18 @@ struct PerAppAudioState: Codable, Equatable, Defaults.Serializable {
         EQSettings(bandGains: eqBandGains, isEnabled: eqEnabled)
     }
 
-    /// Whether this state needs the engine at all.
-    ///
-    /// Anything that is exactly default is not worth a tap, an aggregate device
-    /// and a real-time thread, so the engine is torn down rather than left
-    /// running a no-op multiply.
-    var needsProcessing: Bool {
-        isMuted
-            || abs(volume - 1) > 0.001
-            || (eqEnabled && eqBandGains.contains { abs($0) > 0.01 })
-            // Routing is the one setting that needs the engine while every gain
-            // is still at its default: sending an app to another device is done
-            // by building the aggregate against that device, not by scaling
-            // anything. Omit this and choosing an output would silently no-op.
-            || outputDeviceUID != nil
+    var needsSignalProcessing: Bool {
+        isMuted || abs(volume - 1) > 0.001
+            || (eqEnabled && eqBandGains.contains { $0.isFinite && abs($0) > 0.01 })
     }
+
+    var needsProcessing: Bool { needsSignalProcessing || outputDeviceUID != nil }
+
+    /// Preserve the saved pin, but bypass a route identical to the system output.
+    func needsProcessing(defaultOutputUID: String?) -> Bool {
+        needsSignalProcessing || (outputDeviceUID != nil && outputDeviceUID != defaultOutputUID)
+    }
+
 }
 
 /// Per-app volume, mute and EQ.
@@ -166,6 +163,15 @@ final class PerAppAudioManager: ObservableObject {
             MainActor.assumeIsolated { self?.rebuildAll() }
         }
 
+        deviceMonitor.onOutputDeviceSampleRateChanged = { [weak self] uid, _ in
+            guard let self else { return }
+            // Build fresh rate-specific processors and queues. No filter delay
+            // state is reset underneath a running callback.
+            for app in self.apps where self.controllers[app.id]?.currentDeviceUIDs.contains(uid) == true {
+                self.controllers.removeValue(forKey: app.id)?.invalidate()
+                self.syncController(for: app)
+            }
+        }
         installDefaultOutputListener()
     }
 
@@ -273,6 +279,9 @@ final class PerAppAudioManager: ObservableObject {
         guard started else { return }
         started = false
         resetAll()
+        deviceMonitor.onOutputDeviceSampleRateChanged = nil
+        deviceMonitor.onDeviceConnected = nil
+        deviceMonitor.onDeviceDisconnected = nil
         deviceMonitor.stop()
         processMonitor.onAppsChanged = nil
         processMonitor.stop()
@@ -312,7 +321,7 @@ final class PerAppAudioManager: ObservableObject {
     private func syncController(for app: AudioApp) {
         let wanted = state(for: app)
 
-        guard wanted.needsProcessing else {
+        guard wanted.needsProcessing(defaultOutputUID: currentOutputUID()) else {
             controllers.removeValue(forKey: app.id)?.invalidate()
             return
         }
@@ -376,9 +385,9 @@ final class PerAppAudioManager: ObservableObject {
             preferredTapSourceDeviceUID: outputUID)
 
         do {
-            try controller.activate(initial: TapInitialState(eqSettings: wanted.eqSettings))
             controller.volume = wanted.volume
             controller.isMuted = wanted.isMuted
+            try controller.activate(initial: TapInitialState(eqSettings: wanted.eqSettings))
             controllers[app.id] = controller
             lastFailure = nil
         } catch {
@@ -431,7 +440,7 @@ final class PerAppAudioManager: ObservableObject {
     /// pinned to a device explicitly resolves to the same UID and is left
     /// alone, which is the whole point of pinning.
     private func defaultOutputDeviceChanged() {
-        for app in apps where controllers[app.id] != nil {
+        for app in apps where state(for: app).needsProcessing || controllers[app.id] != nil {
             syncController(for: app)
         }
     }

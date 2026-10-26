@@ -18,6 +18,7 @@
  */
 
 import AppKit
+import AnchorUtilities
 import Foundation
 import Defaults
 
@@ -38,6 +39,25 @@ struct LauncherCommand: Identifiable {
 
     @MainActor
     static let all: [LauncherCommand] = [
+        LauncherCommand(id: "anchor.features", title: "Anchor Features & Tools", subtitle: "Find tools, configure controls and choose favorites", symbolName: "square.grid.2x2", keywords: ["features", "utilities", "tools", "library"]) {
+            UtilityWorkspace.shared.showLibrary()
+        },
+        LauncherCommand(id: "anchor.commandBar", title: "Command Bar", subtitle: "Actions, app menus, files, calculations and more", symbolName: "command", keywords: ["commands", "command bar", "palette", "actions"]) {
+            UtilityWorkspace.shared.run("commandBar")
+        },
+        LauncherCommand(id: "anchor.dashboard", title: "Anchor Dashboard", subtitle: "Media, sound, display, tasks and quick controls", symbolName: "square.grid.2x2", keywords: ["dashboard", "controls", "hub"]) {
+            DashboardWindowController.shared.show()
+        },
+        LauncherCommand(id: "anchor.focus", title: "Start Focus Session", subtitle: "Start a focus and break cycle", symbolName: "scope", keywords: ["focus", "pomodoro", "work"]) {
+            Defaults[.enableTimerFeature] = true
+            FocusSessionManager.shared.startFocus()
+        },
+        LauncherCommand(id: "anchor.clipboard", title: "Clipboard Library", subtitle: "Search copies, pins and collections", symbolName: "doc.on.clipboard", keywords: ["clipboard", "history", "copies", "pins"]) {
+            ClipboardPanelManager.shared.showClipboardPanel()
+        },
+        LauncherCommand(id: "anchor.shelf", title: "Add Files to Shelf", subtitle: "Collect files for preview, sharing and conversion", symbolName: "tray", keywords: ["shelf", "files", "collect"]) {
+            ShelfManager.shared.chooseFiles()
+        },
         LauncherCommand(
             id: "anchor.settings",
             title: "Anchor Settings",
@@ -55,6 +75,13 @@ struct LauncherCommand: Identifiable {
             keywords: ["reindex", "rescan", "refresh", "missing", "index"]
         ) {
             AppIndex.shared.refresh()
+        },
+
+        LauncherCommand(id: "display.disconnectExternal", title: "Disconnect External Monitors", subtitle: "Stop the display signal; keep the cable plugged in", symbolName: "display.trianglebadge.exclamationmark", keywords: ["monitor", "off", "disconnect", "blackout", "lunar", "vga"]) {
+            ExternalMonitorController.shared.disconnectExternalMonitors()
+        },
+        LauncherCommand(id: "display.reconnect", title: "Reconnect Monitors", subtitle: "Restore disconnected external displays", symbolName: "display", keywords: ["monitor", "on", "reconnect", "restore", "lunar", "display"]) {
+            ExternalMonitorController.shared.reconnectMonitors()
         },
 
         // MARK: - Quick toggles
@@ -206,9 +233,9 @@ struct LauncherCommand: Identifiable {
             title: "Lock Screen",
             subtitle: "Lock the Mac immediately",
             symbolName: "lock",
-            keywords: ["lock", "screen", "secure", "away"]
+            keywords: ["lock", "lock screen", "lock mac", "secure mac"]
         ) {
-            report(QuickToggles.lockScreen())
+            report(QuickToggles.lockScreen(source: .launcher))
         },
     ]
 
@@ -239,6 +266,14 @@ struct LauncherCommand: Identifiable {
         // into it: `all` is a `static let` evaluated once, and the user's
         // shortcuts change while the app is running.
         var candidates = all
+        candidates += UtilityWorkspace.shared.features.map { feature in
+            LauncherCommand(id: "utility.\(feature.id)", title: feature.title,
+                            subtitle: feature.summary, symbolName: feature.symbol,
+                            keywords: [feature.group, feature.id]) {
+                if feature.canRun { UtilityWorkspace.shared.run(feature.id) }
+                else { UtilityWorkspace.shared.showFeature(feature.id) }
+            }
+        }
         if Defaults[.enableShortcutsLauncher] {
             AppleShortcutsManager.shared.loadIfNeeded()
             candidates += AppleShortcutsManager.shared.launcherCommands()
@@ -246,24 +281,13 @@ struct LauncherCommand: Identifiable {
 
         var results: [ScoredCommand] = []
         for command in candidates {
-            var best: FuzzyMatcher.Match?
-            for candidate in [command.title] + command.keywords {
-                guard let match = FuzzyMatcher.match(query: trimmed, candidate: candidate) else {
-                    continue
-                }
-                if best == nil || match.score > best!.score { best = match }
-            }
-            guard let best else { continue }
-            // Only the title is highlighted, so indices from a keyword match
-            // would point at the wrong characters.
-            let titleMatch = FuzzyMatcher.match(query: trimmed, candidate: command.title)
-            results.append(
-                ScoredCommand(
-                    command: command,
-                    score: best.score,
-                    matchedIndices: titleMatch?.matchedIndices ?? []))
+            guard LauncherCommandIntent.allows(command.id, query: trimmed) else { continue }
+            guard let match = LauncherSearch.match(query: trimmed, document: .init(
+                name: command.title, aliases: command.keywords, context: [])) else { continue }
+            results.append(ScoredCommand(command: command, score: Int(match.score), matchedIndices: match.indices))
         }
-        return results.sorted { $0.score > $1.score }
+        results += QuicklinkManager.shared.searchCommands(trimmed)
+        return results.sorted { $0.score == $1.score ? $0.id < $1.id : $0.score > $1.score }
     }
 
     struct ScoredCommand: Identifiable {

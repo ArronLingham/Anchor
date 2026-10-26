@@ -27,7 +27,8 @@ struct HUDNumericLabel: View {
     var color: Color
     var alignment: Alignment = .center
     var width: CGFloat? = nil
-    var minimumDigits: Int = 3
+    var minimumDigits: Int = 1
+    var showsPercentSign = false
     var animation: Animation = .interactiveSpring(response: 0.35, dampingFraction: 0.75, blendDuration: 0.15)
     
     @State private var animatedValue: CGFloat = 0
@@ -50,10 +51,8 @@ struct HUDNumericLabel: View {
     }
     
     private var formattedValue: String {
-        let clamped = max(0, min(100, Int(round(animatedValue * 100))))
-        let digits = max(1, minimumDigits)
-        let format = "%\(digits)d"
-        return String(format: format, clamped)
+        // Leading field-padding spaces made shorter numbers look off-center.
+        CircularHUDLayout.percentage(animatedValue) + (showsPercentSign ? "%" : "")
     }
 }
 #endif

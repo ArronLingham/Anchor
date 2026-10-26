@@ -33,7 +33,7 @@ struct UpdateNotFoundView: View {
     }
 
     private var channelColor: Color {
-        Color(channel.badgeColor)
+        AnchorDesign.accent
     }
 
     var body: some View {
@@ -115,7 +115,7 @@ struct UpdateNotFoundView: View {
                     .frame(width: 120)
                     .padding(.vertical, 6)
             }
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(AnchorButtonStyle(prominent: true))
             .tint(.green.opacity(0.8))
             .controlSize(.large)
             .padding(.bottom, 24)

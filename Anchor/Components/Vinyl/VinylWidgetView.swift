@@ -122,6 +122,7 @@ struct VinylWidgetView: View {
     // MARK: - Body
 
     var body: some View {
+        Group {
         GeometryReader { geometry in
             // Portrait sizes everything from the card width; landscape sizes it
             // from the height, since there the record is what sets the height
@@ -163,6 +164,8 @@ struct VinylWidgetView: View {
         .onHover { isHovering = $0 }
         .animation(.easeInOut(duration: 0.35), value: music.avgColor)
         .animation(.easeInOut(duration: 0.25), value: orientation)
+            }
+        .anchorTheme()
     }
 
     /// Title, transport and progress — the same stack either way round.

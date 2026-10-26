@@ -29,7 +29,7 @@ struct RecordingLiveActivity: View {
     
     var body: some View {
         HStack(spacing: 0) {
-            // Left - Red circle with animation
+            // A steady status dot avoids redrawing the notch throughout a recording.
             Color.clear
                 .background {
                     if isExpanded {
@@ -41,7 +41,6 @@ struct RecordingLiveActivity: View {
                                 Circle()
                                     .fill(Color.red)
                                     .frame(width: 10, height: 10)
-                                    .modifier(PulsingModifier())
                             }
                             .frame(width: vm.effectiveClosedNotchHeight - 12, height: vm.effectiveClosedNotchHeight - 12)
                         }

@@ -23,6 +23,7 @@ import SwiftUI
 
 struct LauncherSettings: View {
     @ObservedObject private var index = AppIndex.shared
+    @ObservedObject private var navigationShortcuts = SystemNavigationShortcutManager.shared
     @Default(.enableLauncher) private var enableLauncher
     @Default(.launcherShowGridWhenEmpty) private var showGrid
     @Default(.launcherLayoutMode) private var launcherLayoutMode
@@ -46,6 +47,8 @@ struct LauncherSettings: View {
     @State private var showingPlayerLayoutEditor = false
 
     @Default(.enableAppSwitcher) private var enableAppSwitcher
+    @Default(.launcherUsesCommandSpace) private var useCommandSpace
+    @Default(.appSwitcherUsesCommandTab) private var useCommandTab
     @Default(.appSwitcherRingDiameter) private var appSwitcherRingDiameter
 
     private func highlightID(_ title: String) -> String {
@@ -54,7 +57,10 @@ struct LauncherSettings: View {
 
     var body: some View {
         Form {
+            QuicklinkSettingsSection()
             Section {
+                Defaults.Toggle(key: .launcherReduceAnimations) { Text("Reduce animations") }
+                    .help("Open and close the launcher and switcher without animation.")
                 Defaults.Toggle(key: .enableLauncher) {
                     Text("Enable Launcher")
                 }
@@ -69,6 +75,14 @@ struct LauncherSettings: View {
                 KeyboardShortcuts.Recorder("Open launcher:", name: .toggleLauncher)
                     .disabled(!enableLauncher)
                     .settingsHighlight(id: highlightID("Open launcher"))
+
+                Defaults.Toggle(key: .launcherUsesCommandSpace) {
+                    Text("Use ⌘Space for Launchpad")
+                }
+                .disabled(!enableLauncher)
+                .settingsInfo("Replaces Spotlight while Anchor is running. Your other launcher shortcut still works.")
+                .settingsHighlight(id: highlightID("Use ⌘Space for Launchpad"))
+                shortcutPermissionHint
 
                 Button("Preview launcher") {
                     LauncherPanelManager.shared.show()
@@ -87,6 +101,14 @@ struct LauncherSettings: View {
                     Text("Enable app switcher")
                 }
                 .settingsHighlight(id: highlightID("Enable app switcher"))
+
+                Defaults.Toggle(key: .appSwitcherUsesCommandTab) {
+                    Text("Use ⌘Tab for Anchor’s app switcher")
+                }
+                .disabled(!enableAppSwitcher)
+                .settingsInfo("Hold Command and tap Tab to cycle. Add Shift to go backwards; release Command to switch.")
+                .settingsHighlight(id: highlightID("Use ⌘Tab for Anchor’s app switcher"))
+                shortcutPermissionHint
 
                 KeyboardShortcuts.Recorder("Open switcher:", name: .appSwitcher)
                     .disabled(!enableAppSwitcher)
@@ -111,14 +133,10 @@ struct LauncherSettings: View {
             } footer: {
                 Text(
                     "The ring opens at your pointer and stays within the active display. Running apps are most recently used first — hold the "
-                    + "shortcut and tap Tab to go round, release to switch. Return "
-                    + "confirms, Escape cancels, W closes the highlighted app, and "
-                    + "the pointer can pick any of them directly.\n\n"
-                    + "The system ⌘Tab is left alone: taking it over means "
-                    + "swallowing it with an event tap, and an app that swallows "
-                    + "⌘Tab and then hangs leaves you with no way to switch apps "
-                    + "at all. Keyboard control needs Accessibility; without it the "
-                    + "ring still opens and the pointer still works.")
+                    + "shortcut and tap Tab to go round, release to switch. Type to filter. Return "
+                    + "confirms, Escape cancels, ⌘W closes the highlighted app, and "
+                    + "the pointer can pick any of them directly. Keyboard control needs Accessibility. "
+                    + "The standard macOS shortcuts return when Anchor quits or these replacements are turned off.")
                 .foregroundStyle(.secondary)
                 .font(.caption)
             }
@@ -380,4 +398,11 @@ struct LauncherSettings: View {
         }
     }
 
+    @ViewBuilder private var shortcutPermissionHint: some View {
+        if (useCommandSpace || useCommandTab),
+           !navigationShortcuts.isAvailable {
+            Text("Allow Anchor in System Settings → Privacy & Security → Accessibility, then return to Anchor to enable these shortcuts.")
+                .font(.caption).foregroundStyle(.secondary)
+        }
+    }
 }

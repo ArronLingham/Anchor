@@ -72,6 +72,7 @@ struct Shortcuts: View {
                 }
 
                 Section {
+                    KeyboardShortcuts.Recorder("Open dashboard:", name: .toggleDashboard)
                     KeyboardShortcuts.Recorder("Toggle Notch Open:", name: .toggleNotchOpen)
                         .disabled(!enableShortcuts)
                 } header: {
@@ -119,7 +120,19 @@ struct Shortcuts: View {
                             KeyboardShortcuts.Recorder("Mute all microphones:", name: .toggleMuteAllInputs)
                         }
 
-                        Section {
+
+                        Spacer()
+                    }
+                } header: {
+                    Text("Clipboard")
+                } footer: {
+                    Text("Opens the clipboard history panel. Default is Cmd+Shift+V (similar to Windows+V on PC). Only works when clipboard feature is enabled.")
+                        .multilineTextAlignment(.trailing)
+                        .foregroundStyle(.secondary)
+                        .font(.caption)
+                }
+
+                Section {
                             KeyboardShortcuts.Recorder("Left half:", name: .snapLeft)
                             KeyboardShortcuts.Recorder("Right half:", name: .snapRight)
                             KeyboardShortcuts.Recorder("Top half:", name: .snapTopHalf)
@@ -141,16 +154,11 @@ struct Shortcuts: View {
                                     .foregroundStyle(.secondary)
                                     .padding(.top, 2)
                             }
-                        }
-                        Spacer()
-                    }
-                } header: {
-                    Text("Clipboard")
+                        } header: {
+                    Text("Window arrangement")
                 } footer: {
-                    Text("Opens the clipboard history panel. Default is Cmd+Shift+V (similar to Windows+V on PC). Only works when clipboard feature is enabled.")
-                        .multilineTextAlignment(.trailing)
-                        .foregroundStyle(.secondary)
-                        .font(.caption)
+                    Text("Arrange the active window without leaving the keyboard.")
+                        .font(.caption).foregroundStyle(.secondary)
                 }
 
                 Section {

@@ -18,9 +18,16 @@ final class AIAssistantManager: ObservableObject {
     @Published private(set) var isSending = false
     @Published private(set) var lastError: String?
     @Published private(set) var hasAPIKey = false
+    @Published private(set) var isLoadingSavedKeys = false
+    @Published private(set) var isCheckingKeys = false
 
     private var cancellables = Set<AnyCancellable>()
     private var started = false
+    private var keyCheckRevision = 0
+    @Published private var authorizedKeys: [AIProvider: [String]] = [:]
+    private var keyReadTasks: [AIProvider: Task<AIAssistantCredential.ReadResult, Never>] = [:]
+    private var keyVersions: [AIProvider: Int] = [:]
+    @Published private var keyAccessRequired = Set<AIProvider>()
 
     private init() {
         Defaults.observe(.aiProvider) { [weak self] _ in
@@ -36,21 +43,96 @@ final class AIAssistantManager: ObservableObject {
     }
 
     private func checkKey() {
-        hasAPIKey = !keys(for: Defaults[.aiProvider]).isEmpty
+        let provider = Defaults[.aiProvider]
+        keyCheckRevision += 1
+        let revision = keyCheckRevision
+        if let cached = authorizedKeys[provider] {
+            hasAPIKey = !cached.isEmpty
+            isCheckingKeys = false
+            return
+        }
+        isCheckingKeys = true
+        Task { [weak self] in
+            guard let self else { return }
+            let keys = await self.loadKeysIfNeeded(for: provider)
+            guard self.keyCheckRevision == revision,
+                  Defaults[.aiProvider] == provider else { return }
+            self.hasAPIKey = !keys.isEmpty
+            self.isCheckingKeys = false
+        }
     }
 
     func keys(for provider: AIProvider) -> [String] {
-        AIAssistantCredential.read(provider: provider)
+        authorizedKeys[provider] ?? []
+    }
+
+    func needsSavedKeyAccess(for provider: AIProvider) -> Bool { keyAccessRequired.contains(provider) }
+
+    private func loadKeysIfNeeded(for provider: AIProvider) async -> [String] {
+        if let cached = authorizedKeys[provider] { return cached }
+        let version = keyVersions[provider, default: 0]
+        let task = keyReadTasks[provider] ?? Task.detached(priority: .utility) {
+            AIAssistantCredential.readResult(provider: provider)
+        }
+        keyReadTasks[provider] = task
+        let result = await task.value
+        keyReadTasks[provider] = nil
+        if keyVersions[provider, default: 0] == version {
+            authorizedKeys[provider] = result.keys
+            if result.requiresAuthorization { keyAccessRequired.insert(provider) }
+            else { keyAccessRequired.remove(provider) }
+        }
+        return authorizedKeys[provider] ?? []
+    }
+
+    /// Only an explicit Settings action may ask macOS for saved-key access.
+    /// The system dialog never blocks the app's main run loop.
+    func loadSavedKeys() {
+        guard !isLoadingSavedKeys else { return }
+        let provider = Defaults[.aiProvider]
+        keyCheckRevision += 1
+        let revision = keyCheckRevision
+        keyVersions[provider, default: 0] += 1
+        let version = keyVersions[provider, default: 0]
+        isLoadingSavedKeys = true
+        Task { [weak self] in
+            let result = await Task.detached(priority: .userInitiated) {
+                AIAssistantCredential.readResult(provider: provider, allowAuthentication: true)
+            }.value
+            guard let self else { return }
+            self.isLoadingSavedKeys = false
+            guard self.keyCheckRevision == revision,
+                  self.keyVersions[provider, default: 0] == version else { return }
+            if result.requiresAuthorization { self.keyAccessRequired.insert(provider) }
+            else {
+                self.keyAccessRequired.remove(provider)
+                self.authorizedKeys[provider] = result.keys
+            }
+            if Defaults[.aiProvider] == provider { self.hasAPIKey = !self.keys(for: provider).isEmpty }
+        }
     }
 
     func setKeys(_ keys: [String], for provider: AIProvider) -> Bool {
+        guard !isCheckingKeys, !needsSavedKeyAccess(for: provider) else { return false }
         let ok = AIAssistantCredential.write(keys, provider: provider)
+        if ok {
+            keyCheckRevision += 1
+            keyVersions[provider, default: 0] += 1
+            keyAccessRequired.remove(provider)
+            authorizedKeys[provider] = keys.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+        }
         if provider == Defaults[.aiProvider] { checkKey() }
         return ok
     }
 
     func clearKeys(for provider: AIProvider) {
-        AIAssistantCredential.delete(provider: provider)
+        if AIAssistantCredential.delete(provider: provider) {
+            keyCheckRevision += 1
+            keyVersions[provider, default: 0] += 1
+            keyAccessRequired.remove(provider)
+            authorizedKeys[provider] = []
+        }
         if provider == Defaults[.aiProvider] { checkKey() }
     }
 
@@ -63,6 +145,8 @@ final class AIAssistantManager: ObservableObject {
     @Published private(set) var availableModels: [String] = []
     @Published private(set) var isLoadingModels = false
     @Published private(set) var modelListError: String?
+    private var modelRequest: Task<Void, Never>?
+    private var modelListProvider: AIProvider?
 
     /// Asks the provider which models it will serve.
     ///
@@ -72,44 +156,53 @@ final class AIAssistantManager: ObservableObject {
     /// help you fix.
     func refreshModels() {
         let provider = Defaults[.aiProvider]
-        guard let key = keys(for: provider).first, !key.isEmpty else {
-            availableModels = []
-            modelListError = String(localized: "Add an API key first.")
-            return
-        }
-        guard let request = AIProtocol.buildModelListRequest(provider: provider, key: key) else { return }
+        modelRequest?.cancel()
+        if modelListProvider != provider { availableModels = [] }
+        modelListProvider = provider
         isLoadingModels = true
         modelListError = nil
-        Task { [weak self] in
+        modelRequest = Task { [weak self] in
+            guard let self else { return }
+            let keys = await self.loadKeysIfNeeded(for: provider)
+            guard !Task.isCancelled, Defaults[.aiProvider] == provider else { return }
+            guard let key = keys.first, !key.isEmpty else {
+                self.isLoadingModels = false
+                self.availableModels = []
+                self.modelListError = self.needsSavedKeyAccess(for: provider)
+                    ? "Load your saved keys first."
+                    : String(localized: "Add an API key first.")
+                return
+            }
+            guard let request = AIProtocol.buildModelListRequest(provider: provider, key: key) else {
+                self.isLoadingModels = false
+                return
+            }
             do {
                 let (data, response) = try await URLSession.shared.data(for: request)
                 let models = AIProtocol.parseModelList(provider: provider, data: data)
-                await MainActor.run {
-                    guard let self else { return }
-                    self.isLoadingModels = false
-                    if models.isEmpty {
-                        let code = (response as? HTTPURLResponse)?.statusCode ?? 0
-                        self.modelListError = code == 401 || code == 403
-                            ? String(localized: "That key was rejected.")
-                            : String(localized: "No usable models came back.")
-                    } else {
-                        self.availableModels = models
-                        // A stored model the account can no longer use is the
-                        // original bug. Correct it rather than leaving a
-                        // selection that will fail on the next message.
-                        let current = Defaults[.aiModel]
-                        let bare = current.hasPrefix("models/")
-                            ? String(current.dropFirst("models/".count)) : current
-                        if !models.contains(bare), let first = models.first {
-                            Defaults[.aiModel] = first
-                        }
+                guard !Task.isCancelled, Defaults[.aiProvider] == provider else { return }
+                self.isLoadingModels = false
+                if models.isEmpty {
+                    let code = (response as? HTTPURLResponse)?.statusCode ?? 0
+                    self.modelListError = code == 401 || code == 403
+                        ? String(localized: "That key was rejected.")
+                        : String(localized: "No usable models came back.")
+                } else {
+                    self.availableModels = models
+                    // A stored model the account can no longer use is the
+                    // original bug. Correct it rather than leaving a
+                    // selection that will fail on the next message.
+                    let current = Defaults[.aiModel]
+                    let bare = current.hasPrefix("models/")
+                        ? String(current.dropFirst("models/".count)) : current
+                    if !models.contains(bare), let first = models.first {
+                        Defaults[.aiModel] = first
                     }
                 }
             } catch {
-                await MainActor.run {
-                    self?.isLoadingModels = false
-                    self?.modelListError = error.localizedDescription
-                }
+                guard !Task.isCancelled, Defaults[.aiProvider] == provider else { return }
+                self.isLoadingModels = false
+                self.modelListError = error.localizedDescription
             }
         }
     }
@@ -123,19 +216,23 @@ final class AIAssistantManager: ObservableObject {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         let isTextEmpty = trimmed.isEmpty
         guard (!isTextEmpty || screenshot != nil), !isSending else { return }
+        isSending = true
+        lastError = nil
+        defer { isSending = false }
 
         let provider = Defaults[.aiProvider]
-        let availableKeys = keys(for: provider)
+        let model = Defaults[.aiModel]
+        let instruction = Defaults[.aiSystemInstruction]
+        let availableKeys = await loadKeysIfNeeded(for: provider)
         guard !availableKeys.isEmpty else {
-            lastError = "Add a \(provider.rawValue) API key in Settings first."
+            lastError = needsSavedKeyAccess(for: provider)
+                ? "Load your saved keys in Settings first."
+                : "Add a \(provider.rawValue) API key in Settings first."
             return
         }
 
         messages.append(AIMessage(role: .user, text: trimmed, imageData: screenshot))
         persistHistory()
-        isSending = true
-        lastError = nil
-        defer { isSending = false }
 
         let history = AIProtocol.trimmed(messages, limit: Defaults[.aiHistoryTurns])
         
@@ -152,10 +249,10 @@ final class AIAssistantManager: ObservableObject {
         for (offset, key) in ordered.enumerated() {
             guard let request = AIProtocol.buildRequest(
                 provider: provider,
-                model: Defaults[.aiModel],
+                model: model,
                 key: key,
                 history: history,
-                systemInstruction: Defaults[.aiSystemInstruction]
+                systemInstruction: instruction
             ) else {
                 lastError = "Could not build the request URL."
                 return

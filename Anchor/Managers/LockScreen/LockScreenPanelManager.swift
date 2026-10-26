@@ -27,6 +27,9 @@ import Combine
 @MainActor
 final class LockScreenPanelAnimator: ObservableObject {
     @Published var isPresented: Bool = false
+    @Published var contentSize: CGSize = .zero
+    @Published var isExpanded = false
+    @Published var isImmersive = false
 }
 
 @MainActor
@@ -46,6 +49,7 @@ class LockScreenPanelManager {
     /// would collapse it back to a panel on the next screen or lock change.
     private(set) var isPanelImmersive = false
     private let panelAnimator = LockScreenPanelAnimator()
+    private var presentation = LockScreenPresentationState()
     private var hideTask: Task<Void, Never>?
     private var screenChangeObserver: NSObjectProtocol?
     private var workspaceObservers: [NSObjectProtocol] = []
@@ -106,11 +110,21 @@ class LockScreenPanelManager {
     func showPanel() {
         print("[\(timestamp())] LockScreenPanelManager: showPanel")
 
-        guard Defaults[.enableLockScreenMediaWidget] else {
+        guard Defaults[.enableLockScreenMediaWidget], LockScreenManager.shared.isLocked else {
             print("[\(timestamp())] LockScreenPanelManager: widget disabled")
             hidePanel()
             return
         }
+
+        if presentation.isRequested, panelWindow?.isVisible == true {
+            applyOffsetAdjustment(animated: false)
+            return
+        }
+        let presentationToken = presentation.present()
+        hideTask?.cancel(); hideTask = nil
+        isPanelImmersive = false
+        panelAnimator.isExpanded = false; panelAnimator.isImmersive = false
+        presentation.setMediaAvailable(MusicManager.shared.hasActiveSession)
 
         guard let screen = currentScreen() else {
             print("[\(timestamp())] LockScreenPanelManager: no main screen available")
@@ -155,9 +169,11 @@ class LockScreenPanelManager {
         publishPanelFrame(targetFrame)
         hideTask?.cancel()
         panelAnimator.isPresented = false
+        panelAnimator.contentSize = targetFrame.size
         LockScreenTimerWidgetManager.shared.notifyMusicPanelFrameChanged(animated: false)
 
         let hosting = NSHostingView(rootView: LockScreenMusicPanel(animator: panelAnimator))
+        hosting.sizingOptions = []
         hosting.frame = NSRect(origin: .zero, size: targetFrame.size)
         hosting.autoresizingMask = [.width, .height]
         window.contentView = hosting
@@ -176,11 +192,17 @@ class LockScreenPanelManager {
         }
 
         // Keep the window alive and simply order it out on unlock to avoid SkyLight crashes.
-        window.orderFrontRegardless()
+        if presentation.shouldBeVisible(isLocked: LockScreenManager.shared.isLocked, isEnabled: Defaults[.enableLockScreenMediaWidget]) {
+            window.orderFrontRegardless()
+        } else {
+            window.orderOut(nil); publishPanelFrame(nil)
+        }
 
         DispatchQueue.main.async { [weak self] in
-            guard let self else { return }
-            self.panelAnimator.isPresented = true
+            guard let self, self.presentation.canPresent(presentationToken),
+                  LockScreenManager.shared.isLocked, Defaults[.enableLockScreenMediaWidget] else { return }
+            self.panelAnimator.isPresented = self.presentation.shouldBeVisible(
+                isLocked: LockScreenManager.shared.isLocked, isEnabled: Defaults[.enableLockScreenMediaWidget])
         }
 
         print("[\(timestamp())] LockScreenPanelManager: panel visible")
@@ -198,7 +220,8 @@ class LockScreenPanelManager {
         animated: Bool = true,
         immersive: Bool = false
     ) {
-        guard let window = panelWindow, let screen = currentScreen() else {
+        guard presentation.isRequested, LockScreenManager.shared.isLocked,
+              let window = panelWindow, let screen = currentScreen() else {
             return
         }
         isPanelImmersive = immersive
@@ -228,7 +251,8 @@ class LockScreenPanelManager {
             window.setFrame(targetFrame, display: true)
         }
 
-        publishPanelFrame(targetFrame)
+        if panelAnimator.contentSize != targetFrame.size { panelAnimator.contentSize = targetFrame.size }
+        publishPanelFrame(presentation.mediaAvailable ? targetFrame : nil)
 
         LockScreenTimerWidgetManager.shared.notifyMusicPanelFrameChanged(animated: animated)
 
@@ -264,32 +288,32 @@ class LockScreenPanelManager {
         LockScreenTimerWidgetManager.shared.notifyMusicPanelFrameChanged(animated: animated)
     }
 
-    func hidePanel() {
-        print("[\(timestamp())] LockScreenPanelManager: hidePanel")
-
+    func hidePanel(animated: Bool = true) {
+        let hideToken = presentation.hide()
         panelAnimator.isPresented = false
-        hideTask?.cancel()
-
-        guard let window = panelWindow else {
-            print("LockScreenPanelManager: no panel to hide")
+        hideTask?.cancel(); hideTask = nil
+        isPanelImmersive = false; isPanelExpanded = false; currentAdditionalHeight = 0
+        panelAnimator.isExpanded = false; panelAnimator.isImmersive = false
+        guard let window = panelWindow else { publishPanelFrame(nil); return }
+        if !animated || !LockScreenManager.shared.isLocked {
+            window.orderOut(nil)
+            window.contentView = nil
+            panelAnimator.contentSize = .zero
             publishPanelFrame(nil)
             return
         }
-
-        hideTask = Task { [weak self, weak window] in
-            try? await Task.sleep(for: .milliseconds(360))
-            guard let self else { return }
-            await MainActor.run {
-                window?.orderOut(nil)
-                window?.contentView = nil
-                self.publishPanelFrame(nil)
-                print("[\(self.timestamp())] LockScreenPanelManager: panel hidden")
-            }
+        hideTask = Task { @MainActor [weak self, weak window] in
+            do { try await Task.sleep(for: .milliseconds(360)) } catch { return }
+            guard !Task.isCancelled, let self, self.presentation.canFinishHiding(hideToken) else { return }
+            window?.orderOut(nil); window?.contentView = nil
+            self.panelAnimator.contentSize = .zero
+            self.publishPanelFrame(nil)
+            self.hideTask = nil
         }
     }
 
     private func handleScreenGeometryChange(reason: String) {
-        guard let window = panelWindow else { return }
+        guard presentation.isRequested, LockScreenManager.shared.isLocked, let window = panelWindow else { return }
         guard window.isVisible || panelAnimator.isPresented else { return }
         guard let screen = currentScreen() else { return }
 
@@ -302,12 +326,43 @@ class LockScreenPanelManager {
     }
 
     private func observeDefaultChanges() {
+        MusicManager.shared.$isPlaying
+            .combineLatest(MusicManager.shared.$songTitle, MusicManager.shared.$artistName)
+            .debounce(for: .milliseconds(150), scheduler: RunLoop.main)
+            .sink { [weak self] _, _, _ in self?.syncMediaVisibility() }
+            .store(in: &cancellables)
+        Defaults.publisher(.enableLockScreenMediaWidget, options: [])
+            .receive(on: RunLoop.main)
+            .sink { [weak self] change in
+                if change.newValue && LockScreenManager.shared.isLocked { self?.showPanel() }
+                else { self?.hidePanel(animated: false) }
+            }.store(in: &cancellables)
         Defaults.publisher(.lockScreenMusicPanelWidth)
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in
                 self?.applyOffsetAdjustment(animated: true)
             }
             .store(in: &cancellables)
+    }
+
+    private func syncMediaVisibility() {
+        presentation.setMediaAvailable(MusicManager.shared.hasActiveSession)
+        guard presentation.isRequested, LockScreenManager.shared.isLocked, let window = panelWindow else { return }
+        guard presentation.shouldBeVisible(isLocked: true, isEnabled: Defaults[.enableLockScreenMediaWidget]) else {
+            window.orderOut(nil)
+            if FullScreenArtworkWindowManager.shared.isShowing { FullScreenArtworkWindowManager.shared.hide() }
+            panelAnimator.isPresented = false
+            panelAnimator.isExpanded = false; panelAnimator.isImmersive = false
+            isPanelExpanded = false; isPanelImmersive = false; currentAdditionalHeight = 0
+            publishPanelFrame(nil)
+            return
+        }
+        if !window.isVisible {
+            applyOffsetAdjustment(animated: false)
+            window.orderFrontRegardless()
+            publishPanelFrame(window.frame)
+            panelAnimator.isPresented = true
+        }
     }
 
     private func targetFrame(for screenFrame: NSRect, panelSize: CGSize) -> NSRect {

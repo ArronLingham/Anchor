@@ -40,6 +40,7 @@ struct CustomOSDView: View {
     private let segmentCount: Int = 16
     
     var body: some View {
+        Group {
         VStack(spacing: spacing) {
             // Icon
             ZStack {
@@ -67,6 +68,8 @@ struct CustomOSDView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         )
         .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            }
+        .anchorTheme()
     }
     
     // MARK: - Symbol Logic
@@ -177,7 +180,7 @@ struct CustomOSDView: View {
                 } else {
                     RoundedRectangle(cornerRadius: 18, style: .continuous)
                         .glassEffect(
-                            .clear.interactive(),
+                            .regular.tint(AnchorDesign.surface).interactive(),
                             in: .rect(cornerRadius: 18)
                         )
                 }
@@ -187,10 +190,10 @@ struct CustomOSDView: View {
             }
         case .solidDark:
             RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .fill(Color.black.opacity(0.85))
+                .fill(AnchorDesign.inset)
         case .solidLight:
             RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .fill(Color.white.opacity(0.85))
+                .fill(AnchorDesign.raised)
         case .solidAuto:
             RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .fill((colorScheme == .dark ? Color.black : Color.white).opacity(0.85))

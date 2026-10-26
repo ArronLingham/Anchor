@@ -44,10 +44,15 @@ struct LockScreenMusicPanel: View {
     @State private var sliderValue: Double = 0
     @State private var dragging: Bool = false
     @State private var lastDragged: Date = .distantPast
-    @State private var isActive = true
-    @State private var isExpanded = false
+    private var isExpanded: Bool {
+        get { animator.isExpanded }
+        nonmutating set { animator.isExpanded = newValue }
+    }
     /// Presenting the full-screen player. Reached by tapping the artwork.
-    @State private var isImmersive = false
+    private var isImmersive: Bool {
+        get { animator.isImmersive }
+        nonmutating set { animator.isImmersive = newValue }
+    }
     @State private var isVolumeSliderVisible = false
     @State private var isAirPlayPopoverPresented = false
     @State private var isArtworkFullscreen = false
@@ -99,6 +104,7 @@ struct LockScreenMusicPanel: View {
     }
 
     private var currentSize: CGSize {
+        if animator.contentSize != .zero { return animator.contentSize }
         // Must match the window the manager sizes, or the view is laid out
         // against one rect and hosted in another.
         if isImmersive {
@@ -164,16 +170,10 @@ struct LockScreenMusicPanel: View {
     }
     
     var body: some View {
-        if isActive && musicManager.hasActiveSession {
+        Group {
+        if musicManager.hasActiveSession {
             ZStack {
-                // panelContent stays mounted and is hidden rather than removed.
-                //
-                // Its .onAppear/.onDisappear own `isActive`, and `body` is gated
-                // on `isActive`. Swapping it out for the immersive player tore
-                // it from the tree, fired .onDisappear, set isActive false, and
-                // the next evaluation of this very branch fell through to
-                // Color.clear — so opening the player made the whole panel
-                // vanish a frame later.
+                // Keep compact content mounted during immersive playback so its interaction state survives.
                 panelContent
                     .opacity(isImmersive ? 0 : 1)
                     .allowsHitTesting(!isImmersive)
@@ -195,9 +195,11 @@ struct LockScreenMusicPanel: View {
             Color.clear
                 .frame(width: collapsedPanelSize.width, height: collapsedPanelSize.height)
         }
+            }
+        .anchorTheme()
     }
     
-    private var panelContent: some View {
+    private var panelStyledContent: some View {
         ZStack(alignment: .topLeading) {
             panelBackgroundLayer
             panelForeground
@@ -224,9 +226,12 @@ struct LockScreenMusicPanel: View {
         .contentShape(Rectangle())
         .animation(.easeInOut(duration: 0.28), value: isExpanded)
         .animation(.easeInOut(duration: 0.24), value: shouldShowVolumeSlider)
+    }
+
+    private var panelLifecycleContent: some View {
+        panelStyledContent
         .onAppear {
             sliderValue = musicManager.elapsedTime
-            isActive = true
             logPanelAppearance()
             updatePanelSize(animated: false)
             routeManager.refreshDevices()
@@ -236,13 +241,16 @@ struct LockScreenMusicPanel: View {
             logGlassState(reason: "Panel appeared")
         }
         .onDisappear {
-            isActive = false
             cancelCollapseTimer()
             isVolumeSliderVisible = false
             parallaxResumeWorkItem?.cancel()
             parallaxResumeWorkItem = nil
             isParallaxSuspended = false
         }
+    }
+
+    private var panelContent: some View {
+        panelLifecycleContent
         .onReceive(NotificationCenter.default.publisher(for: .atollArtworkWallpaperDismissed)) { _ in
             withAnimation(.easeInOut(duration: 0.28)) {
                 isArtworkFullscreen = false
@@ -276,6 +284,14 @@ struct LockScreenMusicPanel: View {
             if !useMergedAirPlayOutput {
                 updatePanelSize()
             }
+        }
+        .onChange(of: shouldShowInlineLyrics) { _, _ in updatePanelSize() }
+        .onChange(of: usesSpotifyCanvasFallbackContentPresentation) { _, _ in updatePanelSize() }
+        .onChange(of: collapsedPanelWidth) { _, _ in updatePanelSize() }
+        .onChange(of: musicManager.songTitle) { _, _ in
+            dragging = false
+            sliderValue = musicManager.elapsedTime.isFinite ? max(0, musicManager.elapsedTime) : 0
+            lastDragged = .distantPast
         }
         .onChange(of: enableLyrics) { _, _ in
             withAnimation(.spring(response: 0.45, dampingFraction: 0.85)) {
@@ -590,9 +606,7 @@ struct LockScreenMusicPanel: View {
     
     private var progressBar: some View {
         TimelineView(
-            .animation(
-                paused: isProgressTimelinePaused
-            )
+            .animation(minimumInterval: 1.0 / 15.0, paused: isProgressTimelinePaused)
         ) { timeline in
             MusicSliderView(
                 sliderValue: $sliderValue,

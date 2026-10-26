@@ -53,7 +53,7 @@ final class LockScreenTimerWidgetManager {
         if isLocked {
             updateVisibility()
         } else {
-            LockScreenTimerWidgetPanelManager.shared.hide()
+            LockScreenTimerWidgetPanelManager.shared.hide(animated: false)
         }
     }
 
@@ -177,7 +177,8 @@ final class LockScreenTimerWidgetPanelManager {
         }
 
         hideTask = Task { [weak window, weak self] in
-            try? await Task.sleep(nanoseconds: delay)
+            do { try await Task.sleep(nanoseconds: delay) } catch { return }
+            guard !Task.isCancelled else { return }
             await MainActor.run {
                 window?.orderOut(nil)
                 self?.hideTask = nil

@@ -670,7 +670,7 @@ extension Defaults.Keys {
         // MARK: Appearance
     static let settingsIconInNotch = Key<Bool>("settingsIconInNotch", default: true)
     static let lightingEffect = Key<Bool>("lightingEffect", default: true)
-    static let accentColor = Key<Color>("accentColor", default: Color.blue)
+    static let accentColor = Key<Color>("accentColor", default: Color.white)
     static let enableShadow = Key<Bool>("enableShadow", default: true)
     static let cornerRadiusScaling = Key<Bool>("cornerRadiusScaling", default: true)
     static let useModernCloseAnimation = Key<Bool>("useModernCloseAnimation", default: true)
@@ -949,6 +949,9 @@ extension Defaults.Keys {
     /// Relaunch the most recently halted session when the window reopens.
     /// Only ever one session — resuming the whole queue at once would re-exhaust
     /// the fresh window within minutes.
+    static let codexPhoneLastScheduled = Key<Double>("codexPhoneLastScheduled", default: 0)
+    static let codexUsageWatchEnabled = Key<Bool>("codexUsageWatchEnabled", default: true)
+    static let codexUsageAutoResume = Key<Bool>("codexUsageAutoResume", default: true)
     static let claudeUsageAutoResume = Key<Bool>("claudeUsageAutoResume", default: true)
     /// Prompt handed to `claude -r <session> -p "…"` on auto-resume.
     static let claudeUsageResumePrompt = Key<String>("claudeUsageResumePrompt", default: "continue")
@@ -964,6 +967,7 @@ extension Defaults.Keys {
     // MARK: - Launcher
     /// Spotlight-style application launcher panel.
     static let enableLauncher = Key<Bool>("enableLauncher", default: true)
+    static let launcherUsesCommandSpace = Key<Bool>("launcherUsesCommandSpace", default: false)
     /// Frecency bookkeeping, keyed by app bundle path.
     static let launcherFrecencyScores = Key<[String: Double]>("launcherFrecencyScores", default: [:])
     static let launcherLastLaunched = Key<[String: Date]>("launcherLastLaunched", default: [:])
@@ -1028,7 +1032,10 @@ extension Defaults.Keys {
         "anchorCadenceLauncherAlwaysShowsControls", default: false)
     static let volumeControlsApp = Key<Bool>("anchorCadenceVolumeControlsApp", default: false)
     static let playerHeightBudget = Key<Double>("anchorCadencePlayerHeightBudget", default: 0)
-    static let clipboardHistorySize = Key<Int>("clipboardHistorySize", default: 3)
+    static let clipboardHistorySize = Key<Int>("clipboardHistorySize", default: 100)
+    static let clipboardRetentionDays = Key<Int>("clipboardRetentionDays", default: 0)
+    static let clipboardIgnoredApps = Key<[String]>("clipboardIgnoredApps", default: [])
+    static let clipboardSkipSensitive = Key<Bool>("clipboardSkipSensitive", default: true)
     static let showClipboardIcon = Key<Bool>("showClipboardIcon", default: true)
     static let clipboardDisplayMode = Key<ClipboardDisplayMode>("clipboardDisplayMode", default: .panel)
     
@@ -1213,7 +1220,7 @@ extension Defaults.Keys {
     static let enableSnapZones = Key<Bool>("enableSnapZones", default: false)
 
     // MARK: - System stats
-    static let enableSystemStats = Key<Bool>("enableSystemStats", default: false)
+    static let enableSystemStats = Key<Bool>("enableSystemStats", default: true)
     /// Seconds between samples while a stats view is on screen.
     static let statsRefreshSeconds = Key<Double>("statsRefreshSeconds", default: 2.0)
 
@@ -1383,6 +1390,7 @@ extension Defaults.Keys {
     /// Option-Tab opens a ring of running apps. Costs one NSWorkspace
     /// notification while enabled and nothing at all while the ring is closed.
     static let enableAppSwitcher = Key<Bool>("enableAppSwitcher", default: false)
+    static let appSwitcherUsesCommandTab = Key<Bool>("appSwitcherUsesCommandTab", default: false)
     static let appSwitcherRingDiameter = Key<Double>("appSwitcherRingDiameter", default: 420)
 
     // MARK: Menu bar shrinker

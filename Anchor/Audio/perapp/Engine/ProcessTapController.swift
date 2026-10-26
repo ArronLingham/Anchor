@@ -43,9 +43,7 @@ import os
 final class ProcessTapController: ProcessTapControlling {
     let app: AudioApp
     private let logger: os.Logger
-    // Note: This queue is passed to AudioDeviceCreateIOProcIDWithBlock but the actual
-    // audio callback runs on CoreAudio's real-time HAL I/O thread, not this queue.
-    private let queue = DispatchQueue(label: "ProcessTapController", qos: .userInitiated)
+    // IOProcs use direct HAL delivery; setup and teardown remain off the render thread.
 
     /// Weak reference to device monitor for O(1) device lookups during crossfade
     private weak var deviceMonitor: AudioDeviceMonitor?
@@ -112,23 +110,6 @@ final class ProcessTapController: ProcessTapControlling {
     /// This "equal power" crossfade maintains perceived loudness throughout the transition.
     /// See CrossfadeState for phase machine details.
     private nonisolated(unsafe) var crossfadeState = CrossfadeState()
-
-    /// Output-gate state machine for silent→non-silent soft-start. Phases:
-    ///   0 = armed (output muted, waiting for first non-silent input)
-    ///   1 = ramping (half-cosine fade-in over `_outputGateRampSamples`)
-    ///   2 = open   (passthrough)
-    /// After sustained input silence ≥ `_outputGateSilenceHoldSamples`, re-arms to 0.
-    /// UInt8 / Float / Int32 reads/writes are atomic on Apple ARM64/x86-64. Only the
-    /// primary callback advances this state; the secondary callback uses crossfadeState.
-    private nonisolated(unsafe) var _outputGateRawPhase: UInt8 = 0
-    private nonisolated(unsafe) var _outputGateProgress: Float = 0
-    private nonisolated(unsafe) var _outputGateSilentSamples: Int32 = 0
-    /// Sample count for the 40 ms half-cosine ramp (recomputed in activate from device rate).
-    private nonisolated(unsafe) var _outputGateRampSamples: Float = 1920
-    /// Sample count for the 200 ms silence-hold before re-arming (recomputed in activate).
-    private nonisolated(unsafe) var _outputGateSilenceHoldSamples: Int32 = 9600
-    /// Input below this peak magnitude is treated as silence (≈ -80 dBFS).
-    nonisolated private static let outputGateSilenceThreshold: Float = 0.0001
 
     // MARK: - Non-RT State (modified only from main thread)
 
@@ -659,7 +640,7 @@ final class ProcessTapController: ProcessTapControlling {
         rampCoefficient = 1 - exp(-1 / (Float(sampleRate) * rampTimeSeconds))
         logger.debug("Ramp coefficient: \(self.rampCoefficient)")
 
-        eqProcessor = EQProcessor(sampleRate: sampleRate)
+        eqProcessor = EQProcessor(sampleRate: sampleRate, settings: initial.eqSettings)
         autoEQProcessor = AutoEQProcessor(sampleRate: sampleRate)
         loudnessEqualizerProcessor = LoudnessEqualizer(settings: initial.loudnessEqualizerSettings, sampleRate: Float(sampleRate))
         loudnessCompensator = LoudnessCompensator(sampleRate: sampleRate)
@@ -681,7 +662,15 @@ final class ProcessTapController: ProcessTapControlling {
         nextCallbackID += 1
         _primaryCallbackID = nextCallbackID
         let activateCallbackID = nextCallbackID
-        err = AudioDeviceCreateIOProcIDWithBlock(&primaryResources.deviceProcID, primaryResources.aggregateDeviceID, queue) { @Sendable [weak self] _, inInputData, _, outOutputData, _ in
+        let renderContext: TapRenderContext
+        do {
+            renderContext = try TapRenderContext.make(tapID: primaryResources.tapID, aggregateID: primaryResources.aggregateDeviceID)
+        } catch {
+            primaryResources.destroy()
+            throw error
+        }
+        primaryResources.renderContext = renderContext
+        err = AudioDeviceCreateIOProcIDWithBlock(&primaryResources.deviceProcID, primaryResources.aggregateDeviceID, nil) { @Sendable [weak self] _, inInputData, _, outOutputData, _ in
             guard let self else {
                 // Zero output to prevent garbage audio if controller is deallocated
                 let outputs = UnsafeMutableAudioBufferListPointer(outOutputData)
@@ -690,7 +679,7 @@ final class ProcessTapController: ProcessTapControlling {
                 }
                 return
             }
-            self.processAudioCallback(inInputData, to: outOutputData, callbackID: activateCallbackID)
+            self.processAudioCallback(inInputData, to: outOutputData, callbackID: activateCallbackID, context: renderContext)
         }
         guard err == noErr else {
             cleanupPartialActivation()
@@ -702,13 +691,6 @@ final class ProcessTapController: ProcessTapControlling {
         // Seed the ramp target before AudioDeviceStart so the first IOProc callback
         // ramps from userVolume→userVolume (no-op) instead of 1.0→userVolume.
         _primaryCurrentVolume = _volume
-
-        // Reset output gate to armed; size the ramp/hold windows from device sample rate.
-        _outputGateRawPhase = 0
-        _outputGateProgress = 0
-        _outputGateSilentSamples = 0
-        _outputGateRampSamples = Float(sampleRate) * 0.040
-        _outputGateSilenceHoldSamples = Int32(sampleRate * 0.200)
 
         err = AudioDeviceStart(primaryResources.aggregateDeviceID, primaryResources.deviceProcID)
         guard err == noErr else {
@@ -1035,10 +1017,7 @@ final class ProcessTapController: ProcessTapControlling {
         // Create independent EQ processors for the secondary tap.
         // Each tap needs its own biquad delay buffers — sharing would corrupt filter state
         // because both callbacks run concurrently on different HAL I/O threads.
-        let secEQ = EQProcessor(sampleRate: sampleRate)
-        if let settings = eqProcessor?.currentSettings {
-            secEQ.updateSettings(settings)
-        }
+        let secEQ = EQProcessor(sampleRate: sampleRate, settings: eqProcessor?.currentSettings ?? .flat)
         secondaryEQProcessor = secEQ
 
         let secAutoEQ = AutoEQProcessor(sampleRate: sampleRate)
@@ -1058,7 +1037,15 @@ final class ProcessTapController: ProcessTapControlling {
         nextCallbackID += 1
         _secondaryCallbackID = nextCallbackID
         let secondaryCallbackID = nextCallbackID
-        err = AudioDeviceCreateIOProcIDWithBlock(&secondaryResources.deviceProcID, secondaryResources.aggregateDeviceID, queue) { @Sendable [weak self] _, inInputData, _, outOutputData, _ in
+        let renderContext: TapRenderContext
+        do {
+            renderContext = try TapRenderContext.make(tapID: secondaryResources.tapID, aggregateID: secondaryResources.aggregateDeviceID)
+        } catch {
+            secondaryResources.destroy()
+            throw error
+        }
+        secondaryResources.renderContext = renderContext
+        err = AudioDeviceCreateIOProcIDWithBlock(&secondaryResources.deviceProcID, secondaryResources.aggregateDeviceID, nil) { @Sendable [weak self] _, inInputData, _, outOutputData, _ in
             guard let self else {
                 // Zero output to prevent garbage audio if controller is deallocated
                 let outputs = UnsafeMutableAudioBufferListPointer(outOutputData)
@@ -1067,7 +1054,7 @@ final class ProcessTapController: ProcessTapControlling {
                 }
                 return
             }
-            self.processAudioCallback(inInputData, to: outOutputData, callbackID: secondaryCallbackID)
+            self.processAudioCallback(inInputData, to: outOutputData, callbackID: secondaryCallbackID, context: renderContext)
         }
         guard err == noErr else {
             secondaryResources.destroy()
@@ -1233,7 +1220,15 @@ final class ProcessTapController: ProcessTapControlling {
         nextCallbackID += 1
         _primaryCallbackID = nextCallbackID
         let switchCallbackID = nextCallbackID
-        err = AudioDeviceCreateIOProcIDWithBlock(&newResources.deviceProcID, newResources.aggregateDeviceID, queue) { @Sendable [weak self] _, inInputData, _, outOutputData, _ in
+        let renderContext: TapRenderContext
+        do {
+            renderContext = try TapRenderContext.make(tapID: newResources.tapID, aggregateID: newResources.aggregateDeviceID)
+        } catch {
+            newResources.destroy()
+            throw error
+        }
+        newResources.renderContext = renderContext
+        err = AudioDeviceCreateIOProcIDWithBlock(&newResources.deviceProcID, newResources.aggregateDeviceID, nil) { @Sendable [weak self] _, inInputData, _, outOutputData, _ in
             guard let self else {
                 // Zero output to prevent garbage audio if controller is deallocated
                 let outputs = UnsafeMutableAudioBufferListPointer(outOutputData)
@@ -1242,7 +1237,7 @@ final class ProcessTapController: ProcessTapControlling {
                 }
                 return
             }
-            self.processAudioCallback(inInputData, to: outOutputData, callbackID: switchCallbackID)
+            self.processAudioCallback(inInputData, to: outOutputData, callbackID: switchCallbackID, context: renderContext)
         }
         guard err == noErr else {
             newResources.destroy()
@@ -1251,19 +1246,7 @@ final class ProcessTapController: ProcessTapControlling {
 
         disableHardwareInputStreams(aggregateID: newResources.aggregateDeviceID, procID: newResources.deviceProcID)
 
-        err = AudioDeviceStart(newResources.aggregateDeviceID, newResources.deviceProcID)
-        guard err == noErr else {
-            newResources.destroy()
-            throw CrossfadeError.tapCreationFailed(err)
-        }
-
-        // Destroy old resources, adopt new
-        primaryResources.destroy()
-        primaryResources = newResources
-        targetDeviceUIDs = outputUIDs
-        currentDeviceUIDs = outputUIDs
-
-        if let deviceSampleRate = try? primaryResources.aggregateDeviceID.readNominalSampleRate() {
+        if let deviceSampleRate = try? newResources.aggregateDeviceID.readNominalSampleRate() {
             rampCoefficient = 1 - exp(-1 / (Float(deviceSampleRate) * 0.030))
             eqProcessor?.updateSampleRate(deviceSampleRate)
             autoEQProcessor?.updateSampleRate(deviceSampleRate)
@@ -1279,60 +1262,24 @@ final class ProcessTapController: ProcessTapControlling {
                 DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 0.5) { _ = oldLE }
             }
         }
+
+        err = AudioDeviceStart(newResources.aggregateDeviceID, newResources.deviceProcID)
+        guard err == noErr else {
+            newResources.destroy()
+            throw CrossfadeError.tapCreationFailed(err)
+        }
+
+        // Destroy old resources, adopt new
+        primaryResources.destroy()
+        primaryResources = newResources
+        targetDeviceUIDs = outputUIDs
+        currentDeviceUIDs = outputUIDs
+
+
     }
 
     private func cleanupPartialActivation() {
         primaryResources.destroy()
-    }
-
-    /// Advance the output-gate state machine for one buffer and return the multiplier
-    /// to apply to this buffer's output. Pure function; no class state. RT-safe:
-    /// no allocations, no locks, no Foundation. One `cos` per buffer (not per sample).
-    ///
-    /// Phase encoding: 0 armed (muted), 1 ramping (half-cosine fade-in), 2 open.
-    /// Transitions: armed→ramping on first non-silent buffer; ramping→open at progress≥1.
-    /// open→armed after `silenceHoldSamples` of sustained silence (re-arm next wake).
-    @inline(__always)
-    nonisolated static func advanceOutputGate(
-        phase: inout UInt8,
-        progress: inout Float,
-        silentSamples: inout Int32,
-        maxPeak: Float,
-        frameCount: Int,
-        rampSamples: Float,
-        silenceHoldSamples: Int32
-    ) -> Float {
-        let isSilent = maxPeak <= outputGateSilenceThreshold
-        switch phase {
-        case 0:  // armed — wait for non-silent input
-            if !isSilent {
-                phase = 1
-                progress = 0
-                silentSamples = 0
-            }
-            return 0
-        case 1:  // ramping — half-cosine fade-in
-            progress = min(1.0, progress + Float(frameCount) / rampSamples)
-            if progress >= 1.0 {
-                phase = 2
-                silentSamples = 0
-                return 1.0
-            }
-            return 0.5 * (1 - cos(.pi * progress))
-        case 2:  // open — passthrough; track sustained silence for re-arm
-            if isSilent {
-                silentSamples = silentSamples &+ Int32(frameCount)
-                if silentSamples >= silenceHoldSamples {
-                    phase = 0
-                    silentSamples = 0
-                }
-            } else {
-                silentSamples = 0
-            }
-            return 1.0
-        default:
-            return 1.0  // defensive; should be unreachable
-        }
     }
 
     @inline(__always)
@@ -1341,7 +1288,8 @@ final class ProcessTapController: ProcessTapControlling {
         outputBuffers: UnsafeMutableAudioBufferListPointer,
         targetVol: Float,
         crossfadeMultiplier: Float,
-        outputGateMultiplier: Float,
+        context: TapRenderContext,
+        applyStartupFade: Bool,
         rampCoefficient: Float,
         preferredStereoLeft: Int,
         preferredStereoRight: Int,
@@ -1351,26 +1299,28 @@ final class ProcessTapController: ProcessTapControlling {
         loudnessEqualizerProc: LoudnessEqualizer?,
         loudnessCompensatorProc: LoudnessCompensator?
     ) {
-        let inputBufferCount = inputBuffers.count
+        let tapIndex = context.tapBufferIndex(inputBuffers)
         let outputBufferCount = outputBuffers.count
+        let startingVolume = currentVol
+        var advancedFrames = 0
 
         for outputIndex in 0..<outputBufferCount {
             let outputBuffer = outputBuffers[outputIndex]
             guard let outputData = outputBuffer.mData else { continue }
 
-            let inputIndex: Int
-            if inputBufferCount > outputBufferCount {
-                inputIndex = inputBufferCount - outputBufferCount + outputIndex
-            } else {
-                inputIndex = outputIndex
-            }
-
-            guard inputIndex < inputBufferCount else {
+            guard outputIndex < context.queues.count else {
+                context.layoutErrors &+= 1
                 memset(outputData, 0, Int(outputBuffer.mDataByteSize))
                 continue
             }
-
-            let inputBuffer = inputBuffers[inputIndex]
+            let requestedFrames = Int(outputBuffer.mDataByteSize) / (max(1, Int(outputBuffer.mNumberChannels)) * MemoryLayout<Float>.size)
+            let queue = context.queues[outputIndex]
+            let inputBuffer: AudioBuffer
+            if let tapIndex {
+                inputBuffer = queue.prepare(inputBuffers[tapIndex], outputFrames: requestedFrames)
+            } else {
+                inputBuffer = queue.prepareMissing(outputFrames: requestedFrames)
+            }
             guard let inputData = inputBuffer.mData else {
                 memset(outputData, 0, Int(outputBuffer.mDataByteSize))
                 continue
@@ -1391,6 +1341,10 @@ final class ProcessTapController: ProcessTapControlling {
                 continue
             }
 
+            // All output buffers replay the same gain trajectory for this cycle.
+            // Advancing once per buffer made noninterleaved channels fade differently.
+            var bufferVolume = startingVolume
+            advancedFrames = max(advancedFrames, frameCount)
             let safeLeft = min(max(preferredStereoLeft, 0), max(outputChannels - 1, 0))
             let safeRight = min(max(preferredStereoRight, 0), max(outputChannels - 1, 0))
 
@@ -1400,8 +1354,8 @@ final class ProcessTapController: ProcessTapControlling {
             if inputChannels == outputChannels {
                 let sampleCount = frameCount * inputChannels
                 for frame in 0..<frameCount {
-                    currentVol += (targetVol - currentVol) * rampCoefficient
-                    let gain = currentVol * crossfadeMultiplier * outputGateMultiplier
+                    bufferVolume += (targetVol - bufferVolume) * rampCoefficient
+                    let gain = bufferVolume * crossfadeMultiplier * (applyStartupFade ? context.gain(frame: frame) : 1)
                     let base = frame * inputChannels
                     for ch in 0..<inputChannels {
                         outputSamples[base + ch] = inputSamples[base + ch] * gain
@@ -1412,8 +1366,8 @@ final class ProcessTapController: ProcessTapControlling {
                 }
             } else if inputChannels == 2 && outputChannels > 2 {
                 for frame in 0..<frameCount {
-                    currentVol += (targetVol - currentVol) * rampCoefficient
-                    let gain = currentVol * crossfadeMultiplier * outputGateMultiplier
+                    bufferVolume += (targetVol - bufferVolume) * rampCoefficient
+                    let gain = bufferVolume * crossfadeMultiplier * (applyStartupFade ? context.gain(frame: frame) : 1)
                     let inBase = frame * 2
                     let outBase = frame * outputChannels
                     let left = inputSamples[inBase] * gain
@@ -1431,8 +1385,8 @@ final class ProcessTapController: ProcessTapControlling {
                 }
             } else if inputChannels == 1 && outputChannels > 1 {
                 for frame in 0..<frameCount {
-                    currentVol += (targetVol - currentVol) * rampCoefficient
-                    let gain = currentVol * crossfadeMultiplier * outputGateMultiplier
+                    bufferVolume += (targetVol - bufferVolume) * rampCoefficient
+                    let gain = bufferVolume * crossfadeMultiplier * (applyStartupFade ? context.gain(frame: frame) : 1)
                     let sample = inputSamples[frame] * gain
                     let outBase = frame * outputChannels
 
@@ -1448,13 +1402,14 @@ final class ProcessTapController: ProcessTapControlling {
                 }
             } else {
                 for frame in 0..<frameCount {
-                    currentVol += (targetVol - currentVol) * rampCoefficient
-                    let gain = currentVol * crossfadeMultiplier * outputGateMultiplier
+                    bufferVolume += (targetVol - bufferVolume) * rampCoefficient
+                    let gain = bufferVolume * crossfadeMultiplier * (applyStartupFade ? context.gain(frame: frame) : 1)
                     let inBase = frame * inputChannels
                     let outBase = frame * outputChannels
                     let copiedChannels = min(inputChannels, outputChannels)
                     for ch in 0..<copiedChannels {
-                        outputSamples[outBase + ch] = inputSamples[inBase + ch] * gain
+                        let sourceChannel = outputChannels == 1 && outputBufferCount > 1 ? outputIndex % inputChannels : ch
+                        outputSamples[outBase + ch] = inputSamples[inBase + sourceChannel] * gain
                     }
                     if copiedChannels < outputChannels {
                         for ch in copiedChannels..<outputChannels {
@@ -1490,6 +1445,10 @@ final class ProcessTapController: ProcessTapControlling {
             let writtenSampleCount = frameCount * outputChannels
             SoftLimiter.processBuffer(outputSamples, sampleCount: writtenSampleCount)
         }
+        if advancedFrames > 0 {
+            currentVol = targetVol + (startingVolume - targetVol) * pow(1 - rampCoefficient, Float(advancedFrames))
+            context.fadeFrame = min(context.rampFrames, context.fadeFrame + advancedFrames)
+        }
     }
 
     // MARK: - RT-Safe Audio Callback (DO NOT MODIFY WITHOUT RT-SAFETY REVIEW)
@@ -1512,7 +1471,8 @@ final class ProcessTapController: ProcessTapControlling {
     nonisolated private func processAudioCallback(
         _ inputBufferList: UnsafePointer<AudioBufferList>,
         to outputBufferList: UnsafeMutablePointer<AudioBufferList>,
-        callbackID: UInt32
+        callbackID: UInt32,
+        context: TapRenderContext
     ) {
         _lastRenderHostTime = mach_absolute_time()
         _hasRenderedAudio = true
@@ -1545,23 +1505,22 @@ final class ProcessTapController: ProcessTapControlling {
             return
         }
 
-        // Track peak level for VU meter
-        var maxPeak: Float = 0.0
-        var totalSamplesThisBuffer: Int = 0
-        for inputBuffer in inputBuffers {
-            guard let inputData = inputBuffer.mData else { continue }
-            let inputSamples = inputData.assumingMemoryBound(to: Float.self)
-            let channels = max(1, Int(inputBuffer.mNumberChannels))
-            let sampleCount = Int(inputBuffer.mDataByteSize) / MemoryLayout<Float>.size
-            if totalSamplesThisBuffer == 0 {
-                totalSamplesThisBuffer = sampleCount / channels
-            }
-            for i in stride(from: 0, to: sampleCount, by: channels) {
-                let absSample = abs(inputSamples[i])
-                if absSample > maxPeak { maxPeak = absSample }
-            }
+        let startTime = mach_absolute_time()
+        var renderedFrames = 0
+        for buffer in outputBuffers where buffer.mNumberChannels > 0 && buffer.mData != nil {
+            renderedFrames = max(renderedFrames, Int(buffer.mDataByteSize) / (Int(buffer.mNumberChannels) * MemoryLayout<Float>.size))
         }
-        let rawPeak = min(maxPeak, 1.0)
+        defer { context.timing.record(start: startTime, end: mach_absolute_time(), frames: renderedFrames) }
+
+        // Meter only the tap, including both stereo channels, never a hardware mic.
+        var rawPeak: Float = 0
+        var totalSamplesThisBuffer = 0
+        if let tapIndex = context.tapBufferIndex(inputBuffers) {
+            let input = inputBuffers[tapIndex]
+            rawPeak = TapRenderContext.peak(input)
+            if rawPeak > 0 { context.nonSilentCycles &+= 1 }
+            totalSamplesThisBuffer = Int(input.mDataByteSize) / (max(1, Int(input.mNumberChannels)) * MemoryLayout<Float>.size)
+        }
 
         if isPrimary {
             _peakLevel = _peakLevel + levelSmoothingFactor * (rawPeak - _peakLevel)
@@ -1571,29 +1530,9 @@ final class ProcessTapController: ProcessTapControlling {
             _ = crossfadeState.updateProgress(samples: totalSamplesThisBuffer)
         }
 
-        // Advance the gate before the _isMuted early-return: feeding synthetic silence
-        // while muted lets _outputGateSilentSamples accumulate and re-arm the gate after
-        // the silence hold, so unmute after a long mute still gets a fade-in.
-        // _forceSilence is left to the destructive-switch path, which always pairs with
-        // a fresh activate(initial:) and so resets gate state.
-        let outputGateMultiplier: Float
-        if isPrimary {
-            let gateInputPeak: Float = _isMuted ? 0.0 : rawPeak
-            outputGateMultiplier = Self.advanceOutputGate(
-                phase: &_outputGateRawPhase,
-                progress: &_outputGateProgress,
-                silentSamples: &_outputGateSilentSamples,
-                maxPeak: gateInputPeak,
-                frameCount: totalSamplesThisBuffer,
-                rampSamples: _outputGateRampSamples,
-                silenceHoldSamples: _outputGateSilenceHoldSamples
-            )
-        } else {
-            // Secondary tap fades in via crossfadeState; skip the gate to avoid double-attenuation.
-            outputGateMultiplier = 1.0
-        }
-
-        if _isMuted {
+        let muted = _isMuted
+        context.updateMute(muted)
+        if muted {
             for buf in outputBuffers {
                 if let data = buf.mData { memset(data, 0, Int(buf.mDataByteSize)) }
             }
@@ -1643,7 +1582,8 @@ final class ProcessTapController: ProcessTapControlling {
             outputBuffers: outputBuffers,
             targetVol: targetVol,
             crossfadeMultiplier: crossfadeMultiplier,
-            outputGateMultiplier: outputGateMultiplier,
+            context: context,
+            applyStartupFade: isPrimary,
             rampCoefficient: rampCoeff,
             preferredStereoLeft: stereoLeft,
             preferredStereoRight: stereoRight,

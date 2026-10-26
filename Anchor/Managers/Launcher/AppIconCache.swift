@@ -38,6 +38,7 @@ final class AppIconCache {
     /// at this size, and is what the built-in panel runs at.
     private static let iconScale = 2
 
+    private let pathMemory = NSCache<NSString, NSImage>()
     private let memory = NSCache<NSString, NSImage>()
     private let directory: URL
     /// Concurrent on purpose. Rasterising an .icns and writing its PNG takes
@@ -66,18 +67,17 @@ final class AppIconCache {
             try? FileManager.default.removeItem(at: legacy)
         }
 
+        pathMemory.countLimit = 512
         memory.countLimit = 512
     }
 
     /// Returns a cached icon immediately if there is one, otherwise nil and
     /// calls `completion` on the main queue once the icon has been produced.
     func icon(for app: LauncherApp, completion: @escaping (NSImage) -> Void) -> NSImage? {
-        let key = cacheKey(for: app)
-
-        if let hit = memory.object(forKey: key as NSString) { return hit }
-
+        if let hit = pathMemory.object(forKey: app.url.path as NSString) { return hit }
         io.async { [weak self] in
             guard let self else { return }
+            let key = self.cacheKey(for: app)
             let image: NSImage
             if let onDisk = self.readFromDisk(key: key) {
                 image = onDisk
@@ -86,6 +86,7 @@ final class AppIconCache {
                 self.writeToDisk(image, key: key)
             }
             self.memory.setObject(image, forKey: key as NSString)
+            self.pathMemory.setObject(image, forKey: app.url.path as NSString)
             DispatchQueue.main.async { completion(image) }
         }
         return nil
@@ -99,22 +100,26 @@ final class AppIconCache {
     /// index scan moves that cost off the moment the user is looking.
     func warm(_ apps: [LauncherApp]) {
         for app in apps {
-            let key = cacheKey(for: app)
-            guard memory.object(forKey: key as NSString) == nil else { continue }
             io.async { [weak self] in
                 guard let self else { return }
-                guard self.memory.object(forKey: key as NSString) == nil else { return }
+                let key = self.cacheKey(for: app)
+                if let hit = self.memory.object(forKey: key as NSString) {
+                    self.pathMemory.setObject(hit, forKey: app.url.path as NSString)
+                    return
+                }
                 let image = self.readFromDisk(key: key) ?? {
                     let rendered = self.render(app)
                     self.writeToDisk(rendered, key: key)
                     return rendered
                 }()
                 self.memory.setObject(image, forKey: key as NSString)
+                self.pathMemory.setObject(image, forKey: app.url.path as NSString)
             }
         }
     }
 
     func clear() {
+        pathMemory.removeAllObjects()
         memory.removeAllObjects()
         io.async { [directory] in
             try? FileManager.default.removeItem(at: directory)

@@ -40,6 +40,7 @@ struct TimerPopover: View {
     }
     
     var body: some View {
+        Group {
         VStack(spacing: 16) {
             HeaderView(statusText: statusText)
             
@@ -71,6 +72,8 @@ struct TimerPopover: View {
         .onChange(of: customTimerDuration) { _, newValue in
             syncCustomDuration(with: newValue)
         }
+            }
+        .anchorTheme()
     }
     
     private var statusText: String {
@@ -170,7 +173,7 @@ private struct ActiveTimerSection: View {
                             .font(.system(size: 12, weight: .medium))
                             .labelStyle(.titleAndIcon)
                     }
-                    .buttonStyle(.bordered)
+                    .buttonStyle(AnchorButtonStyle())
                     .disabled(!timerManager.allowsManualInteraction)
                 }
 
@@ -179,7 +182,7 @@ private struct ActiveTimerSection: View {
                         .font(.system(size: 12, weight: .medium))
                         .labelStyle(.titleAndIcon)
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(AnchorButtonStyle(prominent: true))
                 .disabled(!timerManager.allowsManualInteraction)
             }
         }
@@ -258,7 +261,7 @@ private struct CustomTimerSection: View {
                     .font(.system(size: 13, weight: .medium))
                     .labelStyle(.titleAndIcon)
             }
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(AnchorButtonStyle(prominent: true))
             .disabled(totalSeconds == 0)
         }
         .frame(maxWidth: .infinity, alignment: .leading)

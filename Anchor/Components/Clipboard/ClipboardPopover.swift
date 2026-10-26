@@ -29,17 +29,11 @@ struct ClipboardPopover: View {
     var filteredItems: [ClipboardItem] {
         let allItems = selectedTab == .history ? clipboardManager.regularHistory : clipboardManager.pinnedItems
         
-        if searchText.isEmpty {
-            return allItems
-        } else {
-            return allItems.filter { item in
-                item.preview.localizedCaseInsensitiveContains(searchText) ||
-                item.type.displayName.localizedCaseInsensitiveContains(searchText)
-            }
-        }
+        return allItems.filter { $0.searchDocument.matches(searchText) }
     }
     
     var body: some View {
+        Group {
         VStack(spacing: 0) {
             // Header with tabs
             ClipboardPopoverHeader(
@@ -47,6 +41,8 @@ struct ClipboardPopover: View {
                 searchText: $searchText
             )
             
+            ClipboardWorkflowBar(query: $searchText)
+                .padding(.horizontal, 12).padding(.vertical, 4)
             Divider()
                 .background(Color.gray.opacity(0.3))
             
@@ -79,6 +75,8 @@ struct ClipboardPopover: View {
                 .fill(.regularMaterial)
                 .shadow(color: .black.opacity(0.2), radius: 8, x: 0, y: 4)
         )
+            }
+        .anchorTheme()
     }
 }
 
@@ -107,8 +105,7 @@ struct ClipboardPopoverHeader: View {
                     if selectedTab == .history {
                         clipboardManager.clearHistory()
                     } else {
-                        clipboardManager.pinnedItems.removeAll()
-                        clipboardManager.savePinnedItemsToDefaults()
+                        clipboardManager.clearPinnedItems()
                     }
                 }) {
                     Image(systemName: "trash")
@@ -141,7 +138,7 @@ struct ClipboardPopoverHeader: View {
                     .foregroundColor(.secondary)
                     .font(.system(size: 11))
                 
-                TextField("Search...", text: $searchText)
+                TextField("Search text or @image", text: $searchText)
                     .textFieldStyle(PlainTextFieldStyle())
                     .font(.system(size: 11))
                     .focused($isSearchFieldFocused)
@@ -215,7 +212,7 @@ struct ClipboardPopoverItemRow: View {
             // Type icon
             Image(systemName: item.type.icon)
                 .font(.system(size: 12))
-                .foregroundColor(.blue)
+                .foregroundStyle(AnchorDesign.accent)
                 .frame(width: 16)
             
             // Content
@@ -277,11 +274,7 @@ struct ClipboardPopoverItemRow: View {
                     
                     // Delete button
                     Button(action: {
-                        if isPinned {
-                            clipboardManager.unpinItem(item)
-                        } else {
-                            clipboardManager.deleteItem(item)
-                        }
+                        clipboardManager.deleteItem(item)
                     }) {
                         Image(systemName: "trash")
                             .font(.system(size: 9))
@@ -291,6 +284,7 @@ struct ClipboardPopoverItemRow: View {
                 }
             }
         }
+        .contextMenu { ClipboardItemContextMenu(item: item) }
         .padding(.horizontal, 14)
         .padding(.vertical, 6)
         .background(

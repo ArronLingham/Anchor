@@ -19,6 +19,7 @@ struct CadenceLockFullView: View {
     @Default(.lockFullBackground) private var backgroundStyle
 
     var body: some View {
+        Group {
         ZStack {
             background
                 .contentShape(Rectangle())
@@ -35,6 +36,8 @@ struct CadenceLockFullView: View {
         }
         .ignoresSafeArea()
         .onExitCommand(perform: onDismiss)
+            }
+        .anchorTheme()
     }
 
     @ViewBuilder

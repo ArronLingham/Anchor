@@ -17,10 +17,14 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
+import AnchorUtilities
 import Defaults
 import SwiftUI
 
 struct ClaudeUsageSettings: View {
+    @ObservedObject private var codex = UtilityCodexRecovery.shared
+    @Default(.codexUsageWatchEnabled) private var codexWatch
+    @Default(.codexUsageAutoResume) private var codexResume
     @Default(.claudeUsageWatchEnabled) private var watchEnabled
     @Default(.claudeUsageAutoResume) private var autoResume
 
@@ -50,6 +54,15 @@ struct ClaudeUsageSettings: View {
 
     var body: some View {
         Form {
+            Section("Codex recovery") {
+                Toggle("Watch Codex for usage-limit stops", isOn: $codexWatch)
+                Toggle("Continue Codex after usage resets", isOn: $codexResume).disabled(!codexWatch)
+                Text(codex.status).foregroundStyle(.secondary)
+                if let reset = codex.resetDate { LabeledContent("Usage resets", value: reset.formatted()) }
+                Text("Uses local Codex logs and its own account connection. Only a confirmed limit failure can resume, and changed, completed or approval-blocked tasks stay untouched. Threads needing desktop-only tools must be continued in Codex. Phone alerts use the same saved ntfy topic below.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            .settingsHighlight(id: highlightID("Codex recovery"))
             Section {
                 Defaults.Toggle(key: .claudeUsageWatchEnabled) {
                     Text("Watch for usage limits")
@@ -66,19 +79,19 @@ struct ClaudeUsageSettings: View {
                 Text("Claude Usage")
             } footer: {
                 Text(
-                    "Anchor watches Claude Code's own transcripts for the message that says when your usage window reopens, then counts down to it. Nothing polls and nothing is sent anywhere unless you set up a phone notification below."
+                    "Anchor watches Claude Code's own transcripts for the message that says when your usage window reopens, then counts down to it. Nothing polls. Automatic recovery sends the continuation prompt to Claude; a phone notification is sent only when you configure a topic below."
                 )
                 .foregroundStyle(.secondary)
                 .font(.caption)
             }
 
-            if watchEnabled {
+            if watchEnabled || codexWatch {
                 Section {
                     // Secure, not plain: the topic is the only access control on the
                     // channel, so it should not be shoulder-surfable or captured by
                     // anything that renders this pane.
                     SecureField("ntfy topic", text: $topic, prompt: Text("e.g. anchor-a8f3c1d9"))
-                        .textFieldStyle(.roundedBorder)
+                        .textFieldStyle(AnchorFieldStyle())
                         .disableAutocorrection(true)
                         .settingsHighlight(id: highlightID("ntfy topic"))
 
@@ -95,10 +108,10 @@ struct ClaudeUsageSettings: View {
                 } footer: {
                     VStack(alignment: .leading, spacing: 4) {
                         Text(
-                            "Install the ntfy app on your phone and subscribe to a topic, then enter the same topic here. When a limit is hit, Anchor schedules the notification with ntfy immediately so it still arrives at the reset time even if this Mac is asleep."
+                            "Install the ntfy app on your phone and subscribe to a topic, then enter the same topic here. Anchor schedules the reset notification with ntfy so it can arrive while this Mac sleeps. For resets more than three days away, keep Anchor running until the reset enters ntfy’s three-day delivery window."
                         )
                         Text(
-                            "Anyone who knows the topic name can read it, so treat it as a password — use a long random one. It is stored in your Keychain, never in preferences. Only the reset time is sent; never your prompts, transcripts, or project names."
+                            "Anyone who knows the topic name can read it, so treat it as a password — use a long random one. It is stored in your Keychain, never in preferences. Phone notifications contain only a generic reset message and its delivery time, never your prompts, transcripts, or project names."
                         )
                     }
                     .foregroundStyle(.secondary)
@@ -113,7 +126,7 @@ struct ClaudeUsageSettings: View {
 
                     LabeledContent("Resume with") {
                         TextField("", text: resumePromptBinding, prompt: Text("continue"))
-                            .textFieldStyle(.roundedBorder)
+                            .textFieldStyle(AnchorFieldStyle())
                             .frame(maxWidth: 220)
                             .disabled(!autoResume)
                     }
