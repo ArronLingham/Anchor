@@ -343,6 +343,7 @@ final class FullScreenArtworkWindowManager: ObservableObject {
     private var pendingFallbackWallpaperKey: String?
     private var fallbackRightClickMonitor: Any?
     private var artworkLayoutOverCanvasPreferenceCancellable: AnyCancellable?
+    private var lastLyricsLayoutVisibility: Bool?
     private var lyricsTextCancellable: AnyCancellable?
     private var lyricsPreferenceCancellable: AnyCancellable?
     private let spotifyCanvasFallbackHorizontalMargin: CGFloat = 48
@@ -668,10 +669,11 @@ final class FullScreenArtworkWindowManager: ObservableObject {
 
     private func observeLyricsChanges() {
         lyricsTextCancellable = MusicManager.shared.$currentLyrics
+            .combineLatest(MusicManager.shared.$showLyrics)
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in
                 guard let self, self.isShowing else { return }
-                self.updateLyricsOverlayIfNeeded()
+                self.refreshLyricsLayoutIfNeeded()
             }
     }
 
@@ -680,8 +682,18 @@ final class FullScreenArtworkWindowManager: ObservableObject {
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in
                 guard let self, self.isShowing else { return }
-                self.updateLyricsOverlayIfNeeded()
+                self.refreshLyricsLayoutIfNeeded()
             }
+    }
+
+    private func refreshLyricsLayoutIfNeeded() {
+        let visible = hasVisibleFullscreenLyrics
+        if lastLyricsLayoutVisibility != visible {
+            lastLyricsLayoutVisibility = visible
+            LockScreenPanelManager.shared.applyOffsetAdjustment(animated: false)
+            updateArtworkOverlayFrameIfNeeded()
+        }
+        updateLyricsOverlayIfNeeded()
     }
 
     private func shouldUseSpotifyStaticFallbackWallpaper(videoURL: URL?) -> Bool {
@@ -715,6 +727,13 @@ final class FullScreenArtworkWindowManager: ObservableObject {
         }
 
         return .none
+    }
+
+    var hasVisibleFullscreenLyrics: Bool {
+        let music = MusicManager.shared
+        let line = music.currentLyrics.trimmingCharacters(in: .whitespacesAndNewlines)
+        return Defaults[.enableLyrics] && music.showLyrics && !line.isEmpty
+            && line != "Loading lyrics..." && line != "No lyrics found"
     }
 
     func spotifyCanvasFallbackInterItemSpacing(screenFrame: NSRect) -> CGFloat {
@@ -1347,7 +1366,7 @@ final class FullScreenArtworkWindowManager: ObservableObject {
     }
 
     private func updateLyricsOverlayIfNeeded(on screen: NSScreen? = NSScreen.main) {
-        guard isShowing, isShowingSpotifyCanvasFallback, Defaults[.enableLyrics] else {
+        guard isShowing, isShowingSpotifyCanvasFallback, hasVisibleFullscreenLyrics else {
             hideLyricsOverlay()
             return
         }
@@ -1425,9 +1444,9 @@ final class FullScreenArtworkWindowManager: ObservableObject {
             panelSize: panelFrame.size
         )
         let spacing = spotifyCanvasFallbackInterItemSpacing(screenFrame: screenFrame)
-        let targetX = panelFrame.minX - spacing - overlaySide
-        let targetY = panelFrame.midY - (overlaySide / 2)
-        let artworkFrame = NSRect(x: targetX, y: targetY, width: overlaySide, height: overlaySide)
+        let artworkFrame = GridSolver.fullscreenArtworkFrame(
+            screen: screenFrame, panel: panelFrame, side: overlaySide,
+            spacing: spacing, lyricsVisible: hasVisibleFullscreenLyrics)
         let groupFrame = artworkFrame.union(panelFrame)
         let lyricsGap = min(max(screenFrame.height * 0.022, 18), 28)
         let bottomMargin = min(max(screenFrame.height * 0.16, 140), 220)
@@ -1436,7 +1455,7 @@ final class FullScreenArtworkWindowManager: ObservableObject {
         let lyricsHeight = min(desiredHeight, max(availableHeight, 0))
         let lyricsFrame: NSRect?
 
-        if lyricsHeight >= 56 {
+        if hasVisibleFullscreenLyrics && lyricsHeight >= 56 {
             lyricsFrame = NSRect(
                 x: groupFrame.minX,
                 y: groupFrame.minY - lyricsGap - lyricsHeight,

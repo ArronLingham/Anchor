@@ -396,6 +396,10 @@ class LockScreenPanelManager {
             screenFrame: screenFrame,
             panelSize: panelSize
         )
+        if !fullscreenArtworkManager.hasVisibleFullscreenLyrics {
+            return GridSolver.fullscreenStackedPanelFrame(
+                screen: screenFrame, panelSize: panelSize, artworkSide: artworkSide, spacing: spacing)
+        }
         let totalWidth = artworkSide + spacing + panelSize.width
         let horizontalMargin: CGFloat = 48
         let minGroupOriginX = screenFrame.minX + horizontalMargin

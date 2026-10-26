@@ -68,6 +68,21 @@ public enum GridSolver {
         return fitted
     }
 
+    /// The legacy Spotify wallpaper player uses separate AppKit windows.
+    /// Without words, stack the controls beneath a horizontally centered cover.
+    static func fullscreenStackedPanelFrame(screen: CGRect, panelSize: CGSize, artworkSide: CGFloat, spacing: CGFloat) -> CGRect {
+        let total = artworkSide + spacing + panelSize.height
+        let bottom = max(screen.minY + 32, screen.midY - total / 2)
+        return CGRect(x: screen.midX - panelSize.width / 2, y: bottom,
+                      width: panelSize.width, height: panelSize.height)
+    }
+
+    static func fullscreenArtworkFrame(screen: CGRect, panel: CGRect, side: CGFloat, spacing: CGFloat, lyricsVisible: Bool) -> CGRect {
+        CGRect(x: lyricsVisible ? panel.minX - spacing - side : screen.midX - side / 2,
+               y: lyricsVisible ? panel.midY - side / 2 : panel.maxY + spacing,
+               width: side, height: side)
+    }
+
     // MARK: - Output
 
     public struct ResolvedElement: Equatable, Sendable {

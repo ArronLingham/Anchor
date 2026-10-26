@@ -18,6 +18,15 @@ import CoreGraphics
             precondition(abs(title.frame.midX - splitArt.frame.midX) < 0.01)
             precondition(original.placements.contains { $0.element == .lyrics })
         }
+        for screen in [CGRect(x: 0, y: 0, width: 1470, height: 956), CGRect(x: -1920, y: -65, width: 1920, height: 1080)] {
+            let panel = GridSolver.fullscreenStackedPanelFrame(screen: screen, panelSize: CGSize(width: 440, height: 260), artworkSide: 300, spacing: 30)
+            let cover = GridSolver.fullscreenArtworkFrame(screen: screen, panel: panel, side: 300, spacing: 30, lyricsVisible: false)
+            precondition(abs(cover.midX - screen.midX) < 0.01)
+            precondition(abs(panel.midX - screen.midX) < 0.01)
+            precondition(cover.minY > panel.maxY && screen.contains(cover) && screen.contains(panel))
+            let split = GridSolver.fullscreenArtworkFrame(screen: screen, panel: panel, side: 300, spacing: 30, lyricsVisible: true)
+            precondition(split.maxX < panel.minX)
+        }
         print("Passed fullscreen centering, lyrics split, spanning-column alignment, and saved-layout preservation")
     }
 }
