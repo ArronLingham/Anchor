@@ -14,6 +14,7 @@ struct CadenceLockFullView: View {
 
     @ObservedObject private var music = MusicManager.shared
     @Default(.playerLayouts) private var layouts
+    @Default(.enableLyrics) private var enableLyrics
     @Default(.sliderColor) private var sliderColor
     @Default(.accentColor) private var accentColor
     @Default(.lockFullBackground) private var backgroundStyle
@@ -26,11 +27,13 @@ struct CadenceLockFullView: View {
                 .onTapGesture(perform: onDismiss)
 
             PlayerSurfaceView(
-                layout: layouts.lockFull,
+                layout: GridSolver.fullscreenLayout(layouts.lockFull,
+                    lyricsVisible: enableLyrics && !music.syncedLyrics.isEmpty),
                 style: .forSurface(
                     .lockFull, albumColor: music.avgColor, tinted: false,
                     scale: layouts.lockFull.geometry.contentScale,
                     sliderColor: sliderColor, accentColor: accentColor),
+                fullscreen: true,
                 onExpand: onDismiss)
                 .padding(40)
         }

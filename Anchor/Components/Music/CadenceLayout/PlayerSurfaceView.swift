@@ -30,6 +30,7 @@ import SwiftUI
 struct PlayerSurfaceView: View {
     let layout: SurfaceLayout
     let style: SurfaceStyle
+    var fullscreen: Bool = false
     var hovering: Bool = false
     /// Frozen data for the settings preview. `nil` means live playback.
     var snapshot: PlayerSnapshot?
@@ -46,11 +47,11 @@ struct PlayerSurfaceView: View {
         // publish, of which there are 29 kinds, for a track it does not show.
         if let snapshot {
             SurfaceBody(
-                layout: layout, style: style, hovering: hovering,
+                layout: layout, style: style, fullscreen: fullscreen, hovering: hovering,
                 data: snapshot, actions: .inert, isLive: false)
         } else {
             LiveSurfaceBody(
-                layout: layout, style: style, hovering: hovering, onExpand: onExpand)
+                layout: layout, style: style, fullscreen: fullscreen, hovering: hovering, onExpand: onExpand)
         }
             }
         .anchorTheme()
@@ -61,6 +62,7 @@ struct PlayerSurfaceView: View {
 private struct LiveSurfaceBody: View {
     let layout: SurfaceLayout
     let style: SurfaceStyle
+    var fullscreen: Bool = false
     let hovering: Bool
     /// What clicking the artwork does. Supplied by the host, because only the
     /// host knows whether it owns a full-screen view.
@@ -72,7 +74,7 @@ private struct LiveSurfaceBody: View {
         var actions = PlayerActions.live(music)
         actions.expand = onExpand
         return SurfaceBody(
-            layout: layout, style: style, hovering: hovering,
+            layout: layout, style: style, fullscreen: fullscreen, hovering: hovering,
             data: .live(music), actions: actions, isLive: true)
     }
 }
@@ -80,6 +82,7 @@ private struct LiveSurfaceBody: View {
 private struct SurfaceBody: View {
     let layout: SurfaceLayout
     let style: SurfaceStyle
+    var fullscreen: Bool = false
     let hovering: Bool
     let data: PlayerSnapshot
     let actions: PlayerActions
@@ -87,8 +90,9 @@ private struct SurfaceBody: View {
 
     var body: some View {
         GeometryReader { geo in
-            let resolved = GridSolver.solve(
-                layout: layout, available: geo.size, hovering: hovering)
+            let resolved = fullscreen
+                ? GridSolver.solveFullscreen(layout: layout, available: geo.size, hovering: hovering)
+                : GridSolver.solve(layout: layout, available: geo.size, hovering: hovering)
             ZStack(alignment: .topLeading) {
                 // `elements` arrives base-first then overlay, which is the draw
                 // order — the renderer needs no z-index of its own.
@@ -200,6 +204,7 @@ struct PlayerElementView: View {
 
     let placement: ElementPlacement
     let style: SurfaceStyle
+    var fullscreen: Bool = false
     let data: PlayerSnapshot
     let actions: PlayerActions
     var isLive: Bool = true

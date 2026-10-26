@@ -27,6 +27,47 @@ import Foundation
 /// cannot drift from the implementation the way a re-typed copy would.
 public enum GridSolver {
 
+    /// Fullscreen reserves a lyrics column only while words are displayed.
+    /// Work on a copy so switching songs never rewrites the user's layout.
+    static func fullscreenLayout(_ layout: SurfaceLayout, lyricsVisible: Bool) -> SurfaceLayout {
+        var effective = layout
+        if !lyricsVisible {
+            effective.placements.removeAll { $0.element == .lyrics && $0.colSpan >= 2 }
+        }
+        effective.geometry.centersContent = true
+        return effective
+    }
+
+    /// Fit the complete fullscreen arrangement before considering dropped
+    /// controls. Wide monitors must not drop the lyrics column just because
+    /// a width-derived square cover would be taller than the screen.
+    static func solveFullscreen(layout: SurfaceLayout, available: CGSize, hovering: Bool) -> ResolvedLayout {
+        let key = SolveKey(layout: layout, width: available.width, height: available.height, hovering: hovering)
+        cacheLock.lock()
+        let hit = fullscreenCache[key]
+        cacheLock.unlock()
+        if let hit { return hit }
+        var low: CGFloat = 1
+        var high = available.width
+        for _ in 0..<20 {
+            let width = (low + high) / 2
+            let measured = solve(layout: layout, available: CGSize(width: width, height: .infinity), hovering: hovering)
+            if measured.requiredSize.height <= available.height { low = width }
+            else { high = width }
+        }
+        let result = solve(layout: layout, available: CGSize(width: low, height: available.height), hovering: hovering)
+        let dx = (available.width - low) / 2
+        let fitted = ResolvedLayout(elements: result.elements.map {
+            ResolvedElement(placement: $0.placement, frame: $0.frame.offsetBy(dx: dx, dy: 0))
+        }, requiredSize: CGSize(width: available.width, height: result.requiredSize.height),
+           dropped: result.dropped, rowHeights: result.rowHeights)
+        cacheLock.lock()
+        if fullscreenCache.count >= cacheLimit { fullscreenCache.removeAll(keepingCapacity: true) }
+        fullscreenCache[key] = fitted
+        cacheLock.unlock()
+        return fitted
+    }
+
     // MARK: - Output
 
     public struct ResolvedElement: Equatable, Sendable {
@@ -81,6 +122,7 @@ public enum GridSolver {
     /// cost more bookkeeping than it saves.
     private static let cacheLimit = 16
     private static var cache: [SolveKey: ResolvedLayout] = [:]
+    private static var fullscreenCache: [SolveKey: ResolvedLayout] = [:]
     private static let cacheLock = NSLock()
 
     private static func cached(_ key: SolveKey) -> ResolvedLayout? {
@@ -510,10 +552,11 @@ public enum GridSolver {
     ) -> [ResolvedElement] {
         var byRow: [Int: (minX: CGFloat, maxX: CGFloat)] = [:]
         for element in elements where element.placement.layer == .base {
-            let row = element.placement.row
-            let existing = byRow[row] ?? (element.frame.minX, element.frame.maxX)
-            byRow[row] = (
-                min(existing.minX, element.frame.minX), max(existing.maxX, element.frame.maxX))
+            for row in element.placement.rows {
+                let existing = byRow[row] ?? (element.frame.minX, element.frame.maxX)
+                byRow[row] = (
+                    min(existing.minX, element.frame.minX), max(existing.maxX, element.frame.maxX))
+            }
         }
 
         let dy: CGFloat =

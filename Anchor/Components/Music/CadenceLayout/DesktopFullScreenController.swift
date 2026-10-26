@@ -90,6 +90,7 @@ private final class KeyableWindow: NSWindow {
 private struct DesktopFullScreenView: View {
     @ObservedObject private var music = MusicManager.shared
     @Default(.playerLayouts) private var layouts
+    @Default(.enableLyrics) private var enableLyrics
     @Default(.sliderColor) private var sliderColour
     @Default(.accentColor) private var accentColour
     @Default(.lockFullBackground) private var background
@@ -99,13 +100,15 @@ private struct DesktopFullScreenView: View {
         ZStack {
             backdrop
             PlayerSurfaceView(
-                layout: layouts.desktopFull,
+                layout: GridSolver.fullscreenLayout(layouts.desktopFull,
+                    lyricsVisible: enableLyrics && !music.syncedLyrics.isEmpty),
                 style: .forSurface(
                     .desktopFull, albumColor: music.avgColor, tinted: false,
                     scale: layouts.desktopFull.geometry.contentScale,
                     sliderColor: sliderColour, accentColor: accentColour),
                 // Clicking the artwork here closes it again, so the gesture
                 // that opened it is also the way out.
+                fullscreen: true,
                 onExpand: { DesktopFullScreenController.shared.close() }
             )
             .padding(40)
