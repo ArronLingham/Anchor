@@ -189,7 +189,7 @@ class SettingsWindowController: NSWindowController {
         // Show the window with proper ordering
         window?.orderFrontRegardless()
         window?.makeKeyAndOrderFront(nil)
-        window?.center()
+        if window?.isVisible != true { window?.center() }
         
         // Activate the app and ensure window gets focus
         NSApp.activate(ignoringOtherApps: true)

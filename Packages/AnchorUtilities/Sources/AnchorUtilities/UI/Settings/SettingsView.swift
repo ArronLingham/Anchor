@@ -166,25 +166,11 @@ struct SettingsView: View {
             }
         }
         .navigationSplitViewStyle(.balanced)
-        .toolbar(removing: .sidebarToggle)
         .toolbar {
             ToolbarItem(placement: .navigation) {
                 Button("Anchor Settings", systemImage: "gearshape") {
                     UtilityWorkspace.shared.onOpenAnchorSettings?()
                 }
-            }
-            // SwiftUI adds its sidebar button only to windows it creates, and
-            // this one is AppKit's. Without it, a sidebar dragged shut could
-            // only be dragged back from a one-point strip at the window's
-            // edge, and a full-screen window could only peek at it.
-            ToolbarItem(placement: .navigation) {
-                let strings = SettingsNavigationStrings.localized(l10n.language)
-                let title = sidebarShown ? strings.hideSidebar : strings.showSidebar
-                Button(action: toggleSidebar) {
-                    Label(title, systemImage: "sidebar.left")
-                }
-                .keyboardShortcut("s", modifiers: [.control, .command])
-                .help(title)
             }
             ToolbarItemGroup(placement: .navigation) {
                 let strings = SettingsNavigationStrings.localized(l10n.language)
@@ -352,17 +338,18 @@ struct SettingsView: View {
             Section {
                 if !collapsedSectionIDs.contains(section.id) {
                     ForEach(section.items) { item in
-                        HStack(spacing: 9) {
+                        Button { routeSidebarPick(item.id) } label: {
+                            HStack(spacing: 9) {
                             Image(systemName: item.icon)
                                 .foregroundStyle(selectedID == item.id
                                     ? AnyShapeStyle(.primary) : AnyShapeStyle(.tint))
                                 .frame(width: 18)
                             Text(item.title)
                         }
-                        .contentShape(Rectangle())
-                        .simultaneousGesture(TapGesture().onEnded {
-                            if selectedID == item.id { routeSidebarPick(item.id) }
-                        })
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
                         .tag(item.id)
                         .id(item.id)
                         .help(item.title)
