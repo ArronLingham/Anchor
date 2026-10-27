@@ -211,3 +211,5 @@ default.profraw
 !tests/run_utility_ownership_tests.sh
 !tests/AIAssistantCredentialTests.swift
 !tests/run_ai_credential_tests.sh
+!tests/ConcentricCornerTests.swift
+!tests/run_concentric_corner_tests.sh
