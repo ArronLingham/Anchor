@@ -265,6 +265,14 @@ final class LockScreenWidgetPreviewManager: ObservableObject {
 
     private func closePreviewWindow() {
         previewWindow?.orderOut(nil)
+        // Ordering out leaves the hosting graph alive, including the music
+        // panel's progress TimelineView and material rendering. This preview
+        // is disposable: detach it so closing it stops all of that work.
+        previewWindow?.delegate = nil
+        previewWindow?.contentView = nil
+        previewHostingView = nil
+        previewWindowDelegate = nil
+        previewWindow = nil
     }
 
     private func applyPreviewState() {
