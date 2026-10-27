@@ -187,7 +187,7 @@ struct HUDBackdrop: View {
            Self.drawsLiquidGlass(enabled: liquidGlassEnabled, reduceTransparency: reduceTransparency) {
             AnchorCorners.rectangle(cornerRadius: cornerRadius)
                 .fill(Color.clear)
-                .glassEffect(.regular, in: AnchorCorners.rectangle(cornerRadius: cornerRadius))
+                .anchorLiquidGlass(.regular, in: AnchorCorners.rectangle(cornerRadius: cornerRadius))
                 .overlay(
                     AnchorCorners.rectangle(cornerRadius: cornerRadius)
                         .fill(colorScheme == .dark ? Color.black : Color.white)

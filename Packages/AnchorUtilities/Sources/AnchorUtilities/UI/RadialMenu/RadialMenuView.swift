@@ -128,7 +128,7 @@ struct RadialMenuView: View {
         if #available(macOS 26.0, *), liquidGlassEnabled, !reduceTransparency {
             Circle()
                 .fill(Color.clear)
-                .glassEffect(.regular, in: Circle())
+                .anchorLiquidGlass(.regular, in: Circle())
                 .overlay(Circle().fill(PanelSurface.baseFill(for: colorScheme).opacity(colorScheme == .light ? 0.35 : 0.45)))
         } else {
             Circle()

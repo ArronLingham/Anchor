@@ -290,7 +290,7 @@ struct HUDAndOSDSettingsView: View {
                                         HStack {
                                             Text("Custom liquid variant")
                                             Spacer()
-                                            Text("v\(verticalHUDLiquidGlassVariant.rawValue)")
+                                            Text(verticalHUDLiquidGlassVariant.displayName)
                                                 .font(.caption)
                                                 .foregroundStyle(.secondary)
                                         }

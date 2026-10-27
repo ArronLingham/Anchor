@@ -136,7 +136,7 @@ struct CustomOSDSettings: View {
                                     HStack {
                                         Text("Custom liquid variant")
                                         Spacer()
-                                        Text("v\(osdLiquidGlassVariant.rawValue)")
+                                        Text(osdLiquidGlassVariant.displayName)
                                             .font(.caption)
                                             .foregroundStyle(.secondary)
                                     }

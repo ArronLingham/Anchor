@@ -1481,7 +1481,7 @@ private struct LiquidGlassMixerSlider: View {
                 .overlay(Capsule().fill(tint.opacity(colorScheme == .light ? 0.10 : 0.16)))
         } else {
             Color.clear
-                .glassEffect(.regular.tint(tint.opacity(isBoosting ? 0.18 : 0.10)).interactive(), in: Capsule())
+                .anchorLiquidGlass(.regular.tint(tint.opacity(isBoosting ? 0.18 : 0.10)).interactive(), in: Capsule())
         }
     }
 

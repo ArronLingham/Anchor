@@ -213,3 +213,5 @@ default.profraw
 !tests/run_ai_credential_tests.sh
 !tests/ConcentricCornerTests.swift
 !tests/run_concentric_corner_tests.sh
+!tests/LiquidGlassRenderingTests.swift
+!tests/run_liquid_glass_tests.sh

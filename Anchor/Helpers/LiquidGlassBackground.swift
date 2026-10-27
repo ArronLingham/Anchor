@@ -18,121 +18,9 @@
  */
 
 import SwiftUI
-import AppKit
 import Defaults
+import AnchorUtilities
 
-private final class LiquidGlassContainerView: NSView {
-    weak var glassView: NSView?
-    var hostingView: NSHostingView<AnyView>?
-    var appliedCornerRadius: CGFloat?
-    var appliedVariant: Int?
-
-    private var observedBackdropLayers: [CALayer] = []
-    private var hasScheduledBackdropSetup = false
-    private let windowServerAwareKeyPath = "windowServerAware"
-    private let scaleKeyPath = "scale"
-
-    deinit {
-        removeBackdropObservers()
-    }
-
-    override func removeFromSuperview() {
-        removeBackdropObservers()
-        super.removeFromSuperview()
-    }
-
-    override func viewDidMoveToWindow() {
-        super.viewDidMoveToWindow()
-        if window == nil { removeBackdropObservers() }
-        scheduleBackdropSetup()
-    }
-
-    override func layout() {
-        super.layout()
-        scheduleBackdropSetup()
-    }
-
-    func scheduleBackdropSetup() {
-        guard window != nil, !hasScheduledBackdropSetup else { return }
-        hasScheduledBackdropSetup = true
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
-            guard let self else { return }
-            self.hasScheduledBackdropSetup = false
-            self.configureBackdropLayers()
-        }
-    }
-
-    private func configureBackdropLayers() {
-        // A later attachment/layout will retry if AppKit has not created the
-        // layer yet. A detached preview must not keep a 20 Hz retry alive.
-        guard window != nil, let rootLayer = glassView?.layer else { return }
-
-        setBackdropProperties(in: rootLayer)
-        let newBackdropLayers = collectBackdropLayers(in: rootLayer)
-
-        guard observedBackdropLayers.count != newBackdropLayers.count ||
-                !zip(observedBackdropLayers, newBackdropLayers).allSatisfy({ pair in pair.0 === pair.1 }) else { return }
-
-        removeBackdropObservers()
-        observedBackdropLayers = newBackdropLayers
-        for backdrop in observedBackdropLayers {
-            backdrop.addObserver(self, forKeyPath: windowServerAwareKeyPath, options: [.old, .new], context: nil)
-            backdrop.addObserver(self, forKeyPath: scaleKeyPath, options: [.old, .new], context: nil)
-        }
-    }
-
-    private func setBackdropProperties(in layer: CALayer) {
-        if NSStringFromClass(type(of: layer)).contains("CABackdropLayer") {
-            if (layer.value(forKey: windowServerAwareKeyPath) as? NSNumber)?.boolValue != true {
-                layer.setValue(true, forKey: windowServerAwareKeyPath)
-            }
-            if (layer.value(forKey: scaleKeyPath) as? NSNumber)?.doubleValue != 1.0 {
-                layer.setValue(1.0, forKey: scaleKeyPath)
-            }
-        }
-        layer.sublayers?.forEach { setBackdropProperties(in: $0) }
-    }
-
-    private func collectBackdropLayers(in layer: CALayer) -> [CALayer] {
-        var results: [CALayer] = []
-        if NSStringFromClass(type(of: layer)).contains("CABackdropLayer") {
-            results.append(layer)
-        }
-        layer.sublayers?.forEach { results.append(contentsOf: collectBackdropLayers(in: $0)) }
-        return results
-    }
-
-    override func observeValue(
-        forKeyPath keyPath: String?,
-        of object: Any?,
-        change: [NSKeyValueChangeKey: Any]?,
-        context: UnsafeMutableRawPointer?
-    ) {
-        if keyPath == windowServerAwareKeyPath {
-            if change?[.newKey] as? Bool == false {
-                configureBackdropLayers()
-            }
-        } else if keyPath == scaleKeyPath {
-            guard let layer = object as? CALayer else { return }
-            if let newScale = (change?[.newKey] as? NSNumber)?.doubleValue, newScale != 1.0 {
-                layer.setValue(1.0, forKey: scaleKeyPath)
-            }
-        } else {
-            super.observeValue(forKeyPath: keyPath, of: object, change: change, context: context)
-        }
-    }
-
-    private func removeBackdropObservers() {
-        for layer in observedBackdropLayers {
-            layer.removeObserver(self, forKeyPath: windowServerAwareKeyPath)
-            layer.removeObserver(self, forKeyPath: scaleKeyPath)
-        }
-        observedBackdropLayers.removeAll()
-    }
-}
-
-/// All 20 available liquid‑glass variants.
-/// Apple does not publicly describe how each value looks so experiment and pick the one you like!
 public enum LiquidGlassVariant: Int, CaseIterable, Identifiable, Defaults.Serializable, Sendable {
     case v0  = 0,  v1  = 1,  v2  = 2,  v3  = 3,  v4  = 4
     case v5  = 5,  v6  = 6,  v7  = 7,  v8  = 8,  v9  = 9
@@ -140,6 +28,16 @@ public enum LiquidGlassVariant: Int, CaseIterable, Identifiable, Defaults.Serial
     case v15 = 15, v16 = 16, v17 = 17, v18 = 18, v19 = 19
 
     public var id: Int { rawValue }
+
+    /// Preserve saved preset IDs while using only public system materials.
+    public var displayName: String {
+        "\(rawValue < 10 ? "Clear" : "Regular") · \(rawValue % 10)"
+    }
+
+    var nativeGlass: Glass {
+        let base: Glass = rawValue < 10 ? .clear : .regular
+        return base.tint(Color.white.opacity(Double(rawValue % 10) * 0.015)).interactive()
+    }
 
     public static let supportedRange = 0...19
 
@@ -151,138 +49,25 @@ public enum LiquidGlassVariant: Int, CaseIterable, Identifiable, Defaults.Serial
     }
 }
 
-/// A SwiftUI view that embeds its content inside Apple’s private liquid‑glass material.
-///
-/// ```swift
-/// GlassBackground(variant: .v11, cornerRadius: 12) {
-///     VStack(spacing: 12) {
-///         Image(systemName: "sparkles")
-///             .font(.largeTitle)
-///         Text("Hello, glass!")
-///             .font(.title2)
-///     }
-///     .padding()
-/// }
-/// ```
-public struct LiquidGlassBackground<Content: View>: NSViewRepresentable {
+/// Native SwiftUI Liquid Glass. Existing preset IDs remain readable; 0–9 use
+/// Clear and 10–19 use Regular, each with ten restrained tint strengths.
+/// Content stays in the parent's SwiftUI tree, preserving environment and focus.
+public struct LiquidGlassBackground<Content: View>: View {
     private let content: Content
     private let cornerRadius: CGFloat
     private let variant: LiquidGlassVariant
-    /// Creates a new liquid‑glass container.
-    /// - Parameters:
-    ///   - variant: Any ``LiquidGlassVariant`` (0–19). Defaults to `.v11`, which is visually super pleasing
-    ///   - cornerRadius: Corner radius in points. Defaults to `10`.
-    ///   - content: Your SwiftUI hierarchy.
-    public init(
-        variant: LiquidGlassVariant = .defaultVariant,
-        cornerRadius: CGFloat = 10,
-        @ViewBuilder content: () -> Content
-    ) {
-        self.variant      = variant
+
+    public init(variant: LiquidGlassVariant = .defaultVariant,
+                cornerRadius: CGFloat = 10,
+                @ViewBuilder content: () -> Content) {
+        self.variant = variant
         self.cornerRadius = cornerRadius
-        self.content      = content()
+        self.content = content()
     }
 
-
-    @inline(__always)
-    private func setterSelector(for key: String, privateVariant: Bool = true) -> Selector? {
-        guard !key.isEmpty else { return nil }
-        let name: String
-        if privateVariant {
-            let cleaned = key.hasPrefix("_") ? key : "_" + key
-            name = "set" + cleaned
-        } else {
-            let first = String(key.prefix(1)).uppercased()
-            let rest  = String(key.dropFirst())
-            name = "set" + first + rest
-        }
-        return NSSelectorFromString(name + ":")
-    }
-
-    private typealias VariantSetterIMP = @convention(c) (AnyObject, Selector, Int) -> Void
-
-    private func callPrivateVariantSetter(on object: AnyObject, value: Int) {
-        guard
-            let sel   = setterSelector(for: "variant", privateVariant: true),
-            let m     = class_getInstanceMethod(object_getClass(object), sel)
-        else {
-            #if DEBUG
-            print("✗ LiquidGlassBackground: selector set_variant: not found. falling back to default")
-            #endif
-            return
-        }
-        let imp = method_getImplementation(m)
-        let f   = unsafeBitCast(imp, to: VariantSetterIMP.self)
-        f(object, sel, value)
-    }
-
-
-
-    public func makeNSView(context: Context) -> NSView {
-        // `NSGlassEffectView` is private. Look it up dynamically to avoid compile‑time coupling.
-        if let glassType = NSClassFromString("NSGlassEffectView") as? NSView.Type {
-            let container = LiquidGlassContainerView(frame: .zero)
-            container.translatesAutoresizingMaskIntoConstraints = false
-
-            let glass = glassType.init(frame: .zero)
-            glass.translatesAutoresizingMaskIntoConstraints = false
-            glass.setValue(cornerRadius, forKey: "cornerRadius")
-            callPrivateVariantSetter(on: glass, value: variant.rawValue)
-            container.appliedCornerRadius = cornerRadius
-            container.appliedVariant = variant.rawValue
-
-            let hosting = NSHostingView(rootView: AnyView(content.anchorTheme()))
-            hosting.translatesAutoresizingMaskIntoConstraints = false
-            glass.setValue(hosting, forKey: "contentView")
-
-            container.addSubview(glass)
-            NSLayoutConstraint.activate([
-                glass.leadingAnchor.constraint(equalTo: container.leadingAnchor),
-                glass.trailingAnchor.constraint(equalTo: container.trailingAnchor),
-                glass.topAnchor.constraint(equalTo: container.topAnchor),
-                glass.bottomAnchor.constraint(equalTo: container.bottomAnchor)
-            ])
-
-            container.glassView = glass
-            container.hostingView = hosting
-            container.scheduleBackdropSetup()
-            return container
-        }
-
-        // Fallback for earlier macOS – use an ordinary blur.
-        let fallback = NSVisualEffectView()
-        fallback.material = .underWindowBackground
-
-        let hosting = NSHostingView(rootView: content)
-        hosting.translatesAutoresizingMaskIntoConstraints = false
-        fallback.addSubview(hosting)
-        NSLayoutConstraint.activate([
-            hosting.leadingAnchor.constraint(equalTo: fallback.leadingAnchor),
-            hosting.trailingAnchor.constraint(equalTo: fallback.trailingAnchor),
-            hosting.topAnchor.constraint(equalTo: fallback.topAnchor),
-            hosting.bottomAnchor.constraint(equalTo: fallback.bottomAnchor)
-        ])
-        return fallback
-    }
-
-    public func updateNSView(_ nsView: NSView, context: Context) {
-        if let container = nsView as? LiquidGlassContainerView,
-           let glass = container.glassView {
-            container.hostingView?.rootView = AnyView(content.anchorTheme())
-            if container.appliedCornerRadius != cornerRadius {
-                glass.setValue(cornerRadius, forKey: "cornerRadius")
-                container.appliedCornerRadius = cornerRadius
-            }
-            if container.appliedVariant != variant.rawValue {
-                callPrivateVariantSetter(on: glass, value: variant.rawValue)
-                container.appliedVariant = variant.rawValue
-                container.scheduleBackdropSetup()
-            }
-            return
-        }
-
-        if let hosting = nsView.subviews.first as? NSHostingView<Content> {
-            hosting.rootView = content
-        }
+    public var body: some View {
+        content.anchorLiquidGlass(variant.nativeGlass,
+            in: AnchorCorners.rectangle(cornerRadius: cornerRadius))
+            .anchorCornerContainer(radius: cornerRadius)
     }
 }

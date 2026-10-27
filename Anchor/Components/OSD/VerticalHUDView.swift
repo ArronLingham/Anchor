@@ -19,6 +19,7 @@
 
 #if os(macOS)
 import SwiftUI
+import AnchorUtilities
 import Defaults
 import Combine
 
@@ -322,7 +323,7 @@ struct VerticalHUDPillView: View {
                 } else {
                     Capsule()
                         .fill(.clear)
-                        .glassEffect(.clear.interactive(), in: .capsule)
+                        .anchorLiquidGlass(.clear.interactive(), in: .capsule)
                 }
             } else {
                 Capsule().fill(.ultraThinMaterial)

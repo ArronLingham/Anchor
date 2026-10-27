@@ -351,7 +351,7 @@ private struct PlayerRootView: View {
         // still colours the card without turning the glass into a flat fill.
         if usesGlass, #available(macOS 26.0, *) {
             Color.clear
-                .glassEffect(.regular, in: .rect(cornerRadius: 18))
+                .anchorLiquidGlass(.regular, in: AnchorCorners.rectangle(cornerRadius: 18))
                 .overlay(
                     AnchorCorners.rectangle(cornerRadius: 18)
                         .fill(cardColor.opacity(backgroundOpacity * 0.35)))

@@ -216,7 +216,7 @@ struct LockScreenSettings: View {
                     .settingsHighlight(id: highlightID("Glass mode"))
 
                     if lockScreenGlassCustomizationMode == .customLiquid {
-                        Text("Use the sliders below to pick unique Apple liquid-glass variants for each widget.")
+                        Text("Use the sliders below to pick Clear or Regular glass finishes for each widget.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
@@ -736,7 +736,7 @@ extension LockScreenSettings {
             HStack {
                 Text(title)
                 Spacer()
-                Text("v\(currentValue)")
+                Text(LiquidGlassVariant.clamped(currentValue).displayName)
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

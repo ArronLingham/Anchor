@@ -1412,9 +1412,9 @@ struct LockScreenMusicPanel: View {
     private func clearLiquidGlassSurface(cornerRadius: CGFloat) -> some View {
         AnchorCorners.rectangle(cornerRadius: cornerRadius)
             .fill(.clear)
-            .glassEffect(
+            .anchorLiquidGlass(
                 .clear.interactive(),
-                in: .rect(cornerRadius: cornerRadius)
+                in: AnchorCorners.rectangle(cornerRadius: cornerRadius)
             )
     }
 
@@ -1613,9 +1613,9 @@ private struct GlassTextBackdrop: View {
                 .font(.system(size: dynamicFontSize, weight: .semibold, design: .rounded))
                 .foregroundStyle(Color.clear)
                 .frame(width: proxy.size.width, height: proxy.size.height)
-                .glassEffect(
+                .anchorLiquidGlass(
                     .clear.interactive(),
-                    in: .rect(cornerRadius: cornerRadius)
+                    in: AnchorCorners.rectangle(cornerRadius: cornerRadius)
                 )
         }
         .allowsHitTesting(false)

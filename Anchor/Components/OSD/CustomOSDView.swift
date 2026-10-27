@@ -183,9 +183,10 @@ struct CustomOSDView: View {
                     }
                 } else {
                     AnchorCorners.rectangle(cornerRadius: 18)
-                        .glassEffect(
+                        .fill(.clear)
+                        .anchorLiquidGlass(
                             .regular.tint(AnchorDesign.surface).interactive(),
-                            in: .rect(cornerRadius: 18)
+                            in: AnchorCorners.rectangle(cornerRadius: 18)
                         )
                 }
             } else {

@@ -452,7 +452,7 @@ struct NotchSurfaceBackground: View {
             if #available(macOS 26, *), showsGlass, presentation.restingBlack < 1 {
                 let shape = NotchBackdropShape(contour: presentation.contour)
                 Color.clear
-                    .glassEffect(.clear, in: shape)
+                    .anchorLiquidGlass(.clear, in: shape)
                     .environment(\.appearsActive, true)
                     .materialActiveAppearance(.active)
                     .overlay {
@@ -593,7 +593,7 @@ struct NotchControlSurface: ViewModifier {
 #if compiler(>=6.2)
                 if #available(macOS 26, *), glass, !reduceTransparency {
                     content.background(.white.opacity(selected ? 0.12 : 0.065), in: shape)
-                        .glassEffect(.regular.interactive(interactive), in: shape)
+                        .anchorLiquidGlass(.regular.interactive(interactive), in: shape)
                 } else {
                     content.background(.white.opacity(selected ? 0.12 : 0.065), in: shape)
                 }

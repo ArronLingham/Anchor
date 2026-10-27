@@ -198,7 +198,7 @@ struct TimerSettings: View {
                             HStack {
                                 Text("Timer widget variant")
                                 Spacer()
-                                Text("v\(lockScreenTimerLiquidGlassVariant.rawValue)")
+                                Text(lockScreenTimerLiquidGlassVariant.displayName)
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                             }

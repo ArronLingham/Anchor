@@ -200,7 +200,7 @@ private struct PanelGlassSurface: View {
         if #available(macOS 26.0, *), liquidGlassEnabled, !reduceTransparency {
             Rectangle()
                 .fill(Color.clear)
-                .glassEffect(.regular, in: Rectangle())
+                .anchorLiquidGlass(.regular, in: Rectangle())
                 .overlay(
                     Rectangle()
                         .fill(PanelSurface.baseFill(for: colorScheme).opacity(colorScheme == .light ? 0.35 : 0.45))

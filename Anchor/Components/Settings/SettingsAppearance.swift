@@ -220,7 +220,7 @@ struct Appearance: View {
                     .settingsHighlight(id: highlightID("Lock screen glass mode"))
 
                     if lockScreenGlassCustomizationMode == .customLiquid {
-                        Text("Pick per-widget liquid-glass variants below. Changes mirror the Lock Screen tab.")
+                        Text("Pick a glass finish for each widget below. Changes mirror the Lock Screen tab.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
 
@@ -228,7 +228,7 @@ struct Appearance: View {
                             HStack {
                                 Text("Music panel variant")
                                 Spacer()
-                                Text("v\(lockScreenMusicLiquidGlassVariant.rawValue)")
+                                Text(lockScreenMusicLiquidGlassVariant.displayName)
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                             }
@@ -245,7 +245,7 @@ struct Appearance: View {
                             HStack {
                                 Text("Timer widget variant")
                                 Spacer()
-                                Text("v\(lockScreenTimerLiquidGlassVariant.rawValue)")
+                                Text(lockScreenTimerLiquidGlassVariant.displayName)
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                             }
