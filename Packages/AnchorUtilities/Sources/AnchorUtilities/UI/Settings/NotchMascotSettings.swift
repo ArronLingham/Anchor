@@ -88,7 +88,7 @@ struct NotchMascotSettings: View {
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(Color.accentColor)
                 .frame(width: 26, height: 26)
-                .background(Color.accentColor.opacity(0.12), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+                .background(Color.accentColor.opacity(0.12), in: AnchorCorners.rectangle(cornerRadius: 7))
             VStack(alignment: .leading, spacing: 2) {
                 Text(text.livesInIsland)
                 if !installed {
@@ -106,7 +106,8 @@ struct NotchMascotSettings: View {
             }
         }
         .padding(12)
-        .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .background(.quaternary.opacity(0.35), in: AnchorCorners.rectangle(cornerRadius: 14))
+        .anchorCornerContainer(radius: 14)
     }
 
     // MARK: Appearance
@@ -153,11 +154,11 @@ struct NotchMascotSettings: View {
                                     size: 24, idles: false)
                         .frame(width: 24, height: 24)
                         .frame(width: 58, height: 40)
-                        .background(Color.black, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        .background(Color.black, in: AnchorCorners.rectangle(cornerRadius: 10))
                         .padding(2)
-                        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .strokeBorder(selected ? Color.accentColor : .clear, lineWidth: 2))
-                        .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        .overlay(AnchorCorners.rectangle(cornerRadius: 12)
+                            .anchorStrokeBorder(selected ? Color.accentColor : .clear, lineWidth: 2))
+                        .contentShape(AnchorCorners.rectangle(cornerRadius: 12))
                 }
                 .buttonStyle(.plain)
                 .help(text.shape(item))
@@ -337,7 +338,8 @@ private struct NotchMascotStageCard: View {
                 .opacity(awake ? 1 : 0.45)
         }
         .padding(16)
-        .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .background(.quaternary.opacity(0.35), in: AnchorCorners.rectangle(cornerRadius: 16))
+        .anchorCornerContainer(radius: 16)
         .onChange(of: awake) { _, awake in
             // A moment still playing ends; switched on, it wakes up with a
             // stretch, and off, it yawns and dozes off. Hidden a moment ago
@@ -517,8 +519,8 @@ private struct NotchMascotStage: View {
         }
         .animation(reduceMotion ? nil : .smooth(duration: 0.25), value: caption?.title)
         .frame(width: width, height: Self.height, alignment: .top)
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(.primary.opacity(0.07)))
+        .clipShape(AnchorCorners.rectangle(cornerRadius: 12))
+        .overlay(AnchorCorners.rectangle(cornerRadius: 12).anchorStrokeBorder(.primary.opacity(0.07)))
     }
 
     /// Menus on the left and status icons on the right, as far as they fit
@@ -738,12 +740,12 @@ private struct NotchMascotChoiceTile<Preview: View>: View {
             .padding(8)
             .foregroundStyle(selected ? Color.accentColor : .primary)
             .background(selected ? Color.accentColor.opacity(0.12) : Color.secondary.opacity(0.06),
-                        in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        in: AnchorCorners.rectangle(cornerRadius: 12))
             .overlay {
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .strokeBorder(selected ? Color.accentColor.opacity(0.7) : .clear, lineWidth: 1)
+                AnchorCorners.rectangle(cornerRadius: 12)
+                    .anchorStrokeBorder(selected ? Color.accentColor.opacity(0.7) : .clear, lineWidth: 1)
             }
-            .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .contentShape(AnchorCorners.rectangle(cornerRadius: 12))
         }
         .buttonStyle(.plain)
         // The button keeps its own element, so VoiceOver can press it.
@@ -814,7 +816,7 @@ private struct NotchCommandBarStyleSample: View {
     }
 
     private func bar(width: CGFloat, height: CGFloat) -> some View {
-        RoundedRectangle(cornerRadius: height / 2, style: .continuous)
+        AnchorCorners.rectangle(cornerRadius: height / 2)
             .islandSample()
             .frame(width: width, height: height)
             .overlay { field }

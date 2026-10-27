@@ -29,10 +29,11 @@ struct CameraPreviewView: View {
         .frame(width: size.width, height: size.height)
         .overlay(alignment: .bottom) { controls }
         .animation(.easeInOut(duration: 0.15), value: hovering)
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .clipShape(AnchorCorners.rectangle(cornerRadius: 14))
+        .anchorCornerContainer(radius: 14)
         .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .strokeBorder(Color.white.opacity(0.14), lineWidth: 1)
+            AnchorCorners.rectangle(cornerRadius: 14)
+                .anchorStrokeBorder(Color.white.opacity(0.14), lineWidth: 1)
         )
         // The surface is always black, so the controls (spinner, menu,
         // buttons) must draw for a dark background in either system look.

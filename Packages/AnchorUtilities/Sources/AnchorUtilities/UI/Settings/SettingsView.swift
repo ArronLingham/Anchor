@@ -867,9 +867,9 @@ struct ReleaseNotesSettings: View {
                 Image(nsImage: nsImage)
                     .resizable()
                     .scaledToFit()
-                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .clipShape(AnchorCorners.rectangle(cornerRadius: 8))
                     .overlay(
-                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        AnchorCorners.rectangle(cornerRadius: 8)
                             .stroke(.quaternary, lineWidth: 1)
                     )
                     .accessibilityLabel(image.alt)
@@ -979,19 +979,20 @@ struct SupportSettings: View {
                 .padding(16)
                 .frame(maxWidth: 510)
                 .background(
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    AnchorCorners.rectangle(cornerRadius: 14)
                         .fill(Color(nsColor: .controlBackgroundColor))
                 )
+                .anchorCornerContainer(radius: 14)
                 .overlay(
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .strokeBorder(Color(nsColor: .separatorColor).opacity(0.45))
+                    AnchorCorners.rectangle(cornerRadius: 14)
+                        .anchorStrokeBorder(Color(nsColor: .separatorColor).opacity(0.45))
                 )
 
                 HStack(alignment: .top, spacing: 14) {
                     DiscordMark(width: 24)
                         .frame(width: 38, height: 38)
                         .background(
-                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            AnchorCorners.rectangle(cornerRadius: 10)
                                 .fill(Color(red: 0.35, green: 0.40, blue: 0.94))
                         )
 
@@ -1011,12 +1012,13 @@ struct SupportSettings: View {
                 .padding(16)
                 .frame(maxWidth: 510)
                 .background(
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    AnchorCorners.rectangle(cornerRadius: 14)
                         .fill(Color(nsColor: .controlBackgroundColor))
                 )
+                .anchorCornerContainer(radius: 14)
                 .overlay(
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .strokeBorder(Color(nsColor: .separatorColor).opacity(0.45))
+                    AnchorCorners.rectangle(cornerRadius: 14)
+                        .anchorStrokeBorder(Color(nsColor: .separatorColor).opacity(0.45))
                 )
 
                 Text(donateThanksText)
@@ -1298,7 +1300,7 @@ private extension View {
             .padding(.horizontal, 6)
             .foregroundStyle(isSelected ? Color.accentColor : Color.primary)
             .background {
-                RoundedRectangle(cornerRadius: 6)
+                AnchorCorners.rectangle(cornerRadius: 6)
                     .fill(isSelected ? Color.accentColor.opacity(0.18) : .clear)
             }
     }

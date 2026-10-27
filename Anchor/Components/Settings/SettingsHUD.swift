@@ -18,6 +18,7 @@
  */
 
 import AppKit
+import AnchorUtilities
 import AVFoundation
 import Combine
 import Defaults
@@ -664,11 +665,11 @@ private struct HUDSelectionCard<Preview: View>: View {
         Button(action: action) {
             VStack(spacing: 12) {
                 ZStack {
-                    RoundedRectangle(cornerRadius: 12)
+                    AnchorCorners.rectangle(cornerRadius: 12)
                         .fill(Color(nsColor: .controlBackgroundColor))
                         .overlay(
-                            RoundedRectangle(cornerRadius: 12)
-                                .strokeBorder(
+                            AnchorCorners.rectangle(cornerRadius: 12)
+                                .anchorStrokeBorder(
                                     isSelected ? Color.accentColor : Color.clear,
                                     lineWidth: 2.5
                                 )
@@ -1000,11 +1001,11 @@ extension DevicesSettingsView {
         var body: some View {
             VStack(spacing: 8) {
                 ZStack {
-                    RoundedRectangle(cornerRadius: 12)
+                    AnchorCorners.rectangle(cornerRadius: 12)
                         .fill(backgroundColor)
                         .overlay(
-                            RoundedRectangle(cornerRadius: 12)
-                                .strokeBorder(borderColor, lineWidth: isSelected ? 2 : 1)
+                            AnchorCorners.rectangle(cornerRadius: 12)
+                                .anchorStrokeBorder(borderColor, lineWidth: isSelected ? 2 : 1)
                         )
 
                     preview

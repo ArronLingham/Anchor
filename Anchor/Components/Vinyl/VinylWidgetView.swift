@@ -18,6 +18,7 @@
  */
 
 import AppKit
+import AnchorUtilities
 import Defaults
 import SwiftUI
 
@@ -239,11 +240,11 @@ struct VinylWidgetView: View {
     }
 
     private var card: some View {
-        RoundedRectangle(cornerRadius: 18, style: .continuous)
+        AnchorCorners.rectangle(cornerRadius: 18)
             .fill(cardColor.opacity(max(backgroundOpacity, 0.001) > 0.001 ? 1 : 1))
             .overlay(
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .strokeBorder(.white.opacity(0.08), lineWidth: 1))
+                AnchorCorners.rectangle(cornerRadius: 18)
+                    .anchorStrokeBorder(.white.opacity(0.08), lineWidth: 1))
             .shadow(color: .black.opacity(0.28), radius: 18, y: 6)
     }
 

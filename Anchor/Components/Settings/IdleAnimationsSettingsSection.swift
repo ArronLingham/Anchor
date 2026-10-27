@@ -18,6 +18,7 @@
  */
 
 import SwiftUI
+import AnchorUtilities
 import Defaults
 import LottieUI
 import UniformTypeIdentifiers
@@ -289,11 +290,11 @@ struct AnimationPreviewCard: View {
         VStack(spacing: 8) {
             // Preview area
             ZStack {
-                RoundedRectangle(cornerRadius: 12)
+                AnchorCorners.rectangle(cornerRadius: 12)
                     .fill(Color(nsColor: .controlBackgroundColor))
                     .overlay(
-                        RoundedRectangle(cornerRadius: 12)
-                            .strokeBorder(
+                        AnchorCorners.rectangle(cornerRadius: 12)
+                            .anchorStrokeBorder(
                                 isSelected ? Color.accentColor : Color.clear,
                                 lineWidth: 2.5
                             )
@@ -414,9 +415,9 @@ struct AddAnimationCard: View {
                 showingMenu.toggle()
             } label: {
                 ZStack {
-                    RoundedRectangle(cornerRadius: 12)
-                        .strokeBorder(style: StrokeStyle(lineWidth: 2, dash: [5, 3]))
-                        .fill(Color(nsColor: .controlBackgroundColor))
+                    AnchorCorners.rectangle(cornerRadius: 12)
+                        .anchorStrokeBorder(Color(nsColor: .controlBackgroundColor),
+                                            style: StrokeStyle(lineWidth: 2, dash: [5, 3]))
                         .foregroundStyle(.secondary)
                     
                     VStack(spacing: 4) {

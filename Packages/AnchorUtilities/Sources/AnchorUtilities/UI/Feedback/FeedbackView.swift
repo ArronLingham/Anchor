@@ -83,10 +83,10 @@ struct FeedbackView: View {
                             }
                         }
                         .frame(minHeight: 145)
-                        .background(.background.secondary, in: RoundedRectangle(cornerRadius: 9))
+                        .background(.background.secondary, in: AnchorCorners.rectangle(cornerRadius: 9))
                         .overlay {
-                            RoundedRectangle(cornerRadius: 9)
-                                .strokeBorder(.separator, lineWidth: 1)
+                            AnchorCorners.rectangle(cornerRadius: 9)
+                                .anchorStrokeBorder(.separator, lineWidth: 1)
                         }
                         Text(String(format: strings.charactersFormat, count))
                             .font(.caption.monospacedDigit())
@@ -119,7 +119,7 @@ struct FeedbackView: View {
                             .foregroundStyle(.secondary)
                     }
                     .padding(16)
-                    .background(.quaternary.opacity(0.45), in: RoundedRectangle(cornerRadius: 12))
+                    .background(.quaternary.opacity(0.45), in: AnchorCorners.rectangle(cornerRadius: 12))
                 }
                 .padding(24)
             }

@@ -83,7 +83,7 @@ struct FeatureHubSettings: View {
                     }
                     .font(.callout)
                     .padding(12)
-                    .background(Color.accentColor.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
+                    .background(Color.accentColor.opacity(0.08), in: AnchorCorners.rectangle(cornerRadius: 10))
                 }
                 // The restart notice comes first, whichever tab is open:
                 // uninstalling anything makes it impossible to miss.
@@ -201,7 +201,8 @@ struct FeatureHubSettings: View {
         }
         .padding(16)
         .background(Color.accentColor.opacity(0.12),
-                    in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    in: AnchorCorners.rectangle(cornerRadius: 16))
+                    .anchorCornerContainer(radius: 16)
     }
 
     /// The tally as a bar, with the two bulk actions beside it.
@@ -421,7 +422,7 @@ struct FeatureHubSettings: View {
                 .foregroundStyle(Color.accentColor)
                 .frame(width: 26, height: 26)
                 .background(Color.accentColor.opacity(0.12),
-                            in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+                            in: AnchorCorners.rectangle(cornerRadius: 7))
             Text(groupTitle(group)).font(.headline)
             Spacer(minLength: 12)
             Text("\(installed)/\(total)")
@@ -491,7 +492,7 @@ private struct PresetCard: View {
                 .foregroundStyle(Color.accentColor)
                 .frame(width: 34, height: 34)
                 .background(Color.accentColor.opacity(0.12),
-                            in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+                            in: AnchorCorners.rectangle(cornerRadius: 9))
             Text(name)
                 .font(.system(size: 13, weight: .semibold))
                 .lineLimit(1)
@@ -507,7 +508,7 @@ private struct PresetCard: View {
         .padding(12)
         .frame(maxWidth: .infinity, minHeight: 138, alignment: .topLeading)
         .background(Color.primary.opacity(0.05),
-                    in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    in: AnchorCorners.rectangle(cornerRadius: 12))
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(name). \(caption)")
     }
@@ -611,7 +612,7 @@ private struct FeatureHubRow: View {
         }
         .padding(.vertical, 7)
         .padding(.horizontal, 8)
-        .background(rowFill, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .background(rowFill, in: AnchorCorners.rectangle(cornerRadius: 10))
         .onHover { hovering = $0 }
         .alert(hub.notchUninstallTitle, isPresented: $confirmingExtensions) {
             Button(hub.notchUninstallWithExtensions) { flip(to: false, alongside: installedExtensions) }
@@ -860,7 +861,7 @@ private struct PermissionPortalRow: View {
                 .foregroundStyle(statusColor)
                 .frame(width: 30, height: 30)
                 .background(statusColor.opacity(0.14),
-                            in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                            in: AnchorCorners.rectangle(cornerRadius: 8))
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 8) {
                     Text(permission.name(hub))
@@ -938,7 +939,7 @@ private struct PermissionPortalRow: View {
             .padding(8)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(
-                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                AnchorCorners.rectangle(cornerRadius: 7)
                     .fill(Color.primary.opacity(0.05))
             )
     }

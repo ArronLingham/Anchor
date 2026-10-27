@@ -1,4 +1,5 @@
 import AppKit
+import AnchorUtilities
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -54,8 +55,8 @@ struct ShelfWorkspaceView: View {
             }
         }
         .padding(seamless ? 0 : 8)
-        .background(RoundedRectangle(cornerRadius: 12).fill(isTargeted ? Color.accentColor.opacity(0.15) : .clear))
-        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(isTargeted ? Color.accentColor : Color.primary.opacity(seamless ? 0 : 0.08)))
+        .background(AnchorCorners.rectangle(cornerRadius: 12).fill(isTargeted ? Color.accentColor.opacity(0.15) : .clear))
+        .overlay(AnchorCorners.rectangle(cornerRadius: 12).anchorStrokeBorder(isTargeted ? Color.accentColor : Color.primary.opacity(seamless ? 0 : 0.08)))
         .onDrop(of: [.fileURL], isTargeted: $isTargeted, perform: load)
         .focusable()
         .onKeyPress(.space) {
@@ -114,8 +115,8 @@ struct ShelfWorkspaceView: View {
             Text(item.name).font(.system(size: 9)).lineLimit(1).truncationMode(.middle).frame(width: 68)
         }
         .padding(5).frame(width: 78, height: 70)
-        .background(RoundedRectangle(cornerRadius: 8).fill(selected.contains(item.id) ? Color.accentColor.opacity(0.25) : Color.primary.opacity(0.04)))
-        .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(selected.contains(item.id) ? Color.accentColor : .clear))
+        .background(AnchorCorners.rectangle(cornerRadius: 8).fill(selected.contains(item.id) ? Color.accentColor.opacity(0.25) : Color.primary.opacity(0.04)))
+        .overlay(AnchorCorners.rectangle(cornerRadius: 8).anchorStrokeBorder(selected.contains(item.id) ? Color.accentColor : .clear))
         .contentShape(Rectangle())
         .onTapGesture(count: 2) { shelf.open(item) }
         .onTapGesture {

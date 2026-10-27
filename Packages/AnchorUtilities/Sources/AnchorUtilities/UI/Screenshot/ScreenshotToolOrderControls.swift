@@ -96,7 +96,7 @@ struct ScreenshotToolOrderControls: View {
                             .foregroundStyle(.secondary)
                             .frame(width: 20, height: 22)
                             .background(Color.primary.opacity(0.045),
-                                        in: RoundedRectangle(cornerRadius: 6))
+                                        in: AnchorCorners.rectangle(cornerRadius: 6))
                     }
                     .buttonStyle(.plain)
                     .help(l10n.s.shortcutReset)

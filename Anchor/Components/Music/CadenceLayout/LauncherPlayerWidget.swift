@@ -17,6 +17,7 @@
  */
 
 import AppKit
+import AnchorUtilities
 import Defaults
 import SwiftUI
 
@@ -86,13 +87,14 @@ struct LauncherPlayerWidget: View {
         )
         .frame(width: size.width, height: height)
         .background(
-            RoundedRectangle(cornerRadius: 14, style: .continuous).fill(.regularMaterial)
+            AnchorCorners.rectangle(cornerRadius: 14).fill(.regularMaterial)
         )
+        .anchorCornerContainer(radius: 14)
         .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .strokeBorder(Color.primary.opacity(0.08), lineWidth: 1)
+            AnchorCorners.rectangle(cornerRadius: 14)
+                .anchorStrokeBorder(Color.primary.opacity(0.08), lineWidth: 1)
         )
-        .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .contentShape(AnchorCorners.rectangle(cornerRadius: 14))
         .onHover { isHovering = $0 }
         .onTapGesture(perform: onOpen)
         .animation(.easeInOut(duration: 0.16), value: showsControls)

@@ -301,7 +301,7 @@ struct AppUpdatesListView: View {
         .padding(.vertical, 5)
         .frame(height: compact ? Self.compactRowHeight : nil)
         .background(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
+            AnchorCorners.rectangle(cornerRadius: 8)
                 .fill(Color.primary.opacity(0.035))
         )
         .contextMenu {

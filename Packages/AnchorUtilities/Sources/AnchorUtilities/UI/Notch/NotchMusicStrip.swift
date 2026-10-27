@@ -247,10 +247,11 @@ struct NotchMusicCover: View {
             }
         }
         .frame(width: side, height: side)
-        .clipShape(RoundedRectangle(cornerRadius: radius, style: .circular))
+        .clipShape(AnchorCorners.rectangle(cornerRadius: radius))
+        .anchorCornerContainer(radius: radius)
         .overlay {
-            RoundedRectangle(cornerRadius: radius, style: .circular)
-                .strokeBorder(.white.opacity(0.14), lineWidth: 0.5)
+            AnchorCorners.rectangle(cornerRadius: radius)
+                .anchorStrokeBorder(.white.opacity(0.14), lineWidth: 0.5)
         }
     }
 }

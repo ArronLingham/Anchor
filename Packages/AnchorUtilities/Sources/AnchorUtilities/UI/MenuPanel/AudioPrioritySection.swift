@@ -209,11 +209,11 @@ private struct PriorityDeviceList: View {
         .padding(.horizontal, 6)
         .padding(.vertical, 4)
         .background(
-            RoundedRectangle(cornerRadius: 7, style: .continuous)
+            AnchorCorners.rectangle(cornerRadius: 7)
                 .fill(isCurrent ? Color.accentColor.opacity(0.08) : Color.primary.opacity(0.035))
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 7, style: .continuous)
+            AnchorCorners.rectangle(cornerRadius: 7)
                 .stroke(isCurrent ? Color.accentColor.opacity(0.65) : Color.clear, lineWidth: 1)
         )
         .contentShape(Rectangle())
@@ -231,7 +231,7 @@ private struct PriorityDeviceList: View {
                 .foregroundStyle(.secondary)
                 .frame(width: 28, height: 28)
                 .background(.regularMaterial,
-                            in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+                            in: AnchorCorners.rectangle(cornerRadius: 7))
         }
         .accessibilityAction(named: Text(l10n.s.audioPriorityMoveUp)) {
             move(uid, by: -1)

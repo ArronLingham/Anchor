@@ -50,7 +50,7 @@ public struct UtilityLibraryView: View {
                     }
                     Toggle("Favorites", isOn: $favoritesOnly).toggleStyle(.button)
                 }
-                .padding(10).background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 10))
+                .padding(10).background(.quaternary.opacity(0.5), in: AnchorCorners.rectangle(cornerRadius: 10))
                 HStack {
                     Text("\(all.filter(\.isEnabled).count) enabled").font(.caption).foregroundStyle(.secondary)
                     Picker("Show features", selection: $stateFilter) {
@@ -152,8 +152,8 @@ public struct UtilityLibraryView: View {
             .help(feature.unsupportedReason ?? feature.summary)
         }
         .padding(14)
-        .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 12))
-        .overlay { RoundedRectangle(cornerRadius: 12).strokeBorder(.quaternary, lineWidth: 1) }
+        .background(.quaternary.opacity(0.35), in: AnchorCorners.rectangle(cornerRadius: 12))
+        .overlay { AnchorCorners.rectangle(cornerRadius: 12).anchorStrokeBorder(.quaternary, lineWidth: 1) }
     }
 }
 
@@ -177,7 +177,7 @@ public struct UtilityFavoritesView: View {
                         }.frame(maxWidth: .infinity, minHeight: 60)
                     }
                     .buttonStyle(.borderless)
-                    .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 9))
+                    .background(.quaternary.opacity(0.4), in: AnchorCorners.rectangle(cornerRadius: 9))
                     .help(feature.isEnabled ? feature.summary : "Enable this feature in Features & Tools")
                     .contextMenu {
                         Button(feature.isEnabled ? "Disable feature" : "Enable feature") {

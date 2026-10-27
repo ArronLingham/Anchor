@@ -18,6 +18,7 @@
  */
 
 import SwiftUI
+import AnchorUtilities
 import Defaults
 
 enum ColorCodingMode {
@@ -54,12 +55,12 @@ struct ColorCodedProgressBar: View {
         GeometryReader { geometry in
             ZStack(alignment: .leading) {
                 // Background track
-                RoundedRectangle(cornerRadius: height / 2)
+                AnchorCorners.rectangle(cornerRadius: height / 2)
                     .fill(Color.white.opacity(0.2))
                     .frame(width: width, height: height)
                 
                 // Filled track with color gradient or solid color
-                RoundedRectangle(cornerRadius: height / 2)
+                AnchorCorners.rectangle(cornerRadius: height / 2)
                     .fill(fillStyle)
                     .frame(width: width * value, height: height)
             }

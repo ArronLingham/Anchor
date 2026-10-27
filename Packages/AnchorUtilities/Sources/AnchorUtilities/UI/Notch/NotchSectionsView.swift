@@ -100,7 +100,7 @@ struct NotchSectionsView: View {
     private func tile(_ module: NotchModule, visible: Bool) -> some View {
         let highlighted = service.highlightedSection == module
         let current = service.selected == module
-        let shape = RoundedRectangle(cornerRadius: 16, style: .continuous)
+        let shape = AnchorCorners.rectangle(cornerRadius: 16)
         return Button { service.select(module) } label: {
             VStack(spacing: 6) {
                 Image(systemName: module.symbol)
@@ -122,7 +122,7 @@ struct NotchSectionsView: View {
             .frame(height: NotchLayout.sectionTileHeight)
             .background(.white.opacity(highlighted ? 0.12 : 0.045), in: shape)
             .overlay {
-                shape.strokeBorder(.white.opacity(highlighted ? 0.55 : contrast == .increased ? 0.4 : 0.04), lineWidth: 1)
+                shape.anchorStrokeBorder(.white.opacity(highlighted ? 0.55 : contrast == .increased ? 0.4 : 0.04), lineWidth: 1)
             }
             .overlay(alignment: .topTrailing) {
                 if current {
@@ -208,8 +208,8 @@ struct NotchSectionSearch: View {
         }
         .padding(.trailing, expanded ? 8 : 0)
         .frame(height: 28)
-        .background(.white.opacity(expanded ? 0.07 : 0), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
-        .contentShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+        .background(.white.opacity(expanded ? 0.07 : 0), in: AnchorCorners.rectangle(cornerRadius: 9))
+        .contentShape(AnchorCorners.rectangle(cornerRadius: 9))
         .clipped()
         .onHover { hovering in
             withAnimation(reduceMotion ? nil : .easeOut(duration: 0.15)) { hovered = hovering }

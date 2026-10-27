@@ -23,7 +23,8 @@ struct NotchNotificationsView: View {
                 HStack(spacing: 14) {
                     Image(systemName: "bell").font(.system(size: 26, weight: .light)).foregroundStyle(.white.opacity(0.6))
                         .frame(width: 56, height: 56)
-                        .background(.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                        .background(.white.opacity(0.05), in: AnchorCorners.rectangle(cornerRadius: 18))
+                        .anchorCornerContainer(radius: 18)
                     VStack(alignment: .leading, spacing: 4) {
                         Text(service.monitoring ? text.empty : text.waiting).font(.headline)
                         Text(text.privacy).font(.caption).foregroundStyle(.white.opacity(0.65))
@@ -119,7 +120,8 @@ private struct NotchNotificationRow: View {
         }
         .padding(12)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 14))
+        .background(.white.opacity(0.06), in: AnchorCorners.rectangle(cornerRadius: 14))
+        .anchorCornerContainer(radius: 14)
         .clipped()
         .accessibilityElement(children: .contain)
     }

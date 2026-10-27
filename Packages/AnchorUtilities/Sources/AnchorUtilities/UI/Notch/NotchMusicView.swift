@@ -132,8 +132,9 @@ struct NotchMusicView: View {
                     .font(.system(size: 30, weight: .light))
                     .foregroundStyle(.white.opacity(0.75))
                     .frame(width: 76, height: 76)
-                    .background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
-                    .contentShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+                    .background(.white.opacity(0.06), in: AnchorCorners.rectangle(cornerRadius: 24))
+                    .anchorCornerContainer(radius: 24)
+                    .contentShape(AnchorCorners.rectangle(cornerRadius: 24))
             }
             .buttonStyle(NotchButtonStyle(cornerRadius: 24))
             .disabled(!opens)

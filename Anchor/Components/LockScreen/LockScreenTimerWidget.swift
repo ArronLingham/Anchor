@@ -18,6 +18,7 @@
  */
 
 import SwiftUI
+import AnchorUtilities
 import Defaults
 
 struct LockScreenTimerWidget: View {
@@ -130,7 +131,7 @@ struct LockScreenTimerWidget: View {
     @ViewBuilder
     private var standardLiquidBackground: some View {
         if #available(macOS 26.0, *) {
-            RoundedRectangle(cornerRadius: Self.cornerRadius, style: .continuous)
+            AnchorCorners.rectangle(cornerRadius: Self.cornerRadius)
                 .glassEffect(
                     .clear.tint(accentColor.opacity(0.18)).interactive(),
                     in: .rect(cornerRadius: Self.cornerRadius)
@@ -147,12 +148,12 @@ struct LockScreenTimerWidget: View {
     }
 
     private var frostedBackground: some View {
-        RoundedRectangle(cornerRadius: Self.cornerRadius, style: .continuous)
+        AnchorCorners.rectangle(cornerRadius: Self.cornerRadius)
             .fill(.ultraThinMaterial)
     }
 
     private var classicBackground: some View {
-        RoundedRectangle(cornerRadius: Self.cornerRadius, style: .continuous)
+        AnchorCorners.rectangle(cornerRadius: Self.cornerRadius)
             .fill(Color.black.opacity(0.65))
     }
 
@@ -193,9 +194,10 @@ struct LockScreenTimerWidget: View {
         .padding(.vertical, 12)
         .frame(width: widgetSize.width, height: widgetSize.height)
         .background(widgetBackground)
-        .clipShape(RoundedRectangle(cornerRadius: Self.cornerRadius, style: .continuous))
+        .clipShape(AnchorCorners.rectangle(cornerRadius: Self.cornerRadius))
+        .anchorCornerContainer(radius: Self.cornerRadius)
         .overlay {
-            RoundedRectangle(cornerRadius: Self.cornerRadius, style: .continuous)
+            AnchorCorners.rectangle(cornerRadius: Self.cornerRadius)
                 .stroke(Color.white.opacity(0.08), lineWidth: 1)
         }
         .shadow(color: Color.black.opacity(0.25), radius: 18, x: 0, y: 16)

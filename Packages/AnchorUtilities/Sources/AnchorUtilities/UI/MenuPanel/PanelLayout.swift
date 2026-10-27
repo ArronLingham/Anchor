@@ -293,20 +293,21 @@ struct PanelSection<Content: View>: View {
                     .labelStyle(.titleAndIcon)
                     .padding(.horizontal, 8)
                     .frame(height: 24)
-                    .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .contentShape(AnchorCorners.rectangle(cornerRadius: 8))
             } else {
                 Image(systemName: "slider.horizontal.3")
                     .font(.system(size: 11, weight: .semibold))
                     .frame(width: 22, height: 18)
-                    .contentShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                    .contentShape(AnchorCorners.rectangle(cornerRadius: 6))
             }
         }
         .buttonStyle(.plain)
         .foregroundStyle(isEditing ? Color.white : Color.secondary)
         .background(
-            RoundedRectangle(cornerRadius: isEditing ? 8 : 6, style: .continuous)
+            AnchorCorners.rectangle(cornerRadius: isEditing ? 8 : 6)
                 .fill(isEditing ? Color.accentColor : Color.clear)
         )
+        .anchorCornerContainer(radius: isEditing ? 8 : 6)
         .help(isEditing ? l10n.s.uninstallerDoneTitle : l10n.s.menuEdit)
     }
 
@@ -317,12 +318,12 @@ struct PanelSection<Content: View>: View {
             Image(systemName: "arrow.counterclockwise")
                 .font(.system(size: 10.5, weight: .semibold))
                 .frame(width: 22, height: 22)
-                .contentShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+                .contentShape(AnchorCorners.rectangle(cornerRadius: 7))
         }
         .buttonStyle(.plain)
         .foregroundStyle(.secondary)
         .background(
-            RoundedRectangle(cornerRadius: 7, style: .continuous)
+            AnchorCorners.rectangle(cornerRadius: 7)
                 .fill(Color.primary.opacity(0.07))
         )
         .help(l10n.s.mixerOutputDefault)
@@ -433,7 +434,7 @@ struct PanelInlineHideButton: View {
                 .foregroundStyle(isVisible ? Color.secondary : Color.accentColor)
                 .frame(width: 24, height: 22)
                 .background(
-                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    AnchorCorners.rectangle(cornerRadius: 7)
                         .fill((isVisible ? Color.primary : Color.accentColor).opacity(0.10))
                 )
         }
@@ -481,7 +482,7 @@ struct PanelHiddenItemRow: View {
         .padding(.vertical, 3)
         .padding(.horizontal, 6)
         .background(
-            RoundedRectangle(cornerRadius: 7, style: .continuous)
+            AnchorCorners.rectangle(cornerRadius: 7)
                 .fill(Color.primary.opacity(0.035))
         )
     }

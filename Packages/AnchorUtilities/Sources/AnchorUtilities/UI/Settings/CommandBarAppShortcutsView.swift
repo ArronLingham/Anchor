@@ -52,7 +52,7 @@ struct CommandBarAppShortcutsView: View {
                     }
                 }
                 .padding(7)
-                .background(.quaternary, in: RoundedRectangle(cornerRadius: 7))
+                .background(.quaternary, in: AnchorCorners.rectangle(cornerRadius: 7))
                 Picker(text.sourceApps, selection: $filter) {
                     Text(text.categoryAll).tag(AppFilter.all)
                     Text(text.pinnedTitle).tag(AppFilter.pinned)

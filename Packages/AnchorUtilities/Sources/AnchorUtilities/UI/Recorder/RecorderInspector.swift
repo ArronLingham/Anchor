@@ -117,17 +117,17 @@ struct RecorderInspector: View {
             .padding(.horizontal, 5)
             .padding(.vertical, 8)
             .background(
-                RoundedRectangle(cornerRadius: 11, style: .continuous)
+                AnchorCorners.rectangle(cornerRadius: 11)
                     .fill(selected ? Color.accentColor.opacity(0.1)
                                    : Color.white.opacity(hovered ? 0.07 : 0.035))
             )
             .overlay {
-                RoundedRectangle(cornerRadius: 11, style: .continuous)
-                    .strokeBorder(selected ? Color.accentColor.opacity(0.72)
+                AnchorCorners.rectangle(cornerRadius: 11)
+                    .anchorStrokeBorder(selected ? Color.accentColor.opacity(0.72)
                                            : Color.white.opacity(hovered ? 0.14 : 0.07),
                                   lineWidth: selected ? 1.25 : 1)
             }
-            .contentShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+            .contentShape(AnchorCorners.rectangle(cornerRadius: 11))
             .overlay(alignment: .topTrailing) {
                 Image(systemName: selected ? "checkmark.circle.fill" : "circle")
                     .font(.system(size: 12, weight: .semibold))
@@ -141,7 +141,7 @@ struct RecorderInspector: View {
 
     private func lookPreview(_ look: RecorderEditDocument.Look, icon: String) -> some View {
         ZStack {
-            RoundedRectangle(cornerRadius: 7, style: .continuous)
+            AnchorCorners.rectangle(cornerRadius: 7)
                 .fill(look == .studio
                       ? AnyShapeStyle(LinearGradient(colors: [Color.indigo.opacity(0.9),
                                                                Color.purple.opacity(0.55)],
@@ -161,8 +161,8 @@ struct RecorderInspector: View {
         }
         .frame(width: 48, height: 36)
         .overlay {
-            RoundedRectangle(cornerRadius: 7, style: .continuous)
-                .strokeBorder(Color.white.opacity(0.12), lineWidth: 1)
+            AnchorCorners.rectangle(cornerRadius: 7)
+                .anchorStrokeBorder(Color.white.opacity(0.12), lineWidth: 1)
         }
     }
 
@@ -175,14 +175,14 @@ struct RecorderInspector: View {
                 showsBackdropPopover = true
             } label: {
                 HStack(spacing: 8) {
-                    RoundedRectangle(cornerRadius: 5, style: .continuous)
+                    AnchorCorners.rectangle(cornerRadius: 5)
                         .fill(LinearGradient(
                             colors: BackdropPickerAssets.previewColors(for: model.backdropStyle),
                             startPoint: .topLeading, endPoint: .bottomTrailing))
                         .frame(width: 26, height: 20)
                         .overlay {
-                            RoundedRectangle(cornerRadius: 5, style: .continuous)
-                                .strokeBorder(Color.white.opacity(0.16), lineWidth: 1)
+                            AnchorCorners.rectangle(cornerRadius: 5)
+                                .anchorStrokeBorder(Color.white.opacity(0.16), lineWidth: 1)
                         }
                     Text(model.showsBackdrop
                          ? strings.backgroundSectionLabel
@@ -226,7 +226,7 @@ struct RecorderInspector: View {
                 }
                 .padding(9)
                 .background(Color.white.opacity(0.04),
-                            in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                            in: AnchorCorners.rectangle(cornerRadius: 10))
             }
         }
     }
@@ -689,7 +689,7 @@ struct RecorderInspector: View {
                     }
                     .padding(11)
                     .background(Color.white.opacity(0.035),
-                                in: RoundedRectangle(cornerRadius: 11, style: .continuous))
+                                in: AnchorCorners.rectangle(cornerRadius: 11))
                 }
             }
         }
@@ -729,10 +729,10 @@ struct RecorderInspector: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 14)
         .background(Color.white.opacity(0.035),
-                    in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    in: AnchorCorners.rectangle(cornerRadius: 12))
         .overlay {
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .strokeBorder(Color.white.opacity(0.07), lineWidth: 1)
+            AnchorCorners.rectangle(cornerRadius: 12)
+                .anchorStrokeBorder(Color.white.opacity(0.07), lineWidth: 1)
         }
     }
 

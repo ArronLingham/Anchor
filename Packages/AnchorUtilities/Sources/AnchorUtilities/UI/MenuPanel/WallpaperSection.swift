@@ -159,7 +159,7 @@ struct WallpaperSection: View {
                     .padding(.horizontal, 8)
                     .padding(.vertical, 5)
                     .background(
-                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        AnchorCorners.rectangle(cornerRadius: 8)
                             .fill(Color.secondary.opacity(0.15))
                     )
                 }
@@ -306,7 +306,7 @@ private struct WallpaperThumbButton: View {
         ZStack(alignment: .topTrailing) {
             Button(action: action) {
                 ZStack {
-                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    AnchorCorners.rectangle(cornerRadius: 6)
                         .fill(Color.secondary.opacity(0.15))
                     if let image {
                         Image(nsImage: image)
@@ -320,10 +320,10 @@ private struct WallpaperThumbButton: View {
                 }
                 .frame(maxWidth: .infinity)
                 .frame(height: height)
-                .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                .clipShape(AnchorCorners.rectangle(cornerRadius: 6))
                 .overlay(
-                    RoundedRectangle(cornerRadius: 6, style: .continuous)
-                        .strokeBorder(isApplied ? Color.accentColor : Color.clear, lineWidth: 2)
+                    AnchorCorners.rectangle(cornerRadius: 6)
+                        .anchorStrokeBorder(isApplied ? Color.accentColor : Color.clear, lineWidth: 2)
                 )
             }
             .buttonStyle(.plain)

@@ -109,14 +109,15 @@ struct KeepAwakeAutomationEditor: View {
             .padding(compact ? 7 : 9)
             .frame(maxWidth: .infinity, minHeight: compact ? 65 : 78, alignment: .topLeading)
             .background(
-                RoundedRectangle(cornerRadius: compact ? 9 : 11, style: .continuous)
+                AnchorCorners.rectangle(cornerRadius: compact ? 9 : 11)
                     .fill(selected ? Color.accentColor.opacity(0.11) : Color.primary.opacity(0.045))
             )
+            .anchorCornerContainer(radius: compact ? 9 : 11)
             .overlay(
-                RoundedRectangle(cornerRadius: compact ? 9 : 11, style: .continuous)
-                    .strokeBorder(selected ? Color.accentColor.opacity(0.32) : Color.primary.opacity(0.08))
+                AnchorCorners.rectangle(cornerRadius: compact ? 9 : 11)
+                    .anchorStrokeBorder(selected ? Color.accentColor.opacity(0.32) : Color.primary.opacity(0.08))
             )
-            .contentShape(RoundedRectangle(cornerRadius: compact ? 9 : 11, style: .continuous))
+            .contentShape(AnchorCorners.rectangle(cornerRadius: compact ? 9 : 11))
         }
         .buttonStyle(.plain)
     }

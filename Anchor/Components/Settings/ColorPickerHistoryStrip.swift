@@ -18,6 +18,7 @@
  */
 
 import SwiftUI
+import AnchorUtilities
 
 /// Recently picked colours. Click one to copy it again.
 ///
@@ -52,12 +53,12 @@ struct ColorPickerHistoryStrip: View {
                         Button {
                             manager.copy(picked)
                         } label: {
-                            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            AnchorCorners.rectangle(cornerRadius: 6)
                                 .fill(picked.color)
                                 .frame(height: 34)
                                 .overlay(
-                                    RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                        .strokeBorder(.primary.opacity(0.15), lineWidth: 1)
+                                    AnchorCorners.rectangle(cornerRadius: 6)
+                                        .anchorStrokeBorder(.primary.opacity(0.15), lineWidth: 1)
                                 )
                         }
                         .buttonStyle(.plain)

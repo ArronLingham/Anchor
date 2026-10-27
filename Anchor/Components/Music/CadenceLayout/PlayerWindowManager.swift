@@ -17,6 +17,7 @@
  */
 
 import AppKit
+import AnchorUtilities
 import Combine
 import Defaults
 import SwiftUI
@@ -333,7 +334,8 @@ private struct PlayerRootView: View {
             onExpand: { DesktopFullScreenController.shared.toggle() }
         )
         .background(AnchorSurface(depth: usesGlass ? .glass : .raised, radius: 22).opacity(backgroundOpacity))
-        .overlay(RoundedRectangle(cornerRadius: 22).fill(cardColor.opacity(tinted && music.hasActiveSession ? 0.08 : 0)).allowsHitTesting(false))
+        .anchorCornerContainer(radius: 22)
+        .overlay(AnchorCorners.rectangle(cornerRadius: 22).fill(cardColor.opacity(tinted && music.hasActiveSession ? 0.08 : 0)).allowsHitTesting(false))
         .overlay(alignment: .topTrailing) { closeButton }
         .contextMenu { menu }
         .animation(.easeInOut(duration: 0.35), value: music.avgColor)
@@ -351,14 +353,14 @@ private struct PlayerRootView: View {
             Color.clear
                 .glassEffect(.regular, in: .rect(cornerRadius: 18))
                 .overlay(
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    AnchorCorners.rectangle(cornerRadius: 18)
                         .fill(cardColor.opacity(backgroundOpacity * 0.35)))
         } else {
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
+            AnchorCorners.rectangle(cornerRadius: 18)
                 .fill(cardColor.opacity(backgroundOpacity))
                 .overlay(
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .strokeBorder(Color.white.opacity(0.08), lineWidth: 1))
+                    AnchorCorners.rectangle(cornerRadius: 18)
+                        .anchorStrokeBorder(Color.white.opacity(0.08), lineWidth: 1))
         }
     }
 

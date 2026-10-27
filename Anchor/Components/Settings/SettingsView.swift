@@ -237,10 +237,10 @@ private struct SettingsHighlightModifier: ViewModifier {
         content
             .id(id)
             .background {
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                AnchorCorners.rectangle(cornerRadius: 12)
                     .fill(AnchorDesign.accent.opacity(isActive ? 0.08 : 0))
                     .overlay {
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        AnchorCorners.rectangle(cornerRadius: 12)
                             .stroke(AnchorDesign.accent.opacity(isActive ? 0.8 : 0), lineWidth: 2)
                     }
                     .padding(-4)
@@ -313,6 +313,7 @@ struct SettingsView: View {
                 HStack(spacing: 12) {
                     Image(systemName: "mountain.2.fill").font(.system(size: 22)).foregroundStyle(AnchorDesign.accent)
                         .frame(width: 44, height: 44).background(AnchorSurface(depth: .raised, radius: 14))
+                        .anchorCornerContainer(radius: 14)
                     VStack(alignment: .leading, spacing: 3) {
                         Text("ANCHOR").font(.system(size: 10, weight: .bold)).tracking(3).foregroundStyle(AnchorDesign.muted)
                         Text("Settings").font(.system(size: 21, weight: .semibold, design: .rounded))
@@ -638,12 +639,12 @@ struct SettingsView: View {
             .padding(.horizontal, 10)
             .padding(.vertical, 8)
             .background(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                AnchorCorners.rectangle(cornerRadius: 12)
                     .fill(.ultraThinMaterial)
             )
-            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .clipShape(AnchorCorners.rectangle(cornerRadius: 12))
             .overlay(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                AnchorCorners.rectangle(cornerRadius: 12)
                     .stroke(Color.white.opacity(0.08))
             )
         }
@@ -655,7 +656,7 @@ struct SettingsView: View {
                         selectSuggestion(suggestion)
                     } label: {
                         HStack(spacing: 10) {
-                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            AnchorCorners.rectangle(cornerRadius: 8)
                                 .fill(suggestion.tab.tint)
                                 .frame(width: 28, height: 28)
                                 .overlay {
@@ -692,11 +693,11 @@ struct SettingsView: View {
                 }
             }
             .background(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                AnchorCorners.rectangle(cornerRadius: 12)
                     .fill(.ultraThinMaterial)
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                AnchorCorners.rectangle(cornerRadius: 12)
                     .stroke(Color.white.opacity(0.08))
             )
             .shadow(color: Color.black.opacity(0.2), radius: 8, y: 4)
@@ -704,7 +705,7 @@ struct SettingsView: View {
         }
 
         private func rowBackground(for suggestion: SettingsSearchEntry) -> some View {
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
+            AnchorCorners.rectangle(cornerRadius: 8)
                 .fill(hoveredSuggestionID == suggestion.id ? Color.white.opacity(0.08) : Color.clear)
         }
 

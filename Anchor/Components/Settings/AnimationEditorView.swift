@@ -18,6 +18,7 @@
  */
 
 import SwiftUI
+import AnchorUtilities
 import LottieUI
 import Defaults
 
@@ -159,10 +160,10 @@ struct AnimationEditorView: View {
     @ViewBuilder
     private var previewCanvas: some View {
         ZStack {
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
+            AnchorCorners.rectangle(cornerRadius: 18)
                 .fill(Color(nsColor: .controlBackgroundColor))
                 .overlay(
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    AnchorCorners.rectangle(cornerRadius: 18)
                         .stroke(Color.white.opacity(0.08), lineWidth: 1)
                 )
                 .shadow(color: .black.opacity(0.15), radius: 16, x: 0, y: 8)
@@ -547,11 +548,12 @@ private struct EditorSectionCard<Content: View>: View {
         }
         .padding(16)
         .background(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
+            AnchorCorners.rectangle(cornerRadius: 18)
                 .fill(Color(nsColor: .controlBackgroundColor))
         )
+        .anchorCornerContainer(radius: 18)
         .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
+            AnchorCorners.rectangle(cornerRadius: 18)
                 .stroke(Color.white.opacity(0.05), lineWidth: 1)
         )
     }
@@ -624,7 +626,7 @@ private struct PreviewStatChip: View {
         .padding(.vertical, 8)
         .padding(.horizontal, 10)
         .background(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
+            AnchorCorners.rectangle(cornerRadius: 10)
                 .fill(Color.white.opacity(0.06))
         )
     }

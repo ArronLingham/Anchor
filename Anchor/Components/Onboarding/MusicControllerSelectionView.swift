@@ -22,6 +22,7 @@
  */
 
 import SwiftUI
+import AnchorUtilities
 import Defaults
 
 
@@ -125,11 +126,11 @@ struct ControllerOptionView: View {
         }
         .padding()
         .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
+            AnchorCorners.rectangle(cornerRadius: 12)
                 .fill(isSelected ? Color.accentColor.opacity(0.15) : Color.clear)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
+            AnchorCorners.rectangle(cornerRadius: 12)
                 .stroke(isSelected ? Color.accentColor : Color.secondary.opacity(0.3), lineWidth: 1.5)
         )
         .contentShape(Rectangle())

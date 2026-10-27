@@ -19,6 +19,7 @@
 
 #if os(macOS)
 import SwiftUI
+import AnchorUtilities
 import Defaults
 
 /// Custom OSD panel that mimics macOS native OSD appearance
@@ -59,15 +60,18 @@ struct CustomOSDView: View {
         .hudDragToSet(type: type, axis: .horizontal)
         .frame(width: 200, height: 200)
         .background(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
+            AnchorCorners.rectangle(cornerRadius: 18)
                 .fill(.black.opacity(0.1)) // Subtle backing for shadow source
                 .shadow(color: Color.black.opacity(0.25), radius: 24, x: 0, y: 8)
         )
+        .anchorCornerContainer(radius: 18)
         .background(
             backgroundView
-                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .clipShape(AnchorCorners.rectangle(cornerRadius: 18))
+                .anchorCornerContainer(radius: 18)
         )
-        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .clipShape(AnchorCorners.rectangle(cornerRadius: 18))
+        .anchorCornerContainer(radius: 18)
             }
         .anchorTheme()
     }
@@ -166,7 +170,7 @@ struct CustomOSDView: View {
     private var backgroundView: some View {
         switch osdMaterial {
         case .frosted:
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
+            AnchorCorners.rectangle(cornerRadius: 18)
                 .fill(.ultraThinMaterial)
         case .liquid:
             if #available(macOS 26.0, *) {
@@ -178,24 +182,24 @@ struct CustomOSDView: View {
                         Color.white.opacity(0.04)
                     }
                 } else {
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    AnchorCorners.rectangle(cornerRadius: 18)
                         .glassEffect(
                             .regular.tint(AnchorDesign.surface).interactive(),
                             in: .rect(cornerRadius: 18)
                         )
                 }
             } else {
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                AnchorCorners.rectangle(cornerRadius: 18)
                     .fill(.ultraThinMaterial)
             }
         case .solidDark:
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
+            AnchorCorners.rectangle(cornerRadius: 18)
                 .fill(AnchorDesign.inset)
         case .solidLight:
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
+            AnchorCorners.rectangle(cornerRadius: 18)
                 .fill(AnchorDesign.raised)
         case .solidAuto:
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
+            AnchorCorners.rectangle(cornerRadius: 18)
                 .fill((colorScheme == .dark ? Color.black : Color.white).opacity(0.85))
         }
     }

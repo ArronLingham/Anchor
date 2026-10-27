@@ -33,13 +33,13 @@ struct NotchLayoutEditor: View {
                 let scale = scale(in: proxy.size)
                 let frame = islandFrame(in: proxy.size)
                 ZStack(alignment: .topLeading) {
-                    RoundedRectangle(cornerRadius: 22).fill(.quaternary.opacity(0.35))
+                    AnchorCorners.rectangle(cornerRadius: 22).fill(.quaternary.opacity(0.35))
                     if draggingID != nil {
                         ForEach(NotchQuickAccessSide.allCases, id: \.self) { side in
                             let target = dropFrame(side, island: frame)
-                            RoundedRectangle(cornerRadius: 16)
+                            AnchorCorners.rectangle(cornerRadius: 16)
                                 .fill(Color.accentColor.opacity(target.contains(dragLocation ?? .zero) ? 0.15 : 0.04))
-                                .overlay { RoundedRectangle(cornerRadius: 16).strokeBorder(Color.accentColor.opacity(0.3), style: StrokeStyle(lineWidth: 1, dash: [4, 4])) }
+                                .overlay { AnchorCorners.rectangle(cornerRadius: 16).anchorStrokeBorder(Color.accentColor.opacity(0.3), style: StrokeStyle(lineWidth: 1, dash: [4, 4])) }
                                 .frame(width: target.width, height: target.height)
                                 .position(x: target.midX, y: target.midY)
                                 .allowsHitTesting(false)
@@ -437,7 +437,7 @@ struct NotchActionChooser: View {
                             Label(action.title(l10n), systemImage: action.symbol)
                                 .font(.system(size: 11)).lineLimit(2)
                                 .frame(maxWidth: .infinity, minHeight: 38, alignment: .leading).padding(.horizontal, 8)
-                                .background(selected == action ? Color.accentColor.opacity(0.14) : Color.secondary.opacity(0.07), in: RoundedRectangle(cornerRadius: 9))
+                                .background(selected == action ? Color.accentColor.opacity(0.14) : Color.secondary.opacity(0.07), in: AnchorCorners.rectangle(cornerRadius: 9))
                         }.buttonStyle(.plain).disabled(!action.isAvailable())
                     }
                 }

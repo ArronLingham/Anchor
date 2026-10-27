@@ -64,7 +64,8 @@ private struct NotchDownloadsSetupView: View {
             .font(.system(size: 26, weight: .light))
             .foregroundStyle(.white.opacity(0.65))
             .frame(width: 56, height: 56)
-            .background(.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .background(.white.opacity(0.05), in: AnchorCorners.rectangle(cornerRadius: 18))
+            .anchorCornerContainer(radius: 18)
             .accessibilityHidden(true)
     }
 
@@ -223,7 +224,8 @@ struct NotchDownloadsView: View {
         }
         .padding(12)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .background(.white.opacity(0.07), in: AnchorCorners.rectangle(cornerRadius: 14))
+        .anchorCornerContainer(radius: 14)
         .clipped()
         .accessibilityElement(children: .contain)
     }

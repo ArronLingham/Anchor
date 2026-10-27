@@ -18,6 +18,7 @@
  */
 
 import AppKit
+import AnchorUtilities
 import AVFoundation
 import Combine
 import Defaults
@@ -1059,11 +1060,11 @@ private struct LockScreenPositioningPreview: View {
             )
 
             ZStack {
-                RoundedRectangle(cornerRadius: screenCornerRadius, style: .continuous)
+                AnchorCorners.rectangle(cornerRadius: screenCornerRadius)
                     .fill(Color(nsColor: .windowBackgroundColor).opacity(0.55))
                     .frame(width: screenRect.width, height: screenRect.height)
                     .overlay(
-                        RoundedRectangle(cornerRadius: screenCornerRadius, style: .continuous)
+                        AnchorCorners.rectangle(cornerRadius: screenCornerRadius)
                             .stroke(Color.white.opacity(0.12), lineWidth: 1)
                     )
                     .shadow(color: Color.black.opacity(0.22), radius: 20, x: 0, y: 18)
@@ -1090,7 +1091,7 @@ private struct LockScreenPositioningPreview: View {
     }
 
     private func weatherPanel(size: CGSize) -> some View {
-        RoundedRectangle(cornerRadius: 16, style: .continuous)
+        AnchorCorners.rectangle(cornerRadius: 16)
             .fill(
                 LinearGradient(
                     colors: [Color.blue.opacity(0.78), Color.blue.opacity(0.52)],
@@ -1114,7 +1115,7 @@ private struct LockScreenPositioningPreview: View {
     }
 
     private func musicPanel(size: CGSize) -> some View {
-        RoundedRectangle(cornerRadius: 20, style: .continuous)
+        AnchorCorners.rectangle(cornerRadius: 20)
             .fill(
                 LinearGradient(
                     colors: [Color.purple.opacity(0.68), Color.pink.opacity(0.5)],
@@ -1138,7 +1139,7 @@ private struct LockScreenPositioningPreview: View {
     }
 
     private func timerPanel(size: CGSize) -> some View {
-        RoundedRectangle(cornerRadius: 18, style: .continuous)
+        AnchorCorners.rectangle(cornerRadius: 18)
             .fill(
                 LinearGradient(
                     colors: [Color.orange.opacity(0.75), Color.purple.opacity(0.55)],

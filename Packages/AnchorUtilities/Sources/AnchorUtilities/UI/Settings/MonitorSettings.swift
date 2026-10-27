@@ -212,12 +212,12 @@ struct MonitorSettings: View {
                 .padding(.horizontal, 10)
                 .frame(height: 26)
                 .background(selected ? Color.accentColor.opacity(0.12) : Color.secondary.opacity(0.06),
-                            in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                            in: AnchorCorners.rectangle(cornerRadius: 8))
                 .overlay {
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .strokeBorder(selected ? Color.accentColor.opacity(0.7) : .clear, lineWidth: 1)
+                    AnchorCorners.rectangle(cornerRadius: 8)
+                        .anchorStrokeBorder(selected ? Color.accentColor.opacity(0.7) : .clear, lineWidth: 1)
                 }
-                .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .contentShape(AnchorCorners.rectangle(cornerRadius: 8))
         }
         .buttonStyle(.plain)
         .accessibilityAddTraits(selected ? .isSelected : [])
@@ -270,7 +270,7 @@ private struct MenuBarStyleChoice: View {
                 mockup
                     .frame(maxWidth: .infinity)
                     .frame(height: 36)
-                    .background(Color.black.opacity(0.82), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .background(Color.black.opacity(0.82), in: AnchorCorners.rectangle(cornerRadius: 8))
                 Text(title)
                     .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(selected ? Color.accentColor : .primary)
@@ -278,12 +278,12 @@ private struct MenuBarStyleChoice: View {
             .padding(8)
             .frame(maxWidth: .infinity)
             .background(selected ? Color.accentColor.opacity(0.10) : Color.secondary.opacity(0.05),
-                        in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        in: AnchorCorners.rectangle(cornerRadius: 12))
             .overlay {
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .strokeBorder(selected ? Color.accentColor.opacity(0.55) : .clear, lineWidth: 1)
+                AnchorCorners.rectangle(cornerRadius: 12)
+                    .anchorStrokeBorder(selected ? Color.accentColor.opacity(0.55) : .clear, lineWidth: 1)
             }
-            .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .contentShape(AnchorCorners.rectangle(cornerRadius: 12))
         }
         .buttonStyle(.plain)
         .accessibilityLabel(title)

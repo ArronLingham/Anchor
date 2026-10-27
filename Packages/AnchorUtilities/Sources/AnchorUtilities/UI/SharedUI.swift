@@ -14,12 +14,12 @@ struct KeyCap: View {
             .frame(minWidth: 20, minHeight: 22)
             .padding(.horizontal, 5)
             .background(
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                AnchorCorners.rectangle(cornerRadius: 6)
                     .fill(Color.primary.opacity(0.07))
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .strokeBorder(Color.primary.opacity(0.14), lineWidth: 1)
+                AnchorCorners.rectangle(cornerRadius: 6)
+                    .anchorStrokeBorder(Color.primary.opacity(0.14), lineWidth: 1)
             )
     }
 }
@@ -73,9 +73,10 @@ struct FullDiskAccessNote: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(compact ? 9 : 11)
         .background(
-            RoundedRectangle(cornerRadius: compact ? 8 : 9, style: .continuous)
+            AnchorCorners.rectangle(cornerRadius: compact ? 8 : 9)
                 .fill(Color.primary.opacity(compact ? 0.045 : 0.05))
         )
+        .anchorCornerContainer(radius: compact ? 8 : 9)
     }
 }
 
@@ -184,17 +185,17 @@ struct HUDBackdrop: View {
 #if compiler(>=6.2)
         if #available(macOS 26.0, *),
            Self.drawsLiquidGlass(enabled: liquidGlassEnabled, reduceTransparency: reduceTransparency) {
-            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+            AnchorCorners.rectangle(cornerRadius: cornerRadius)
                 .fill(Color.clear)
-                .glassEffect(.regular, in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+                .glassEffect(.regular, in: AnchorCorners.rectangle(cornerRadius: cornerRadius))
                 .overlay(
-                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    AnchorCorners.rectangle(cornerRadius: cornerRadius)
                         .fill(colorScheme == .dark ? Color.black : Color.white)
                         .opacity(plateOpacity)
                 )
                 .overlay(
-                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                        .strokeBorder(colorScheme == .dark ? Color.white.opacity(0.12) : Color.black.opacity(0.08), lineWidth: 0.8)
+                    AnchorCorners.rectangle(cornerRadius: cornerRadius)
+                        .anchorStrokeBorder(colorScheme == .dark ? Color.white.opacity(0.12) : Color.black.opacity(0.08), lineWidth: 0.8)
                 )
         } else {
             classicBackdrop
@@ -208,7 +209,7 @@ struct HUDBackdrop: View {
     private var classicBackdrop: some View {
         HUDBackdropMaterial(cornerRadius: cornerRadius, opacity: materialOpacity)
             .overlay(
-                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                AnchorCorners.rectangle(cornerRadius: cornerRadius)
                     .fill(colorScheme == .dark ? Color.black : Color.white)
                     .opacity(plateOpacity)
             )

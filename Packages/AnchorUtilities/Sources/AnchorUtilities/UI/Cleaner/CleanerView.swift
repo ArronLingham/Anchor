@@ -332,7 +332,7 @@ struct CleanerView: View {
         }
         .padding(11)
         .frame(maxWidth: 380)
-        .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(Color.primary.opacity(0.05)))
+        .background(AnchorCorners.rectangle(cornerRadius: 9).fill(Color.primary.opacity(0.05)))
     }
 
     // MARK: WhatsApp downloads (panel surface)
@@ -352,7 +352,7 @@ struct CleanerView: View {
         }
         .padding(11)
         .frame(maxWidth: 380, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(Color.primary.opacity(0.05)))
+        .background(AnchorCorners.rectangle(cornerRadius: 9).fill(Color.primary.opacity(0.05)))
     }
 
     /// Collapsed summary: Off until the automation is armed, then the next
@@ -431,7 +431,7 @@ struct CleanerView: View {
             }
         }
         .frame(maxWidth: 380)
-        .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(Color.primary.opacity(0.05)))
+        .background(AnchorCorners.rectangle(cornerRadius: 9).fill(Color.primary.opacity(0.05)))
     }
 
     // MARK: Automatic cleanup
@@ -561,7 +561,7 @@ struct CleanerView: View {
                 }
             }
             .frame(maxWidth: 380)
-            .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(Color.primary.opacity(0.05)))
+            .background(AnchorCorners.rectangle(cornerRadius: 9).fill(Color.primary.opacity(0.05)))
             .modifier(ScheduleChangeSync(notify: $scheduleNotify,
                                          frequency: $scheduleFrequencyRaw,
                                          hour: $scheduleHour,
@@ -590,7 +590,7 @@ struct CleanerView: View {
         }
         .padding(11)
         .frame(maxWidth: 380)
-        .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(Color.primary.opacity(0.05)))
+        .background(AnchorCorners.rectangle(cornerRadius: 9).fill(Color.primary.opacity(0.05)))
         .modifier(ScheduleChangeSync(notify: $scheduleNotify,
                                      frequency: $scheduleFrequencyRaw,
                                      hour: $scheduleHour,

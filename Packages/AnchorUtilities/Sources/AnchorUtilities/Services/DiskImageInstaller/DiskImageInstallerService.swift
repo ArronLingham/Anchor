@@ -483,10 +483,11 @@ private struct DiskImageInstallProgressView: View {
         }
         .padding(14)
         .background(HUDBackdrop(cornerRadius: 16))
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .clipShape(AnchorCorners.rectangle(cornerRadius: 16))
+        .anchorCornerContainer(radius: 16)
         .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .strokeBorder(Color.white.opacity(0.12), lineWidth: 1)
+            AnchorCorners.rectangle(cornerRadius: 16)
+                .anchorStrokeBorder(Color.white.opacity(0.12), lineWidth: 1)
         )
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(message)

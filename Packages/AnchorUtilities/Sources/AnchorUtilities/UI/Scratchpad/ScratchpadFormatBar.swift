@@ -53,7 +53,7 @@ struct ScratchpadFormatBar: View {
             }
             .foregroundStyle(tint)
             .frame(width: style.buttonSize, height: style.buttonSize)
-            .contentShape(RoundedRectangle(cornerRadius: style.cornerRadius, style: .continuous))
+            .contentShape(AnchorCorners.rectangle(cornerRadius: style.cornerRadius))
         }
         .buttonStyle(.plain)
         .help(text.label(for: mark))

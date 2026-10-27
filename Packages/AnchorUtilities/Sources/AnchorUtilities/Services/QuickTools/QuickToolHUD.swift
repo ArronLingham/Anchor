@@ -42,12 +42,12 @@ enum QuickToolHUD {
         }
         let content = HStack(spacing: 8) {
             if let swatch {
-                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                AnchorCorners.rectangle(cornerRadius: 5)
                     .fill(Color(nsColor: swatch))
                     .frame(width: 18, height: 18)
                     .overlay(
-                        RoundedRectangle(cornerRadius: 5, style: .continuous)
-                            .strokeBorder(Color.primary.opacity(0.2), lineWidth: 0.5)
+                        AnchorCorners.rectangle(cornerRadius: 5)
+                            .anchorStrokeBorder(Color.primary.opacity(0.2), lineWidth: 0.5)
                     )
             } else {
                 Image(systemName: icon)
@@ -72,7 +72,7 @@ enum QuickToolHUD {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 9)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .background(.regularMaterial, in: AnchorCorners.rectangle(cornerRadius: 10))
 
         present(AnyView(content), dismissAfter: 1.5)
     }
@@ -331,6 +331,6 @@ private struct ScrollingCaptureHUDView: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 9)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .background(.regularMaterial, in: AnchorCorners.rectangle(cornerRadius: 10))
     }
 }

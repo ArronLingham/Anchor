@@ -1,4 +1,5 @@
 import AppKit
+import AnchorUtilities
 import SwiftUI
 
 /// Anchor's dark material system. Small surfaces use shaded fills rather than
@@ -33,7 +34,7 @@ struct AnchorSurface: View {
     var radius: CGFloat = AnchorDesign.radius
     @Environment(\.colorSchemeContrast) private var contrast
 
-    private var shape: RoundedRectangle { RoundedRectangle(cornerRadius: radius, style: .continuous) }
+    private var shape: ConcentricRectangle { AnchorCorners.rectangle(cornerRadius: radius) }
     var body: some View {
         // Shadow only the simple shape, never the composite of a material,
         // gradient and border. Raised controls get their depth from the edge
@@ -45,7 +46,7 @@ struct AnchorSurface: View {
                 shape.fill(LinearGradient(colors: [.white.opacity(depth == .inset ? 0.012 : 0.045), .clear], startPoint: .topLeading, endPoint: .bottomTrailing))
             }
             .overlay {
-                shape.strokeBorder(LinearGradient(colors: [.white.opacity(contrast == .increased ? 0.5 : 0.15), .white.opacity(0.035)], startPoint: .topLeading, endPoint: .bottomTrailing), lineWidth: contrast == .increased ? 1.5 : 1)
+                shape.anchorStrokeBorder(LinearGradient(colors: [.white.opacity(contrast == .increased ? 0.5 : 0.15), .white.opacity(0.035)], startPoint: .topLeading, endPoint: .bottomTrailing), lineWidth: contrast == .increased ? 1.5 : 1)
             }
             .allowsHitTesting(false).accessibilityHidden(true)
     }
@@ -62,11 +63,11 @@ struct AnchorButtonStyle: ButtonStyle {
             .padding(.horizontal, 13).padding(.vertical, 8)
             .background {
                 if prominent {
-                    RoundedRectangle(cornerRadius: 11).fill(AnchorDesign.accent.opacity(configuration.isPressed ? 0.75 : 1))
+                    AnchorCorners.rectangle(cornerRadius: 11).fill(AnchorDesign.accent.opacity(configuration.isPressed ? 0.75 : 1))
                         .shadow(color: AnchorDesign.accent.opacity(0.15), radius: 8, y: 3)
                 } else { AnchorSurface(depth: configuration.isPressed ? .inset : .raised, radius: 11) }
             }
-            .contentShape(RoundedRectangle(cornerRadius: 11))
+            .contentShape(AnchorCorners.rectangle(cornerRadius: 11))
             .opacity(enabled ? 1 : 0.42)
             .scaleEffect(configuration.isPressed && !reduceMotion ? 0.98 : 1)
     }
@@ -111,6 +112,7 @@ struct AnchorGroupBoxStyle: GroupBoxStyle {
             configuration.content
         }.padding(20).frame(maxWidth: .infinity, alignment: .leading)
             .background(AnchorSurface())
+            .anchorCornerContainer(radius: AnchorDesign.radius)
     }
 }
 
@@ -152,6 +154,7 @@ private struct AnchorFormSection: View {
                     }
                 }
             }.background(AnchorSurface(radius: 17))
+            .anchorCornerContainer(radius: 17)
             if !section.footer.isEmpty {
                 VStack(alignment: .leading, spacing: 4) { ForEach(section.footer) { footer in footer } }
                     .font(.system(size: 11)).foregroundStyle(AnchorDesign.muted).padding(.horizontal, 4)
@@ -174,6 +177,7 @@ extension View {
     func anchorTheme() -> some View { modifier(AnchorThemeModifier()) }
     func anchorCard(_ depth: AnchorSurface.Depth = .glass, radius: CGFloat = AnchorDesign.radius) -> some View {
         background(AnchorSurface(depth: depth, radius: radius))
+            .anchorCornerContainer(radius: radius)
     }
 }
 
@@ -186,6 +190,7 @@ struct AnchorPageHeader: View {
             Image(systemName: symbol).font(.system(size: 21, weight: .medium))
                 .foregroundStyle(AnchorDesign.accent).frame(width: 50, height: 50)
                 .background(AnchorSurface(depth: .raised, radius: 15))
+                .anchorCornerContainer(radius: 15)
             VStack(alignment: .leading, spacing: 5) {
                 Text(title).font(.system(size: 26, weight: .semibold, design: .rounded))
                 Text(subtitle).font(.system(size: 12)).foregroundStyle(AnchorDesign.muted)

@@ -18,6 +18,7 @@
  */
 
 import Defaults
+import AnchorUtilities
 import Sparkle
 import SwiftUI
 
@@ -56,7 +57,8 @@ struct UpdateFoundView: View {
                         .resizable()
                         .aspectRatio(contentMode: .fit)
                         .frame(width: 72, height: 72)
-                        .clipShape(RoundedRectangle(cornerRadius: 16))
+                        .clipShape(AnchorCorners.rectangle(cornerRadius: 16))
+                        .anchorCornerContainer(radius: 16)
                         .shadow(color: AnchorDesign.accent.opacity(0.3), radius: 8, y: 4)
                 }
 
@@ -105,7 +107,7 @@ struct UpdateFoundView: View {
                 }
                 .frame(maxHeight: 120)
                 .background(
-                    RoundedRectangle(cornerRadius: 8)
+                    AnchorCorners.rectangle(cornerRadius: 8)
                         .fill(.quaternary.opacity(0.5))
                 )
                 .padding(.horizontal, 24)
@@ -180,7 +182,7 @@ struct UpdateFoundView: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
         .background(
-            RoundedRectangle(cornerRadius: 8)
+            AnchorCorners.rectangle(cornerRadius: 8)
                 .fill(highlighted ? AnchorDesign.accent.opacity(0.1) : Color.secondary.opacity(0.1))
         )
     }

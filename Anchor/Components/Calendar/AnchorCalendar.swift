@@ -18,6 +18,7 @@
  */
 
 import SwiftUI
+import AnchorUtilities
 import Defaults
 import EventKit
 
@@ -287,7 +288,7 @@ struct WheelPicker: View {
             .padding(.vertical, 4)
             .padding(.horizontal, 4)
             .background(isSelected ? Color.effectiveAccentBackground : Color.clear)
-            .cornerRadius(8)
+            .anchorRoundedClip(radius: 8)
         }
         .buttonStyle(PlainButtonStyle())
         .id(id)
@@ -962,9 +963,10 @@ private struct StandaloneEventCardList: View {
         .padding(.vertical, 8)
         .frame(maxWidth: .infinity, minHeight: 50, alignment: .leading)
         .background(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
+            AnchorCorners.rectangle(cornerRadius: 14)
                 .fill(Color.white.opacity(0.05))
         )
+        .anchorCornerContainer(radius: 14)
         .opacity(isCompleted ? 0.55 : 1)
     }
 
@@ -1015,9 +1017,10 @@ private struct StandaloneEventCardList: View {
         .padding(.vertical, 8)
         .frame(maxWidth: .infinity, minHeight: 50, alignment: .leading)
         .background(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
+            AnchorCorners.rectangle(cornerRadius: 14)
                 .fill(Color.white.opacity(0.05))
         )
+        .anchorCornerContainer(radius: 14)
         .opacity(event.eventStatus == .ended && Calendar.current.isDateInToday(event.start) ? 0.6 : 1)
     }
 }
@@ -1405,7 +1408,7 @@ struct ConferenceJoinButton: View {
             .padding(.horizontal, 8)
             .padding(.vertical, 4)
             .background(isJoinable ? provider.color.opacity(0.85) : Color.gray.opacity(0.3))
-            .cornerRadius(6)
+            .anchorRoundedClip(radius: 6)
         }
         .buttonStyle(PlainButtonStyle())
         .disabled(!isJoinable)

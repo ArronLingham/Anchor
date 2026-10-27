@@ -128,10 +128,10 @@ struct RecorderEditorView: View {
                     .screenshotSafeHelp(strings.copyGIFButton)
                     .accessibilityLabel(strings.copyGIFButton)
                 }
-                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .clipShape(AnchorCorners.rectangle(cornerRadius: 8))
                 .overlay {
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .strokeBorder(Color.white.opacity(0.08), lineWidth: 1)
+                    AnchorCorners.rectangle(cornerRadius: 8)
+                        .anchorStrokeBorder(Color.white.opacity(0.08), lineWidth: 1)
                         .allowsHitTesting(false)
                 }
                 .disabled(model.isExporting)
@@ -210,10 +210,10 @@ struct RecorderEditorView: View {
                 .padding(.horizontal, 9)
                 .frame(height: 30)
                 .background(Color.white.opacity(0.055),
-                            in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                            in: AnchorCorners.rectangle(cornerRadius: 8))
                 .overlay {
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .strokeBorder(Color.white.opacity(0.08), lineWidth: 1)
+                    AnchorCorners.rectangle(cornerRadius: 8)
+                        .anchorStrokeBorder(Color.white.opacity(0.08), lineWidth: 1)
                 }
         }
         .menuStyle(.borderlessButton)
@@ -224,7 +224,7 @@ struct RecorderEditorView: View {
     private var stage: some View {
         GeometryReader { proxy in
             ZStack {
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                AnchorCorners.rectangle(cornerRadius: 14)
                     .fill(Color.black.opacity(0.72))
                 PlayerSurface(player: model.player)
                 if model.isAimingZoom {
@@ -252,10 +252,11 @@ struct RecorderEditorView: View {
                     blurPicker(in: proxy.size)
                 }
             }
-            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .clipShape(AnchorCorners.rectangle(cornerRadius: 14))
+            .anchorCornerContainer(radius: 14)
             .overlay {
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .strokeBorder(Color.white.opacity(0.12), lineWidth: 1)
+                AnchorCorners.rectangle(cornerRadius: 14)
+                    .anchorStrokeBorder(Color.white.opacity(0.12), lineWidth: 1)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -617,10 +618,10 @@ private struct RecorderSharedLinkView: View {
             .padding(14)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(Color.primary.opacity(0.055),
-                        in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        in: AnchorCorners.rectangle(cornerRadius: 10))
             .overlay {
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .strokeBorder(Color.primary.opacity(0.10), lineWidth: 1)
+                AnchorCorners.rectangle(cornerRadius: 10)
+                    .anchorStrokeBorder(Color.primary.opacity(0.10), lineWidth: 1)
             }
 
             HStack {
@@ -716,10 +717,10 @@ private struct RecorderAudioLane: View {
         }
         .padding(.horizontal, 8)
         .background(tint.opacity(isKept ? 0.11 : 0.04),
-                    in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+                    in: AnchorCorners.rectangle(cornerRadius: 7))
         .overlay {
-            RoundedRectangle(cornerRadius: 7, style: .continuous)
-                .strokeBorder(tint.opacity(isKept ? 0.28 : 0.1), lineWidth: 1)
+            AnchorCorners.rectangle(cornerRadius: 7)
+                .anchorStrokeBorder(tint.opacity(isKept ? 0.28 : 0.1), lineWidth: 1)
         }
     }
 
@@ -756,13 +757,13 @@ private struct RecorderToolbarButtonStyle: ButtonStyle {
             .padding(.horizontal, compact ? 0 : 10)
             .frame(width: compact ? 30 : nil, height: 30)
             .background(Color.white.opacity(configuration.isPressed ? 0.11 : 0.055),
-                        in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                        in: AnchorCorners.rectangle(cornerRadius: 8))
             .overlay {
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .strokeBorder(Color.white.opacity(configuration.isPressed ? 0.15 : 0.08),
+                AnchorCorners.rectangle(cornerRadius: 8)
+                    .anchorStrokeBorder(Color.white.opacity(configuration.isPressed ? 0.15 : 0.08),
                                   lineWidth: 1)
             }
-            .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .contentShape(AnchorCorners.rectangle(cornerRadius: 8))
     }
 }
 
@@ -916,8 +917,8 @@ private struct Filmstrip: View {
                     .frame(width: max(0, width - endX))
                     .offset(x: endX)
                     .allowsHitTesting(false)
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .strokeBorder(Color.accentColor.opacity(0.9), lineWidth: 2)
+                AnchorCorners.rectangle(cornerRadius: 8)
+                    .anchorStrokeBorder(Color.accentColor.opacity(0.9), lineWidth: 2)
                     .frame(width: endX - startX)
                     .offset(x: startX)
                     .allowsHitTesting(false)
@@ -931,7 +932,7 @@ private struct Filmstrip: View {
 
                 playhead(at: position(model.sourceTime, width: width), height: height)
             }
-            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .clipShape(AnchorCorners.rectangle(cornerRadius: 8))
             .coordinateSpace(.named(coordinateSpace))
         }
     }

@@ -144,12 +144,12 @@ private struct MenuBarIconSymbolRow: View {
                 .foregroundStyle(.primary)
                 .frame(width: 34, height: 30)
                 .background(
-                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    AnchorCorners.rectangle(cornerRadius: 7)
                         .fill(selected ? Color.accentColor.opacity(0.14) : Color.secondary.opacity(0.06))
                 )
                 .overlay(
-                    RoundedRectangle(cornerRadius: 7, style: .continuous)
-                        .strokeBorder(selected ? Color.accentColor.opacity(0.75) : Color.secondary.opacity(0.13),
+                    AnchorCorners.rectangle(cornerRadius: 7)
+                        .anchorStrokeBorder(selected ? Color.accentColor.opacity(0.75) : Color.secondary.opacity(0.13),
                                       lineWidth: selected ? 1.2 : 1)
                 )
                 .contentShape(Rectangle())

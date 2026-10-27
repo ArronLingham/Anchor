@@ -92,7 +92,7 @@ private struct NotchLockScreenGlass: ViewModifier {
     @Environment(\.colorSchemeContrast) private var contrast
 
     func body(content: Content) -> some View {
-        let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+        let shape = AnchorCorners.rectangle(cornerRadius: cornerRadius)
         content
             .background {
                 if reduceTransparency {
@@ -105,12 +105,12 @@ private struct NotchLockScreenGlass: ViewModifier {
                 }
             }
             .overlay {
-                shape.strokeBorder(.white.opacity(contrast == .increased ? 0.45 : 0), lineWidth: 0.75)
+                shape.anchorStrokeBorder(.white.opacity(contrast == .increased ? 0.45 : 0), lineWidth: 0.75)
                     .allowsHitTesting(false)
             }
     }
 
-    @ViewBuilder private func glass(_ shape: RoundedRectangle) -> some View {
+    @ViewBuilder private func glass(_ shape: ConcentricRectangle) -> some View {
 #if compiler(>=6.2)
         if #available(macOS 26, *) {
             Color.clear
@@ -272,7 +272,7 @@ struct NotchLockScreenPlayer: View {
                 .contentTransition(.symbolEffect(.replace))
                 .animation(reduceMotion ? nil : .smooth(duration: 0.22), value: symbol)
                 .frame(width: 48, height: 44)
-                .contentShape(RoundedRectangle(cornerRadius: 14))
+                .contentShape(AnchorCorners.rectangle(cornerRadius: 14))
         }
         .buttonStyle(NotchButtonStyle(cornerRadius: 14))
         .disabled(!music.canPerform(command))

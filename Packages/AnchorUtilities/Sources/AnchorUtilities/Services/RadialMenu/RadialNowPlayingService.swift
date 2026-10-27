@@ -194,10 +194,10 @@ private struct RadialNowPlayingCard: View {
             .frame(width: 320, alignment: .leading)
             .background(HUDBackdrop(cornerRadius: 16))
             .overlay(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .strokeBorder(Color.primary.opacity(0.14), lineWidth: 0.6)
+                AnchorCorners.rectangle(cornerRadius: 16)
+                    .anchorStrokeBorder(Color.primary.opacity(0.14), lineWidth: 0.6)
             )
-            .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .contentShape(AnchorCorners.rectangle(cornerRadius: 16))
         }
         .buttonStyle(.plain)
         .accessibilityLabel(title)
@@ -212,9 +212,9 @@ private struct RadialNowPlayingCard: View {
                 .interpolation(.high)
                 .aspectRatio(contentMode: .fill)
                 .frame(width: 76, height: 76)
-                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .clipShape(AnchorCorners.rectangle(cornerRadius: 10))
         } else {
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
+            AnchorCorners.rectangle(cornerRadius: 10)
                 .fill(Theme.spaceGradient)
                 .frame(width: 76, height: 76)
                 .overlay {

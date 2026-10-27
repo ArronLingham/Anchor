@@ -6,6 +6,7 @@
  */
 
 import SwiftUI
+import AnchorUtilities
 import ScreenCaptureKit
 import CoreGraphics
 
@@ -56,7 +57,7 @@ struct NotchAIAssistantView: View {
                                         .resizable()
                                         .scaledToFit()
                                         .frame(maxHeight: 150)
-                                        .cornerRadius(6)
+                                        .anchorRoundedClip(radius: 6)
                                 }
                                 if !message.text.isEmpty {
                                     Text(message.text)
@@ -67,7 +68,7 @@ struct NotchAIAssistantView: View {
                             .padding(.horizontal, 8)
                             .padding(.vertical, 5)
                             .background(
-                                RoundedRectangle(cornerRadius: 9, style: .continuous)
+                                AnchorCorners.rectangle(cornerRadius: 9)
                                     .fill(message.role == .user
                                           ? Color.accentColor.opacity(0.28)
                                           : Color.white.opacity(0.10)))
@@ -119,7 +120,7 @@ struct NotchAIAssistantView: View {
                 .padding(.horizontal, 8)
                 .padding(.vertical, 5)
                 .background(
-                    RoundedRectangle(cornerRadius: 9, style: .continuous)
+                    AnchorCorners.rectangle(cornerRadius: 9)
                         .fill(Color.white.opacity(0.08)))
 
             Button(action: sendText) {

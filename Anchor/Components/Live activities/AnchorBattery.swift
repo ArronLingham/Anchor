@@ -18,6 +18,7 @@
  */
 
 import SwiftUI
+import AnchorUtilities
 import Defaults
 
 /// A view that displays the battery status with an icon and charging indicator.
@@ -172,7 +173,7 @@ struct MinimalisticBatteryView: View {
     var body: some View {
         HStack(spacing: 1.5) {
             ZStack(alignment: .leading) {
-                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                AnchorCorners.rectangle(cornerRadius: 5)
                     .fill(batteryColor.opacity(0.3))
 
                 GeometryReader { geo in
@@ -204,7 +205,7 @@ struct MinimalisticBatteryView: View {
                 }
             }
             .frame(width: bodyWidth, height: bodyHeight)
-            .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
+            .clipShape(AnchorCorners.rectangle(cornerRadius: 5))
 
             RoundedRectangle(cornerRadius: 1.5, style: .continuous)
                 .fill(clamped == 100 ? batteryColor.gradient : batteryColor.opacity(0.4).gradient)
@@ -710,28 +711,28 @@ struct BatteryTemporaryActivityView: View {
 
     private var redLowIndicator: some View {
         ZStack {
-            RoundedRectangle(cornerRadius: 30)
+            AnchorCorners.rectangle(cornerRadius: 30)
                 .fill(.red.opacity(0.2))
                 .frame(width: 70, height: 40)
 
             HStack(spacing: 2) {
-                RoundedRectangle(cornerRadius: 10)
+                AnchorCorners.rectangle(cornerRadius: 10)
                     .fill(.red.opacity(0.4))
                     .frame(width: 40, height: 24)
 
-                RoundedRectangle(cornerRadius: 10)
+                AnchorCorners.rectangle(cornerRadius: 10)
                     .fill(.red.opacity(0.4))
                     .frame(width: 3, height: 8)
             }
             .padding(.trailing, 5)
 
-            RoundedRectangle(cornerRadius: 8)
+            AnchorCorners.rectangle(cornerRadius: 8)
                 .fill(Color.red.gradient)
                 .frame(width: 8, height: 14)
                 .opacity(pulse ? 1 : 0.3)
                 .offset(x: -15)
 
-            RoundedRectangle(cornerRadius: 30)
+            AnchorCorners.rectangle(cornerRadius: 30)
                 .stroke(Color.red.opacity(0.9), lineWidth: 1.5)
                 .frame(width: pulse ? 8 : 30, height: pulse ? 14 : 32)
                 .offset(x: -15)
@@ -741,22 +742,22 @@ struct BatteryTemporaryActivityView: View {
 
     private var yellowLowIndicator: some View {
         ZStack {
-            RoundedRectangle(cornerRadius: 30)
+            AnchorCorners.rectangle(cornerRadius: 30)
                 .fill(.yellow.opacity(0.2))
                 .frame(width: 70, height: 40)
 
             HStack(spacing: 2) {
-                RoundedRectangle(cornerRadius: 10)
+                AnchorCorners.rectangle(cornerRadius: 10)
                     .fill(.yellow.opacity(0.4))
                     .frame(width: 40, height: 24)
 
-                RoundedRectangle(cornerRadius: 10)
+                AnchorCorners.rectangle(cornerRadius: 10)
                     .fill(.yellow.opacity(0.4))
                     .frame(width: 3, height: 8)
             }
             .padding(.trailing, 5)
 
-            RoundedRectangle(cornerRadius: 8)
+            AnchorCorners.rectangle(cornerRadius: 8)
                 .fill(.yellow.gradient)
                 .frame(width: 8, height: 14)
                 .offset(x: -15)
@@ -765,12 +766,12 @@ struct BatteryTemporaryActivityView: View {
 
     private var greenFullIndicator: some View {
         ZStack {
-            RoundedRectangle(cornerRadius: 30)
+            AnchorCorners.rectangle(cornerRadius: 30)
                 .fill(.green.opacity(0.2))
                 .frame(width: 70, height: 40)
 
             HStack(spacing: 2) {
-                RoundedRectangle(cornerRadius: 10)
+                AnchorCorners.rectangle(cornerRadius: 10)
                     .fill(.green.opacity(0.4))
                     .frame(width: 44, height: 24)
                     .overlay(
@@ -780,7 +781,7 @@ struct BatteryTemporaryActivityView: View {
                             .opacity(pulse ? 1 : 0.4)
                     )
 
-                RoundedRectangle(cornerRadius: 10)
+                AnchorCorners.rectangle(cornerRadius: 10)
                     .fill(.green.opacity(0.4))
                     .frame(width: 3, height: 8)
             }
@@ -789,12 +790,12 @@ struct BatteryTemporaryActivityView: View {
 
     private var yellowFullIndicator: some View {
         ZStack {
-            RoundedRectangle(cornerRadius: 30)
+            AnchorCorners.rectangle(cornerRadius: 30)
                 .fill(.yellow.opacity(0.2))
                 .frame(width: 70, height: 40)
 
             HStack(spacing: 2) {
-                RoundedRectangle(cornerRadius: 10)
+                AnchorCorners.rectangle(cornerRadius: 10)
                     .fill(.yellow.opacity(0.4))
                     .frame(width: 44, height: 24)
                     .overlay(
@@ -804,7 +805,7 @@ struct BatteryTemporaryActivityView: View {
                             .opacity(pulse ? 1 : 0.4)
                     )
 
-                RoundedRectangle(cornerRadius: 10)
+                AnchorCorners.rectangle(cornerRadius: 10)
                     .fill(.yellow.opacity(0.4))
                     .frame(width: 3, height: 8)
             }

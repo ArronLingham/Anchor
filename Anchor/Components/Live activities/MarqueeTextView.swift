@@ -22,6 +22,7 @@
  */
 
 import SwiftUI
+import AnchorUtilities
 
 struct SizePreferenceKey: PreferenceKey {
     static var defaultValue: CGSize = .zero
@@ -159,12 +160,10 @@ struct MusicExplicitBadge: View {
             .padding(.horizontal, max(horizontalPadding, height * 0.2))
             .frame(minWidth: minWidth, minHeight: height)
             .background(
-                RoundedRectangle(
-                    cornerRadius: cornerRadius ?? max(4, height * 0.28),
-                    style: .continuous
-                )
+                AnchorCorners.rectangle(cornerRadius: cornerRadius ?? max(4, height * 0.28))
                 .fill(backgroundColor)
             )
+            .anchorCornerContainer(radius: cornerRadius ?? max(4, height * 0.28))
             .fixedSize()
     }
 }

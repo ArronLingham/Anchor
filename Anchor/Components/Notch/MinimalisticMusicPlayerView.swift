@@ -18,6 +18,7 @@
  */
 
 import SwiftUI
+import AnchorUtilities
 import Defaults
 
 #if canImport(AppKit)
@@ -709,9 +710,10 @@ private struct MinimalisticReminderDetailsView: View {
         .padding(16)
         .frame(minWidth: 220)
         .background(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
+            AnchorCorners.rectangle(cornerRadius: 14)
                 .fill(Color.black.opacity(0.92))
         )
+        .anchorCornerContainer(radius: 14)
         .onHover { hovering in
             onHoverChanged(hovering)
         }
@@ -1252,7 +1254,8 @@ struct MinimalisticAlbumArtView: View {
                 )
             )
             .clipped()
-            .clipShape(RoundedRectangle(cornerRadius: albumArtCornerRadius))
+            .clipShape(AnchorCorners.rectangle(cornerRadius: albumArtCornerRadius))
+            .anchorCornerContainer(radius: albumArtCornerRadius)
             .scaleEffect(x: 1.04, y: 1.05)
             .rotationEffect(.degrees(92))
             .blur(radius: 14)
@@ -1347,10 +1350,11 @@ private struct MinimalisticSquircircleButton: View {
             iconView()
                 .frame(width: frameSize.width, height: frameSize.height)
                 .background(
-                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    AnchorCorners.rectangle(cornerRadius: cornerRadius)
                         .fill(isHovering ? Color.white.opacity(0.18) : .clear)
                 )
-                .contentShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+                .anchorCornerContainer(radius: cornerRadius)
+                .contentShape(AnchorCorners.rectangle(cornerRadius: cornerRadius))
         }
         .buttonStyle(PlainButtonStyle())
         .offset(x: pressOffset)

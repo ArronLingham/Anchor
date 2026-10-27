@@ -22,6 +22,7 @@
  */
 
 import Combine
+import AnchorUtilities
 import Defaults
 import SwiftUI
 import AppKit
@@ -144,7 +145,8 @@ struct AnchorArtworkSourceView: View {
                     .aspectRatio(contentMode: contentMode)
             }
         }
-        .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+        .clipShape(AnchorCorners.rectangle(cornerRadius: cornerRadius))
+        .anchorCornerContainer(radius: cornerRadius)
     }
 }
 
@@ -1243,7 +1245,7 @@ struct MediaOutputSelectorPopover: View {
                                 .padding(.horizontal, 8)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .background(
-                                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                    AnchorCorners.rectangle(cornerRadius: 8)
                                         .fill(device.id == routeManager.activeDeviceID ? Color.primary.opacity(0.12) : .clear)
                                 )
                             }
@@ -1315,7 +1317,7 @@ struct AirPlaySelectorPopover: View {
                                     .padding(.horizontal, 8)
                                     .frame(maxWidth: .infinity, alignment: .leading)
                                     .background(
-                                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                        AnchorCorners.rectangle(cornerRadius: 8)
                                             .fill(device.isSelected ? Color.primary.opacity(0.12) : .clear)
                                     )
                                 }

@@ -240,7 +240,7 @@ private struct FanControlCurveGraph: View {
     var body: some View {
         GeometryReader { geometry in
             ZStack {
-                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                AnchorCorners.rectangle(cornerRadius: 7)
                     .fill(Color.primary.opacity(0.035))
 
                 ForEach(0..<5, id: \.self) { index in

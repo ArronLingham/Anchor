@@ -196,7 +196,7 @@ struct DiskSection: View {
             }
         }
         .background(selectorBackground(for: disk))
-        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .clipShape(AnchorCorners.rectangle(cornerRadius: 8))
     }
 
     private func selectorBackground(for disk: DiskDeviceReading) -> some ShapeStyle {

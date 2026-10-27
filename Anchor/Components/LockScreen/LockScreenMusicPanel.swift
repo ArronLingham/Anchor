@@ -18,6 +18,7 @@
  */
 
 import SwiftUI
+import AnchorUtilities
 import Defaults
 
 struct LockScreenMusicPanel: View {
@@ -211,7 +212,8 @@ struct LockScreenMusicPanel: View {
                 )
         }
         .frame(width: currentSize.width, height: currentSize.height, alignment: .topLeading)
-        .clipShape(RoundedRectangle(cornerRadius: panelCornerRadius, style: .continuous))
+        .clipShape(AnchorCorners.rectangle(cornerRadius: panelCornerRadius))
+        .anchorCornerContainer(radius: panelCornerRadius)
         .overlay {
             if showPanelBorder && !usesSpotifyCanvasFallbackContentPresentation {
                 panelBorderOverlay
@@ -461,7 +463,7 @@ struct LockScreenMusicPanel: View {
 
         return ZStack(alignment: .bottomTrailing) {
             if isArtworkFullscreen && !keepAlbumArtVisibleDuringFullscreenArtwork {
-                RoundedRectangle(cornerRadius: artworkCornerRadius, style: .continuous)
+                AnchorCorners.rectangle(cornerRadius: artworkCornerRadius)
                     .fill(Color.white.opacity(0.06))
                     .overlay(
                         Image(systemName: "photo.fill")
@@ -488,7 +490,8 @@ struct LockScreenMusicPanel: View {
         )
         .frame(width: size)
         .background(albumArtBackground(cornerRadius: artworkCornerRadius))
-        .clipShape(RoundedRectangle(cornerRadius: artworkCornerRadius, style: .continuous))
+        .clipShape(AnchorCorners.rectangle(cornerRadius: artworkCornerRadius))
+        .anchorCornerContainer(radius: artworkCornerRadius)
         .opacity(musicManager.isPlaying ? 1 : 0.4)
         .scaleEffect(musicManager.isPlaying ? 1 : 0.85)
         .animation(.easeInOut(duration: 0.2), value: musicManager.isPlaying)
@@ -973,9 +976,10 @@ struct LockScreenMusicPanel: View {
         .padding(.vertical, 8)
         .padding(.horizontal, 12)
         .background(
-            RoundedRectangle(cornerRadius: isExpanded ? 16 : 12, style: .continuous)
+            AnchorCorners.rectangle(cornerRadius: isExpanded ? 16 : 12)
                 .fill(sliderBackgroundFill)
         )
+        .anchorCornerContainer(radius: isExpanded ? 16 : 12)
     }
 
     private var airPlaySection: some View {
@@ -1083,9 +1087,10 @@ struct LockScreenMusicPanel: View {
     private func accessorySectionContainer<Content: View>(@ViewBuilder content: () -> Content) -> some View {
         content()
             .background(
-                RoundedRectangle(cornerRadius: isExpanded ? 16 : 12, style: .continuous)
+                AnchorCorners.rectangle(cornerRadius: isExpanded ? 16 : 12)
                     .fill(sliderBackgroundFill)
             )
+            .anchorCornerContainer(radius: isExpanded ? 16 : 12)
     }
 
     private var sliderBackgroundFill: Color {
@@ -1244,7 +1249,7 @@ struct LockScreenMusicPanel: View {
     }
 
     private var canvasFallbackScrim: some View {
-        RoundedRectangle(cornerRadius: panelCornerRadius, style: .continuous)
+        AnchorCorners.rectangle(cornerRadius: panelCornerRadius)
             .fill(.ultraThinMaterial)
             .environment(\.colorScheme, .dark)
             .overlay {
@@ -1257,10 +1262,11 @@ struct LockScreenMusicPanel: View {
                     startPoint: .top,
                     endPoint: .bottom
                 )
-                .clipShape(RoundedRectangle(cornerRadius: panelCornerRadius, style: .continuous))
+                .clipShape(AnchorCorners.rectangle(cornerRadius: panelCornerRadius))
+                .anchorCornerContainer(radius: panelCornerRadius)
             }
             .overlay {
-                RoundedRectangle(cornerRadius: panelCornerRadius, style: .continuous)
+                AnchorCorners.rectangle(cornerRadius: panelCornerRadius)
                     .stroke(Color.white.opacity(0.10), lineWidth: 0.6)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -1289,7 +1295,7 @@ struct LockScreenMusicPanel: View {
     }
 
     private var frostedPanelBackground: some View {
-        RoundedRectangle(cornerRadius: panelCornerRadius)
+        AnchorCorners.rectangle(cornerRadius: panelCornerRadius)
             .fill(.ultraThinMaterial)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .allowsHitTesting(false)
@@ -1297,7 +1303,7 @@ struct LockScreenMusicPanel: View {
     }
 
     private var opaquePanelBackground: some View {
-        RoundedRectangle(cornerRadius: panelCornerRadius)
+        AnchorCorners.rectangle(cornerRadius: panelCornerRadius)
             .fill(Color.black.opacity(0.45))
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .allowsHitTesting(false)
@@ -1308,14 +1314,13 @@ struct LockScreenMusicPanel: View {
     private var panelBorderOverlay: some View {
         if usesEnhancedCustomLiquidBorder {
             ZStack {
-                RoundedRectangle(cornerRadius: panelCornerRadius, style: .continuous)
+                AnchorCorners.rectangle(cornerRadius: panelCornerRadius)
                     .stroke(
                         Color.white.opacity(0.22),
                         lineWidth: 1.05
                     )
 
-                RoundedRectangle(cornerRadius: panelCornerRadius, style: .continuous)
-                    .inset(by: 0.85)
+                AnchorCorners.rectangle(cornerRadius: max(0, panelCornerRadius - 0.85))
                     .stroke(
                         LinearGradient(
                             colors: [
@@ -1328,24 +1333,25 @@ struct LockScreenMusicPanel: View {
                         ),
                         lineWidth: 0.9
                     )
+                    .padding(0.85)
 
-                RoundedRectangle(cornerRadius: panelCornerRadius, style: .continuous)
-                    .inset(by: 1.55)
+                AnchorCorners.rectangle(cornerRadius: max(0, panelCornerRadius - 1.55))
                     .stroke(
                         Color.black.opacity(0.16),
                         lineWidth: 0.55
                     )
+                    .padding(1.55)
             }
             .allowsHitTesting(false)
         } else if usesLiquidGlass {
-            RoundedRectangle(cornerRadius: panelCornerRadius, style: .continuous)
+            AnchorCorners.rectangle(cornerRadius: panelCornerRadius)
                 .stroke(
                     Color.white.opacity(usesCustomLiquidGlass ? 0.15 : 0.14),
                     lineWidth: usesCustomLiquidGlass ? 0.95 : 0.9
                 )
                 .allowsHitTesting(false)
         } else {
-            RoundedRectangle(cornerRadius: panelCornerRadius, style: .continuous)
+            AnchorCorners.rectangle(cornerRadius: panelCornerRadius)
                 .stroke(Color.white.opacity(0.35), lineWidth: 1.4)
                 .allowsHitTesting(false)
         }
@@ -1356,7 +1362,8 @@ struct LockScreenMusicPanel: View {
             .resizable()
             .aspectRatio(contentMode: .fit)
             .compositingGroup()
-            .clipShape(RoundedRectangle(cornerRadius: resolvedArtworkCornerRadius(from: cornerRadius), style: .continuous))
+            .clipShape(AnchorCorners.rectangle(cornerRadius: resolvedArtworkCornerRadius(from: cornerRadius)))
+            .anchorCornerContainer(radius: resolvedArtworkCornerRadius(from: cornerRadius))
     }
 
     @ViewBuilder
@@ -1368,10 +1375,10 @@ struct LockScreenMusicPanel: View {
                 clearLiquidGlassSurface(cornerRadius: cornerRadius)
             }
         } else if shouldUseFrostedBlur {
-            RoundedRectangle(cornerRadius: cornerRadius)
+            AnchorCorners.rectangle(cornerRadius: cornerRadius)
                 .fill(.ultraThinMaterial)
         } else {
-            RoundedRectangle(cornerRadius: cornerRadius)
+            AnchorCorners.rectangle(cornerRadius: cornerRadius)
                 .fill(Color.black.opacity(0.35))
         }
     }
@@ -1403,7 +1410,7 @@ struct LockScreenMusicPanel: View {
 
     @available(macOS 26.0, *)
     private func clearLiquidGlassSurface(cornerRadius: CGFloat) -> some View {
-        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+        AnchorCorners.rectangle(cornerRadius: cornerRadius)
             .fill(.clear)
             .glassEffect(
                 .clear.interactive(),
@@ -1494,7 +1501,7 @@ private struct PanelControlButton: View {
             triggerPressEffect()
             action()
         }) {
-            RoundedRectangle(cornerRadius: frameSize / 2, style: .continuous)
+            AnchorCorners.rectangle(cornerRadius: frameSize / 2)
                 .fill(backgroundColor)
                 .overlay(
                     iconView

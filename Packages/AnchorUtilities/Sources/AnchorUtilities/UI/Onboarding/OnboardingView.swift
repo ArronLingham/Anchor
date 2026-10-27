@@ -186,7 +186,7 @@ private struct WelcomeStep: View {
     private func featureRow(icon: String, title: String, text: String) -> some View {
         HStack(alignment: .top, spacing: 12) {
             ZStack {
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                AnchorCorners.rectangle(cornerRadius: 8)
                     .fill(Theme.spaceGradient)
                     .frame(width: 30, height: 30)
                 Image(systemName: icon)
@@ -315,15 +315,15 @@ private struct PurposeStep: View {
             .padding(.horizontal, 14)
             .padding(.vertical, 10)
             .background(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                AnchorCorners.rectangle(cornerRadius: 10)
                     .fill(selected ? Color.accentColor.opacity(0.12) : Color.primary.opacity(0.05))
             )
             .overlay {
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .strokeBorder(selected ? Color.accentColor.opacity(0.45) : .clear,
+                AnchorCorners.rectangle(cornerRadius: 10)
+                    .anchorStrokeBorder(selected ? Color.accentColor.opacity(0.45) : .clear,
                                   lineWidth: 1)
             }
-            .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .contentShape(AnchorCorners.rectangle(cornerRadius: 10))
         }
         .buttonStyle(.plain)
         .accessibilityLabel("\(name(preset)). \(caption(preset))")
@@ -350,7 +350,7 @@ private struct PurposeStep: View {
             }
         } label: {
             HStack(spacing: 10) {
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                AnchorCorners.rectangle(cornerRadius: 8)
                     .fill(selected
                           ? AnyShapeStyle(Theme.spaceGradient)
                           : AnyShapeStyle(Color.secondary.opacity(0.16)))
@@ -380,10 +380,10 @@ private struct PurposeStep: View {
             .padding(.horizontal, 11)
             .padding(.vertical, 8)
             .background(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                AnchorCorners.rectangle(cornerRadius: 10)
                     .fill(selected ? Color.accentColor.opacity(0.09) : Color.primary.opacity(0.035))
             )
-            .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .contentShape(AnchorCorners.rectangle(cornerRadius: 10))
         }
         .buttonStyle(.plain)
         .disabled(blocked != nil)
@@ -457,7 +457,7 @@ private struct SelectedPermissionsStep: View {
             }
             .padding(16)
             .background(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                AnchorCorners.rectangle(cornerRadius: 12)
                     .fill(Color.primary.opacity(0.05))
             )
             .padding(.horizontal, 28)
@@ -479,7 +479,7 @@ private struct SelectedPermissionsStep: View {
             }
             .padding(16)
             .background(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                AnchorCorners.rectangle(cornerRadius: 12)
                     .fill(Color.primary.opacity(0.05))
             )
             .padding(.horizontal, 28)
@@ -554,7 +554,7 @@ private struct StepHeader: View {
     var body: some View {
         VStack(spacing: 10) {
             ZStack {
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                AnchorCorners.rectangle(cornerRadius: 14)
                     .fill(Theme.spaceGradient)
                     .frame(width: 56, height: 56)
                 Image(systemName: icon)

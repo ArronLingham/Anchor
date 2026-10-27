@@ -18,6 +18,7 @@
  */
 
 import SwiftUI
+import AnchorUtilities
 
 struct TimerControlOverlay: View {
     let notchHeight: CGFloat
@@ -82,7 +83,7 @@ struct TimerControlOverlay: View {
         .frame(height: notchHeight)
         .frame(minWidth: buttonSize * 2 + 32)
         .background {
-            RoundedRectangle(cornerRadius: windowCornerRadius, style: .continuous)
+            AnchorCorners.rectangle(cornerRadius: windowCornerRadius)
                 .fill(Color.black.opacity(0.9))
         }
         .compositingGroup()
@@ -130,8 +131,8 @@ private struct ControlButton: View {
                 .frame(width: 32, height: 32)
                 .foregroundStyle(foreground)
                 .background(background.opacity(isHovering ? 1 : 0.7))
-                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .clipShape(AnchorCorners.rectangle(cornerRadius: 10))
+                .contentShape(AnchorCorners.rectangle(cornerRadius: 10))
         }
         .buttonStyle(.plain)
         .help(help)

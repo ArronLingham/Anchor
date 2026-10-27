@@ -18,6 +18,7 @@
  */
 
 import AppKit
+import AnchorUtilities
 import Defaults
 import SwiftUI
 
@@ -128,7 +129,7 @@ struct LauncherCategoryBoxView: View {
                 }
 
                 ForEach(0..<max(0, 4 - previewApps.count), id: \.self) { _ in
-                    RoundedRectangle(cornerRadius: 10)
+                    AnchorCorners.rectangle(cornerRadius: 10)
                         .fill(Color.clear)
                         .frame(height: 66)
                 }
@@ -139,16 +140,17 @@ struct LauncherCategoryBoxView: View {
         .background(
             AnchorSurface(depth: .inset, radius: 18)
                 .overlay(
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .strokeBorder(
+                    AnchorCorners.rectangle(cornerRadius: 18)
+                        .anchorStrokeBorder(
                             Color.white.opacity(isHovered ? 0.22 : 0.06),
                             lineWidth: 1
                         )
                 )
         )
+        .anchorCornerContainer(radius: 18)
         .animation(.easeOut(duration: 0.15), value: isHovered)
         .onHover { isHovered = $0 }
-        .contentShape(RoundedRectangle(cornerRadius: 18))
+        .contentShape(AnchorCorners.rectangle(cornerRadius: 18))
         .onTapGesture {
             onOpenCategory()
         }
@@ -167,7 +169,7 @@ private struct LauncherMiniAppIcon: View {
                 if let icon {
                     Image(nsImage: icon).resizable()
                 } else {
-                    RoundedRectangle(cornerRadius: 8).fill(Color.secondary.opacity(0.15))
+                    AnchorCorners.rectangle(cornerRadius: 8).fill(Color.secondary.opacity(0.15))
                 }
             }
             .frame(width: 36, height: 36)
@@ -258,13 +260,14 @@ struct LauncherCategoryDetailView: View {
             .padding(24)
             .frame(maxWidth: 620)
             .background(
-                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                AnchorCorners.rectangle(cornerRadius: 24)
                     .fill(.regularMaterial)
                     .overlay(
-                        RoundedRectangle(cornerRadius: 24, style: .continuous)
-                            .strokeBorder(Color.white.opacity(colorScheme == .dark ? 0.15 : 0.35), lineWidth: 1)
+                        AnchorCorners.rectangle(cornerRadius: 24)
+                            .anchorStrokeBorder(Color.white.opacity(colorScheme == .dark ? 0.15 : 0.35), lineWidth: 1)
                     )
             )
+            .anchorCornerContainer(radius: 24)
             .shadow(color: Color.black.opacity(0.35), radius: 32, x: 0, y: 16)
         }
     }
@@ -281,7 +284,7 @@ private struct LauncherCategoryAppCell: View {
                 if let icon {
                     Image(nsImage: icon).resizable()
                 } else {
-                    RoundedRectangle(cornerRadius: 12).fill(Color.secondary.opacity(0.15))
+                    AnchorCorners.rectangle(cornerRadius: 12).fill(Color.secondary.opacity(0.15))
                 }
             }
             .frame(width: 52, height: 52)
@@ -298,7 +301,7 @@ private struct LauncherCategoryAppCell: View {
         .frame(maxWidth: .infinity)
         .padding(.vertical, 6)
         .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
+            AnchorCorners.rectangle(cornerRadius: 12)
                 .fill(isHovered ? Color.accentColor.opacity(0.15) : Color.clear)
         )
         .contentShape(Rectangle())

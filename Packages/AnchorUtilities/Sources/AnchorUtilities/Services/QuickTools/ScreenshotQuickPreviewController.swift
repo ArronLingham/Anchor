@@ -653,10 +653,10 @@ private struct ScreenshotQuickPreviewView: View {
                     .frame(maxWidth: 320, maxHeight: 138)
                     .frame(width: embedded ? nil : 320, height: 138)
                     .background(Color.black.opacity(0.12))
-                    .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+                    .clipShape(AnchorCorners.rectangle(cornerRadius: 9))
                     .overlay(
-                        RoundedRectangle(cornerRadius: 9, style: .continuous)
-                            .strokeBorder(Color.primary.opacity(0.12), lineWidth: 1)
+                        AnchorCorners.rectangle(cornerRadius: 9)
+                            .anchorStrokeBorder(Color.primary.opacity(0.12), lineWidth: 1)
                     )
             }
             .buttonStyle(.plain)
@@ -686,13 +686,13 @@ private struct ScreenshotQuickPreviewView: View {
                    showingLink: model.sharedRecord != nil).height)
         .background {
             if !embedded {
-                RoundedRectangle(cornerRadius: 16, style: .continuous).fill(.regularMaterial)
+                AnchorCorners.rectangle(cornerRadius: 16).fill(.regularMaterial)
             }
         }
         .overlay {
             if !embedded {
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .strokeBorder(Color.primary.opacity(0.10), lineWidth: 1)
+                AnchorCorners.rectangle(cornerRadius: 16)
+                    .anchorStrokeBorder(Color.primary.opacity(0.10), lineWidth: 1)
             }
         }
         .onHover(perform: previewHoverChanged)
@@ -750,10 +750,10 @@ private struct ScreenshotQuickPreviewView: View {
         .padding(.horizontal, 9)
         .frame(width: embedded ? nil : 320, height: 48)
         .background(Color.primary.opacity(0.055),
-                    in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+                    in: AnchorCorners.rectangle(cornerRadius: 9))
         .overlay(
-            RoundedRectangle(cornerRadius: 9, style: .continuous)
-                .strokeBorder(Color.primary.opacity(0.09), lineWidth: 1)
+            AnchorCorners.rectangle(cornerRadius: 9)
+                .anchorStrokeBorder(Color.primary.opacity(0.09), lineWidth: 1)
         )
     }
 
@@ -845,7 +845,7 @@ private struct ScreenshotPreviewActionStyle: ViewModifier {
         if embedded {
             content.buttonStyle(NotchButtonStyle(cornerRadius: 8))
                 .background(prominent ? Color.white.opacity(0.14) : .clear,
-                            in: RoundedRectangle(cornerRadius: 8))
+                            in: AnchorCorners.rectangle(cornerRadius: 8))
         } else if prominent {
             content.buttonStyle(.borderedProminent)
         } else {

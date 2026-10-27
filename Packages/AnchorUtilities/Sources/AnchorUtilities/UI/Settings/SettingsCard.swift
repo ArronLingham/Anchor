@@ -24,7 +24,8 @@ struct SettingsCard<Content: View>: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16)
-        .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .background(.quaternary.opacity(0.35), in: AnchorCorners.rectangle(cornerRadius: 16))
+        .anchorCornerContainer(radius: 16)
     }
 }
 
@@ -85,7 +86,7 @@ struct SettingsRow<Accessory: View>: View {
                 .foregroundStyle(Color.accentColor)
                 .frame(width: 26, height: 26)
                 .background(Color.accentColor.opacity(0.12),
-                            in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+                            in: AnchorCorners.rectangle(cornerRadius: 7))
         } else {
             // The menu bar draws the glyph white on a dark bar; the badge keeps
             // that pairing so it reads as the same icon in both appearances.
@@ -93,7 +94,7 @@ struct SettingsRow<Accessory: View>: View {
                 .frame(width: 17, height: 13)
                 .frame(width: 26, height: 26)
                 .background(Color.black.opacity(0.82),
-                            in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+                            in: AnchorCorners.rectangle(cornerRadius: 7))
         }
     }
 }

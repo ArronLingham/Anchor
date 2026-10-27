@@ -383,10 +383,10 @@ private struct NotchCalendarEventRow: View {
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .topLeading)
         .background(event.color.color.opacity(ongoing ? 0.2 : 0.1),
-                    in: RoundedRectangle(cornerRadius: 11, style: .continuous))
+                    in: AnchorCorners.rectangle(cornerRadius: 11))
         .overlay {
-            RoundedRectangle(cornerRadius: 11, style: .continuous)
-                .strokeBorder(.white.opacity(contrast == .increased ? 0.5 : ongoing ? 0.16 : 0.05), lineWidth: 0.75)
+            AnchorCorners.rectangle(cornerRadius: 11)
+                .anchorStrokeBorder(.white.opacity(contrast == .increased ? 0.5 : ongoing ? 0.16 : 0.05), lineWidth: 0.75)
         }
         .clipped()
     }

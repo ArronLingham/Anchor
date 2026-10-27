@@ -339,7 +339,7 @@ struct MediaWorkspaceView: View {
                 .padding(compact ? 9 : 12)
                 .padding(.trailing, inputURLs.isEmpty ? 0 : (compact ? 30 : 34))
                 .frame(maxWidth: .infinity, minHeight: compact ? 52 : 62, alignment: .leading)
-                .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .contentShape(AnchorCorners.rectangle(cornerRadius: 10))
             }
             .buttonStyle(.plain)
             .frame(maxWidth: .infinity, minHeight: compact ? 52 : 62, alignment: .leading)
@@ -361,12 +361,12 @@ struct MediaWorkspaceView: View {
         }
         .frame(maxWidth: .infinity, minHeight: compact ? 52 : 62, alignment: .leading)
         .background(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
+            AnchorCorners.rectangle(cornerRadius: 10)
                 .fill(isDropTargeted ? Color.accentColor.opacity(0.16) : PanelSurface.controlFill(for: colorScheme))
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .strokeBorder(isDropTargeted ? Color.accentColor.opacity(0.7) : PanelSurface.border(for: colorScheme),
+            AnchorCorners.rectangle(cornerRadius: 10)
+                .anchorStrokeBorder(isDropTargeted ? Color.accentColor.opacity(0.7) : PanelSurface.border(for: colorScheme),
                               lineWidth: isDropTargeted ? 1.2 : 0.8)
         )
     }
@@ -588,7 +588,7 @@ struct MediaWorkspaceView: View {
                     .textSelection(.enabled)
                     .padding(8)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(Color.primary.opacity(0.045)))
+                    .background(AnchorCorners.rectangle(cornerRadius: 7).fill(Color.primary.opacity(0.045)))
             }
             HStack(spacing: 8) {
                 if let outputURL = result.outputURL {
@@ -747,7 +747,7 @@ struct MediaWorkspaceView: View {
     private var imagePreviewSection: some View {
         HStack(spacing: 10) {
             ZStack {
-                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                AnchorCorners.rectangle(cornerRadius: 7)
                     .fill(previewBackgroundColor)
                 if let thumbnail = inputURL.flatMap({ ImageThumbnailer.thumbnail(for: $0, pointSize: compact ? 96 : 128) }) {
                     previewImage(thumbnail)
@@ -772,10 +772,10 @@ struct MediaWorkspaceView: View {
                     .padding(previewWatermarkMargin)
                     .opacity(currentWatermark.opacity)
             }
-            .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+            .clipShape(AnchorCorners.rectangle(cornerRadius: 7))
             .overlay(
-                RoundedRectangle(cornerRadius: 7, style: .continuous)
-                    .strokeBorder(PanelSurface.border(for: colorScheme), lineWidth: 0.8)
+                AnchorCorners.rectangle(cornerRadius: 7)
+                    .anchorStrokeBorder(PanelSurface.border(for: colorScheme), lineWidth: 0.8)
             )
 
             VStack(alignment: .leading, spacing: 5) {
@@ -1024,12 +1024,12 @@ struct MediaWorkspaceView: View {
             .frame(height: compact ? 28 : 32)
             .foregroundStyle(selected ? Color.accentColor : Color.primary.opacity(0.78))
             .background(
-                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                AnchorCorners.rectangle(cornerRadius: 7)
                     .fill(selected ? Color.accentColor.opacity(0.16) : PanelSurface.controlFill(for: colorScheme))
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 7, style: .continuous)
-                    .strokeBorder(selected ? Color.accentColor.opacity(0.45) : PanelSurface.border(for: colorScheme),
+                AnchorCorners.rectangle(cornerRadius: 7)
+                    .anchorStrokeBorder(selected ? Color.accentColor.opacity(0.45) : PanelSurface.border(for: colorScheme),
                                   lineWidth: 0.8)
             )
         }
@@ -1080,12 +1080,12 @@ struct MediaWorkspaceView: View {
                 .padding(.horizontal, 9)
                 .frame(width: compact ? 62 : 76, height: compact ? 28 : 30, alignment: .leading)
                 .background(
-                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    AnchorCorners.rectangle(cornerRadius: 7)
                         .fill(PanelSurface.controlFill(for: colorScheme))
                 )
                 .overlay(
-                    RoundedRectangle(cornerRadius: 7, style: .continuous)
-                        .strokeBorder(PanelSurface.border(for: colorScheme), lineWidth: 0.8)
+                    AnchorCorners.rectangle(cornerRadius: 7)
+                        .anchorStrokeBorder(PanelSurface.border(for: colorScheme), lineWidth: 0.8)
                 )
             Text(suffix)
                 .font(.system(size: compact ? 9.5 : 10.5))

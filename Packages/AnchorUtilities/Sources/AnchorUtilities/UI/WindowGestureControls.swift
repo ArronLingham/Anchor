@@ -28,12 +28,13 @@ struct WindowEdgeSnapZonePicker: View {
             .padding(compact ? 5 : 7)
             .frame(width: compact ? 258 : 340)
             .background(
-                RoundedRectangle(cornerRadius: compact ? 9 : 12, style: .continuous)
+                AnchorCorners.rectangle(cornerRadius: compact ? 9 : 12)
                     .fill(Color.primary.opacity(0.025))
             )
+            .anchorCornerContainer(radius: compact ? 9 : 12)
             .overlay(
-                RoundedRectangle(cornerRadius: compact ? 9 : 12, style: .continuous)
-                    .strokeBorder(Color.primary.opacity(0.14))
+                AnchorCorners.rectangle(cornerRadius: compact ? 9 : 12)
+                    .anchorStrokeBorder(Color.primary.opacity(0.14))
             )
 
             Button {
@@ -45,7 +46,7 @@ struct WindowEdgeSnapZonePicker: View {
                     .foregroundStyle(.secondary)
                     .frame(width: compact ? 20 : 24, height: compact ? 20 : 24)
                     .background(
-                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        AnchorCorners.rectangle(cornerRadius: 6)
                             .fill(Color.primary.opacity(0.045))
                     )
             }
@@ -95,7 +96,7 @@ struct WindowEdgeSnapZonePicker: View {
                 zoneCell(center)
                     .frame(maxWidth: .infinity)
             } else {
-                RoundedRectangle(cornerRadius: compact ? 5 : 7, style: .continuous)
+                AnchorCorners.rectangle(cornerRadius: compact ? 5 : 7)
                     .fill(Color.primary.opacity(0.018))
                     .overlay {
                         Image(systemName: "cursorarrow.motionlines")
@@ -238,7 +239,7 @@ private struct WindowEdgeSnapAreaButton: View {
     @State private var anchor = WindowEdgeSnapMenuAnchor()
 
     var body: some View {
-        let shape = RoundedRectangle(cornerRadius: compact ? 5 : 7, style: .continuous)
+        let shape = AnchorCorners.rectangle(cornerRadius: compact ? 5 : 7)
         Button {
             anchor.popUp(menu())
             // The open menu takes the pointer's moves, so the area would keep
@@ -251,7 +252,7 @@ private struct WindowEdgeSnapAreaButton: View {
                         ? Color.accentColor.opacity(hovered ? 0.2 : 0.13)
                         : Color.primary.opacity(hovered ? 0.065 : 0.025))
                 shape
-                    .strokeBorder(isOn
+                    .anchorStrokeBorder(isOn
                         ? Color.accentColor.opacity(hovered ? 0.65 : 0.42)
                         : Color.primary.opacity(hovered ? 0.2 : 0.09))
                 WindowEdgeSnapPlacementGlyph(action: action, compact: compact)
@@ -395,11 +396,11 @@ struct WindowGestureModifierPicker: View {
                         .frame(width: compact ? 25 : 30, height: compact ? 22 : 25)
                         .foregroundStyle(selected ? Color.accentColor : Color.secondary)
                         .background(
-                            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            AnchorCorners.rectangle(cornerRadius: 6)
                                 .fill(selected ? Color.accentColor.opacity(0.14) : Color.primary.opacity(0.045))
                         )
                         .overlay(
-                            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            AnchorCorners.rectangle(cornerRadius: 6)
                                 .stroke(selected ? Color.accentColor.opacity(0.45) : Color.primary.opacity(0.1),
                                         lineWidth: 1)
                         )
@@ -489,7 +490,7 @@ struct WindowGestureHints: View {
         .padding(.vertical, compact ? 4 : 5)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
-            RoundedRectangle(cornerRadius: 7, style: .continuous)
+            AnchorCorners.rectangle(cornerRadius: 7)
                 .fill(Color.primary.opacity(0.045))
         )
         .accessibilityElement(children: .combine)

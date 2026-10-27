@@ -36,10 +36,11 @@ struct MonitorToken: View {
         .imageScale(large ? .large : .medium)
         .frame(maxWidth: .infinity, minHeight: large ? 40 : 28)
         .background(on ? Color.accentColor.opacity(0.12) : Color.secondary.opacity(0.07),
-                    in: RoundedRectangle(cornerRadius: large ? 10 : 8, style: .continuous))
+                    in: AnchorCorners.rectangle(cornerRadius: large ? 10 : 8))
+                    .anchorCornerContainer(radius: large ? 10 : 8)
         .overlay {
-            RoundedRectangle(cornerRadius: large ? 10 : 8, style: .continuous)
-                .strokeBorder(selected ? Color.accentColor.opacity(0.7) : .clear, lineWidth: 1)
+            AnchorCorners.rectangle(cornerRadius: large ? 10 : 8)
+                .anchorStrokeBorder(selected ? Color.accentColor.opacity(0.7) : .clear, lineWidth: 1)
         }
         .popover(isPresented: $showsOptions, arrowEdge: .bottom) {
             VStack(alignment: .leading, spacing: 10) {
@@ -147,6 +148,6 @@ extension View {
     func monitorTokenGroup() -> some View {
         padding(10)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color.secondary.opacity(0.05), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .background(Color.secondary.opacity(0.05), in: AnchorCorners.rectangle(cornerRadius: 10))
     }
 }

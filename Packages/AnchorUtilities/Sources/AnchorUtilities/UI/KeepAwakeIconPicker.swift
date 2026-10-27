@@ -41,7 +41,7 @@ struct KeepAwakeIconPicker: View {
         .padding(compact ? 8 : 0)
         .background {
             if compact {
-                RoundedRectangle(cornerRadius: 9, style: .continuous)
+                AnchorCorners.rectangle(cornerRadius: 9)
                     .fill(Color.secondary.opacity(0.055))
             }
         }
@@ -81,13 +81,13 @@ struct KeepAwakeIconPicker: View {
             .frame(maxWidth: .infinity)
             .frame(height: compact ? 29 : 35)
             .background(
-                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                AnchorCorners.rectangle(cornerRadius: 7)
                     .fill(selected ? Color.accentColor.opacity(0.14)
                                    : Color.secondary.opacity(0.06))
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 7, style: .continuous)
-                    .strokeBorder(selected ? Color.accentColor.opacity(0.75)
+                AnchorCorners.rectangle(cornerRadius: 7)
+                    .anchorStrokeBorder(selected ? Color.accentColor.opacity(0.75)
                                            : Color.secondary.opacity(0.13),
                                   lineWidth: selected ? 1.2 : 1)
             )
@@ -132,12 +132,12 @@ struct KeepAwakeIconPicker: View {
             .frame(maxWidth: .infinity)
             .frame(height: compact ? 24 : 28)
             .background(
-                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                AnchorCorners.rectangle(cornerRadius: 7)
                     .fill(selected ? Color.accentColor.opacity(0.12) : Color.clear)
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 7, style: .continuous)
-                    .strokeBorder(selected ? Color.accentColor.opacity(0.7) : Color.clear,
+                AnchorCorners.rectangle(cornerRadius: 7)
+                    .anchorStrokeBorder(selected ? Color.accentColor.opacity(0.7) : Color.clear,
                                   lineWidth: 1.1)
             )
             .contentShape(Rectangle())

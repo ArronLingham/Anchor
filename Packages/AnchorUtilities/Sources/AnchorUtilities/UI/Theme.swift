@@ -156,13 +156,14 @@ private struct PanelCardModifier: ViewModifier {
         content
             .padding(padded ? 10 : 0)
             .background(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                AnchorCorners.rectangle(cornerRadius: 10)
                     .fill(PanelSurface.cardFill(for: colorScheme))
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .strokeBorder(PanelSurface.border(for: colorScheme), lineWidth: 0.7)
+                AnchorCorners.rectangle(cornerRadius: 10)
+                    .anchorStrokeBorder(PanelSurface.border(for: colorScheme), lineWidth: 0.7)
             )
+            .anchorCornerContainer(radius: 10)
         }
     }
 }
@@ -224,11 +225,11 @@ private struct PanelGlassSurface: View {
     /// its own rounding and rim. Liquid Glass needs macOS 26, so this is always
     /// the standard material.
     private var insetSurface: some View {
-        let shape = RoundedRectangle(cornerRadius: 18, style: .continuous)
+        let shape = AnchorCorners.rectangle(cornerRadius: 18)
         return shape
             .fill(.regularMaterial)
             .overlay(shape.fill(PanelSurface.baseFill(for: colorScheme)))
-            .overlay(shape.strokeBorder(PanelSurface.border(for: colorScheme), lineWidth: 0.8))
+            .overlay(shape.anchorStrokeBorder(PanelSurface.border(for: colorScheme), lineWidth: 0.8))
     }
 }
 

@@ -406,10 +406,10 @@ struct PanelHomebrewView: View {
         .padding(.horizontal, 7)
         .padding(.vertical, 6)
         .background(
-            RoundedRectangle(cornerRadius: 7, style: .continuous)
+            AnchorCorners.rectangle(cornerRadius: 7)
                 .fill(selected(package) ? Color.accentColor.opacity(0.14) : Color.primary.opacity(0.035))
         )
-        .contentShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+        .contentShape(AnchorCorners.rectangle(cornerRadius: 7))
         .contextMenu {
             packageContextMenu(package)
         }

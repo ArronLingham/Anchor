@@ -44,10 +44,11 @@ struct ScratchpadView: View {
                     .opacity(ScratchpadSupport.sanitizedBackgroundOpacity(backgroundOpacity))
             }
         }
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .clipShape(AnchorCorners.rectangle(cornerRadius: 14))
+        .anchorCornerContainer(radius: 14)
         .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .strokeBorder(Color.white.opacity(0.12), lineWidth: 1)
+            AnchorCorners.rectangle(cornerRadius: 14)
+                .anchorStrokeBorder(Color.white.opacity(0.12), lineWidth: 1)
         )
         .overlay(ScratchpadResizeOverlay())
         .alert(dialogTitle, isPresented: dialogIsPresented) {
@@ -181,10 +182,10 @@ struct ScratchpadView: View {
                 .frame(height: 24)
                 .foregroundStyle(selected ? Color.primary : Color.secondary)
                 .background {
-                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    AnchorCorners.rectangle(cornerRadius: 6)
                         .fill(selected ? Color.accentColor.opacity(0.16) : Color.clear)
                 }
-                .contentShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                .contentShape(AnchorCorners.rectangle(cornerRadius: 6))
         }
         .buttonStyle(.plain)
         .onHover { hovering in

@@ -351,7 +351,7 @@ struct SystemSection: View {
         .frame(maxWidth: .infinity)
         .padding(.vertical, 6)
         .background(
-            RoundedRectangle(cornerRadius: 7, style: .continuous)
+            AnchorCorners.rectangle(cornerRadius: 7)
                 .fill(Color.primary.opacity(0.045))
         )
     }

@@ -208,13 +208,14 @@ private struct PermissionGuideCard: View {
         .padding(14)
         .frame(width: 320, alignment: .leading)
         .background(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
+            AnchorCorners.rectangle(cornerRadius: 14)
                 .fill(.regularMaterial)
                 .overlay(
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .strokeBorder(Color.primary.opacity(0.12), lineWidth: 1)
+                    AnchorCorners.rectangle(cornerRadius: 14)
+                        .anchorStrokeBorder(Color.primary.opacity(0.12), lineWidth: 1)
                 )
         )
+        .anchorCornerContainer(radius: 14)
         .animation(.easeOut(duration: 0.2), value: model.granted)
         .animation(.easeOut(duration: 0.2), value: model.stale)
     }

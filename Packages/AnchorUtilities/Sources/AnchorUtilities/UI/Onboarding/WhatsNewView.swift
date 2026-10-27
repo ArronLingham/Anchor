@@ -383,9 +383,9 @@ struct ReleaseNotesContent: View {
                 Image(nsImage: nsImage)
                     .resizable()
                     .scaledToFit()
-                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .clipShape(AnchorCorners.rectangle(cornerRadius: 8))
                     .overlay(
-                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        AnchorCorners.rectangle(cornerRadius: 8)
                             .stroke(.quaternary, lineWidth: 1)
                     )
                     .accessibilityLabel(image.alt)
@@ -433,7 +433,7 @@ private struct UpdateShowcaseMediaSurface: View {
     var body: some View {
         VStack(spacing: 8) {
             ZStack {
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                AnchorCorners.rectangle(cornerRadius: 14)
                     .fill(Color.primary.opacity(0.06))
 
                 switch state {
@@ -449,11 +449,11 @@ private struct UpdateShowcaseMediaSurface: View {
                     if url.pathExtension.lowercased() == "gif" {
                         AnimatedFileGIF(url: url)
                             .id(gifReloadID)
-                            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                            .clipShape(AnchorCorners.rectangle(cornerRadius: 10))
                             .padding(10)
                     } else {
                         ControlledVideoView(url: url)
-                            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                            .clipShape(AnchorCorners.rectangle(cornerRadius: 10))
                             .padding(10)
                     }
                 case .failed:
@@ -470,9 +470,10 @@ private struct UpdateShowcaseMediaSurface: View {
                 }
             }
             .aspectRatio(16.0 / 9.0, contentMode: .fit)
-            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .clipShape(AnchorCorners.rectangle(cornerRadius: 14))
+            .anchorCornerContainer(radius: 14)
             .overlay(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                AnchorCorners.rectangle(cornerRadius: 14)
                     .stroke(.quaternary, lineWidth: 1)
             )
 

@@ -41,8 +41,8 @@ struct NotchFilesView: View {
             } else if shelf.items.isEmpty {
                 NotchEmptyView(symbol: "tray.and.arrow.down", message: FeatureStrings.notch(l10n.language).dropHint)
                     .frame(maxHeight: .infinity)
-                    .overlay { RoundedRectangle(cornerRadius: 20, style: .continuous)
-                        .strokeBorder(.white.opacity(0.18), style: StrokeStyle(lineWidth: 0.75, dash: [4, 5])) }
+                    .overlay { AnchorCorners.rectangle(cornerRadius: 20)
+                        .anchorStrokeBorder(.white.opacity(0.18), style: StrokeStyle(lineWidth: 0.75, dash: [4, 5])) }
             } else {
                 ShelfTilesView(items: shelf.visibleItems,
                                contentRevision: shelf.contentRevision,
@@ -131,10 +131,11 @@ struct NotchFilesView: View {
         }
         .padding(12)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(.white.opacity(selected ? 0.14 : 0.04), in: RoundedRectangle(cornerRadius: 20))
+        .background(.white.opacity(selected ? 0.14 : 0.04), in: AnchorCorners.rectangle(cornerRadius: 20))
+        .anchorCornerContainer(radius: 20)
         .overlay {
-            RoundedRectangle(cornerRadius: 20)
-                .strokeBorder(.white.opacity(selected ? 0.7 : 0.2), lineWidth: selected ? 1.5 : 0.75)
+            AnchorCorners.rectangle(cornerRadius: 20)
+                .anchorStrokeBorder(.white.opacity(selected ? 0.7 : 0.2), lineWidth: selected ? 1.5 : 0.75)
         }
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(selected ? .isSelected : [])
@@ -152,7 +153,7 @@ struct NotchFilesView: View {
                 .font(.system(size: 12, weight: .medium))
                 .foregroundStyle(.white.opacity(0.55))
                 .frame(width: 28, height: 28)
-                .contentShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+                .contentShape(AnchorCorners.rectangle(cornerRadius: 9))
         }
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)

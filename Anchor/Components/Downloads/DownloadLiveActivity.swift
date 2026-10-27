@@ -18,6 +18,7 @@
  */
 
 import SwiftUI
+import AnchorUtilities
 import Defaults
 
 struct DownloadLiveActivity: View {
@@ -71,7 +72,7 @@ struct DownloadLiveActivity: View {
                     if isExpanded {
                         HStack {
                             ZStack {
-                                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                AnchorCorners.rectangle(cornerRadius: 6)
                                     .fill(tint.opacity(0.14))
                                 
                                 downloadGlyph

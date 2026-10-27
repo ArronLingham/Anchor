@@ -322,7 +322,7 @@ struct NotchAudioControls: View {
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 4)
                 .frame(height: 24)
-                .contentShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                .contentShape(AnchorCorners.rectangle(cornerRadius: 6))
         }
         .help(deviceName)
         .accessibilityValue(deviceName)
@@ -346,7 +346,7 @@ private struct NotchLevelReadoutMenu<Readout: View>: View {
             }
             .padding(.horizontal, 4)
             .frame(height: 24)
-            .contentShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+            .contentShape(AnchorCorners.rectangle(cornerRadius: 6))
         }
     }
 }
@@ -604,7 +604,7 @@ struct NotchActionTile: View {
             .frame(maxWidth: .infinity)
             .frame(height: NotchLayout.shortcutHeight)
             .animation(reduceMotion ? nil : .smooth(duration: 0.26), value: active)
-            .contentShape(RoundedRectangle(cornerRadius: 14))
+            .contentShape(AnchorCorners.rectangle(cornerRadius: 14))
         }
         .buttonStyle(NotchButtonStyle(cornerRadius: 14))
         .accessibilityLabel(title)

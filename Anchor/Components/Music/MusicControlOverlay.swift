@@ -18,6 +18,7 @@
  */
 
 import SwiftUI
+import AnchorUtilities
 import Defaults
 
 struct MusicControlOverlay: View {
@@ -157,7 +158,7 @@ struct MusicControlOverlay: View {
         .frame(height: notchHeight)
         .frame(minWidth: buttonSide * 3.2)
         .background {
-            RoundedRectangle(cornerRadius: windowCornerRadius, style: .continuous)
+            AnchorCorners.rectangle(cornerRadius: windowCornerRadius)
             .fill(AnchorDesign.surface)
         }
         .compositingGroup()
@@ -203,10 +204,11 @@ private struct FloatingMediaButton: View {
             iconView
                 .frame(width: frameSize.width, height: frameSize.height)
                 .background(
-                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    AnchorCorners.rectangle(cornerRadius: cornerRadius)
                         .fill(isHovering && isEnabled ? AnchorDesign.raised : AnchorDesign.inset)
                 )
-                .contentShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+                .anchorCornerContainer(radius: cornerRadius)
+                .contentShape(AnchorCorners.rectangle(cornerRadius: cornerRadius))
         }
         .buttonStyle(PlainButtonStyle())
         .offset(x: pressOffset)

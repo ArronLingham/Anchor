@@ -18,6 +18,7 @@
  */
 
 import AppKit
+import AnchorUtilities
 import AVFoundation
 import Combine
 import Defaults
@@ -344,7 +345,7 @@ struct Appearance: View {
                         .padding(.vertical, 2)
                         .background(
                             selectedListVisualizer != nil ? selectedListVisualizer == visualizer ? Color.accentColor : Color.clear : Color.clear,
-                            in: RoundedRectangle(cornerRadius: 5)
+                            in: AnchorCorners.rectangle(cornerRadius: 5)
                         )
                         .contentShape(Rectangle())
                         .onTapGesture {
@@ -526,12 +527,13 @@ struct Appearance: View {
                     }
                     .padding(8)
                     .background(
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        AnchorCorners.rectangle(cornerRadius: 14)
                             .fill(Color.secondary.opacity(isIconDropTarget ? 0.18 : 0.1))
                     )
+                    .anchorCornerContainer(radius: 14)
                     .overlay(
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .strokeBorder(Color.accentColor.opacity(isIconDropTarget ? 0.8 : 0), lineWidth: 2)
+                        AnchorCorners.rectangle(cornerRadius: 14)
+                            .anchorStrokeBorder(Color.accentColor.opacity(isIconDropTarget ? 0.8 : 0), lineWidth: 2)
                     )
                     .onDrop(of: [UTType.fileURL], isTargeted: $isIconDropTarget) { providers in
                         handleIconDrop(providers)
@@ -613,12 +615,13 @@ struct Appearance: View {
                 }
                 .frame(width: 64, height: 64)
                 .background(
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    AnchorCorners.rectangle(cornerRadius: 16)
                         .fill(Color.black.opacity(0.08))
                 )
+                .anchorCornerContainer(radius: 16)
                 .overlay(
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .strokeBorder(isSelected ? Color.accentColor : .clear, lineWidth: 2)
+                    AnchorCorners.rectangle(cornerRadius: 16)
+                        .anchorStrokeBorder(isSelected ? Color.accentColor : .clear, lineWidth: 2)
                 )
 
                 Text(title)
@@ -836,9 +839,10 @@ private struct LockScreenGlassVariantPreviewCell: View {
         }
         .frame(maxWidth: .infinity)
         .frame(height: 120)
-        .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+        .clipShape(AnchorCorners.rectangle(cornerRadius: cornerRadius))
+        .anchorCornerContainer(radius: cornerRadius)
         .overlay(
-            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+            AnchorCorners.rectangle(cornerRadius: cornerRadius)
                 .stroke(Color.white.opacity(0.12), lineWidth: 1)
         )
         .padding(.vertical, 6)

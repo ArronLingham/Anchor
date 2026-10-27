@@ -185,7 +185,7 @@ private struct PanelSectionRow: View {
                     .foregroundStyle(shown ? Color.accentColor : Color.secondary)
                     .frame(width: 26, height: 26)
                     .background((shown ? Color.accentColor : Color.secondary).opacity(0.12),
-                                in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+                                in: AnchorCorners.rectangle(cornerRadius: 7))
                 VStack(alignment: .leading, spacing: 1) {
                     Text(title)
                         .font(.callout.weight(.medium))
@@ -210,7 +210,7 @@ private struct PanelSectionRow: View {
         }
         .padding(.vertical, 6)
         .padding(.horizontal, 8)
-        .background(rowFill, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .background(rowFill, in: AnchorCorners.rectangle(cornerRadius: 10))
         .contentShape(Rectangle())
         .opacity(isDragging ? 0.45 : 1)
         .onHover(perform: onHover)
@@ -272,7 +272,7 @@ private struct MenuBarPanelMiniature: View {
         .padding(.horizontal, 12)
         .frame(height: 22)
         .frame(maxWidth: .infinity)
-        .background(Color.black.opacity(0.82), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+        .background(Color.black.opacity(0.82), in: AnchorCorners.rectangle(cornerRadius: 6))
         .accessibilityHidden(true)
     }
 
@@ -311,12 +311,12 @@ private struct MenuBarPanelMiniature: View {
                         .font(.system(size: 9, weight: .semibold))
                         .frame(maxWidth: .infinity)
                         .frame(height: 20)
-                        .contentShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
+                        .contentShape(AnchorCorners.rectangle(cornerRadius: 5))
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(isActive ? Color.accentColor : Color.secondary.opacity(0.86))
                 .background(isActive ? activeFill : Color.clear,
-                            in: RoundedRectangle(cornerRadius: 5, style: .continuous))
+                            in: AnchorCorners.rectangle(cornerRadius: 5))
                 .help(id.title(l10n.s))
                 .accessibilityLabel(id.title(l10n.s))
                 .accessibilityAddTraits(isActive ? .isSelected : [])
@@ -324,10 +324,10 @@ private struct MenuBarPanelMiniature: View {
         }
         .padding(3)
         .background(PanelSurface.cardFill(for: colorScheme),
-                    in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    in: AnchorCorners.rectangle(cornerRadius: 8))
         .overlay {
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .strokeBorder(PanelSurface.border(for: colorScheme), lineWidth: 0.7)
+            AnchorCorners.rectangle(cornerRadius: 8)
+                .anchorStrokeBorder(PanelSurface.border(for: colorScheme), lineWidth: 0.7)
         }
     }
 
@@ -352,10 +352,10 @@ private struct MenuBarPanelMiniature: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(8)
         .background(PanelSurface.cardFill(for: colorScheme),
-                    in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    in: AnchorCorners.rectangle(cornerRadius: 8))
         .overlay {
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .strokeBorder(PanelSurface.border(for: colorScheme), lineWidth: 0.7)
+            AnchorCorners.rectangle(cornerRadius: 8)
+                .anchorStrokeBorder(PanelSurface.border(for: colorScheme), lineWidth: 0.7)
         }
         .accessibilityHidden(true)
     }
@@ -381,10 +381,10 @@ private struct MenuBarPanelMiniature: View {
             .frame(maxWidth: .infinity)
             .frame(height: 18)
             .background(PanelSurface.cardFill(for: colorScheme),
-                        in: RoundedRectangle(cornerRadius: 5, style: .continuous))
+                        in: AnchorCorners.rectangle(cornerRadius: 5))
             .overlay {
-                RoundedRectangle(cornerRadius: 5, style: .continuous)
-                    .strokeBorder(PanelSurface.border(for: colorScheme), lineWidth: 0.7)
+                AnchorCorners.rectangle(cornerRadius: 5)
+                    .anchorStrokeBorder(PanelSurface.border(for: colorScheme), lineWidth: 0.7)
             }
     }
 }

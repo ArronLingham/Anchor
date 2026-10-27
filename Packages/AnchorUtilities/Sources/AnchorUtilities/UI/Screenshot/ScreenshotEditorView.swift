@@ -195,10 +195,11 @@ struct ScreenshotEditorView: View {
                 }
             }
         }
-        .clipShape(RoundedRectangle(cornerRadius: outerRadius, style: .continuous))
+        .clipShape(AnchorCorners.rectangle(cornerRadius: outerRadius))
+        .anchorCornerContainer(radius: outerRadius)
         .overlay(
-            RoundedRectangle(cornerRadius: outerRadius, style: .continuous)
-                .strokeBorder(Color.primary.opacity(0.14), lineWidth: 1)
+            AnchorCorners.rectangle(cornerRadius: outerRadius)
+                .anchorStrokeBorder(Color.primary.opacity(0.14), lineWidth: 1)
         )
         .shadow(color: .black.opacity(0.30), radius: 24, y: 10)
         .shadow(color: .black.opacity(0.18), radius: 3, y: 1)
@@ -456,10 +457,10 @@ struct ScreenshotEditorView: View {
                         .offset(x: crossX - 3.5, y: crossY - 3.5)
                 }
                 .frame(width: size, height: size)
-                .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+                .clipShape(AnchorCorners.rectangle(cornerRadius: 9))
                 .overlay(
-                    RoundedRectangle(cornerRadius: 9, style: .continuous)
-                        .strokeBorder(Color.white.opacity(0.9), lineWidth: 1.5)
+                    AnchorCorners.rectangle(cornerRadius: 9)
+                        .anchorStrokeBorder(Color.white.opacity(0.9), lineWidth: 1.5)
                 )
                 .shadow(color: .black.opacity(0.45), radius: 8, y: 3)
                 .position(cropLoupePosition(for: point, zoom: zoom, canvasSize: canvasSize))
@@ -583,10 +584,10 @@ struct ScreenshotEditorView: View {
                 .padding(.horizontal, 6)
                 .padding(.vertical, 3)
                 .background(.black.opacity(0.35),
-                            in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                            in: AnchorCorners.rectangle(cornerRadius: 6))
                 .overlay(
-                    RoundedRectangle(cornerRadius: 6, style: .continuous)
-                        .strokeBorder(Color.accentColor.opacity(0.7), lineWidth: 1)
+                    AnchorCorners.rectangle(cornerRadius: 6)
+                        .anchorStrokeBorder(Color.accentColor.opacity(0.7), lineWidth: 1)
                 )
                 .offset(x: (annotation.rect.minX + pad) * zoom - 6,
                         y: (annotation.rect.minY + pad) * zoom - 3)
@@ -630,12 +631,12 @@ struct ScreenshotEditorView: View {
                     .font(.system(size: 13, weight: .medium))
                     .frame(width: 33, height: 29)
                     .background(
-                        RoundedRectangle(cornerRadius: 9, style: .continuous)
+                        AnchorCorners.rectangle(cornerRadius: 9)
                             .fill(toolOptionsShown
                                     ? Color.accentColor.opacity(0.22) : .clear)
                     )
                     .foregroundStyle(toolOptionsShown ? Color.accentColor : Color.secondary)
-                    .contentShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+                    .contentShape(AnchorCorners.rectangle(cornerRadius: 9))
             }
             .buttonStyle(.borderless)
             .screenshotSafeHelp(strings.toolShortcutsTitle)
@@ -648,10 +649,11 @@ struct ScreenshotEditorView: View {
             }
         }
         .padding(5)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 15, style: .continuous))
+        .background(.regularMaterial, in: AnchorCorners.rectangle(cornerRadius: 15))
+        .anchorCornerContainer(radius: 15)
         .overlay(
-            RoundedRectangle(cornerRadius: 15, style: .continuous)
-                .strokeBorder(Color.primary.opacity(0.08), lineWidth: 1)
+            AnchorCorners.rectangle(cornerRadius: 15)
+                .anchorStrokeBorder(Color.primary.opacity(0.08), lineWidth: 1)
         )
         .shadow(color: .black.opacity(0.18), radius: 16, y: 5)
     }
@@ -681,13 +683,13 @@ struct ScreenshotEditorView: View {
                 }
             }
             .background(
-                RoundedRectangle(cornerRadius: 9, style: .continuous)
+                AnchorCorners.rectangle(cornerRadius: 9)
                     .fill(isActive
                             ? Color.accentColor.opacity(0.22)
                             : isHovered ? Color.primary.opacity(0.08) : .clear)
             )
             .foregroundStyle(isActive ? Color.accentColor : Color.primary.opacity(0.85))
-            .contentShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+            .contentShape(AnchorCorners.rectangle(cornerRadius: 9))
             .scaleEffect(isHovered && !isActive ? 1.06 : 1)
         }
         .buttonStyle(.borderless)
@@ -843,10 +845,10 @@ struct ScreenshotEditorView: View {
         }
         .padding(.horizontal, 9)
         .padding(.vertical, 6)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .background(.regularMaterial, in: AnchorCorners.rectangle(cornerRadius: 12))
         .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .strokeBorder(Color.primary.opacity(0.08), lineWidth: 1)
+            AnchorCorners.rectangle(cornerRadius: 12)
+                .anchorStrokeBorder(Color.primary.opacity(0.08), lineWidth: 1)
         )
         .shadow(color: .black.opacity(0.16), radius: 14, y: 4)
     }
@@ -1181,7 +1183,7 @@ struct ScreenshotEditorView: View {
                 .frame(width: 15, height: height)
                 .frame(width: 25, height: 24)
                 .background(
-                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    AnchorCorners.rectangle(cornerRadius: 6)
                         .fill(selected ? Color.accentColor.opacity(0.18) : .clear)
                 )
         }
@@ -1264,11 +1266,11 @@ struct ScreenshotEditorView: View {
             .padding(.horizontal, 7)
             .frame(height: 24)
             .background(
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                AnchorCorners.rectangle(cornerRadius: 6)
                     .fill(model.blurTextOnly ? Color.accentColor.opacity(0.20) : .clear)
             )
             .foregroundStyle(model.blurTextOnly ? Color.accentColor : Color.primary.opacity(0.65))
-            .contentShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+            .contentShape(AnchorCorners.rectangle(cornerRadius: 6))
         }
         .buttonStyle(.borderless)
         .fixedSize()
@@ -1331,13 +1333,13 @@ struct ScreenshotEditorView: View {
                 .font(.system(size: 12.5, weight: .medium))
                 .frame(width: 25, height: 24)
                 .background(
-                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    AnchorCorners.rectangle(cornerRadius: 6)
                         .fill(model.annotationShadowsEnabled
                                 ? Color.accentColor.opacity(0.20) : .clear)
                 )
                 .foregroundStyle(model.annotationShadowsEnabled
                                     ? Color.accentColor : Color.primary.opacity(0.65))
-                .contentShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                .contentShape(AnchorCorners.rectangle(cornerRadius: 6))
         }
         .buttonStyle(.borderless)
         .screenshotSafeHelp(strings.shadowLabel)
@@ -1361,12 +1363,12 @@ struct ScreenshotEditorView: View {
                         .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(Color.primary.opacity(0.85))
                 case .preset, .solid, .gradient:
-                    RoundedRectangle(cornerRadius: 4.5, style: .continuous)
+                    AnchorCorners.rectangle(cornerRadius: 4.5)
                         .fill(fillPreview(for: model.backdropStyle))
                         .frame(width: 21, height: 14)
                         .overlay(
-                            RoundedRectangle(cornerRadius: 4.5, style: .continuous)
-                                .strokeBorder(.white.opacity(0.7), lineWidth: 1)
+                            AnchorCorners.rectangle(cornerRadius: 4.5)
+                                .anchorStrokeBorder(.white.opacity(0.7), lineWidth: 1)
                         )
                 }
             }
@@ -1377,10 +1379,10 @@ struct ScreenshotEditorView: View {
         .padding(.horizontal, 7)
         .frame(height: 24)
         .background(
-            RoundedRectangle(cornerRadius: 7, style: .continuous)
+            AnchorCorners.rectangle(cornerRadius: 7)
                 .fill(backdropButtonHovered ? Color.primary.opacity(0.10) : .clear)
         )
-        .contentShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+        .contentShape(AnchorCorners.rectangle(cornerRadius: 7))
         .onHover { inside in backdropButtonHovered = inside }
         .onTapGesture { backdropPopoverShown.toggle() }
         .screenshotSafeHelp(strings.backdropLabel)
@@ -1409,10 +1411,10 @@ struct ScreenshotEditorView: View {
         .padding(.horizontal, 7)
         .frame(height: 24)
         .background(
-            RoundedRectangle(cornerRadius: 7, style: .continuous)
+            AnchorCorners.rectangle(cornerRadius: 7)
                 .fill(watermarkButtonHovered ? Color.primary.opacity(0.10) : .clear)
         )
-        .contentShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+        .contentShape(AnchorCorners.rectangle(cornerRadius: 7))
         .onHover { inside in watermarkButtonHovered = inside }
         .onTapGesture { watermarkPopoverShown.toggle() }
         .screenshotSafeHelp(strings.watermarkLabel)
@@ -1471,7 +1473,7 @@ struct ScreenshotEditorView: View {
             }
         }
         .padding(4)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+        .background(.regularMaterial, in: AnchorCorners.rectangle(cornerRadius: 9))
         .shadow(color: .black.opacity(0.12), radius: 8, y: 2)
         .screenshotSafeHelp("⌃ scroll · ⌘+ ⌘-")
     }
@@ -1484,9 +1486,9 @@ struct ScreenshotEditorView: View {
             label()
                 .frame(width: 30, height: 20)
                 .background(active ? Color.accentColor : .clear,
-                            in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                            in: AnchorCorners.rectangle(cornerRadius: 6))
                 .foregroundStyle(active ? Color.white : Color.primary.opacity(0.85))
-                .contentShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                .contentShape(AnchorCorners.rectangle(cornerRadius: 6))
         }
         .buttonStyle(.borderless)
         .screenshotSafeHelp(help)
@@ -1570,10 +1572,10 @@ private struct ScreenshotEditorSharedLinkView: View {
             .padding(14)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(Color.primary.opacity(0.055),
-                        in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        in: AnchorCorners.rectangle(cornerRadius: 10))
             .overlay {
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .strokeBorder(Color.primary.opacity(0.10), lineWidth: 1)
+                AnchorCorners.rectangle(cornerRadius: 10)
+                    .anchorStrokeBorder(Color.primary.opacity(0.10), lineWidth: 1)
             }
 
             HStack {

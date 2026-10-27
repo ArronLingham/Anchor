@@ -172,10 +172,11 @@ struct BrightnessOSDView: View {
         }
         .frame(width: 196, height: 154)
         .background(.regularMaterial,
-                    in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+                    in: AnchorCorners.rectangle(cornerRadius: 24))
+                    .anchorCornerContainer(radius: 24)
         .overlay(
-            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .strokeBorder(.white.opacity(0.08), lineWidth: 0.5)
+            AnchorCorners.rectangle(cornerRadius: 24)
+                .anchorStrokeBorder(.white.opacity(0.08), lineWidth: 0.5)
         )
         .environment(\.colorScheme, .dark)
         .accessibilityElement(children: .ignore)

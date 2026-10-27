@@ -137,12 +137,12 @@ struct SuperKeySettings: View {
         }
         .frame(minWidth: wide ? 84 : 30, minHeight: 30)
         .background(
-            RoundedRectangle(cornerRadius: 7, style: .continuous)
+            AnchorCorners.rectangle(cornerRadius: 7)
                 .fill(Color.primary.opacity(0.06))
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 7, style: .continuous)
-                .strokeBorder(Color.primary.opacity(0.12))
+            AnchorCorners.rectangle(cornerRadius: 7)
+                .anchorStrokeBorder(Color.primary.opacity(0.12))
         )
     }
 
@@ -156,14 +156,14 @@ struct SuperKeySettings: View {
                 .frame(minWidth: 30, minHeight: 30)
                 .foregroundStyle(selected ? Color.accentColor : Color.secondary)
                 .background(
-                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    AnchorCorners.rectangle(cornerRadius: 7)
                         .fill(selected
                             ? Color.accentColor.opacity(0.14)
                             : Color.primary.opacity(0.04))
                 )
                 .overlay(
-                    RoundedRectangle(cornerRadius: 7, style: .continuous)
-                        .strokeBorder(selected
+                    AnchorCorners.rectangle(cornerRadius: 7)
+                        .anchorStrokeBorder(selected
                             ? Color.accentColor.opacity(0.45)
                             : Color.primary.opacity(0.1))
                 )

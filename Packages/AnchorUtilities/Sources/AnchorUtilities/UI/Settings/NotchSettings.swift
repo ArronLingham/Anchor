@@ -369,7 +369,8 @@ struct NotchSettings: View {
             }
         }
         .padding(10)
-        .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .background(.quaternary.opacity(0.35), in: AnchorCorners.rectangle(cornerRadius: 16))
+        .anchorCornerContainer(radius: 16)
     }
 
     private func isShown(_ module: NotchModule) -> Bool {
@@ -747,8 +748,8 @@ struct NotchSettings: View {
                 Text(title).font(.system(size: 11, weight: .medium)).lineLimit(2).multilineTextAlignment(.center)
             }.frame(maxWidth: .infinity, minHeight: 68).padding(8)
                 .foregroundStyle(selected ? Color.accentColor : .primary)
-                .background(selected ? Color.accentColor.opacity(0.12) : Color.secondary.opacity(0.06), in: RoundedRectangle(cornerRadius: 12))
-                .overlay { RoundedRectangle(cornerRadius: 12).strokeBorder(selected ? Color.accentColor.opacity(0.7) : .clear, lineWidth: 1) }
+                .background(selected ? Color.accentColor.opacity(0.12) : Color.secondary.opacity(0.06), in: AnchorCorners.rectangle(cornerRadius: 12))
+                .overlay { AnchorCorners.rectangle(cornerRadius: 12).anchorStrokeBorder(selected ? Color.accentColor.opacity(0.7) : .clear, lineWidth: 1) }
         }.buttonStyle(.plain).accessibilityAddTraits(selected ? .isSelected : [])
     }
 
@@ -761,8 +762,8 @@ struct NotchSettings: View {
                 Text(title).font(.system(size: 11, weight: .medium)).lineLimit(2).multilineTextAlignment(.center)
             }.frame(maxWidth: .infinity, minHeight: 68).padding(8)
                 .foregroundStyle(selected ? Color.accentColor : .primary)
-                .background(selected ? Color.accentColor.opacity(0.12) : Color.secondary.opacity(0.06), in: RoundedRectangle(cornerRadius: 12))
-                .overlay { RoundedRectangle(cornerRadius: 12).strokeBorder(selected ? Color.accentColor.opacity(0.7) : .clear, lineWidth: 1) }
+                .background(selected ? Color.accentColor.opacity(0.12) : Color.secondary.opacity(0.06), in: AnchorCorners.rectangle(cornerRadius: 12))
+                .overlay { AnchorCorners.rectangle(cornerRadius: 12).anchorStrokeBorder(selected ? Color.accentColor.opacity(0.7) : .clear, lineWidth: 1) }
         }.buttonStyle(.plain).accessibilityAddTraits(selected ? .isSelected : [])
     }
 
@@ -900,7 +901,7 @@ struct NotchSettings: View {
                     }.foregroundStyle(.white).padding(10).background(.black, in: Capsule())
                     Text(title).font(.system(size: 11, weight: .medium))
                 }.frame(maxWidth: .infinity).padding(.vertical, 14)
-                    .background(marked ? Color.accentColor.opacity(0.12) : Color.secondary.opacity(0.05), in: RoundedRectangle(cornerRadius: 12))
+                    .background(marked ? Color.accentColor.opacity(0.12) : Color.secondary.opacity(0.05), in: AnchorCorners.rectangle(cornerRadius: 12))
             }.buttonStyle(.plain).accessibilityAddTraits(restingChoice == item ? .isSelected : [])
                 // VoiceOver selects what the island rests with. A saved choice
                 // that waits says it is hidden from the island, and the link
@@ -1029,7 +1030,8 @@ private struct NotchSilhouetteSample: View {
         }
         .frame(width: 400, height: 48, alignment: .top)
         .background(.primary.opacity(0.04))
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .clipShape(AnchorCorners.rectangle(cornerRadius: 14))
+        .anchorCornerContainer(radius: 14)
         .scaleEffect(0.5)
         .frame(width: 200, height: 24)
         .accessibilityHidden(true)

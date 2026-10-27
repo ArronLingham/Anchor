@@ -171,10 +171,10 @@ struct ScreenshotWatermarkPopover: View {
             .frame(height: 38)
             // A neutral plate keeps both black and white marks legible.
             .background(Color(white: 0.5).opacity(0.35))
-            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .clipShape(AnchorCorners.rectangle(cornerRadius: 8))
             .overlay(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .strokeBorder(selected ? Color.accentColor : Color.primary.opacity(0.12),
+                AnchorCorners.rectangle(cornerRadius: 8)
+                    .anchorStrokeBorder(selected ? Color.accentColor : Color.primary.opacity(0.12),
                                   lineWidth: selected ? 2.5 : 1)
             )
         }
@@ -203,10 +203,10 @@ struct ScreenshotWatermarkPopover: View {
                     .foregroundStyle(.secondary)
             }
             .frame(height: 38)
-            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .clipShape(AnchorCorners.rectangle(cornerRadius: 8))
             .overlay(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .strokeBorder(Color.primary.opacity(0.12),
+                AnchorCorners.rectangle(cornerRadius: 8)
+                    .anchorStrokeBorder(Color.primary.opacity(0.12),
                                   style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
             )
         }

@@ -25,7 +25,8 @@ struct SnippetLibraryView: View {
         }
         .frame(width: 460)
         .background(HUDBackdrop(cornerRadius: 22, contrast: .high))
-        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .clipShape(AnchorCorners.rectangle(cornerRadius: 22))
+        .anchorCornerContainer(radius: 22)
         .onChange(of: library.presentationID) { _, _ in
             searchFocused = true
         }
@@ -168,9 +169,9 @@ struct SnippetLibraryView: View {
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
-            .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .contentShape(AnchorCorners.rectangle(cornerRadius: 8))
             .background(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                AnchorCorners.rectangle(cornerRadius: 8)
                     .fill(selected ? Color.accentColor.opacity(0.18) : .clear)
             )
         }

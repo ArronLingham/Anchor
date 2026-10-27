@@ -18,6 +18,7 @@
  */
 
 import SwiftUI
+import AnchorUtilities
 import Defaults
 
 struct UserProfile: Identifiable, Hashable {
@@ -176,15 +177,16 @@ struct ProfileCard: View {
             .padding(16)
             .frame(height: 160)
             .background(
-                RoundedRectangle(cornerRadius: 16)
+                AnchorCorners.rectangle(cornerRadius: 16)
                     .fill(isSelected ? 
                           LinearGradient(colors: profile.gradient.map { $0.opacity(0.15) }, startPoint: .topLeading, endPoint: .bottomTrailing) :
                           LinearGradient(colors: [Color.gray.opacity(0.1)], startPoint: .topLeading, endPoint: .bottomTrailing)
                     )
             )
+            .anchorCornerContainer(radius: 16)
             .overlay(
-                RoundedRectangle(cornerRadius: 16)
-                    .strokeBorder(
+                AnchorCorners.rectangle(cornerRadius: 16)
+                    .anchorStrokeBorder(
                         isSelected ? 
                         LinearGradient(colors: profile.gradient, startPoint: .topLeading, endPoint: .bottomTrailing) :
                         LinearGradient(colors: [Color.clear], startPoint: .topLeading, endPoint: .bottomTrailing),

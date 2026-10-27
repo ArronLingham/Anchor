@@ -20,7 +20,7 @@ struct NotchButtonStyle: ButtonStyle {
         let active = enabled && hovered
         configuration.label
             .overlay {
-                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                AnchorCorners.rectangle(cornerRadius: cornerRadius)
                     .fill(.white.opacity(active && highlights ? 0.09 : 0))
                     .allowsHitTesting(false)
             }
@@ -157,8 +157,8 @@ struct NotchIconButton: View {
                 .animation(reduceMotion ? nil : .smooth(duration: 0.24), value: symbol)
                 .frame(width: 28, height: 28)
                 .background(.white.opacity(selected ? 0.12 : 0),
-                            in: RoundedRectangle(cornerRadius: 9, style: .continuous))
-                .contentShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+                            in: AnchorCorners.rectangle(cornerRadius: 9))
+                .contentShape(AnchorCorners.rectangle(cornerRadius: 9))
         }
         .buttonStyle(NotchButtonStyle(cornerRadius: 9))
         .help(title)
@@ -198,7 +198,8 @@ struct NotchEmptyView<Actions: View>: View {
             .font(.system(size: 26, weight: .light))
             .foregroundStyle(.white.opacity(0.65))
             .frame(width: 56, height: 56)
-            .background(.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .background(.white.opacity(0.05), in: AnchorCorners.rectangle(cornerRadius: 18))
+            .anchorCornerContainer(radius: 18)
             .accessibilityHidden(true)
     }
 
@@ -579,13 +580,13 @@ struct NotchControlSurface: ViewModifier {
     @Environment(\.notchGlassSurface) private var glassSurface
 
     func body(content: Content) -> some View {
-        let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+        let shape = AnchorCorners.rectangle(cornerRadius: cornerRadius)
         Group {
             if glassSurface {
                 content
                     .background(.white.opacity(selected ? 0.11 : 0.045), in: shape)
                     .overlay {
-                        shape.strokeBorder(.white.opacity(selected ? 0.16 : 0.065), lineWidth: 0.5)
+                        shape.anchorStrokeBorder(.white.opacity(selected ? 0.16 : 0.065), lineWidth: 0.5)
                             .allowsHitTesting(false)
                     }
             } else {
@@ -602,9 +603,10 @@ struct NotchControlSurface: ViewModifier {
             }
         }
         .overlay {
-            shape.strokeBorder(.white.opacity(contrast == .increased ? 0.5 : 0), lineWidth: 0.75)
+            shape.anchorStrokeBorder(.white.opacity(contrast == .increased ? 0.5 : 0), lineWidth: 0.75)
                 .allowsHitTesting(false)
         }
+        .anchorCornerContainer(radius: cornerRadius)
     }
 }
 
@@ -660,7 +662,7 @@ struct NotchDeviceMenu: View {
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: width, alignment: frameAlignment)
                 .padding(.horizontal, 4)
-                .contentShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                .contentShape(AnchorCorners.rectangle(cornerRadius: 6))
         }
         .help(current)
         .accessibilityValue(current)

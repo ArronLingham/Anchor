@@ -74,13 +74,14 @@ struct SwitcherView: View {
         }
         .padding(SwitcherGrid.padding)
         .background(HUDBackdrop(cornerRadius: 24))
-        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .clipShape(AnchorCorners.rectangle(cornerRadius: 24))
+        .anchorCornerContainer(radius: 24)
         .overlay(alignment: .topTrailing) {
             searchChip
         }
         .overlay(
-            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .strokeBorder(minimalPreviews ? Color.clear : SwitcherIconStyle.stroke, lineWidth: 1)
+            AnchorCorners.rectangle(cornerRadius: 24)
+                .anchorStrokeBorder(minimalPreviews ? Color.clear : SwitcherIconStyle.stroke, lineWidth: 1)
         )
     }
 
@@ -352,12 +353,13 @@ struct SwitcherView: View {
                 .frame(width: switcher.iconRowLayout.previewSurfaceWidth,
                        height: SwitcherIconRowLayout.previewHeight)
                 .background(
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    AnchorCorners.rectangle(cornerRadius: 18)
                         .fill(SwitcherIconStyle.surfaceRaised)
                 )
+                .anchorCornerContainer(radius: 18)
                 .overlay(
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .strokeBorder(minimalPreviews ? Color.clear : SwitcherIconStyle.stroke, lineWidth: 1)
+                    AnchorCorners.rectangle(cornerRadius: 18)
+                        .anchorStrokeBorder(minimalPreviews ? Color.clear : SwitcherIconStyle.stroke, lineWidth: 1)
                 )
                 .shadow(color: Color.black.opacity(0.24), radius: 10, x: 0, y: 5)
                 .offset(x: placement.leading)
@@ -445,12 +447,13 @@ struct SwitcherView: View {
                    height: SwitcherIconRowLayout.simpleTitleHeight,
                    alignment: .leading)
             .background(
-                RoundedRectangle(cornerRadius: 15, style: .continuous)
+                AnchorCorners.rectangle(cornerRadius: 15)
                     .fill(SwitcherIconStyle.surfaceRaised)
             )
+            .anchorCornerContainer(radius: 15)
             .overlay(
-                RoundedRectangle(cornerRadius: 15, style: .continuous)
-                    .strokeBorder(SwitcherIconStyle.stroke, lineWidth: 1)
+                AnchorCorners.rectangle(cornerRadius: 15)
+                    .anchorStrokeBorder(SwitcherIconStyle.stroke, lineWidth: 1)
             )
             .shadow(color: Color.black.opacity(0.18), radius: 8, x: 0, y: 4)
         }
@@ -460,12 +463,13 @@ struct SwitcherView: View {
         iconRow
             .padding(.horizontal, SwitcherIconRowLayout.rowHorizontalPadding)
             .background(
-                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                AnchorCorners.rectangle(cornerRadius: 22)
                     .fill(SwitcherIconStyle.surface)
             )
+            .anchorCornerContainer(radius: 22)
             .overlay(
-                RoundedRectangle(cornerRadius: 22, style: .continuous)
-                    .strokeBorder(SwitcherIconStyle.stroke, lineWidth: 1)
+                AnchorCorners.rectangle(cornerRadius: 22)
+                    .anchorStrokeBorder(SwitcherIconStyle.stroke, lineWidth: 1)
             )
             .shadow(color: Color.black.opacity(0.22), radius: 10, x: 0, y: 5)
             .frame(width: switcher.iconRowLayout.appRowSurfaceWidth,
@@ -731,7 +735,7 @@ private struct SwitcherIconTile: View {
                         .font(.system(size: 9, weight: .bold))
                         .foregroundStyle(Color.white)
                         .frame(width: 18, height: 16)
-                        .background(RoundedRectangle(cornerRadius: 5).fill(Color.accentColor))
+                        .background(AnchorCorners.rectangle(cornerRadius: 5).fill(Color.accentColor))
                         .offset(x: 1, y: -1)
                 } else if window.isMinimized || window.isFullscreen {
                     Circle()
@@ -754,14 +758,15 @@ private struct SwitcherIconTile: View {
         .padding(.horizontal, 6)
         .padding(.vertical, SwitcherIconRowLayout.iconTileVerticalPadding)
         .background(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
+            AnchorCorners.rectangle(cornerRadius: 16)
                 .fill(isSelected ? SwitcherIconStyle.tileSelected : Color.clear)
         )
+        .anchorCornerContainer(radius: 16)
         .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .strokeBorder(isSelected ? Color.accentColor.opacity(0.92) : Color.clear, lineWidth: 1.5)
+            AnchorCorners.rectangle(cornerRadius: 16)
+                .anchorStrokeBorder(isSelected ? Color.accentColor.opacity(0.92) : Color.clear, lineWidth: 1.5)
         )
-        .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .contentShape(AnchorCorners.rectangle(cornerRadius: 16))
         .onTapGesture(perform: onCommit)
         .scaleEffect(isSelected ? 1 : 0.96)
         .animation(animatesSelection ? .spring(response: 0.24, dampingFraction: 0.82) : nil,
@@ -795,14 +800,14 @@ private struct SwitcherWindowPreviewTile: View {
     var body: some View {
         VStack(spacing: 6) {
             ZStack {
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                AnchorCorners.rectangle(cornerRadius: 10)
                     .fill(minimalPreviews ? Color.clear : SwitcherIconStyle.thumbnailBackground)
 
                 if let preview {
                     Image(decorative: preview, scale: 2)
                         .resizable()
                         .aspectRatio(contentMode: .fit)
-                        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                        .clipShape(AnchorCorners.rectangle(cornerRadius: 8))
                         .padding(5)
                 } else if window.isAppEntry, let icon = window.appIcon {
                     Image(nsImage: icon)
@@ -858,15 +863,16 @@ private struct SwitcherWindowPreviewTile: View {
         .frame(width: SwitcherIconRowLayout.previewCardWidth,
                height: SwitcherIconRowLayout.previewCardHeight)
         .background(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
+            AnchorCorners.rectangle(cornerRadius: 14)
                 .fill(isSelected ? SwitcherIconStyle.tileSelected : (minimalPreviews ? Color.clear : SwitcherIconStyle.tile))
         )
+        .anchorCornerContainer(radius: 14)
         .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .strokeBorder(isSelected ? Color.accentColor.opacity(0.9) : (minimalPreviews ? Color.clear : SwitcherIconStyle.stroke),
+            AnchorCorners.rectangle(cornerRadius: 14)
+                .anchorStrokeBorder(isSelected ? Color.accentColor.opacity(0.9) : (minimalPreviews ? Color.clear : SwitcherIconStyle.stroke),
                               lineWidth: isSelected ? 1.25 : 1)
         )
-        .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .contentShape(AnchorCorners.rectangle(cornerRadius: 14))
         .onTapGesture {
             guard !suppressNextCommit else { return }
             onCommit()
@@ -921,7 +927,7 @@ private struct SwitcherWindowPreviewTile: View {
             .foregroundStyle(Color.white.opacity(0.9))
             .frame(width: 20, height: 18)
             .background(
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                AnchorCorners.rectangle(cornerRadius: 6)
                     .fill(Color.black.opacity(0.46))
             )
             .accessibilityHidden(true)
@@ -967,14 +973,14 @@ private struct WindowCard: View {
     var body: some View {
         VStack(spacing: SwitcherGridCard.titleSpacing) {
             ZStack {
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                AnchorCorners.rectangle(cornerRadius: 10)
                     .fill(minimalPreviews ? Color.clear : Color.white.opacity(0.06))
 
                 if let preview {
                     Image(decorative: preview, scale: 2)
                         .resizable()
                         .aspectRatio(contentMode: .fit)
-                        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                        .clipShape(AnchorCorners.rectangle(cornerRadius: 8))
                         .padding(5)
                 } else if window.isAppEntry {
                     appEntryMark
@@ -1049,14 +1055,15 @@ private struct WindowCard: View {
         .padding(SwitcherGridCard.padding)
         .frame(width: SwitcherGridCard.width, height: SwitcherGridCard.height)
         .background(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
+            AnchorCorners.rectangle(cornerRadius: 14)
                 .fill(isSelected ? Color.white.opacity(0.14) : Color.clear)
         )
+        .anchorCornerContainer(radius: 14)
         .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .strokeBorder(isSelected ? Color.accentColor : Color.clear, lineWidth: 2)
+            AnchorCorners.rectangle(cornerRadius: 14)
+                .anchorStrokeBorder(isSelected ? Color.accentColor : Color.clear, lineWidth: 2)
         )
-        .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .contentShape(AnchorCorners.rectangle(cornerRadius: 14))
         .onTapGesture {
             guard !suppressNextCommit else { return }
             onCommit()
@@ -1108,7 +1115,7 @@ private struct WindowCard: View {
             .foregroundStyle(Color.white.opacity(0.9))
             .frame(width: 22, height: 20)
             .background(
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                AnchorCorners.rectangle(cornerRadius: 6)
                     .fill(Color.black.opacity(0.46))
             )
             .accessibilityHidden(true)

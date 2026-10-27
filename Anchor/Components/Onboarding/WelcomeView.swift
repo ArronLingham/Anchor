@@ -33,6 +33,7 @@ struct WelcomeView: View {
                 Image(systemName: "mountain.2.fill")
                     .font(.system(size: 46, weight: .medium)).foregroundStyle(AnchorDesign.accent)
                     .frame(width: 112, height: 112).background(AnchorSurface(depth: .raised, radius: 32))
+                    .anchorCornerContainer(radius: 32)
                 VStack(spacing: 10) {
                     Text("Welcome to Anchor").font(.system(size: 32, weight: .semibold, design: .rounded))
                     Text("A calmer space for your Mac.").font(.system(size: 15)).foregroundStyle(AnchorDesign.muted)
@@ -43,6 +44,7 @@ struct WelcomeView: View {
                     Label("A little room to focus", systemImage: "scope")
                 }.font(.system(size: 13, weight: .medium)).padding(26).frame(maxWidth: .infinity, alignment: .leading)
                     .background(AnchorSurface())
+                    .anchorCornerContainer(radius: AnchorDesign.radius)
                 Button { onGetStarted?() } label: {
                     HStack { Text("Get started"); Spacer(); Image(systemName: "arrow.right") }.padding(.vertical, 3)
                 }.buttonStyle(AnchorButtonStyle(prominent: true)).keyboardShortcut(.defaultAction)

@@ -77,13 +77,14 @@ struct UninstallerView: View {
                     }
                 }.frame(width: 360)
             }
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .strokeBorder(style: StrokeStyle(lineWidth: 2, dash: [9, 7]))
+            AnchorCorners.rectangle(cornerRadius: 18)
+                .anchorStrokeBorder(style: StrokeStyle(lineWidth: 2, dash: [9, 7]))
                 .foregroundStyle(dropTargeted ? Color.accentColor : Color.secondary.opacity(0.35))
                 .background(
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    AnchorCorners.rectangle(cornerRadius: 18)
                         .fill(dropTargeted ? Color.accentColor.opacity(0.06) : Color.clear)
                 )
+                .anchorCornerContainer(radius: 18)
                 .frame(width: 360, height: 200)
                 .overlay(
                     VStack(spacing: 12) {

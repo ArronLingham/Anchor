@@ -203,12 +203,12 @@ struct EnergySettings: View {
                 .frame(maxWidth: .infinity)
                 .frame(height: 28)
                 .background(selected ? Color.accentColor.opacity(0.12) : Color.secondary.opacity(0.06),
-                            in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                            in: AnchorCorners.rectangle(cornerRadius: 8))
                 .overlay {
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .strokeBorder(selected ? Color.accentColor.opacity(0.7) : .clear, lineWidth: 1)
+                    AnchorCorners.rectangle(cornerRadius: 8)
+                        .anchorStrokeBorder(selected ? Color.accentColor.opacity(0.7) : .clear, lineWidth: 1)
                 }
-                .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .contentShape(AnchorCorners.rectangle(cornerRadius: 8))
         }
         .buttonStyle(.plain)
         .accessibilityAddTraits(selected ? .isSelected : [])
@@ -391,7 +391,7 @@ struct EnergySettings: View {
                 .foregroundStyle(display.isActive ? Color.accentColor : Color.secondary)
                 .frame(width: 26, height: 26)
                 .background((display.isActive ? Color.accentColor : Color.secondary).opacity(0.12),
-                            in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+                            in: AnchorCorners.rectangle(cornerRadius: 7))
             Text(display.name)
                 .lineLimit(1)
                 .truncationMode(.middle)

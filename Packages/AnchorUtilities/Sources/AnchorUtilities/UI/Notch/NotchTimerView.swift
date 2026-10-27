@@ -121,7 +121,7 @@ struct NotchTimerView: View {
                                     .matchedGeometryEffect(id: "selection", in: modeSelection)
                             }
                         }
-                        .contentShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                        .contentShape(AnchorCorners.rectangle(cornerRadius: 6))
                 }
                 .buttonStyle(NotchButtonStyle(cornerRadius: 6, lifts: false))
                 .accessibilityAddTraits(selected ? .isSelected : [])
@@ -237,7 +237,7 @@ struct NotchTimerView: View {
             }
             .padding(.horizontal, 4)
             .frame(height: NotchLayout.timerSettingsRowHeight)
-            .contentShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+            .contentShape(AnchorCorners.rectangle(cornerRadius: 6))
         }
         .help(title)
         .accessibilityValue(display(option, current))

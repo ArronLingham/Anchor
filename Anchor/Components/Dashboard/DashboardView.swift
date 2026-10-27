@@ -150,7 +150,7 @@ private struct DashboardNotice: View {
                 Text(message).font(.callout)
                 Spacer()
                 Button { hardware.message = nil } label: { Image(systemName: "xmark") }.buttonStyle(.plain)
-            }.padding(12).background(Color.accentColor.opacity(0.1), in: RoundedRectangle(cornerRadius: 10))
+            }.padding(12).background(Color.accentColor.opacity(0.1), in: AnchorCorners.rectangle(cornerRadius: 10))
         }
     }
 }
@@ -247,7 +247,8 @@ private struct DashboardMediaCard: View {
             HStack(spacing: expanded ? 24 : 14) {
                 Image(nsImage: music.albumArt).resizable().scaledToFill()
                     .frame(width: expanded ? 144 : 64, height: expanded ? 144 : 64)
-                    .clipShape(RoundedRectangle(cornerRadius: expanded ? 16 : 10))
+                    .clipShape(AnchorCorners.rectangle(cornerRadius: expanded ? 16 : 10))
+                    .anchorCornerContainer(radius: expanded ? 16 : 10)
                 VStack(alignment: .leading, spacing: 4) {
                     Text(music.songTitle.isEmpty ? "Nothing playing" : music.songTitle)
                         .font(.system(size: expanded ? 26 : 16, weight: .semibold, design: .rounded)).lineLimit(2)

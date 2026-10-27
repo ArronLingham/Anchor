@@ -18,6 +18,7 @@
  */
 
 import SwiftUI
+import AnchorUtilities
 import Defaults
 
 struct RecordingLiveActivity: View {
@@ -35,7 +36,7 @@ struct RecordingLiveActivity: View {
                     if isExpanded {
                         HStack {
                             ZStack {
-                                RoundedRectangle(cornerRadius: 6)
+                                AnchorCorners.rectangle(cornerRadius: 6)
                                     .fill(Color.red.opacity(0.15))
                                 
                                 Circle()

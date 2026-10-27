@@ -160,10 +160,10 @@ private struct QRResultView: View {
             .frame(maxHeight: 132)
             .fixedSize(horizontal: false, vertical: true)
             .background(Color.primary.opacity(0.05),
-                        in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                        in: AnchorCorners.rectangle(cornerRadius: 8))
             .overlay(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .strokeBorder(Color.primary.opacity(0.1), lineWidth: 1)
+                AnchorCorners.rectangle(cornerRadius: 8)
+                    .anchorStrokeBorder(Color.primary.opacity(0.1), lineWidth: 1)
             )
 
             HStack(spacing: 8) {
@@ -184,10 +184,11 @@ private struct QRResultView: View {
         .padding(16)
         .frame(width: 320)
         .background(.regularMaterial,
-                    in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    in: AnchorCorners.rectangle(cornerRadius: 16))
+                    .anchorCornerContainer(radius: 16)
         .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .strokeBorder(Color.primary.opacity(0.1), lineWidth: 1)
+            AnchorCorners.rectangle(cornerRadius: 16)
+                .anchorStrokeBorder(Color.primary.opacity(0.1), lineWidth: 1)
         )
     }
 }

@@ -365,8 +365,8 @@ private struct SnippetEditor: View {
                                     onCreate: { replacementEditor.view = $0 })
                         .frame(minHeight: 76)
                         .overlay(
-                            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                .strokeBorder(Color.primary.opacity(0.12))
+                            AnchorCorners.rectangle(cornerRadius: 6)
+                                .anchorStrokeBorder(Color.primary.opacity(0.12))
                         )
                     Text(text.variablesHint)
                         .font(.caption)

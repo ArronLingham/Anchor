@@ -45,10 +45,11 @@ struct RadialMenuVisualCanvas: View {
         .frame(height: canvasHeight)
         .frame(maxWidth: .infinity)
         .background(stageBackground)
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .clipShape(AnchorCorners.rectangle(cornerRadius: 14))
+        .anchorCornerContainer(radius: 14)
         .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .strokeBorder(Color.white.opacity(colorScheme == .light ? 0.12 : 0.14), lineWidth: 0.8)
+            AnchorCorners.rectangle(cornerRadius: 14)
+                .anchorStrokeBorder(Color.white.opacity(colorScheme == .light ? 0.12 : 0.14), lineWidth: 0.8)
         )
         .shadow(color: .black.opacity(colorScheme == .light ? 0.08 : 0.28), radius: 10, y: 4)
     }

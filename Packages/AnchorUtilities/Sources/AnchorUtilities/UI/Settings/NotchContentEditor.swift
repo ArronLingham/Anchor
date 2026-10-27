@@ -52,7 +52,8 @@ struct NotchIslandPreview: View {
         GeometryReader { proxy in stage(in: proxy.size) }
             .background(.quaternary.opacity(0.35))
             .background(WindowVisibilityReader { windowVisible = $0 })
-            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .clipShape(AnchorCorners.rectangle(cornerRadius: 16))
+            .anchorCornerContainer(radius: 16)
             .overlay(alignment: .bottomLeading) { caption }
     }
 
@@ -225,7 +226,7 @@ private struct NotchScratchpadStill: View {
                         .padding(.horizontal, 10)
                         .frame(height: 26)
                         .background(.white.opacity(pad.pads.isEmpty || pad.pads[index].id == pad.selectedPadID ? 0.12 : 0),
-                                    in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                                    in: AnchorCorners.rectangle(cornerRadius: 8))
                 }
                 Spacer(minLength: 0)
                 ForEach(["textformat", "plus", "eye", "doc.on.doc", "ellipsis"], id: \.self) { symbol in
@@ -295,7 +296,7 @@ struct NotchSectionListRow: View {
             .padding(.horizontal, 8)
             .frame(minHeight: 32)
             .background(selected ? Color.accentColor.opacity(0.16) : hovering ? Color.primary.opacity(0.05) : .clear,
-                        in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                        in: AnchorCorners.rectangle(cornerRadius: 8))
             .contentShape(Rectangle())
             .onHover { hovering = $0 }
             .opacity(dragging == module ? 0.45 : 1)

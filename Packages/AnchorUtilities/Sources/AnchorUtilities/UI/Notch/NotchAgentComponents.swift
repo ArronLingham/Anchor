@@ -232,7 +232,8 @@ struct NotchAgentBars: View {
                                     }
                                 }
                             }
-                            .clipShape(RoundedRectangle(cornerRadius: min(3, width / 2), style: .continuous))
+                            .clipShape(AnchorCorners.rectangle(cornerRadius: min(3, width / 2)))
+                            .anchorCornerContainer(radius: min(3, width / 2))
                         }
                     }
                     .frame(width: width, height: proxy.size.height)
@@ -275,12 +276,12 @@ struct NotchAgentHeatmap: View {
                         ForEach(0..<7, id: \.self) { row in
                             if let day = week[row] {
                                 let value = day.total.weight(byCost: byCost)
-                                RoundedRectangle(cornerRadius: min(2.5, cell / 3), style: .continuous)
+                                AnchorCorners.rectangle(cornerRadius: min(2.5, cell / 3))
                                     .fill(.white.opacity(opacity(value, levels: levels)))
                                     .overlay {
                                         if hovered == day.start || calendar.isDateInToday(day.start) {
-                                            RoundedRectangle(cornerRadius: min(2.5, cell / 3), style: .continuous)
-                                                .strokeBorder(.white.opacity(hovered == day.start ? 0.9 : 0.45), lineWidth: 1)
+                                            AnchorCorners.rectangle(cornerRadius: min(2.5, cell / 3))
+                                                .anchorStrokeBorder(.white.opacity(hovered == day.start ? 0.9 : 0.45), lineWidth: 1)
                                         }
                                     }
                                     .frame(width: cell, height: cell)

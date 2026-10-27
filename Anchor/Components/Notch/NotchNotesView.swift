@@ -18,6 +18,7 @@
  */
 
 import SwiftUI
+import AnchorUtilities
 import Defaults
 
 struct NotchNotesView: View {
@@ -582,8 +583,8 @@ struct NotchClipboardItemRow: View {
                     .resizable()
                     .aspectRatio(contentMode: .fill)
                     .frame(width: 32, height: 32)
-                    .clipShape(RoundedRectangle(cornerRadius: 6))
-                    .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.white.opacity(0.1), lineWidth: 0.5))
+                    .clipShape(AnchorCorners.rectangle(cornerRadius: 6))
+                    .overlay(AnchorCorners.rectangle(cornerRadius: 6).stroke(Color.white.opacity(0.1), lineWidth: 0.5))
             } else {
                 Image(systemName: justCopied ? "checkmark.circle.fill" : item.type.icon)
                     .font(.system(size: 14))
@@ -610,7 +611,7 @@ struct NotchClipboardItemRow: View {
         }
         .padding(10)
         .background(Color(nsColor: .controlBackgroundColor).opacity(isHovered ? 0.3 : 0.15))
-        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .clipShape(AnchorCorners.rectangle(cornerRadius: 8))
     }
     
     private func timeAgoString(from date: Date) -> String {
@@ -787,7 +788,7 @@ struct NoteListView: View {
                         .padding(.horizontal, 10)
                         .padding(.vertical, 4) // Reduced from 6
                         .background(Color.white.opacity(0.05))
-                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                        .clipShape(AnchorCorners.rectangle(cornerRadius: 8))
                         .padding(.horizontal, 16)
                     }
                     
@@ -952,14 +953,15 @@ struct NoteRow: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
-            RoundedRectangle(cornerRadius: 12)
+            AnchorCorners.rectangle(cornerRadius: 12)
                 .fill(Color.white.opacity(isHovered ? 0.12 : 0.08))
                 .overlay(
-                    RoundedRectangle(cornerRadius: 12)
+                    AnchorCorners.rectangle(cornerRadius: 12)
                         .stroke(note.color.opacity(0.2), lineWidth: 1)
                 )
         )
-        .clipShape(RoundedRectangle(cornerRadius: 12)) // Ensure everything stays inside the frame
+        .clipShape(AnchorCorners.rectangle(cornerRadius: 12))
+        .anchorCornerContainer(radius: 12) // Ensure everything stays inside the frame
         .overlay(alignment: .trailing) {
             HStack(spacing: 8) {
                 if isHovered {
@@ -1039,8 +1041,8 @@ struct NoteRow: View {
                         .resizable()
                         .aspectRatio(contentMode: .fill)
                         .frame(width: isCompact ? 32 : 50, height: isCompact ? 32 : 50)
-                        .clipShape(RoundedRectangle(cornerRadius: 6))
-                        .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.white.opacity(0.2), lineWidth: 1))
+                        .clipShape(AnchorCorners.rectangle(cornerRadius: 6))
+                        .overlay(AnchorCorners.rectangle(cornerRadius: 6).stroke(Color.white.opacity(0.2), lineWidth: 1))
                         .shadow(color: .black.opacity(0.3), radius: 3, x: 0, y: 1)
                         .padding(.trailing, isCompact ? 4 : 8)
                 }
@@ -1186,8 +1188,8 @@ struct NoteEditorView: View {
                                     .resizable()
                                     .aspectRatio(contentMode: .fill)
                                     .frame(width: 55, height: 55) // Reduced from 80
-                                    .clipShape(RoundedRectangle(cornerRadius: 10))
-                                    .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.white.opacity(0.2), lineWidth: 1))
+                                    .clipShape(AnchorCorners.rectangle(cornerRadius: 10))
+                                    .overlay(AnchorCorners.rectangle(cornerRadius: 10).stroke(Color.white.opacity(0.2), lineWidth: 1))
                                     .shadow(color: .black.opacity(0.5), radius: 5, x: 0, y: 2)
                                 
                                 Button(action: {

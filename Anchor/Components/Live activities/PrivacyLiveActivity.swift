@@ -18,6 +18,7 @@
  */
 
 import SwiftUI
+import AnchorUtilities
 import Defaults
 
 struct PrivacyLiveActivity: View {
@@ -44,7 +45,7 @@ struct PrivacyLiveActivity: View {
                             if recordingManager.isRecording {
                                 // Recording pulsator
                                 ZStack {
-                                    RoundedRectangle(cornerRadius: 6)
+                                    AnchorCorners.rectangle(cornerRadius: 6)
                                         .fill(Color.red.opacity(0.15))
                                     
                                     Circle()

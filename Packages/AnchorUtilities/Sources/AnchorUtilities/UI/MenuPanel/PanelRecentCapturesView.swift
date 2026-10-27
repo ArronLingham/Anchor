@@ -172,14 +172,14 @@ struct RecentCapturesView: View {
     @ViewBuilder
     private func preview(_ entry: RecentCaptureEntry) -> some View {
         ZStack {
-            RoundedRectangle(cornerRadius: 7, style: .continuous)
+            AnchorCorners.rectangle(cornerRadius: 7)
                 .fill(Color.black.opacity(0.13))
             if let image = history.thumbnail(for: entry) {
                 Image(nsImage: image)
                     .resizable()
                     .interpolation(.high)
                     .scaledToFit()
-                    .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+                    .clipShape(AnchorCorners.rectangle(cornerRadius: 7))
             } else {
                 Image(systemName: entry.kind == .screenshot ? "photo" : "film")
                     .font(.system(size: 20, weight: .medium))
@@ -188,8 +188,8 @@ struct RecentCapturesView: View {
         }
         .frame(width: 104, height: 68)
         .overlay(
-            RoundedRectangle(cornerRadius: 7, style: .continuous)
-                .strokeBorder(Color.primary.opacity(0.1), lineWidth: 1)
+            AnchorCorners.rectangle(cornerRadius: 7)
+                .anchorStrokeBorder(Color.primary.opacity(0.1), lineWidth: 1)
         )
     }
 }
@@ -204,6 +204,7 @@ struct RecentCapturesWindowView: View {
             .padding(14)
             .frame(width: 440)
             .background(HUDBackdrop(cornerRadius: 18, contrast: .high))
-            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .clipShape(AnchorCorners.rectangle(cornerRadius: 18))
+            .anchorCornerContainer(radius: 18)
     }
 }

@@ -1,4 +1,5 @@
 import AppKit
+import AnchorUtilities
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -138,8 +139,9 @@ struct DesktopDockView: View {
             }
             .padding(8)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18))
-            .overlay(RoundedRectangle(cornerRadius: 18).stroke(.white.opacity(0.16)))
+            .background(.ultraThinMaterial, in: AnchorCorners.rectangle(cornerRadius: 18))
+            .anchorCornerContainer(radius: 18)
+            .overlay(AnchorCorners.rectangle(cornerRadius: 18).stroke(.white.opacity(0.16)))
             .padding(1)
             .preferredColorScheme(.dark)
             .contextMenu {

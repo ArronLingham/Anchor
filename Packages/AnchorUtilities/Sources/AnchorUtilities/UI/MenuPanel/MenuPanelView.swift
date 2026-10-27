@@ -400,13 +400,13 @@ struct MenuPanelView: View {
                         .font(.system(size: 13.5, weight: .semibold))
                         .frame(maxWidth: .infinity)
                         .frame(height: 30)
-                        .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                        .contentShape(AnchorCorners.rectangle(cornerRadius: 8))
                 }
                 .buttonStyle(.plain)
                 .focused($focusedSection, equals: id)
                 .foregroundStyle(isActive ? (notchSize != nil ? Color.white : Color.accentColor) : Color.secondary.opacity(0.86))
                 .background(
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    AnchorCorners.rectangle(cornerRadius: 8)
                         .fill(isActive ? navigationActiveFill : Color.clear)
                 )
                 .help(id.title(l10n.s))
@@ -418,12 +418,12 @@ struct MenuPanelView: View {
         }
         .padding(4)
         .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
+            AnchorCorners.rectangle(cornerRadius: 12)
                 .fill(notchSize != nil ? .black : PanelSurface.cardFill(for: colorScheme))
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .strokeBorder(PanelSurface.border(for: colorScheme), lineWidth: 0.7)
+            AnchorCorners.rectangle(cornerRadius: 12)
+                .anchorStrokeBorder(PanelSurface.border(for: colorScheme), lineWidth: 0.7)
         )
     }
 
@@ -442,17 +442,17 @@ struct MenuPanelView: View {
                 Image(systemName: "chevron.left")
                     .font(.system(size: 11, weight: .semibold))
                     .frame(width: 24, height: 24)
-                    .contentShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+                    .contentShape(AnchorCorners.rectangle(cornerRadius: 7))
             }
             .buttonStyle(.plain)
             .foregroundStyle(.secondary)
             .background(
-                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                AnchorCorners.rectangle(cornerRadius: 7)
                     .fill(PanelSurface.cardFill(for: colorScheme))
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 7, style: .continuous)
-                    .strokeBorder(PanelSurface.border(for: colorScheme), lineWidth: 0.7)
+                AnchorCorners.rectangle(cornerRadius: 7)
+                    .anchorStrokeBorder(PanelSurface.border(for: colorScheme), lineWidth: 0.7)
             )
 
             Label(kind.title(l10n.s), systemImage: kind.symbolName)
@@ -510,14 +510,14 @@ struct MenuPanelView: View {
                 .padding(.horizontal, horizontalPadding)
                 .frame(maxWidth: .infinity, minHeight: 28)
                 .background(
-                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    AnchorCorners.rectangle(cornerRadius: 7)
                         .fill(notchSize != nil ? .black : PanelSurface.cardFill(for: colorScheme))
                 )
                 .overlay(
-                    RoundedRectangle(cornerRadius: 7, style: .continuous)
-                        .strokeBorder(PanelSurface.border(for: colorScheme), lineWidth: 0.8)
+                    AnchorCorners.rectangle(cornerRadius: 7)
+                        .anchorStrokeBorder(PanelSurface.border(for: colorScheme), lineWidth: 0.8)
                 )
-                .contentShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+                .contentShape(AnchorCorners.rectangle(cornerRadius: 7))
         }
         .buttonStyle(.plain)
         .foregroundStyle(.secondary)
@@ -2186,7 +2186,7 @@ struct UtilityActionButton: View {
                         .padding(.horizontal, 5)
                         .padding(.vertical, 2)
                         .background(
-                            RoundedRectangle(cornerRadius: 5, style: .continuous)
+                            AnchorCorners.rectangle(cornerRadius: 5)
                                 .fill(Color.primary.opacity(0.06))
                         )
                 }
@@ -2410,7 +2410,7 @@ struct PanelRowHighlight: View {
     @Environment(\.notchPresentation) private var notchPresentation
 
     var body: some View {
-        RoundedRectangle(cornerRadius: notchPresentation ? 14 : 7, style: .continuous)
+        AnchorCorners.rectangle(cornerRadius: notchPresentation ? 14 : 7)
             .fill((notchPresentation ? Color.white : Color.primary)
                 .opacity(isVisible ? (notchPresentation ? 0.08 : 0.06) : 0))
             .padding(notchPresentation ? 4 : 3)
@@ -2652,7 +2652,7 @@ struct UpdateBanner: View {
                 .padding(.horizontal, 12)
                 .padding(.vertical, 9)
                 .background(
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    AnchorCorners.rectangle(cornerRadius: 10)
                         .fill(tintColor)
                 )
             }
@@ -2688,7 +2688,7 @@ struct UpdateBanner: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 9)
         .background(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
+            AnchorCorners.rectangle(cornerRadius: 10)
                 .fill(Color.primary.opacity(0.06))
         )
     }

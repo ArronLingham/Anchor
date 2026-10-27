@@ -132,11 +132,11 @@ struct PanelUninstallerView: View {
     }
 
     private var dropZone: some View {
-        RoundedRectangle(cornerRadius: 12, style: .continuous)
-            .strokeBorder(style: StrokeStyle(lineWidth: 1.5, dash: [6, 5]))
+        AnchorCorners.rectangle(cornerRadius: 12)
+            .anchorStrokeBorder(style: StrokeStyle(lineWidth: 1.5, dash: [6, 5]))
             .foregroundStyle(dropTargeted ? Color.accentColor : Color.secondary.opacity(0.35))
             .background(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                AnchorCorners.rectangle(cornerRadius: 12)
                     .fill(dropTargeted ? Color.accentColor.opacity(0.08) : Color.primary.opacity(0.025))
             )
             .frame(height: 108)

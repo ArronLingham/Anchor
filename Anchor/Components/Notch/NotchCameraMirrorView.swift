@@ -18,6 +18,7 @@
  */
 
 import AVFoundation
+import AnchorUtilities
 import AppKit
 import Defaults
 import SwiftUI
@@ -92,7 +93,7 @@ struct NotchCameraMirrorView: View {
                 }
             } else {
                 CameraPreview()
-                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .clipShape(AnchorCorners.rectangle(cornerRadius: 12))
                 if !manager.isRunning {
                     ProgressView().controlSize(.small)
                 }

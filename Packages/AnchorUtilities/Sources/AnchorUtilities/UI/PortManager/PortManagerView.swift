@@ -35,7 +35,7 @@ struct PortManagerView: View {
                     ProgressView().controlSize(.small)
                 }
             }
-            .padding(9).background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 9))
+            .padding(9).background(Color.primary.opacity(0.06), in: AnchorCorners.rectangle(cornerRadius: 9))
             .padding(.horizontal, 14).padding(.bottom, 8)
             Divider()
             if service.refreshFailed {

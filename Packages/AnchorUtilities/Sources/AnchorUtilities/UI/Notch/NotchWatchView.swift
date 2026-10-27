@@ -145,7 +145,7 @@ private struct NotchWatchAreaCard: View {
                 if let image = watch.preview {
                     Image(decorative: image, scale: 2)
                         .resizable().interpolation(.high).aspectRatio(contentMode: .fit)
-                        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                        .clipShape(AnchorCorners.rectangle(cornerRadius: 8))
                         .opacity(watch.state == .hidden ? 0.35 : 1)
                 } else {
                     ProgressView().controlSize(.small)
@@ -155,7 +155,7 @@ private struct NotchWatchAreaCard: View {
                           systemImage: watch.permissionMissing ? "lock" : "eye.slash")
                         .font(.caption).multilineTextAlignment(.center)
                         .padding(8)
-                        .background(.black.opacity(0.6), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                        .background(.black.opacity(0.6), in: AnchorCorners.rectangle(cornerRadius: 8))
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -179,7 +179,8 @@ private struct NotchWatchAreaCard: View {
         }
         .padding(10)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .background(.white.opacity(0.07), in: AnchorCorners.rectangle(cornerRadius: 14))
+        .anchorCornerContainer(radius: 14)
         .accessibilityElement(children: .combine)
     }
 }
@@ -241,10 +242,10 @@ private struct NotchWatchRuleRow: View {
             .padding(.horizontal, 8)
             .frame(height: 24)
             .frame(maxWidth: 180)
-            .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+            .background(.white.opacity(0.08), in: AnchorCorners.rectangle(cornerRadius: 7))
             .overlay {
-                RoundedRectangle(cornerRadius: 7, style: .continuous)
-                    .strokeBorder(.white.opacity(focused ? 0.34 : 0), lineWidth: 1)
+                AnchorCorners.rectangle(cornerRadius: 7)
+                    .anchorStrokeBorder(.white.opacity(focused ? 0.34 : 0), lineWidth: 1)
             }
             .accessibilityLabel(text.condition(watch.condition))
     }
@@ -292,7 +293,8 @@ private struct NotchWatchSetupView: View {
             .font(.system(size: 26, weight: .light))
             .foregroundStyle(.white.opacity(0.65))
             .frame(width: 56, height: 56)
-            .background(.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .background(.white.opacity(0.05), in: AnchorCorners.rectangle(cornerRadius: 18))
+            .anchorCornerContainer(radius: 18)
             .accessibilityHidden(true)
     }
 

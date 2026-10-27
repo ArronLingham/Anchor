@@ -142,7 +142,8 @@ struct NotchMixerView: View {
             Image(systemName: "waveform.badge.exclamationmark").font(.system(size: 24, weight: .light))
                 .foregroundStyle(.white.opacity(0.65))
                 .frame(width: 56, height: 56)
-                .background(.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .background(.white.opacity(0.05), in: AnchorCorners.rectangle(cornerRadius: 18))
+                .anchorCornerContainer(radius: 18)
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 8) {
                 Text(l10n.s.mixerPermissionBody).font(.system(size: 12)).foregroundStyle(.secondary)

@@ -18,6 +18,7 @@
  */
 
 import AppKit
+import AnchorUtilities
 import Defaults
 import SwiftUI
 
@@ -211,13 +212,15 @@ struct LauncherView: View {
                 ZStack {
                     LauncherWallpaperBlur()
                     AnchorSurface(depth: .inset, radius: 26).opacity(0.95)
-                    RoundedRectangle(cornerRadius: 26, style: .continuous)
-                        .strokeBorder(Color.white.opacity(0.14), lineWidth: 1)
+                    AnchorCorners.rectangle(cornerRadius: 26)
+                        .anchorStrokeBorder(Color.white.opacity(0.14), lineWidth: 1)
                 }
-                .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
+                .clipShape(AnchorCorners.rectangle(cornerRadius: 26))
+                .anchorCornerContainer(radius: 26)
                 .shadow(color: Color.black.opacity(0.25), radius: 28, y: 12)
             }
         }
+        .anchorCornerContainer(radius: presentationMode == .fullscreen ? 0 : 26)
         .transaction { if LauncherMotion.reduced { $0.animation = nil; $0.disablesAnimations = true } }
         .defaultFocus($queryFocused, true)
         .onAppear {
@@ -303,9 +306,10 @@ struct LauncherView: View {
         .frame(height: 48)
         .padding(.horizontal, 16)
         .background(AnchorSurface(depth: .inset, radius: 14))
+        .anchorCornerContainer(radius: 14)
         .overlay {
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .strokeBorder(Color.primary.opacity(0.06), lineWidth: 1)
+            AnchorCorners.rectangle(cornerRadius: 14)
+                .anchorStrokeBorder(Color.primary.opacity(0.06), lineWidth: 1)
         }
         .padding(.bottom, 24)
         .contentShape(Rectangle())
@@ -520,7 +524,7 @@ private struct LauncherRow: View {
                 if let icon {
                     Image(nsImage: icon).resizable()
                 } else {
-                    RoundedRectangle(cornerRadius: 6).fill(Color.secondary.opacity(0.15))
+                    AnchorCorners.rectangle(cornerRadius: 6).fill(Color.secondary.opacity(0.15))
                 }
             }
             .frame(width: 28, height: 28)
@@ -547,7 +551,7 @@ private struct LauncherRow: View {
         }
         .padding(.horizontal, 16)
         .background(
-            RoundedRectangle(cornerRadius: 8)
+            AnchorCorners.rectangle(cornerRadius: 8)
                 .fill(isSelected ? Color.accentColor.opacity(0.22) : .clear)
                 .padding(.horizontal, 10)
         )
@@ -636,7 +640,7 @@ private struct LauncherCommandRow: View {
         }
         .padding(.horizontal, 16)
         .background(
-            RoundedRectangle(cornerRadius: 8)
+            AnchorCorners.rectangle(cornerRadius: 8)
                 .fill(isSelected ? Color.accentColor.opacity(0.22) : .clear)
                 .padding(.horizontal, 10)
         )

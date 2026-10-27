@@ -22,6 +22,7 @@
  */
 
 import AVFoundation
+import AnchorUtilities
 import Combine
 import Defaults
 import Foundation
@@ -490,6 +491,7 @@ struct ContentView: View {
             }
             .overlay(resolvedClipShape.stroke(AnchorDesign.edge.opacity(vm.notchState == .open ? 1 : 0), lineWidth: 1))
             .clipShape(resolvedClipShape)
+            .anchorCornerContainer(radius: vm.notchState == .open ? 24 : 0)
             .background {
                 NotchInteractionSurfaceReader(shape: resolvedClipShape, enabled: interactionsEnabled,
                                                onHover: updateSurfaceHover)
@@ -1158,7 +1160,8 @@ struct ContentView: View {
                         Image(nsImage: musicManager.albumArt)
                             .resizable()
                             .aspectRatio(contentMode: .fit)
-                            .clipShape(RoundedRectangle(cornerRadius: musicManager.albumArt.size.width/musicManager.albumArt.size.height > 1.0 ? MusicPlayerImageSizes.cornerRadiusInset.closed/3.0 : MusicPlayerImageSizes.cornerRadiusInset.closed))
+                            .clipShape(AnchorCorners.rectangle(cornerRadius: musicManager.albumArt.size.width/musicManager.albumArt.size.height > 1.0 ? MusicPlayerImageSizes.cornerRadiusInset.closed/3.0 : MusicPlayerImageSizes.cornerRadiusInset.closed))
+                            .anchorCornerContainer(radius: musicManager.albumArt.size.width/musicManager.albumArt.size.height > 1.0 ? MusicPlayerImageSizes.cornerRadiusInset.closed/3.0 : MusicPlayerImageSizes.cornerRadiusInset.closed)
                     )
                     .clipped()
                     .matchedGeometryEffect(id: "albumArt", in: albumArtNamespace)
@@ -1473,7 +1476,7 @@ struct ContentView: View {
                 .overlay {
                     if enableClosedPlayPauseOverlay {
                         ZStack {
-                            RoundedRectangle(cornerRadius: 8)
+                            AnchorCorners.rectangle(cornerRadius: 8)
                                 .fill(Color.black.opacity(isHoveringClosedMusicWaveformControl ? 0.24 : 0.02))
 
                             Image(systemName: musicManager.isPlaying ? "pause.fill" : "play.fill")

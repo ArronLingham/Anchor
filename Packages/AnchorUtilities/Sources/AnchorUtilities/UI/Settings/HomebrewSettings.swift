@@ -447,10 +447,10 @@ struct HomebrewSettings: View {
         .padding(.horizontal, 6)
         .padding(.vertical, 6)
         .background(
-            RoundedRectangle(cornerRadius: 6, style: .continuous)
+            AnchorCorners.rectangle(cornerRadius: 6)
                 .fill(homebrew.selectedPackage?.id == package.id ? Color.accentColor.opacity(0.12) : Color.clear)
         )
-        .contentShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+        .contentShape(AnchorCorners.rectangle(cornerRadius: 6))
         .contextMenu {
             packageContextMenu(package)
         }
@@ -890,7 +890,7 @@ struct HomebrewTrustCard: View {
         }
         .padding(compact ? 8 : 12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 10).fill(Color.orange.opacity(0.09)))
-        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.orange.opacity(0.22), lineWidth: 1))
+        .background(AnchorCorners.rectangle(cornerRadius: 10).fill(Color.orange.opacity(0.09)))
+        .overlay(AnchorCorners.rectangle(cornerRadius: 10).stroke(Color.orange.opacity(0.22), lineWidth: 1))
     }
 }

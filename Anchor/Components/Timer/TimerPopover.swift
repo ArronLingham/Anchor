@@ -18,6 +18,7 @@
  */
 
 import SwiftUI
+import AnchorUtilities
 import Defaults
 
 struct TimerPopover: View {
@@ -64,7 +65,7 @@ struct TimerPopover: View {
         .frame(width: 300)
         .background(
             VisualEffectView(material: .hudWindow, blendingMode: .behindWindow)
-                .cornerRadius(12)
+                .anchorRoundedClip(radius: 12)
         )
         .onAppear {
             syncCustomDuration(with: customTimerDuration)
@@ -189,7 +190,7 @@ private struct ActiveTimerSection: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(12)
         .background(Color.white.opacity(0.08))
-        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .clipShape(AnchorCorners.rectangle(cornerRadius: 10))
         .animation(.smooth, value: timerManager.isPaused)
     }
     
@@ -267,7 +268,7 @@ private struct CustomTimerSection: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(12)
         .background(Color.white.opacity(0.05))
-        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .clipShape(AnchorCorners.rectangle(cornerRadius: 10))
     }
     
     private var formattedDuration: String {
@@ -314,7 +315,7 @@ private struct PresetList: View {
                     .padding(12)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(Color.white.opacity(0.05))
-                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .clipShape(AnchorCorners.rectangle(cornerRadius: 10))
             } else {
                 ScrollView {
                     VStack(spacing: 8) {
@@ -368,9 +369,9 @@ private struct TimerPresetRow: View {
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 10)
-            .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .contentShape(AnchorCorners.rectangle(cornerRadius: 10))
             .background(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                AnchorCorners.rectangle(cornerRadius: 10)
                     .fill(isActive ? preset.color.opacity(0.18) : Color.white.opacity(0.05))
             )
         }

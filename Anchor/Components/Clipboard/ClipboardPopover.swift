@@ -18,6 +18,7 @@
  */
 
 import SwiftUI
+import AnchorUtilities
 import Defaults
 
 struct ClipboardPopover: View {
@@ -71,7 +72,7 @@ struct ClipboardPopover: View {
         }
         .frame(width: 280, height: 320)
         .background(
-            RoundedRectangle(cornerRadius: 10)
+            AnchorCorners.rectangle(cornerRadius: 10)
                 .fill(.regularMaterial)
                 .shadow(color: .black.opacity(0.2), radius: 8, x: 0, y: 4)
         )
@@ -155,7 +156,7 @@ struct ClipboardPopoverHeader: View {
             .padding(.horizontal, 10)
             .padding(.vertical, 5)
             .background(
-                RoundedRectangle(cornerRadius: 5)
+                AnchorCorners.rectangle(cornerRadius: 5)
                     .fill(Color.gray.opacity(0.1))
             )
             .padding(.horizontal, 14)

@@ -18,6 +18,7 @@
  */
 
 import AppKit
+import AnchorUtilities
 import AVFoundation
 import Combine
 import Defaults
@@ -89,7 +90,7 @@ struct SettingsPermissionCallout: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(12)
         .background(Color.secondary.opacity(0.08))
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .clipShape(AnchorCorners.rectangle(cornerRadius: 12))
     }
 }
 

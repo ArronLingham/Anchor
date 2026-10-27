@@ -172,7 +172,7 @@ private struct AppPickerRow: View {
         .padding(.horizontal, compact ? 5 : 8)
         .padding(.vertical, compact ? 5 : 7)
         .background {
-            RoundedRectangle(cornerRadius: 6, style: .continuous)
+            AnchorCorners.rectangle(cornerRadius: 6)
                 .fill(Color.primary.opacity(0.001))
         }
     }

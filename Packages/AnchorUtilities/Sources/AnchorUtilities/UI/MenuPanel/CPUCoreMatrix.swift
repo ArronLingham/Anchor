@@ -41,8 +41,8 @@ struct CPUCoreMatrix: View {
         }
         .padding(8)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.primary.opacity(0.025), in: RoundedRectangle(cornerRadius: 5))
-        .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(Color.primary.opacity(0.12), lineWidth: 1))
+        .background(Color.primary.opacity(0.025), in: AnchorCorners.rectangle(cornerRadius: 5))
+        .overlay(AnchorCorners.rectangle(cornerRadius: 5).anchorStrokeBorder(Color.primary.opacity(0.12), lineWidth: 1))
     }
 
     private func coreGroup(_ segment: CPUCoreSegment, strings: CPUCoreFeatureStrings) -> some View {

@@ -34,8 +34,8 @@ struct NotchEditorItem: View {
                             .accessibilityHidden(unavailableReason == nil)
                     }
                 }.frame(maxWidth: .infinity, minHeight: 76).padding(10)
-                    .background(selected ? Color.accentColor.opacity(0.10) : Color.secondary.opacity(0.05), in: RoundedRectangle(cornerRadius: 12))
-                    .overlay { RoundedRectangle(cornerRadius: 12).strokeBorder(selected ? Color.accentColor.opacity(0.55) : .clear, lineWidth: 1) }
+                    .background(selected ? Color.accentColor.opacity(0.10) : Color.secondary.opacity(0.05), in: AnchorCorners.rectangle(cornerRadius: 12))
+                    .overlay { AnchorCorners.rectangle(cornerRadius: 12).anchorStrokeBorder(selected ? Color.accentColor.opacity(0.55) : .clear, lineWidth: 1) }
             }.buttonStyle(.plain).disabled(!available && unavailableAction == nil)
                 .accessibilityAddTraits(selected ? .isSelected : [])
             Button {

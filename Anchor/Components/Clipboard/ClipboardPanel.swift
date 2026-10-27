@@ -18,6 +18,7 @@
  */
 
 import AppKit
+import AnchorUtilities
 import SwiftUI
 
 private func applyClipboardCornerMask(_ view: NSView, radius: CGFloat) {
@@ -215,7 +216,8 @@ struct ClipboardPanelView: View {
         }
         .frame(width: 380, height: 480)
         .background(AnchorSurface(radius: 20))
-        .cornerRadius(20)
+        .anchorCornerContainer(radius: 20)
+        .anchorRoundedClip(radius: 20)
         .shadow(color: .black.opacity(0.4), radius: 20, x: 0, y: 10)
             }
         .anchorTheme()
@@ -301,7 +303,7 @@ struct ClipboardPanelHeader: View {
             .padding(.horizontal, 12)
             .padding(.vertical, 6)
             .background(
-                RoundedRectangle(cornerRadius: 6)
+                AnchorCorners.rectangle(cornerRadius: 6)
                     .fill(Color.gray.opacity(0.1))
             )
             .padding(.horizontal, 16)
@@ -434,7 +436,7 @@ struct ClipboardPanelItemRow: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
         .background(
-            RoundedRectangle(cornerRadius: 6)
+            AnchorCorners.rectangle(cornerRadius: 6)
                 .fill(isHovered ? Color.gray.opacity(0.1) : Color.clear)
         )
         .onHover { hovering in

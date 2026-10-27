@@ -58,16 +58,16 @@ private struct ShelfPill: View {
         .padding(.horizontal, shelf.itemCount > 0 ? 12 : 11)
         .padding(.vertical, 8)
         .background(HUDBackdrop(cornerRadius: 13))
-        .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
+        .clipShape(AnchorCorners.rectangle(cornerRadius: 13))
         .overlay(
-            RoundedRectangle(cornerRadius: 13, style: .continuous)
-                .strokeBorder(targeted ? Color.accentColor : Color.white.opacity(0.12),
+            AnchorCorners.rectangle(cornerRadius: 13)
+                .anchorStrokeBorder(targeted ? Color.accentColor : Color.white.opacity(0.12),
                               lineWidth: targeted ? 2 : 1)
         )
         .scaleEffect(targeted ? 1.06 : 1)
         .shadow(color: targeted ? Color.accentColor.opacity(0.32) : Color.black.opacity(0.16),
                 radius: targeted ? 12 : 7, x: 0, y: 3)
-        .contentShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
+        .contentShape(AnchorCorners.rectangle(cornerRadius: 13))
         .onHover { hovered = $0 }
         .onTapGesture { shelf.expandDocked() }
         .help(l10n.s.shelfOpenNow)
@@ -133,14 +133,14 @@ private struct ShelfTopCenterBadge: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
         .background(colorScheme == .dark ? Color(white: 0.10) : Color(white: 0.96),
-                    in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+                    in: AnchorCorners.rectangle(cornerRadius: 13))
         .overlay(
-            RoundedRectangle(cornerRadius: 13, style: .continuous)
-                .strokeBorder(targeted ? Color.accentColor : foreground.opacity(hovered ? 0.3 : 0.15),
+            AnchorCorners.rectangle(cornerRadius: 13)
+                .anchorStrokeBorder(targeted ? Color.accentColor : foreground.opacity(hovered ? 0.3 : 0.15),
                               lineWidth: targeted ? 2 : 1)
         )
         .shadow(color: .black.opacity(colorScheme == .dark ? 0.25 : 0.12), radius: 5, x: 0, y: 2)
-        .contentShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
+        .contentShape(AnchorCorners.rectangle(cornerRadius: 13))
         .onHover { hovered = $0 }
         .onTapGesture { shelf.expandDocked() }
         .help(l10n.s.shelfOpenNow)

@@ -193,7 +193,7 @@ struct NotchScratchpadView: View {
                     .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(.white.opacity(0.55))
                     .frame(width: 28, height: 28)
-                    .contentShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+                    .contentShape(AnchorCorners.rectangle(cornerRadius: 9))
             }
             .menuStyle(.borderlessButton)
             .menuIndicator(.hidden)

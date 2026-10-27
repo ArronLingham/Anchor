@@ -18,6 +18,7 @@
  */
 
 import AppKit
+import AnchorUtilities
 import Defaults
 import SwiftUI
 
@@ -217,9 +218,10 @@ struct LauncherGridView: View {
                         .foregroundStyle(.secondary)
                 }
                 .padding(24)
-                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+                .background(.regularMaterial, in: AnchorCorners.rectangle(cornerRadius: 22))
+                .anchorCornerContainer(radius: 22)
                 .overlay {
-                    RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    AnchorCorners.rectangle(cornerRadius: 22)
                         .stroke(Color.primary.opacity(0.08), lineWidth: 1)
                 }
                 .shadow(radius: 30, y: 10)
@@ -487,7 +489,7 @@ private struct LauncherGridCell: View {
                 if let icon {
                     Image(nsImage: icon).resizable()
                 } else {
-                    RoundedRectangle(cornerRadius: 12).fill(Color.secondary.opacity(0.15))
+                    AnchorCorners.rectangle(cornerRadius: 12).fill(Color.secondary.opacity(0.15))
                 }
             }
             .frame(width: 56, height: 56)
@@ -502,11 +504,11 @@ private struct LauncherGridCell: View {
         .frame(maxWidth: .infinity)
         .padding(.vertical, 8)
         .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
+            AnchorCorners.rectangle(cornerRadius: 12)
                 .fill(Color.white.opacity(isSelected ? 0.09 : hovered ? 0.04 : 0))
                 .overlay(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .strokeBorder(
+                    AnchorCorners.rectangle(cornerRadius: 12)
+                        .anchorStrokeBorder(
                             isSelected ? Color.white.opacity(0.16) : .clear, lineWidth: 1)
                 )
         )
@@ -573,7 +575,7 @@ private struct LauncherFolderCell: View {
     var body: some View {
         VStack(spacing: 6) {
             ZStack {
-                RoundedRectangle(cornerRadius: 14)
+                AnchorCorners.rectangle(cornerRadius: 14)
                     .fill(Color.primary.opacity(0.10))
                 LazyVGrid(columns: Array(repeating: GridItem(.fixed(18), spacing: 3), count: 2), spacing: 3) {
                     ForEach(previewIcons) { app in

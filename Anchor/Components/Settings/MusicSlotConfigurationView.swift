@@ -22,6 +22,7 @@
  */
 
 import Defaults
+import AnchorUtilities
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -75,14 +76,14 @@ struct MusicSlotConfigurationView: View {
             }
             .padding(12)
             .background(Color(nsColor: .controlBackgroundColor))
-            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .clipShape(AnchorCorners.rectangle(cornerRadius: 10))
 
             VStack(spacing: 8) {
                 ZStack {
-                    RoundedRectangle(cornerRadius: 10)
+                    AnchorCorners.rectangle(cornerRadius: 10)
                         .fill(trashDropIsTargeted ? Color.red.opacity(0.2) : Color(nsColor: .controlBackgroundColor))
                         .overlay(
-                            RoundedRectangle(cornerRadius: 10)
+                            AnchorCorners.rectangle(cornerRadius: 10)
                                 .stroke(trashDropIsTargeted ? Color.red : .clear, lineWidth: trashDropIsTargeted ? 2 : 0)
                         )
                         .frame(width: 56, height: 56)
@@ -161,17 +162,17 @@ private struct ScrollHintIndicator: View {
         let isDropTarget = targetedSlotIndex == index
 
         return ZStack {
-            RoundedRectangle(cornerRadius: 10)
+            AnchorCorners.rectangle(cornerRadius: 10)
                 .fill(slotBackgroundColor(isHovered: isHovered, isTargeted: isDropTarget))
                 .overlay(
-                    RoundedRectangle(cornerRadius: 10)
+                    AnchorCorners.rectangle(cornerRadius: 10)
                         .stroke(slotBorderColor(isHovered: isHovered, isTargeted: isDropTarget), lineWidth: borderWidth(isHovered: isHovered, isTargeted: isDropTarget))
                 )
 
             slotContent(for: slot)
         }
         .frame(width: 48, height: 48)
-        .contentShape(RoundedRectangle(cornerRadius: 10))
+        .contentShape(AnchorCorners.rectangle(cornerRadius: 10))
         .onHover { isInside in
             withAnimation(.easeInOut(duration: 0.12)) {
                 hoveredSlotIndex = isInside ? index : nil
@@ -189,7 +190,7 @@ private struct ScrollHintIndicator: View {
     @ViewBuilder
     private func slotContent(for slot: MusicControlButton) -> some View {
         if slot == .none {
-            RoundedRectangle(cornerRadius: 6)
+            AnchorCorners.rectangle(cornerRadius: 6)
                 .stroke(style: StrokeStyle(lineWidth: 1, dash: [4, 4]))
                 .foregroundStyle(.secondary.opacity(0.35))
                 .frame(width: 26, height: 26)
@@ -210,7 +211,7 @@ private struct ScrollHintIndicator: View {
         let disabled = isControlDisabled(control)
 
         return VStack(spacing: 6) {
-            RoundedRectangle(cornerRadius: 8)
+            AnchorCorners.rectangle(cornerRadius: 8)
                 .fill(Color(nsColor: .controlBackgroundColor))
                 .frame(width: 44, height: 44)
                 .overlay {

@@ -57,7 +57,8 @@ struct QuickLauncherView: View {
         .padding(notchSize == nil ? 16 : 0)
         .frame(width: notchSize?.width ?? 420)
         .background { if notchSize == nil { HUDBackdrop(cornerRadius: 22, contrast: .high) } }
-        .clipShape(RoundedRectangle(cornerRadius: notchSize == nil ? 22 : 0, style: .continuous))
+        .clipShape(AnchorCorners.rectangle(cornerRadius: notchSize == nil ? 22 : 0))
+        .anchorCornerContainer(radius: notchSize == nil ? 22 : 0)
         .onChange(of: features.revision, initial: true) { launcher.refreshAvailability() }
         .onChange(of: launcher.presentationID) { _, _ in
             hoveredItem = nil
@@ -243,7 +244,7 @@ struct QuickLauncherView: View {
         } label: {
             VStack(spacing: notchSize == nil ? 7 : 6) {
                 ZStack(alignment: .topTrailing) {
-                    RoundedRectangle(cornerRadius: notchSize == nil ? 12 : 16, style: .continuous)
+                    AnchorCorners.rectangle(cornerRadius: notchSize == nil ? 12 : 16)
                         .fill(iconBackground(item, isSelected: isSelected, isHovered: isHovered))
                         .frame(width: notchSize == nil ? 46 : 32, height: notchSize == nil ? 46 : 32)
                         .overlay(
@@ -305,18 +306,18 @@ struct QuickLauncherView: View {
             .frame(maxWidth: .infinity)
             .padding(.vertical, notchSize == nil ? 9 : 4)
             .background(
-                RoundedRectangle(cornerRadius: 13, style: .continuous)
+                AnchorCorners.rectangle(cornerRadius: 13)
                     .fill(notchSize != nil ? .clear : isSelected ? Color.accentColor.opacity(0.14)
                           : isHovered ? Color.primary.opacity(0.07)
                           : Color.primary.opacity(0.035))
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 13, style: .continuous)
-                    .strokeBorder(notchSize != nil ? .clear
+                AnchorCorners.rectangle(cornerRadius: 13)
+                    .anchorStrokeBorder(notchSize != nil ? .clear
                                   : isSelected ? Color.accentColor.opacity(0.55) : Color.clear,
                                   lineWidth: 1.2)
             )
-            .contentShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
+            .contentShape(AnchorCorners.rectangle(cornerRadius: 13))
         }
         .buttonStyle(.plain)
         .accessibilityLabel(title(for: item))
@@ -468,7 +469,7 @@ struct QuickLauncherView: View {
         .controlSize(.small)
         .padding(10)
         .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
+            AnchorCorners.rectangle(cornerRadius: 12)
                 .fill(notchSize != nil ? .black : Color.primary.opacity(0.05))
         )
     }

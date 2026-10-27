@@ -125,7 +125,7 @@ struct CommandBarView: View {
     @ViewBuilder private var backdrop: some View {
         switch shownAs {
         case .window: HUDBackdrop(cornerRadius: 22, contrast: .high)
-        case .droplet: RoundedRectangle(cornerRadius: 22, style: .continuous).fill(Color.black)
+        case .droplet: AnchorCorners.rectangle(cornerRadius: 22).fill(Color.black)
         case .island: Color.clear
         }
     }
@@ -191,7 +191,8 @@ struct CommandBarView: View {
         .frame(width: Self.width)
         .environment(\.colorScheme, shownAs == .window ? colorScheme : .dark)
         .background(backdrop)
-        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .clipShape(AnchorCorners.rectangle(cornerRadius: 22))
+        .anchorCornerContainer(radius: 22)
         .onAppear {
             focusSearch()
             service.barDidAppear()
@@ -331,9 +332,9 @@ struct CommandBarView: View {
                         }
                         .padding(.horizontal, 9)
                         .padding(.vertical, 7)
-                        .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        .contentShape(AnchorCorners.rectangle(cornerRadius: 10))
                         .background(
-                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            AnchorCorners.rectangle(cornerRadius: 10)
                                 .fill(index == service.actionIndex
                                       ? (action.isDestructive
                                          ? Color.red.opacity(0.12)
@@ -575,7 +576,7 @@ struct CommandBarView: View {
                         .padding(.horizontal, 6)
                         .padding(.vertical, 2.5)
                         .background(
-                            RoundedRectangle(cornerRadius: 5, style: .continuous)
+                            AnchorCorners.rectangle(cornerRadius: 5)
                                 .fill(Color.accentColor.opacity(0.12))
                         )
                 } else if let value = entry.answerValue {
@@ -591,7 +592,7 @@ struct CommandBarView: View {
                         .padding(.horizontal, 6)
                         .padding(.vertical, 2.5)
                         .background(
-                            RoundedRectangle(cornerRadius: 5, style: .continuous)
+                            AnchorCorners.rectangle(cornerRadius: 5)
                                 .fill(Color.primary.opacity(0.06))
                         )
                 }
@@ -605,9 +606,9 @@ struct CommandBarView: View {
             }
             .padding(.horizontal, 9)
             .padding(.vertical, entry.isAnswer ? 9 : 7)
-            .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .contentShape(AnchorCorners.rectangle(cornerRadius: 10))
             .background(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                AnchorCorners.rectangle(cornerRadius: 10)
                     .fill(isSelected ? Color.accentColor.opacity(0.14) : .clear)
             )
         }
@@ -715,7 +716,7 @@ struct CommandBarView: View {
             // An app or file icon already has its own shape and padding, so a
             // plate behind it reads as a second frame; only glyphs get one.
             if entry.usesPlateIcon {
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                AnchorCorners.rectangle(cornerRadius: 8)
                     .fill(entry.isActive ? Color.accentColor.opacity(0.16) : Color.primary.opacity(0.06))
                     .frame(width: 30, height: 30)
                     .overlay(iconContent(entry))
@@ -749,7 +750,7 @@ struct CommandBarView: View {
         case .clipboardImage(let name):
             ClipboardThumbnailImage(source: .stored(name: name), contentMode: .fill)
                 .frame(width: 28, height: 28)
-                .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+                .clipShape(AnchorCorners.rectangle(cornerRadius: 7))
         case .filePath(let path):
             Image(nsImage: CommandBarIconCache.icon(forPath: path))
                 .resizable()
@@ -834,7 +835,7 @@ struct CommandBarView: View {
                 }
                 .padding(12)
                 .background(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    AnchorCorners.rectangle(cornerRadius: 12)
                         .fill(Color.red.opacity(0.09))
                 )
                 .padding(.horizontal, 12)
@@ -1155,7 +1156,7 @@ struct CommandBarView: View {
                 }
                 .padding(12)
                 .background(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    AnchorCorners.rectangle(cornerRadius: 12)
                         .fill(Color.red.opacity(0.09))
                 )
                 .padding(.horizontal, 12)

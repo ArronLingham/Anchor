@@ -18,6 +18,7 @@
  */
 
 import AppKit
+import AnchorUtilities
 import AVFoundation
 import Combine
 import Defaults
@@ -104,11 +105,11 @@ struct Downloads: View {
         var body: some View {
             VStack(spacing: 8) {
                 ZStack {
-                    RoundedRectangle(cornerRadius: 12)
+                    AnchorCorners.rectangle(cornerRadius: 12)
                         .fill(backgroundColor)
                         .overlay(
-                            RoundedRectangle(cornerRadius: 12)
-                                .strokeBorder(borderColor, lineWidth: isSelected ? 2 : 1)
+                            AnchorCorners.rectangle(cornerRadius: 12)
+                                .anchorStrokeBorder(borderColor, lineWidth: isSelected ? 2 : 1)
                         )
 
                     if style == .progress {

@@ -18,6 +18,7 @@
  */
 
 import SwiftUI
+import AnchorUtilities
 
 enum ClipboardTab: String, CaseIterable {
     case history = "History"
@@ -78,7 +79,7 @@ struct ClipboardTabButton: View {
             .padding(.horizontal, 12)
             .padding(.vertical, 6)
             .background(
-                RoundedRectangle(cornerRadius: 11)
+                AnchorCorners.rectangle(cornerRadius: 11)
                     .fill(isSelected ? AnchorDesign.accent : Color.clear)
             )
         }

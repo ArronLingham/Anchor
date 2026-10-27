@@ -23,12 +23,27 @@ public extension View {
 }
 
 public extension ConcentricRectangle {
+    func anchorStrokeBorder(lineWidth: CGFloat = 1, antialiased: Bool = true) -> some View {
+        anchorStrokeBorder(ForegroundStyle(), lineWidth: lineWidth, antialiased: antialiased)
+    }
+
+    func anchorStrokeBorder(style: StrokeStyle, antialiased: Bool = true) -> some View {
+        anchorStrokeBorder(ForegroundStyle(), style: style, antialiased: antialiased)
+    }
+
     /// ConcentricRectangle is a Shape, not an InsettableShape. Clip the outside
     /// half of a double-width stroke to keep the border entirely inside the
     /// resolved path, sharing exactly the fill's corners and container context.
     func anchorStrokeBorder<S: ShapeStyle>(_ content: S, lineWidth: CGFloat = 1,
                                            antialiased: Bool = true) -> some View {
-        stroke(content, style: StrokeStyle(lineWidth: lineWidth * 2), antialiased: antialiased)
+        anchorStrokeBorder(content, style: StrokeStyle(lineWidth: lineWidth), antialiased: antialiased)
+    }
+
+    func anchorStrokeBorder<S: ShapeStyle>(_ content: S, style: StrokeStyle,
+                                           antialiased: Bool = true) -> some View {
+        var doubled = style
+        doubled.lineWidth *= 2
+        return stroke(content, style: doubled, antialiased: antialiased)
             .clipShape(self, style: FillStyle(antialiased: antialiased))
     }
 }

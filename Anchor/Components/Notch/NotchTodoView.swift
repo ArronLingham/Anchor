@@ -18,6 +18,7 @@
  */
 
 import Defaults
+import AnchorUtilities
 import AppKit
 import SwiftUI
 
@@ -102,7 +103,7 @@ struct NotchTodoView: View {
         .padding(.horizontal, 8)
         .padding(.vertical, 5)
         .background(
-            RoundedRectangle(cornerRadius: 7, style: .continuous)
+            AnchorCorners.rectangle(cornerRadius: 7)
                 .fill(.white.opacity(0.06)))
         .transition(.opacity.combined(with: .move(edge: .bottom)))
     }
@@ -275,7 +276,7 @@ struct NotchTodoView: View {
         .padding(.horizontal, 8)
         .padding(.vertical, 6)
         .background(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
+            AnchorCorners.rectangle(cornerRadius: 8)
                 .fill(.white.opacity(0.07)))
     }
 

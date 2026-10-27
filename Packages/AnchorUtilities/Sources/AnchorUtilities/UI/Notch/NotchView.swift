@@ -126,8 +126,8 @@ struct NotchView: View {
                 .font(.system(size: 13, weight: .medium)).foregroundStyle(.white)
                 .frame(maxWidth: .infinity, minHeight: 52)
                 .overlay {
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .strokeBorder(.white.opacity(0.24),
+                    AnchorCorners.rectangle(cornerRadius: 16)
+                        .anchorStrokeBorder(.white.opacity(0.24),
                                       style: StrokeStyle(lineWidth: 1, dash: [5, 4]))
                         .allowsHitTesting(false)
                 }
@@ -536,7 +536,7 @@ struct NotchView: View {
             Image(systemName: service.pinned ? "pin.fill" : "ellipsis")
                 .font(.system(size: 13, weight: .medium))
                 .frame(width: 28, height: 28)
-                .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .contentShape(AnchorCorners.rectangle(cornerRadius: 8))
         }
     }
 
@@ -617,7 +617,7 @@ struct NotchView: View {
             }
             .padding(.horizontal, 10)
             .frame(height: NotchLayout.navigationHeight)
-            .contentShape(RoundedRectangle(cornerRadius: 12))
+            .contentShape(AnchorCorners.rectangle(cornerRadius: 12))
         }
         .buttonStyle(NotchButtonStyle(cornerRadius: 12, lifts: false))
         .accessibilityLabel(text.switchSection)
@@ -829,7 +829,7 @@ struct NotchRestingStrip: View {
                             if let artwork = music.artwork {
                                 Image(nsImage: artwork).resizable().scaledToFill()
                                     .frame(width: min(22, geometry.stripHeight - 6), height: min(22, geometry.stripHeight - 6))
-                                    .clipShape(RoundedRectangle(cornerRadius: 5))
+                                    .clipShape(AnchorCorners.rectangle(cornerRadius: 5))
                             }
                         case .battery:
                             Image(systemName: batterySymbol).font(.system(size: 12))
@@ -1042,14 +1042,14 @@ struct NotchActivityPicker: View {
                     .foregroundStyle(chosen ? Color.black : Color.white)
                     .background {
                         ZStack {
-                            RoundedRectangle(cornerRadius: 8).fill(Color.white.opacity(0.12))
+                            AnchorCorners.rectangle(cornerRadius: 8).fill(Color.white.opacity(0.12))
                             if chosen {
-                                RoundedRectangle(cornerRadius: 8).fill(Color.white)
+                                AnchorCorners.rectangle(cornerRadius: 8).fill(Color.white)
                                     .matchedGeometryEffect(id: "choice", in: choice)
                             }
                         }
                     }
-                    .contentShape(RoundedRectangle(cornerRadius: 8))
+                    .contentShape(AnchorCorners.rectangle(cornerRadius: 8))
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(activity.title(language))

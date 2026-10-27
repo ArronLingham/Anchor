@@ -18,6 +18,7 @@
  */
 
 import SwiftUI
+import AnchorUtilities
 import Defaults
 #if canImport(AppKit)
 import AppKit
@@ -126,7 +127,8 @@ struct NotchTimerView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(14)
                         .background(Color.white.opacity(0.05))
-                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .clipShape(AnchorCorners.rectangle(cornerRadius: 14))
+                        .anchorCornerContainer(radius: 14)
                 }
                 .buttonStyle(.plain)
             } else {
@@ -355,7 +357,8 @@ struct NotchTimerView: View {
         }
         .padding(12)
         .background(Color.white.opacity(0.04))
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .clipShape(AnchorCorners.rectangle(cornerRadius: 14))
+        .anchorCornerContainer(radius: 14)
     }
 
     private var inactiveTimerPlaceholder: some View {
@@ -498,15 +501,15 @@ struct NotchTimerView: View {
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 10)
                 .background(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    AnchorCorners.rectangle(cornerRadius: 12)
                         .fill(startButtonColor.opacity(isStartDisabled ? 0.5 : 1))
                 )
         }
         .buttonStyle(.plain)
         .frame(maxWidth: .infinity)
-        .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .contentShape(AnchorCorners.rectangle(cornerRadius: 12))
         .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
+            AnchorCorners.rectangle(cornerRadius: 12)
                 .stroke(Color.white.opacity(0.15), lineWidth: 1)
         )
         .opacity(isStartDisabled ? 0.7 : 1)
@@ -521,15 +524,15 @@ struct NotchTimerView: View {
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 10)
                 .background(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    AnchorCorners.rectangle(cornerRadius: 12)
                         .fill(Color.white.opacity(0.16))
                 )
         }
         .buttonStyle(.plain)
         .frame(maxWidth: .infinity)
-        .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .contentShape(AnchorCorners.rectangle(cornerRadius: 12))
         .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
+            AnchorCorners.rectangle(cornerRadius: 12)
                 .stroke(Color.white.opacity(0.08), lineWidth: 1)
         )
     }
@@ -692,7 +695,7 @@ private struct DurationField: View {
                 .tint(.white)
                 .frame(width: width, height: 46)
                 .background(Color.white.opacity(0.08))
-                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .clipShape(AnchorCorners.rectangle(cornerRadius: 12))
 
             Text(label)
                 .font(.caption)
@@ -750,9 +753,10 @@ private struct TimerPresetCard: View {
             .padding(.horizontal, 12)
             .padding(.vertical, 6)
             .background(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                AnchorCorners.rectangle(cornerRadius: 16)
                     .fill(isActive ? preset.color.opacity(0.12) : Color.white.opacity(0.04))
             )
+            .anchorCornerContainer(radius: 16)
         }
         .buttonStyle(.plain)
     }

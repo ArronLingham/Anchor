@@ -743,7 +743,7 @@ private struct RadialItemRow: View {
                 .frame(width: 26, height: 26)
                 .frame(width: 30, height: 30)
         } else {
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
+            AnchorCorners.rectangle(cornerRadius: 8)
                 .fill(Theme.spaceGradient)
                 .frame(width: 30, height: 30)
                 .overlay(
@@ -1175,12 +1175,12 @@ private struct RadialSymbolPicker: View {
             }
             .frame(width: 34, height: 30)
             .background(
-                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                AnchorCorners.rectangle(cornerRadius: 7)
                     .fill(selected ? Color.accentColor.opacity(0.14) : Color.secondary.opacity(0.06))
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 7, style: .continuous)
-                    .strokeBorder(selected ? Color.accentColor.opacity(0.75) : Color.secondary.opacity(0.13),
+                AnchorCorners.rectangle(cornerRadius: 7)
+                    .anchorStrokeBorder(selected ? Color.accentColor.opacity(0.75) : Color.secondary.opacity(0.13),
                                   lineWidth: selected ? 1.2 : 1)
             )
         }

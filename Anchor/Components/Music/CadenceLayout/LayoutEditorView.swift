@@ -17,6 +17,7 @@
  */
 
 import AppKit
+import AnchorUtilities
 import Defaults
 import SwiftUI
 
@@ -368,10 +369,11 @@ struct LayoutEditorView: View {
         }
         .coordinateSpace(name: Self.surfaceSpace)
         .frame(width: size.width, height: height)
-        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .clipShape(AnchorCorners.rectangle(cornerRadius: 18))
+        .anchorCornerContainer(radius: 18)
         .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .strokeBorder(Color.primary.opacity(0.12), lineWidth: 1)
+            AnchorCorners.rectangle(cornerRadius: 18)
+                .anchorStrokeBorder(Color.primary.opacity(0.12), lineWidth: 1)
         )
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .animation(.easeInOut(duration: 0.18), value: hoverPreview)
@@ -612,7 +614,7 @@ struct LayoutEditorView: View {
                             }
                             .frame(maxWidth: .infinity, minHeight: 42)
                             .background(
-                                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                                AnchorCorners.rectangle(cornerRadius: 7)
                                     .fill(Color.primary.opacity(0.07)))
                         }
                         .buttonStyle(.plain)

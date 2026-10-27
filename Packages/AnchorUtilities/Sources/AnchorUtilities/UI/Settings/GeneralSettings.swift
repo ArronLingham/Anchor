@@ -133,10 +133,10 @@ private struct AppearanceChoice: View {
             VStack(spacing: 8) {
                 thumbnail
                     .frame(height: 66)
-                    .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+                    .clipShape(AnchorCorners.rectangle(cornerRadius: 9))
                     .overlay {
-                        RoundedRectangle(cornerRadius: 9, style: .continuous)
-                            .strokeBorder(selected ? Color.accentColor : Color.primary.opacity(0.12),
+                        AnchorCorners.rectangle(cornerRadius: 9)
+                            .anchorStrokeBorder(selected ? Color.accentColor : Color.primary.opacity(0.12),
                                           lineWidth: selected ? 2 : 1)
                     }
                 Text(title)
@@ -146,8 +146,8 @@ private struct AppearanceChoice: View {
             .frame(maxWidth: .infinity)
             .padding(8)
             .background(selected ? Color.accentColor.opacity(0.08) : Color.clear,
-                        in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-            .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        in: AnchorCorners.rectangle(cornerRadius: 12))
+            .contentShape(AnchorCorners.rectangle(cornerRadius: 12))
         }
         .buttonStyle(.plain)
         .accessibilityLabel(title)
@@ -212,7 +212,7 @@ private struct DesktopThumbnail: View {
                 }
             }
             .background(Color(white: dark ? 0.19 : 0.99))
-            .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
+            .clipShape(AnchorCorners.rectangle(cornerRadius: 5))
             .padding(.top, 12)
             .padding(.leading, 14)
         }

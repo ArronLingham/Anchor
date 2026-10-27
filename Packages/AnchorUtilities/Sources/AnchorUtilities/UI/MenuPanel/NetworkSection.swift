@@ -215,7 +215,7 @@ struct NetworkSection: View {
                 .padding(.horizontal, 7)
                 .frame(height: 22)
                 .background(
-                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    AnchorCorners.rectangle(cornerRadius: 7)
                         .fill(Color.primary.opacity(0.10))
                 )
         }

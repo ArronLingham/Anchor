@@ -1,4 +1,5 @@
 import Defaults
+import AnchorUtilities
 import SwiftUI
 /*
  * Anchor
@@ -72,7 +73,7 @@ struct PerAppAudioList: View {
             }
         }
         .padding(9)
-        .background(Color.orange.opacity(0.10), in: RoundedRectangle(cornerRadius: 6))
+        .background(Color.orange.opacity(0.10), in: AnchorCorners.rectangle(cornerRadius: 6))
     }
 
     private func failureNotice(_ message: String) -> some View {
@@ -91,7 +92,7 @@ struct PerAppAudioList: View {
             }
         }
         .padding(9)
-        .background(Color.red.opacity(0.09), in: RoundedRectangle(cornerRadius: 6))
+        .background(Color.red.opacity(0.09), in: AnchorCorners.rectangle(cornerRadius: 6))
     }
 
     // MARK: - Rows
@@ -138,7 +139,7 @@ struct PerAppAudioList: View {
             }
         }
         .padding(12)
-        .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
+        .background(Color.secondary.opacity(0.08), in: AnchorCorners.rectangle(cornerRadius: 10))
         .padding(.vertical, 2)
     }
 

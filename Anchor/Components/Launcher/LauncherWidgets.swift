@@ -18,6 +18,7 @@
  */
 
 import AppKit
+import AnchorUtilities
 import Defaults
 import SwiftUI
 
@@ -100,7 +101,7 @@ struct LauncherWidgetStrip: View {
                                     widget(id)
                                         .environment(\.launcherWidgetWidth, width(id) - 28)
                                 } else {
-                                    RoundedRectangle(cornerRadius: 16)
+                                    AnchorCorners.rectangle(cornerRadius: 16)
                                         .fill(.quaternary).frame(width: width(id), height: 90)
                                 }
                                 if editing {
@@ -340,11 +341,12 @@ private struct WidgetCard<Content: View>: View {
             .frame(width: width + 28, alignment: .leading)
             .frame(minHeight: 86, alignment: .leading)
             .background(AnchorSurface(radius: 18))
+            .anchorCornerContainer(radius: 18)
             .overlay {
-                RoundedRectangle(cornerRadius: 16)
+                AnchorCorners.rectangle(cornerRadius: 16)
                     .stroke(Color.primary.opacity(0.08), lineWidth: 1)
             }
-            .contentShape(RoundedRectangle(cornerRadius: 16))
+            .contentShape(AnchorCorners.rectangle(cornerRadius: 16))
             .onTapGesture { onTap?() }
     }
 }

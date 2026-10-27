@@ -47,10 +47,11 @@ struct ShelfView: View {
                 if brandWatermark { brandWatermarkLayer }
             }
         )
-        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .clipShape(AnchorCorners.rectangle(cornerRadius: 18))
+        .anchorCornerContainer(radius: 18)
         .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .strokeBorder(isDropTargeted ? Color.accentColor : Color.white.opacity(0.12),
+            AnchorCorners.rectangle(cornerRadius: 18)
+                .anchorStrokeBorder(isDropTargeted ? Color.accentColor : Color.white.opacity(0.12),
                               lineWidth: isDropTargeted ? 2 : 1)
         )
         .overlay(alignment: .topLeading) {
@@ -207,14 +208,14 @@ struct ShelfView: View {
             .font(.system(size: 12, weight: .semibold))
             .frame(width: 42, height: 28)
             .background(
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                AnchorCorners.rectangle(cornerRadius: 6)
                     .fill(tint.opacity(hovered ? 0.20 : 0.07))
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .strokeBorder(tint.opacity(hovered ? 0.34 : 0.12), lineWidth: 0.8)
+                AnchorCorners.rectangle(cornerRadius: 6)
+                    .anchorStrokeBorder(tint.opacity(hovered ? 0.34 : 0.12), lineWidth: 0.8)
             )
-            .contentShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+            .contentShape(AnchorCorners.rectangle(cornerRadius: 6))
     }
 
     private var title: String {
@@ -240,8 +241,8 @@ struct ShelfView: View {
     }
 
     private var emptyState: some View {
-        RoundedRectangle(cornerRadius: 12, style: .continuous)
-            .strokeBorder(style: StrokeStyle(lineWidth: 1.5, dash: [6, 5]))
+        AnchorCorners.rectangle(cornerRadius: 12)
+            .anchorStrokeBorder(style: StrokeStyle(lineWidth: 1.5, dash: [6, 5]))
             .foregroundStyle(.secondary.opacity(0.4))
             .frame(height: Self.tileAreaHeight)
             .overlay(

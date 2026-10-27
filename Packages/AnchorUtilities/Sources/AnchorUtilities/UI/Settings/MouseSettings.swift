@@ -253,13 +253,13 @@ struct MouseSettings: View {
                         .padding(.horizontal, 10)
                         .frame(height: 28)
                         .background(selected ? Color.accentColor.opacity(0.12) : Color.primary.opacity(0.06),
-                                    in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+                                    in: AnchorCorners.rectangle(cornerRadius: 7))
                         .overlay {
-                            RoundedRectangle(cornerRadius: 7, style: .continuous)
-                                .strokeBorder(selected ? Color.accentColor.opacity(0.7) : Color.primary.opacity(0.14),
+                            AnchorCorners.rectangle(cornerRadius: 7)
+                                .anchorStrokeBorder(selected ? Color.accentColor.opacity(0.7) : Color.primary.opacity(0.14),
                                               lineWidth: 1)
                         }
-                        .contentShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+                        .contentShape(AnchorCorners.rectangle(cornerRadius: 7))
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(name)
@@ -515,12 +515,12 @@ struct MouseSettings: View {
                 .padding(.horizontal, 10)
                 .frame(height: 28)
                 .background(selected ? Color.accentColor.opacity(0.12) : Color.secondary.opacity(0.06),
-                            in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                            in: AnchorCorners.rectangle(cornerRadius: 8))
                 .overlay {
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .strokeBorder(selected ? Color.accentColor.opacity(0.7) : .clear, lineWidth: 1)
+                    AnchorCorners.rectangle(cornerRadius: 8)
+                        .anchorStrokeBorder(selected ? Color.accentColor.opacity(0.7) : .clear, lineWidth: 1)
                 }
-                .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .contentShape(AnchorCorners.rectangle(cornerRadius: 8))
         }
         .buttonStyle(.plain)
         .accessibilityAddTraits(selected ? .isSelected : [])

@@ -72,8 +72,8 @@ struct NotchClipboardView: View {
             .frame(height: NotchLayout.clipboardSearchHeight)
             .modifier(NotchControlSurface(cornerRadius: 14))
             .overlay {
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .strokeBorder(.white.opacity(searching ? 0.34 : 0), lineWidth: 1)
+                AnchorCorners.rectangle(cornerRadius: 14)
+                    .anchorStrokeBorder(.white.opacity(searching ? 0.34 : 0), lineWidth: 1)
                     .allowsHitTesting(false)
             }
             .animation(.easeOut(duration: 0.15), value: searching)
@@ -188,8 +188,8 @@ struct NotchClipboardView: View {
         .padding(.horizontal, 10).padding(.top, 10).padding(.bottom, 4)
         .modifier(NotchControlSurface(cornerRadius: 14, selected: entry.isPinned))
         .overlay {
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .strokeBorder(.white.opacity(highlightedID == entry.id ? 0.34 : 0), lineWidth: 1)
+            AnchorCorners.rectangle(cornerRadius: 14)
+                .anchorStrokeBorder(.white.opacity(highlightedID == entry.id ? 0.34 : 0), lineWidth: 1)
                 .allowsHitTesting(false)
         }
         .clipped()
@@ -279,7 +279,7 @@ struct NotchClipboardView: View {
                                         aspectRatio: entry.imageAspectRatio,
                                         failureText: "\(text.imageEntryLabel) · \(entry.imageDimensionsLabel)")
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                    .clipShape(AnchorCorners.rectangle(cornerRadius: 6))
                     .help("\(text.imageEntryLabel) · \(entry.imageDimensionsLabel)")
             } else {
                 searchText("\(text.imageEntryLabel) · \(entry.imageDimensionsLabel)", matching: searchTokens)
@@ -294,7 +294,7 @@ struct NotchClipboardView: View {
                 ClipboardThumbnailImage(source: .file(path: path),
                                         failureText: entry.fileNames.first ?? entry.preview)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                    .clipShape(AnchorCorners.rectangle(cornerRadius: 6))
                     .help(path)
             } else {
                 // A count of several files is no text the search reads.

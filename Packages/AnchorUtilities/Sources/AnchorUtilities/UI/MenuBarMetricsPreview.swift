@@ -101,7 +101,7 @@ struct MenuBarMetricsPreview: View {
         .frame(height: 32)
         .frame(maxWidth: .infinity)
         .background(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
+            AnchorCorners.rectangle(cornerRadius: 8)
                 .fill(Color.black.opacity(0.82))
         )
     }

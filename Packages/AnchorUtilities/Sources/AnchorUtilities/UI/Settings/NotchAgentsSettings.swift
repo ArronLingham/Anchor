@@ -214,7 +214,7 @@ struct NotchAgentsSettingsControls: View {
         HStack(spacing: 12) {
             NotchAgentMark(provider: provider, size: 13)
                 .frame(width: 26, height: 26)
-                .background(provider.tint.opacity(0.14), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+                .background(provider.tint.opacity(0.14), in: AnchorCorners.rectangle(cornerRadius: 7))
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
                 Text(provider.displayName)

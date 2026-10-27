@@ -454,14 +454,14 @@ private struct QuickEntryView: View, Equatable {
         .padding(.vertical, 6)
         .frame(minHeight: 48)
         .background(
-            RoundedRectangle(cornerRadius: 7, style: .continuous)
+            AnchorCorners.rectangle(cornerRadius: 7)
                 .fill(rowBackground(isSelected: isSelected,
                                     isBatchSelected: isBatchSelected,
                                     isHovered: isHovered))
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 7, style: .continuous)
-                .strokeBorder(isBatchSelected ? Color.accentColor.opacity(0.38)
+            AnchorCorners.rectangle(cornerRadius: 7)
+                .anchorStrokeBorder(isBatchSelected ? Color.accentColor.opacity(0.38)
                               : isSelected ? Color.accentColor.opacity(0.24) : Color.clear,
                               lineWidth: 1)
         )
@@ -480,16 +480,16 @@ private struct QuickEntryView: View, Equatable {
         }
         .frame(width: Self.cardSize.width, height: Self.cardSize.height)
         .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
+            AnchorCorners.rectangle(cornerRadius: 12)
                 .fill(Color(nsColor: .controlBackgroundColor))
-                .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .overlay(AnchorCorners.rectangle(cornerRadius: 12)
                     .fill(rowBackground(isSelected: isSelected,
                                         isBatchSelected: isBatchSelected,
                                         isHovered: isHovered)))
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .strokeBorder(isBatchSelected || isSelected ? Color.accentColor : Color.primary.opacity(0.1),
+            AnchorCorners.rectangle(cornerRadius: 12)
+                .anchorStrokeBorder(isBatchSelected || isSelected ? Color.accentColor : Color.primary.opacity(0.1),
                               lineWidth: isBatchSelected || isSelected ? 2.5 : 0.5)
         )
     }
@@ -593,7 +593,7 @@ private struct QuickEntryView: View, Equatable {
                     ClipboardThumbnailImage(source: .stored(name: name),
                                             aspectRatio: entry.imageAspectRatio)
                         .frame(maxWidth: pictureMaxSize.width, maxHeight: pictureMaxSize.height)
-                        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                        .clipShape(AnchorCorners.rectangle(cornerRadius: 6))
                 }
                 SearchHighlightText.text("\(text.imageEntryLabel) · \(entry.imageDimensionsLabel)",
                                          tokens: tokens, fontSize: 11.5)
@@ -610,7 +610,7 @@ private struct QuickEntryView: View, Equatable {
                     ClipboardThumbnailImage(source: .file(path: path),
                                             aspectRatio: ClipboardImageStore.imageAspectRatio(atPath: path))
                         .frame(maxWidth: pictureMaxSize.width, maxHeight: pictureMaxSize.height)
-                        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                        .clipShape(AnchorCorners.rectangle(cornerRadius: 6))
                     VStack(alignment: .leading, spacing: 2) {
                         SearchHighlightText.text(entry.fileNames.first ?? entry.preview, tokens: tokens, fontSize: 12)
                             .font(.system(size: 12))
@@ -657,7 +657,7 @@ private struct QuickEntryView: View, Equatable {
                         Image(systemName: "pencil")
                             .font(.system(size: 10.5, weight: .semibold))
                             .frame(width: 24, height: 24)
-                            .background(Color.primary.opacity(0.07), in: RoundedRectangle(cornerRadius: 6))
+                            .background(Color.primary.opacity(0.07), in: AnchorCorners.rectangle(cornerRadius: 6))
                     }
                     .buttonStyle(.plain)
                     .help(text.edit)
@@ -669,7 +669,7 @@ private struct QuickEntryView: View, Equatable {
                     Image(systemName: "doc.on.doc")
                         .font(.system(size: 10.5, weight: .semibold))
                         .frame(width: 24, height: 24)
-                        .background(Color.primary.opacity(0.07), in: RoundedRectangle(cornerRadius: 6))
+                        .background(Color.primary.opacity(0.07), in: AnchorCorners.rectangle(cornerRadius: 6))
                 }
                 .buttonStyle(.plain)
                 .help(text.copy)
@@ -679,7 +679,7 @@ private struct QuickEntryView: View, Equatable {
                     Image(systemName: "ellipsis")
                         .font(.system(size: 11, weight: .semibold))
                         .frame(width: 24, height: 24)
-                        .background(Color.primary.opacity(0.07), in: RoundedRectangle(cornerRadius: 6))
+                        .background(Color.primary.opacity(0.07), in: AnchorCorners.rectangle(cornerRadius: 6))
                 }
                 .menuStyle(.borderlessButton)
                 .menuIndicator(.hidden)

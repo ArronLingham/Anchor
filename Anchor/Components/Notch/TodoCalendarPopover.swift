@@ -18,6 +18,7 @@
  */
 
 import SwiftUI
+import AnchorUtilities
 
 /// A native graphical calendar popover for selecting a custom due date for a to-do item.
 struct TodoCalendarPopover: View {
@@ -161,7 +162,7 @@ struct TodoCalendarPopover: View {
                 .padding(.horizontal, 8)
                 .padding(.vertical, 4)
                 .background(
-                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    AnchorCorners.rectangle(cornerRadius: 6)
                         .fill(isSelected ? Color.accentColor.opacity(0.35) : Color.white.opacity(0.08))
                 )
                 .foregroundStyle(isSelected ? Color.accentColor : Color.white.opacity(0.85))

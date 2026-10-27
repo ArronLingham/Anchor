@@ -1,4 +1,5 @@
 import SwiftUI
+import AnchorUtilities
 import Defaults
 
 struct RealTimeWaveformScrubberView: View {
@@ -29,13 +30,14 @@ struct RealTimeWaveformScrubberView: View {
                     .opacity(0.8)
                     .mask(
                         HStack {
-                            RoundedRectangle(cornerRadius: minHeight / 2)
+                            AnchorCorners.rectangle(cornerRadius: minHeight / 2)
                                 .frame(width: max(0, geometry.size.width * CGFloat(progress)))
                             Spacer(minLength: 0)
                         }
                     )
             }
-            .clipShape(RoundedRectangle(cornerRadius: minHeight / 2))
+            .clipShape(AnchorCorners.rectangle(cornerRadius: minHeight / 2))
+            .anchorCornerContainer(radius: minHeight / 2)
         }
         .onChange(of: musicManager.isPlaying) { _, playing in
             if playing { startTimer() } else { stopTimer() }
