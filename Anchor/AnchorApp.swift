@@ -280,6 +280,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
     
     func applicationWillTerminate(_ notification: Notification) {
+        DisplayLinkManager.shared.stop()
         DesktopWorkspaceManager.shared.stop()
         UtilityIntegration.shared.stop()
         SystemNavigationShortcutManager.shared.stop()
@@ -813,6 +814,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         if !AppRuntimeEnvironment.isUITesting {
             UtilityIntegration.shared.start(delegate: self)
             DesktopWorkspaceManager.shared.start()
+            DisplayLinkManager.shared.start()
         }
         if CommandLine.arguments.contains("--features") {
             DispatchQueue.main.async { UtilityWorkspace.shared.showLibrary() }
