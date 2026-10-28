@@ -215,5 +215,3 @@ default.profraw
 !tests/run_concentric_corner_tests.sh
 !tests/LiquidGlassRenderingTests.swift
 !tests/run_liquid_glass_tests.sh
-!tests/DisplayLinkSupportTests.swift
-!tests/run_displaylink_tests.sh

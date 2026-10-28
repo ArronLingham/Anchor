@@ -17,7 +17,6 @@ struct SettingsIntegrations: View {
 
     var body: some View {
         Form {
-            DisplayLinkSettingsSection()
             Section("Lunar") {
                 status(lunar.isConnected && ddcEnabled && provider == .lunar,
                        ddcEnabled && provider == .lunar ? lunar.connectionMessage : "Lunar integration is off")

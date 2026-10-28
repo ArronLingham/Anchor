@@ -1115,7 +1115,6 @@ extension Defaults.Keys {
     static let circularHUDUseAccentColor = Key<Bool>("circularHUDUseAccentColor", default: true)
 
     // MARK: Third-Party DDC Integration
-    static let startDisplayLinkWhenConnected = Key<Bool>("startDisplayLinkWhenConnected", default: false)
     static let enableThirdPartyDDCIntegration = Key<Bool>("enableThirdPartyDDCIntegration", default: false)
     static let thirdPartyDDCProvider = Key<ThirdPartyDDCProvider>("thirdPartyDDCProvider", default: .betterDisplay)
     static let enableExternalVolumeControlListener = Key<Bool>("enableExternalVolumeControlListener", default: false)
