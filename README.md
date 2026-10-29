@@ -9,13 +9,37 @@
 [![SwiftUI + AppKit](https://img.shields.io/badge/SwiftUI_%2B_AppKit-native-F05138?logo=swift&logoColor=white)](#development)
 [![GPL v3](https://img.shields.io/badge/license-GPL_v3-blue)](LICENSE)
 
-[Feature tour](#feature-tour) · [Getting started](#getting-started) · [Build from source](#build-from-source) · [Privacy](#permissions-and-privacy) · [Development](#development)
+[Watch the tour](#see-anchor-in-action) · [Feature tour](#feature-tour) · [Getting started](#getting-started) · [Build from source](#build-from-source) · [Privacy](#permissions-and-privacy) · [Development](#development)
 
 </div>
+
+[![Anchor Dashboard and workspace overview](media/overview.jpg)](media/anchor-tour.mp4)
 
 Anchor brings playback, tasks, timers, files, and system controls to the top edge of your screen. Expand the notch for a quick action, open Dashboard for a wider workspace, or use the launcher to find an app, command, Shortcut, or quicklink.
 
 It is a native SwiftUI and AppKit application for Apple Silicon. Optional tools cover audio, window management, recording, dictation, clipboard workflows, and system maintenance. Choose the tools you need in **Features & Tools**; configure their behavior in searchable Settings.
+
+## See Anchor in action
+
+**[Watch the 36-second tour](media/anchor-tour.mp4)** · [Download the H.264 video](https://raw.githubusercontent.com/ArronLingham/Anchor/main/media/anchor-tour.mp4)
+
+A silent, captioned interface tour assembled from real native UI captures, with sample tasks and media. Expand the preview below for a short animation; the rest of this page uses still images.
+
+<details>
+<summary>Play the animated preview</summary>
+
+![Animated tour of Dashboard, notch, launcher, tools, settings, and media](media/tour-preview.gif)
+
+</details>
+
+| Time | In the tour |
+| --- | --- |
+| 0:00 | Dashboard: tasks, focus, playback, and quick controls. |
+| 0:06 | Expanded notch: media and actions at the top edge. |
+| 0:12 | Launcher: search or browse installed applications. |
+| 0:18 | Features & Tools: choose utilities and favorites. |
+| 0:24 | Settings: find and customize individual controls. |
+| 0:30 | Media: a compact lock-screen player. |
 
 ## Feature tour
 
@@ -26,6 +50,8 @@ It is a native SwiftUI and AppKit application for Apple Silicon. Optional tools 
 - Switch between media, notes, tasks, calendar, files, terminal, and system statistics.
 - See contextual activities for timers, downloads, battery changes, dictation, privacy indicators, and supported system events.
 - Add optional lock-screen media, weather, calendar, reminders, and timer surfaces. Their appearance and content settings live together in **Settings → Lock Screen**.
+
+![Expanded Anchor notch with sample playback information](media/notch.jpg)
 
 ### Dashboard: an overview you can customize
 
@@ -44,6 +70,13 @@ Dashboard has four tabs: **Overview**, **Productivity**, **Media**, and **System
 
 Open it from Anchor’s menu, the notch’s dashboard button, or launcher search. Use **Customize** to choose cards for the current tab. Existing customized layouts stay yours.
 
+<details>
+<summary>View the full Dashboard screenshot</summary>
+
+![Anchor Dashboard with four sample tasks, focus controls, and favorite tools](media/dashboard.jpg)
+
+</details>
+
 ### Launch apps and move between workspaces
 
 Search installed applications, built-in commands, Apple Shortcuts, and saved quicklinks in one interface. App matching supports prefixes, acronyms, accents, reordered words, and small typing mistakes. Exact and prefix matches take priority over usage history.
@@ -52,6 +85,8 @@ The launcher also offers an application grid, categories, folders, sorting optio
 
 Create movable desktop docks with their own apps, orientation, and size. Workspace Modes save combinations of app/window layouts, dock visibility, volume, and brightness. Display- and power-based rules are opt-in; configure them in **Settings → Workspace Modes**.
 
+![Anchor application launcher with search, tabs, and an app grid](media/launcher.jpg)
+
 ### Media and per-app sound
 
 - Control supported players, including Apple Music, Spotify, and YouTube Music integrations, with artwork, progress, lyrics, and playback controls. Available actions depend on the player and integration.
@@ -59,6 +94,8 @@ Create movable desktop docks with their own apps, orientation, and size. Workspa
 - Control application volume and mute, route supported audio, and apply a 10-band equalizer, imported AutoEQ profiles, and loudness processing.
 - Choose audio devices, pin a microphone, or assign shortcuts for output switching and microphone mute.
 - Customize volume and brightness HUDs using notch, pill, circular, or vertical presentations. External-monitor controls depend on the display and connection; Lunar integration is available for supported setups.
+
+<img src="media/lock-player.jpg" alt="Compact lock-screen player with sample media and playback controls" width="520">
 
 ### Capture, write, and organize
 
@@ -78,6 +115,8 @@ Create movable desktop docks with their own apps, orientation, and size. Workspa
 Features & Tools includes window layouts and snapping, Dock behavior, input utilities, color picking, camera previews, menu-bar organization, battery information, process/system monitoring, cleanup, and app-management actions.
 
 Optional developer tools include local Claude Code usage monitoring, reset alerts, and scheduled Git workflows. The AI assistant supports configured providers and uses your own credentials. These integrations have their own settings and network behavior; they are not prerequisites for the notch or dashboard.
+
+![Features and Tools library with search, filters, favorites, and individual controls](media/tools.jpg)
 
 ## Requirements
 
@@ -99,6 +138,13 @@ This repository currently provides source code, with no packaged GitHub release.
 3. Open **Features & Tools** to browse optional utilities. Star your favorites, then choose their Dashboard cards with **Customize**.
 4. Review **Shortcuts**, especially if you already use another launcher, window manager, clipboard manager, or audio utility. Choose one owner for overlapping shortcuts and background replacements.
 5. Connect calendars, media services, or other integrations as needed. Permission prompts belong to the features that require them.
+
+<details>
+<summary>View the Settings window</summary>
+
+![Anchor Appearance settings with grouped navigation and notch-width controls](media/settings.jpg)
+
+</details>
 
 ### Native shortcut defaults
 
@@ -170,7 +216,21 @@ bash Packages/AnchorUtilities/Support/finalize-app.sh \
 
 The support phase builds/signs optional helpers and copies required utility notices. Finalization seals the host after package resources are copied, then verifies nested signatures. The resulting app is at `build/DerivedData/Build/Products/Release/Anchor.app`.
 
-For development, change `Release` to `Debug`. For a compilation-only check without a signing identity, use `CODE_SIGNING_ALLOWED=NO`; that output is not a notarized distribution. Development signing likewise does not create a notarized public release.
+For development, change `Release` to `Debug`. Development signing does not create a notarized public release.
+
+<details>
+<summary>Compilation-only check without a signing identity</summary>
+
+```bash
+xcodebuild -project Anchor.xcodeproj -scheme Anchor \
+  -configuration Release -destination 'platform=macOS,arch=arm64' \
+  -derivedDataPath build/CompileCheck \
+  CODE_SIGNING_ALLOWED=NO CODE_SIGN_IDENTITY=- DEVELOPMENT_TEAM= build
+```
+
+This checks compilation and resource packaging. Use your own signed build for installation and protected integrations; unsigned output is not a notarized distribution.
+
+</details>
 
 Quit an existing Anchor instance before replacing it. Copy the complete new `.app` to `/Applications` using Finder, then reopen that copy. Avoid merging old and new bundle contents. To verify an installed copy:
 
