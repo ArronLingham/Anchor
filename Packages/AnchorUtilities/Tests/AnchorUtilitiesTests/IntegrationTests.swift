@@ -3,6 +3,27 @@ import CryptoKit
 @testable import AnchorUtilities
 
 final class IntegrationTests: XCTestCase {
+    func testClipboardAutoClearOwnershipTracksIndependentTriggers() throws {
+        let name = "AnchorClipboardOwnershipTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: name))
+        defer { defaults.removePersistentDomain(forName: name) }
+        defaults.set(true, forKey: DefaultsKey.clipboardAutoClearOnDelay)
+        defaults.set(true, forKey: DefaultsKey.clipboardAutoClearOnScreenLock)
+        defaults.set(true, forKey: DefaultsKey.clipboardHistoryEnabled)
+        XCTAssertEqual(UtilityWorkspace.clipboardAutoClearOwners(available: false, defaults: defaults), [])
+        XCTAssertEqual(UtilityWorkspace.clipboardAutoClearOwners(available: true, defaults: defaults),
+                       ["clipboardAutoClearDelay", "clipboardAutoClearLock"])
+        XCTAssertTrue(UtilityWorkspace.releaseClipboardAutoClearOwnership("clipboardAutoClearDelay", defaults: defaults))
+        XCTAssertFalse(defaults.bool(forKey: DefaultsKey.clipboardAutoClearOnDelay))
+        XCTAssertTrue(defaults.bool(forKey: DefaultsKey.clipboardAutoClearOnScreenLock))
+        XCTAssertTrue(defaults.bool(forKey: DefaultsKey.clipboardHistoryEnabled))
+        XCTAssertFalse(UtilityWorkspace.releaseClipboardAutoClearOwnership("clipboardAutoClearLock", defaults: defaults))
+        defaults.set(true, forKey: DefaultsKey.clipboardAutoClearOnSleep)
+        defaults.set(true, forKey: DefaultsKey.clipboardAutoClearOnDisplaySleep)
+        XCTAssertEqual(UtilityWorkspace.clipboardAutoClearOwners(available: true, defaults: defaults),
+                       ["clipboardAutoClearSleep", "clipboardAutoClearDisplaySleep", "clipboardAutoClearLock"])
+    }
+
     func testBundledAgentPricesAreCompleteAndMatchTheReleasedResource() throws {
         let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
             .deletingLastPathComponent().deletingLastPathComponent()

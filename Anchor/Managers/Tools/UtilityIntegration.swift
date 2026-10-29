@@ -32,7 +32,8 @@ final class UtilityIntegration: ObservableObject {
         "musicBlock": [.blockMediaAppAutoLaunch],
         "windowLayout": [.enableSnapZones],
         "diskImageInstaller": [.enableDiskImageInstaller],
-        "clipboardHistory": [.enableClipboardManager, .autoClearClipboardEnabled, .autoClearClipboardOnLock],
+        "clipboardHistory": [.enableClipboardManager],
+        "clipboardAutoClearDelay": [.autoClearClipboardEnabled],
         "urlCleaner": [.autoCleanCopiedURLs],
         "mixer": [.enablePerAppAudio],
         "notch": [.enableSystemHUD, .openNotchOnHover, .extendHoverArea],
@@ -121,13 +122,9 @@ final class UtilityIntegration: ObservableObject {
         }
 
         if newOwners.contains("mixer"), !owners.contains("mixer") { PerAppAudioManager.shared.stop() }
-        if newOwners.contains("clipboardHistory"), !owners.contains("clipboardHistory") {
-            ClipboardManager.shared.stopMonitoring()
-        } else if owners.contains("clipboardHistory"), !newOwners.contains("clipboardHistory"),
-                  Defaults[.enableClipboardManager] {
-            ClipboardManager.shared.startMonitoring()
-        }
         owners = newOwners
+        ClipboardToolsManager.shared.syncPasteboardWatch()
+        ClipboardToolsManager.shared.syncSystemTriggers()
         NotificationCenter.default.post(name: .utilityControlOwnershipChanged, object: nil)
     }
 
@@ -144,7 +141,12 @@ final class UtilityIntegration: ObservableObject {
         guard !resumed.isEmpty else { return }
         for key in resumed { handover.paused[key] = true }
         for owner in owners where Self.controlKeys[owner]?.contains(where: { resumed.contains($0.name) }) == true {
-            UtilityWorkspace.shared.setAvailable(owner, false)
+            switch owner {
+            case "clipboardAutoClearDelay":
+                UtilityWorkspace.shared.releaseClipboardAutoClearOwnership(owner)
+            default:
+                UtilityWorkspace.shared.setAvailable(owner, false)
+            }
         }
     }
 }

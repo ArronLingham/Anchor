@@ -53,12 +53,8 @@ struct ClipboardSettings: View {
                     Text("Enable Clipboard Manager")
                 }
                 .settingsHighlight(id: highlightID("Enable Clipboard Manager"))
-                .onChange(of: enableClipboardManager) { _, enabled in
-                    if enabled {
-                        clipboardManager.startMonitoring()
-                    } else {
-                        clipboardManager.stopMonitoring()
-                    }
+                .onChange(of: enableClipboardManager) { _, _ in
+                    ClipboardToolsManager.shared.syncPasteboardWatch()
                 }
             } header: {
                 Text("Clipboard Manager")
@@ -138,42 +134,44 @@ struct ClipboardSettings: View {
                         Text("Separate Tab mode integrates Copied Items and Notes into a single view. If both are enabled, Notes appear on the right and Clipboard on the left.")
                     }
                 }
+            }
 
-                Section {
-                    Defaults.Toggle(key: .autoCleanCopiedURLs) {
-                        Text("Clean tracking parameters from copied links")
+            Section {
+                Defaults.Toggle(key: .autoCleanCopiedURLs) {
+                    Text("Clean tracking parameters from copied links")
+                }
+                .settingsHighlight(id: highlightID("Clean tracking parameters from copied links"))
+                .settingsInfo("Removes utm_*, fbclid, gclid and similar from a link as you copy it. Only a copy that is a single web URL on its own is touched — prose containing a link is left alone, and only known tracking names are removed so a link never stops working.")
+
+                Defaults.Toggle(key: .autoClearClipboardEnabled) {
+                    Text("Empty the clipboard after a delay")
+                }
+                .settingsHighlight(id: highlightID("Empty the clipboard after a delay"))
+                .settingsInfo("Clears the system clipboard a while after you copy, so a password or token does not sit there. Your saved history is not touched.")
+
+                if autoClearClipboardEnabled {
+                    Picker("Clear after", selection: $autoClearClipboardSeconds) {
+                        Text("30 seconds").tag(30)
+                        Text("1 minute").tag(60)
+                        Text("90 seconds").tag(90)
+                        Text("5 minutes").tag(300)
+                        Text("15 minutes").tag(900)
                     }
-                    .settingsHighlight(id: highlightID("Clean tracking parameters from copied links"))
-                    .settingsInfo("Removes utm_*, fbclid, gclid and similar from a link as you copy it. Only a copy that is a single web URL on its own is touched — prose containing a link is left alone, and only known tracking names are removed so a link never stops working.")
-
-                    Defaults.Toggle(key: .autoClearClipboardEnabled) {
-                        Text("Empty the clipboard after a delay")
-                    }
-                    .settingsHighlight(id: highlightID("Empty the clipboard after a delay"))
-                    .settingsInfo("Clears the system clipboard a while after you copy, so a password or token does not sit there. Your saved history is not touched.")
-
-                    if autoClearClipboardEnabled {
-                        Picker("Clear after", selection: $autoClearClipboardSeconds) {
-                            Text("30 seconds").tag(30)
-                            Text("1 minute").tag(60)
-                            Text("90 seconds").tag(90)
-                            Text("5 minutes").tag(300)
-                            Text("15 minutes").tag(900)
-                        }
-
-                        Defaults.Toggle(key: .autoClearClipboardOnLock) {
-                            Text("Also clear on sleep and lock")
-                        }
-                        .settingsHighlight(id: highlightID("Also clear on sleep and lock"))
-                    }
-                } header: {
-                    Text("Clipboard tools")
-                } footer: {
-                    Text("Paste without formatting with the Paste as plain text shortcut, set under Shortcuts.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
                 }
 
+                Defaults.Toggle(key: .autoClearClipboardOnLock) {
+                    Text("Clear clipboard on sleep and lock")
+                }
+                .settingsHighlight(id: highlightID("Clear clipboard on sleep and lock"))
+            } header: {
+                Text("Clipboard tools")
+            } footer: {
+                Text("Paste without formatting with the Paste as plain text shortcut, set under Shortcuts.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            if enableClipboardManager {
                 Section {
                     Button("Clear Clipboard History") {
                         clipboardManager.clearHistory()

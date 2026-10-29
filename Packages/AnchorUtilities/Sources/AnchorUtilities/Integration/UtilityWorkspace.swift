@@ -161,6 +161,8 @@ public final class UtilityWorkspace: ObservableObject {
             || (AppFeature.mixer.isAvailable && !(UtilityPreferences.standard.string(forKey: DefaultsKey.preferredInputDevice) ?? "").isEmpty) {
             owners.insert("audioInput")
         }
+        owners.formUnion(Self.clipboardAutoClearOwners(
+            available: AppFeature.clipboardHistory.isAvailable, defaults: UtilityPreferences.standard))
         guard owners != lastOwners else { return }
         lastOwners = owners
         onControlOwnershipChange?(owners)
@@ -268,6 +270,31 @@ public final class UtilityWorkspace: ObservableObject {
         UtilityPreferences.standard.set("", forKey: DefaultsKey.preferredInputDevice)
         prepareOwnership()
         AudioInputDeviceManager.shared.syncWithPreferences()
+    }
+
+    /// Hand back the delay without disabling utility history or other triggers.
+    public func releaseClipboardAutoClearOwnership(_ owner: String) {
+        guard Self.releaseClipboardAutoClearOwnership(owner, defaults: UtilityPreferences.standard) else { return }
+        prepareOwnership()
+        ClipboardAutoClearService.shared.syncWithPreferences()
+    }
+
+    static func clipboardAutoClearOwners(available: Bool, defaults: UserDefaults) -> Set<String> {
+        guard available else { return [] }
+        let triggers = [
+            (DefaultsKey.clipboardAutoClearOnDelay, "clipboardAutoClearDelay"),
+            (DefaultsKey.clipboardAutoClearOnSleep, "clipboardAutoClearSleep"),
+            (DefaultsKey.clipboardAutoClearOnDisplaySleep, "clipboardAutoClearDisplaySleep"),
+            (DefaultsKey.clipboardAutoClearOnScreenLock, "clipboardAutoClearLock")
+        ]
+        return Set(triggers.compactMap { defaults.bool(forKey: $0.0) ? $0.1 : nil })
+    }
+
+    @discardableResult
+    static func releaseClipboardAutoClearOwnership(_ owner: String, defaults: UserDefaults) -> Bool {
+        guard owner == "clipboardAutoClearDelay" else { return false }
+        defaults.set(false, forKey: DefaultsKey.clipboardAutoClearOnDelay)
+        return true
     }
 
     public func setGlobalMicrophoneMuted(_ muted: Bool) {

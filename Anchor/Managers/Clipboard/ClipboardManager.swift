@@ -510,7 +510,10 @@ class ClipboardManager: ObservableObject {
             tools.noteClipboardChanged()
         }
 
-        guard var clipboardItem = getCurrentClipboardItem() else { return }
+        // URL cleaning and auto-clear can need the watcher independently of
+        // history, including while the utility clipboard owns history.
+        guard Defaults[.enableClipboardManager],
+              var clipboardItem = getCurrentClipboardItem() else { return }
         clipboardItem.sourceAppName = source?.localizedName
         clipboardItem.sourceBundleIdentifier = source?.bundleIdentifier
         if !(clipboardHistory + pinnedItems).contains(where: { isSameContent($0, clipboardItem) }) {

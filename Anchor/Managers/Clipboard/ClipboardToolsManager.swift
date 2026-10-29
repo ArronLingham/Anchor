@@ -71,6 +71,7 @@ final class ClipboardToolsManager: ObservableObject {
         // already parked on sleep/lock by `SystemActivityGate`, and a second
         // pasteboard watcher would double the cost for no benefit.
         for publisher in [
+            Defaults.publisher(.enableClipboardManager).map { _ in () }.eraseToAnyPublisher(),
             Defaults.publisher(.autoCleanCopiedURLs).map { _ in () }.eraseToAnyPublisher(),
             Defaults.publisher(.autoClearClipboardEnabled).map { _ in () }.eraseToAnyPublisher(),
         ] {
@@ -85,20 +86,19 @@ final class ClipboardToolsManager: ObservableObject {
         syncPasteboardWatch()
     }
 
-    /// Whether either tool needs the pasteboard watched.
-    private var needsPasteboardWatch: Bool {
-        Defaults[.autoCleanCopiedURLs] || Defaults[.autoClearClipboardEnabled]
-    }
-
-    /// Starts the shared clipboard poll when a tool needs it.
-    ///
-    /// Never *stops* it: the clipboard history feature may be relying on the
-    /// same poll, and this object has no way to know. Stopping it here would
-    /// silently break history — the classic cross-feature teardown bug.
-    private func syncPasteboardWatch() {
-        guard needsPasteboardWatch else { return }
-        if !ClipboardManager.shared.isMonitoring {
+    /// History and the clipboard tools share one watcher. Turning off one
+    /// consumer must not stop the others, or keep collecting history for them.
+    func syncPasteboardWatch() {
+        if !Defaults[.autoClearClipboardEnabled] {
+            clearTimer?.invalidate()
+            clearTimer = nil
+        }
+        let needsWatch = Defaults[.enableClipboardManager]
+            || Defaults[.autoCleanCopiedURLs] || Defaults[.autoClearClipboardEnabled]
+        if needsWatch {
             ClipboardManager.shared.startMonitoring()
+        } else {
+            ClipboardManager.shared.stopMonitoring()
         }
     }
 
@@ -238,7 +238,10 @@ final class ClipboardToolsManager: ObservableObject {
         guard Defaults[.autoClearClipboardEnabled] else { return }
         let delay = max(5, Defaults[.autoClearClipboardSeconds])
         let timer = Timer(timeInterval: TimeInterval(delay), repeats: false) { [weak self] _ in
-            MainActor.assumeIsolated { self?.clearPasteboard(reason: "timer") }
+            MainActor.assumeIsolated {
+                guard Defaults[.autoClearClipboardEnabled] else { return }
+                self?.clearPasteboard(reason: "timer")
+            }
         }
         RunLoop.main.add(timer, forMode: .common)
         clearTimer = timer
@@ -246,7 +249,7 @@ final class ClipboardToolsManager: ObservableObject {
 
     /// Registers or tears down the sleep and lock triggers to match the
     /// setting, so nothing is observed while the feature is off.
-    private func syncSystemTriggers() {
+    func syncSystemTriggers() {
         for observer in observers {
             NSWorkspace.shared.notificationCenter.removeObserver(observer)
             DistributedNotificationCenter.default().removeObserver(observer)
@@ -256,7 +259,12 @@ final class ClipboardToolsManager: ObservableObject {
         guard Defaults[.autoClearClipboardOnLock] else { return }
 
         let workspace = NSWorkspace.shared.notificationCenter
-        for name in [NSWorkspace.willSleepNotification, NSWorkspace.screensDidSleepNotification] {
+        let utilityOwners = UtilityIntegration.shared.owners
+        let triggers: [(Notification.Name, String)] = [
+            (NSWorkspace.willSleepNotification, "clipboardAutoClearSleep"),
+            (NSWorkspace.screensDidSleepNotification, "clipboardAutoClearDisplaySleep")
+        ]
+        for (name, owner) in triggers where !utilityOwners.contains(owner) {
             let token = workspace.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
                 MainActor.assumeIsolated { self?.clearPasteboard(reason: "sleep") }
             }
@@ -265,13 +273,15 @@ final class ClipboardToolsManager: ObservableObject {
 
         // Screen lock has no AppKit notification; the distributed one is what
         // the rest of the app already uses for lock state.
-        let lockToken = DistributedNotificationCenter.default().addObserver(
-            forName: NSNotification.Name("com.apple.screenIsLocked"),
-            object: nil, queue: .main
-        ) { [weak self] _ in
-            MainActor.assumeIsolated { self?.clearPasteboard(reason: "lock") }
+        if !utilityOwners.contains("clipboardAutoClearLock") {
+            let lockToken = DistributedNotificationCenter.default().addObserver(
+                forName: NSNotification.Name("com.apple.screenIsLocked"),
+                object: nil, queue: .main
+            ) { [weak self] _ in
+                MainActor.assumeIsolated { self?.clearPasteboard(reason: "lock") }
+            }
+            observers.append(lockToken)
         }
-        observers.append(lockToken)
     }
 
     /// Empties the system pasteboard.

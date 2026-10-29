@@ -32,6 +32,18 @@ import Foundation
         var recovered = UtilityOwnership(paused: ["navigation": true])
         expect(recovered.reconcile(owners: [], controls: controls, current: ["navigation": false]) == ["navigation": true],
                "recover saved choice after interrupted session")
+
+        let clipboardControls = ["clipboardHistory": ["history"], "clipboardAutoClearDelay": ["delay"]]
+        var clipboard = UtilityOwnership(paused: [:])
+        var choices = ["history": true, "delay": true]
+        choices.merge(clipboard.reconcile(owners: ["clipboardHistory"], controls: clipboardControls, current: choices)) { _, new in new }
+        expect(choices == ["history": false, "delay": true], "history handover preserves independent native auto-clear")
+        choices.merge(clipboard.reconcile(owners: ["clipboardHistory", "clipboardAutoClearDelay"], controls: clipboardControls, current: choices)) { _, new in new }
+        expect(choices == ["history": false, "delay": false], "utility delay claims only the overlapping timer")
+        choices.merge(clipboard.reconcile(owners: ["clipboardHistory"], controls: clipboardControls, current: choices)) { _, new in new }
+        expect(choices == ["history": false, "delay": true], "releasing delay restores native timer without changing history")
+        choices.merge(clipboard.reconcile(owners: [], controls: clipboardControls, current: choices)) { _, new in new }
+        expect(choices == ["history": true, "delay": true], "releasing history restores its saved setting")
         print("\(checks)/\(checks) utility ownership checks passed")
     }
 }
