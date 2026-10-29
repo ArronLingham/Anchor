@@ -513,11 +513,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         window.animationBehavior = .none
         // collectionBehavior is configured in AnchorWindow.init
 
-        window.contentView = FirstMouseHostingView(
+        let hostingView = FirstMouseHostingView(
             rootView: ContentView()
                 .environmentObject(viewModel)
                 //.moveToSky()
         )
+        // The island's frame is controlled by resizeWindow. Allowing SwiftUI
+        // to resize it during AppKit's layout pass can recursively invalidate
+        // constraints and abort the process.
+        hostingView.sizingOptions = []
+        window.contentView = hostingView
         
         if !utilityIslandActive { window.orderFrontRegardless() }
         // Pin above every space (fullscreen included) only for "Never hide"; the
