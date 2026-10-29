@@ -73,10 +73,11 @@ struct AIAssistantSettings: View {
                     Button {
                         manager.refreshModels()
                     } label: {
-                        Label(
-                            manager.isLoadingModels ? "Loading models…" : "Reload model list",
-                            systemImage: "arrow.clockwise")
-                            .font(.caption)
+                        HStack {
+                            if manager.isLoadingModels { ProgressView().controlSize(.small) }
+                            else { Image(systemName: "arrow.clockwise") }
+                            Text(manager.isLoadingModels ? "Loading models…" : "Reload model list")
+                        }.font(.caption)
                     }
                     .buttonStyle(.link)
                     .disabled(manager.isLoadingModels)
@@ -97,8 +98,13 @@ struct AIAssistantSettings: View {
 
             Section {
                 HStack {
-                    Button(manager.isLoadingSavedKeys ? "Loading saved keys…" : "Load saved keys…") {
+                    Button {
                         manager.loadSavedKeys()
+                    } label: {
+                        HStack {
+                            if manager.isLoadingSavedKeys { ProgressView().controlSize(.small) }
+                            Text(manager.isLoadingSavedKeys ? "Loading saved keys…" : "Load saved keys…")
+                        }
                     }
                     .disabled(manager.isLoadingSavedKeys || manager.isCheckingKeys)
                     Spacer()
