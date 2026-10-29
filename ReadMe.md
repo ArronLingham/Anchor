@@ -71,12 +71,16 @@ These are historical measurements from earlier builds, not a benchmark of every 
 
 ### Core Engineering Principles
 
-- **Zero-Polling Guarantee:** Never use polling loops where an event-driven operating system API exists. The entire app reacts dynamically via `FSEventStream`, `kqueue` DispatchSources, CoreAudio HAL property listeners, `IOPSNotificationCreateRunLoopSource`, `NSWorkspace` notifications, and SkyLight window events.
+- **Event-driven first:** Prefer operating-system notifications over polling. Anchor uses `FSEventStream`, `kqueue` DispatchSources, CoreAudio HAL property listeners, `IOPSNotificationCreateRunLoopSource`, `NSWorkspace` notifications, and SkyLight window events. Clipboard change detection and services without a push API still require bounded polling; visible statistics and animation sampling stop when their consumers go away.
 - **Reference-Counted Active Sampling:** Resource-intensive subsystems (e.g., `SystemStatsManager`, `AudioTap`) sample only when an interface view explicitly holds an active lease via `acquire()` and park immediately on `release()`.
 - **Hardware-Accelerated Animation:** Persistent animations (e.g., the spinning desktop vinyl record and live spectrum visualizer) execute via render-server Core Animation (`CABasicAnimation` on `CALayer`) rather than per-frame main-thread SwiftUI passes.
 - **Native Swift Architecture:** Native Swift and AppKit/SwiftUI. Optional fan control and Now Playing support are bundled with the app and used by their corresponding features.
 
 ---
+
+## Performance and interface audit
+
+The [October 29 audit](docs/AUDIT-2026-10-29.md) records the source review, cache and service lifecycle changes, settings consolidation, dashboard updates, validation, and remaining consolidation work. Its runtime measurements describe the tested configuration; historical benchmark rows above describe older builds.
 
 ## Dashboard and workflow additions
 
