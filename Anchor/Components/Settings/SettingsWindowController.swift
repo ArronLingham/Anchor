@@ -85,6 +85,8 @@ extension NotchViews {
 class SettingsWindowController: NSWindowController {
     static let shared = SettingsWindowController()
     private var updaterController: SPUStandardUpdaterController?
+    private var presentationGeneration = UUID()
+    private var contentInstalled = false
     
     private init() {
         let window = NSWindow(
@@ -105,8 +107,8 @@ class SettingsWindowController: NSWindowController {
     
     func setUpdaterController(_ controller: SPUStandardUpdaterController) {
         self.updaterController = controller
-        // Recreate the content view with the proper updater controller
-        setupWindow()
+        // Refresh an open settings view, but do not build one just for startup.
+        if contentInstalled { installContent() }
     }
     
     private func setupWindow() {
@@ -133,15 +135,18 @@ class SettingsWindowController: NSWindowController {
         window.isRestorable = true
         window.identifier = NSUserInterfaceItemIdentifier("AnchorSettingsWindow")
         
-        // Create the SwiftUI content
+        // Handle window closing
+        window.delegate = self
+
+        ScreenCaptureVisibilityManager.shared.register(window, scope: .panelsOnly)
+    }
+
+    private func installContent() {
+        guard let window else { return }
         let settingsView = SettingsView(updaterController: updaterController)
         let hostingView = NSHostingView(rootView: settingsView)
         window.contentView = hostingView
-        
-        // Handle window closing
-        window.delegate = self
-        
-        ScreenCaptureVisibilityManager.shared.register(window, scope: .panelsOnly)
+        contentInstalled = true
     }
     
     func showWindow(tab: SettingsTab? = nil, highlightID: String? = nil) {
@@ -166,10 +171,13 @@ class SettingsWindowController: NSWindowController {
     }
 
     private func presentWindow() {
+        presentationGeneration = UUID()
+        let generation = presentationGeneration
         UtilityWorkspace.shared.controlsVisible = false
         // Ensure window exists
         _ = window
         if let window {
+            if !contentInstalled { installContent() }
             AnchorApplicationPresentation.shared.register(window)
             if window.isMiniaturized { window.deminiaturize(nil) }
         }
@@ -196,7 +204,9 @@ class SettingsWindowController: NSWindowController {
         
         // Force window to front after activation
         DispatchQueue.main.async { [weak self] in
-            self?.window?.makeKeyAndOrderFront(nil)
+            guard let self, self.presentationGeneration == generation,
+                  self.window?.isVisible == true else { return }
+            self.window?.makeKeyAndOrderFront(nil)
         }
     }
     
@@ -206,10 +216,20 @@ class SettingsWindowController: NSWindowController {
     }
     
     private func relinquishFocus() {
+        presentationGeneration = UUID()
+        let generation = presentationGeneration
         UtilityWorkspace.shared.controlsVisible = false
         window?.orderOut(nil)
         
         if let window { AnchorApplicationPresentation.shared.unregister(window) }
+        // AppKit is still unwinding the close event. Release the hosting tree
+        // on the next turn, unless Settings was reopened in the meantime.
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.presentationGeneration == generation,
+                  let window = self.window, !window.isVisible else { return }
+            window.contentView = nil
+            self.contentInstalled = false
+        }
     }
     
     deinit {
