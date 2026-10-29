@@ -17,7 +17,13 @@ import UniformTypeIdentifiers
 /// No permissions required: the shortcut is a Carbon hot key, and the shake
 /// detector is a passive global mouse monitor.
 final class ShelfService: ObservableObject {
-    static let shared = ShelfService()
+    private static weak var initializedInstance: ShelfService?
+    static let shared: ShelfService = {
+        let service = ShelfService()
+        initializedInstance = service
+        return service
+    }()
+    static var existing: ShelfService? { initializedInstance }
 
     struct Item: Identifiable, Equatable {
         let id: UUID

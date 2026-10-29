@@ -39,7 +39,13 @@ private struct SwitcherPendingSessionStart {
 /// every Space and fullscreen app, so the switcher is available wherever the
 /// user is.
 final class AppSwitcher: ObservableObject {
-    static let shared = AppSwitcher()
+    private static weak var initializedInstance: AppSwitcher?
+    static let shared: AppSwitcher = {
+        let service = AppSwitcher()
+        initializedInstance = service
+        return service
+    }()
+    static var existing: AppSwitcher? { initializedInstance }
 
     @Published private(set) var windows: [SwitcherItem] = []
     @Published private(set) var previews: [CGWindowID: CGImage] = [:]
@@ -215,6 +221,8 @@ final class AppSwitcher: ObservableObject {
     /// Applies the persisted preference; safe to call repeatedly.
     func syncWithPreferences() {
         UtilityWorkspace.shared.prepareOwnership()
+        // The switcher may be enabled while a shortcut recorder is open.
+        setCapturingShortcut(ShortcutCapture.isCapturing)
         let shortcut = GlobalShortcut.saved(for: DefaultsKey.switcherShortcut,
                                             fallback: .switcherDefault)
         let windowShortcut = GlobalShortcut.saved(for: DefaultsKey.switcherWindowShortcut,
@@ -279,6 +287,8 @@ final class AppSwitcher: ObservableObject {
             }
         }
     }
+
+    var isCapturingShortcut: Bool { routeLock.withLock { routeCapturing } }
 
     // MARK: - Event tap
 

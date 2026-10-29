@@ -8,6 +8,60 @@ final class FeatureResourceTests: XCTestCase {
         var running = true
     }
 
+    func testColdClipboardHistoryStaysUnloadedForAutoClearAndShortcutCapture() throws {
+        guard ClipboardHistoryService.existing == nil, ShelfService.existing == nil, AppSwitcher.existing == nil,
+              SoundOutputSwitcher.existing == nil, WindowLayoutService.existing == nil else {
+            throw XCTSkip("This process already loaded a service; run this test on its own for the cold-start check.")
+        }
+        let defaults = UtilityPreferences.standard
+        let keys = AppFeature.allCases.map(\.availabilityKey) + [
+            DefaultsKey.clipboardHistoryEnabled, DefaultsKey.clipboardAutoClearOnDelay,
+            DefaultsKey.clipboardAutoClearOnSleep, DefaultsKey.clipboardAutoClearOnDisplaySleep,
+            DefaultsKey.clipboardAutoClearOnScreenLock
+        ]
+        let old = keys.map { ($0, defaults.object(forKey: $0)) }
+        defer {
+            ShortcutCapture.end()
+            defaults.set(false, forKey: AppFeature.clipboardHistory.availabilityKey)
+            ClipboardAutoClearService.shared.syncWithPreferences()
+            for (key, value) in old {
+                if let value { defaults.set(value, forKey: key) } else { defaults.removeObject(forKey: key) }
+            }
+        }
+        for feature in AppFeature.allCases { defaults.set(false, forKey: feature.availabilityKey) }
+        for key in keys.suffix(5) { defaults.set(false, forKey: key) }
+        defaults.set(true, forKey: AppFeature.clipboardHistory.availabilityKey)
+        defaults.set(true, forKey: DefaultsKey.clipboardAutoClearOnSleep)
+
+        FeatureRuntime.shared.sync([.clipboardHistory])
+        XCTAssertNil(ClipboardHistoryService.existing, "An installed auto-clear tool must not load disabled history")
+        ShortcutCapture.begin()
+        ShortcutCapture.end()
+        XCTAssertNil(ClipboardHistoryService.existing, "Recording a shortcut must not load disabled history")
+        XCTAssertNil(ShelfService.existing, "Recording a shortcut must not restore a disabled shelf")
+        XCTAssertNil(AppSwitcher.existing, "Recording a shortcut must not load the disabled switcher")
+        XCTAssertNil(SoundOutputSwitcher.existing, "Recording a shortcut must not load the output switcher")
+        XCTAssertNil(WindowLayoutService.existing, "Recording a shortcut must not load window layout")
+    }
+
+    func testSwitcherCreatedDuringShortcutCaptureRemainsSuspended() {
+        let defaults = UtilityPreferences.standard
+        let old = AppFeature.allCases.map { ($0.availabilityKey, defaults.object(forKey: $0.availabilityKey)) }
+        defer {
+            ShortcutCapture.end()
+            for (key, value) in old {
+                if let value { defaults.set(value, forKey: key) } else { defaults.removeObject(forKey: key) }
+            }
+        }
+        for feature in AppFeature.allCases { defaults.set(false, forKey: feature.availabilityKey) }
+        ShortcutCapture.begin()
+        let switcher = AppSwitcher.shared
+        switcher.syncWithPreferences()
+        XCTAssertTrue(switcher.isCapturingShortcut)
+        ShortcutCapture.end()
+        XCTAssertFalse(switcher.isCapturingShortcut)
+    }
+
     func testDisabledColdServiceDoesNotConstructAnEngine() {
         var created = 0
         let slot = FeatureServiceSlot<Engine>([], isNeeded: { false }, make: {
@@ -197,7 +251,7 @@ extension FeatureResourceTests {
         XCTAssertEqual(service.entries.map(\.text), ["Recoverable unsaved fixture"])
     }
 
-    func testEnablingParentDoesNotEnableItsDisabledExtensions() {
+    func testRetiredImportedIslandAndExtensionsStayUnavailable() {
         let defaults = UtilityPreferences.standard
         let old = AppFeature.allCases.map { ($0.availabilityKey, defaults.object(forKey: $0.availabilityKey)) }
         let keys = [DefaultsKey.notchInitialExtensionsInstalled, DefaultsKey.notchEnabled]
@@ -211,9 +265,9 @@ extension FeatureResourceTests {
         }
         let runtime = FeatureRuntime(bindings: [:])
         runtime.setAvailable([.notch], true)
-        XCTAssertTrue(AppFeature.notch.isAvailable)
+        XCTAssertFalse(AppFeature.notch.isAvailable, "Anchor owns the island renderer")
         XCTAssertTrue(AppFeature.dynamicIslandExtensions.allSatisfy { !$0.isAvailable },
-                      "Enabling a parent must preserve every extension's explicit Off state")
+                      "The retired island must not make its imported extensions available")
         runtime.setAvailable([.notch], false)
     }
 

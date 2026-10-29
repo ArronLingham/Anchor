@@ -7,7 +7,13 @@ import Foundation
 
 /// Cycles the system output through the devices selected in the mixer panel.
 final class SoundOutputSwitcher: ObservableObject {
-    static let shared = SoundOutputSwitcher()
+    private static weak var initializedInstance: SoundOutputSwitcher?
+    static let shared: SoundOutputSwitcher = {
+        let service = SoundOutputSwitcher()
+        initializedInstance = service
+        return service
+    }()
+    static var existing: SoundOutputSwitcher? { initializedInstance }
 
     @Published private(set) var registrationFailed = false
     @Published private(set) var lastSwitchFailed = false

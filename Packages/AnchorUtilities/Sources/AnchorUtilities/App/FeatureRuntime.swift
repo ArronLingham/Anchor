@@ -341,7 +341,14 @@ final class FeatureRuntime: ObservableObject {
             SnippetLibraryService.shared.syncWithPreferences()
         },
         .clipboardHistory: {
-            ClipboardHistoryService.shared.syncWithPreferences()
+            // Auto-clear can be enabled without recording history. Do not read
+            // the saved history or retain its caches just to start that tool.
+            if AppFeature.clipboardHistory.isAvailable,
+               UtilityPreferences.standard.bool(forKey: DefaultsKey.clipboardHistoryEnabled) {
+                ClipboardHistoryService.shared.syncWithPreferences()
+            } else {
+                ClipboardHistoryService.existing?.syncWithPreferences()
+            }
             // Auto clear rides the clipboard feature's availability but not its
             // capture toggle: uninstalling the feature stops it, turning history
             // off does not.

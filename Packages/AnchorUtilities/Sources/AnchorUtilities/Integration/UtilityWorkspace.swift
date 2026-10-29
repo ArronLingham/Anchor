@@ -369,7 +369,7 @@ public final class UtilityWorkspace: ObservableObject {
         if AppFeature.audioPriority.isAvailable || AppFeature.mixer.isAvailable { AudioInputDeviceManager.shared.stop() }
         if AppFeature.soundOutputSwitcher.isAvailable { SoundOutputSwitcher.shared.stop() }
         if AppFeature.scratchpad.isAvailable { ScratchpadService.shared.suspend() }
-        if AppFeature.clipboardHistory.isAvailable { ClipboardHistoryService.shared.flushBeforeTermination() }
+        ClipboardHistoryService.existing?.flushBeforeTermination()
         if AppFeature.keepAwake.isAvailable { KeepAwakeManager.shared.deactivate(reason: .quit) }
         FanControlService.restoreBeforeTerminationIfNeeded()
         SystemShortcutTakeover.restoreAll()

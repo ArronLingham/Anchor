@@ -25,7 +25,13 @@ enum WindowLayoutResult: Equatable {
 /// after a deliberate gesture. Edge snapping changes an event only after the
 /// same window has visibly followed the pointer to the top of a screen.
 final class WindowLayoutService: ObservableObject {
-    static let shared = WindowLayoutService()
+    private static weak var initializedInstance: WindowLayoutService?
+    static let shared: WindowLayoutService = {
+        let service = WindowLayoutService()
+        initializedInstance = service
+        return service
+    }()
+    static var existing: WindowLayoutService? { initializedInstance }
 
     @Published private(set) var lastResult: WindowLayoutResult?
     /// Bumped on every published result, so a late settle failure can tell

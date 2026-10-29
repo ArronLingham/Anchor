@@ -206,8 +206,8 @@ final class ClipboardAutoClearService {
                 self.lastChangeDate = Date()
                 // Keeps the history poll from reading the empty pasteboard as
                 // a copy, the same handshake a history paste performs.
-                ClipboardHistoryService.shared.ignoreNextChange(upTo: count)
-                ClipboardHistoryService.shared.pasteboardWasCleared()
+                ClipboardHistoryService.existing?.ignoreNextChange(upTo: count)
+                ClipboardHistoryService.existing?.pasteboardWasCleared()
             }
         }
     }
