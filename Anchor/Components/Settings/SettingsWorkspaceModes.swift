@@ -55,11 +55,21 @@ private struct WorkspaceModeEditor: View {
     @ObservedObject var manager: DesktopWorkspaceManager
     @State private var showingDelete = false
 
+    private var appsWithoutLayout: [WorkspaceApp] {
+        let assignedIDs = Set(mode.windows.map { $0.app.id })
+        return mode.apps.filter { !assignedIDs.contains($0.id) }
+    }
+
     var body: some View {
         Section {
             TextField("Name", text: $mode.name)
             HStack {
-                Button(manager.applying ? "Applying…" : "Apply Mode") { manager.apply(mode.id) }
+                Button { manager.apply(mode.id) } label: {
+                    HStack {
+                        if manager.applying { ProgressView().controlSize(.small) }
+                        Text(manager.applying ? "Applying…" : "Apply Mode")
+                    }
+                }
                     .disabled(manager.applying).buttonStyle(.borderedProminent)
                 if manager.applying { Button("Stop") { manager.cancelApply() } }
                 Button("Capture Current Apps & Layout") { manager.captureLayout(for: mode.id) }.disabled(manager.applying)
@@ -128,13 +138,13 @@ private struct WorkspaceModeEditor: View {
                 }
             }
             Menu("Add Window Layout") {
-                ForEach(mode.apps) { app in
+                ForEach(appsWithoutLayout) { app in
                     Button(app.name) {
                         let ordinal = mode.windows.filter { $0.app.id == app.id }.count
                         mode.windows.append(WorkspaceWindow(app: app, title: "", ordinal: ordinal, displayID: "", rect: WorkspaceRect()))
                     }
                 }
-            }.disabled(mode.apps.isEmpty)
+            }.disabled(appsWithoutLayout.isEmpty)
             Text("Saved displays are identified across reconnections. Missing displays fall back to the primary display. Apps may enforce minimum sizes.")
                 .font(.caption).foregroundStyle(.secondary)
         } header: { Text("Window layouts") }
