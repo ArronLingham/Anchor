@@ -116,6 +116,8 @@ Create movable desktop docks with their own apps, orientation, and size. Workspa
 
 Features & Tools includes window layouts and snapping, Dock behavior, input utilities, color picking, camera previews, menu-bar organization, battery information, process/system monitoring, cleanup, and app-management actions.
 
+**Native window tiling:** General and Window Layout settings share the three macOS Desktop & Dock switches for edge tiling, menu-bar filling, and Option-drag tiling. They read and write WindowManager’s actual preferences, verify writes, and refresh when Anchor regains focus. There is no polling timer or Anchor copy of these values. These preference keys are undocumented; unsupported or managed values disable editing and failed writes show an error. Custom keyboard placements remain separate. Anchor’s advanced custom edge zones defer to macOS while native tiling is enabled. Spaces ordering and per-device pointer acceleration still use their existing override/recovery implementations; they are not claimed as fully synchronized native controls, and have not been removed.
+
 Optional developer tools include local Claude Code usage monitoring, reset alerts, and scheduled Git workflows. The AI assistant supports configured providers and uses your own credentials. These integrations have their own settings and network behavior; they are not prerequisites for the notch or dashboard.
 
 ![Features and Tools library with search, filters, favorites, and individual controls](media/tools.jpg)

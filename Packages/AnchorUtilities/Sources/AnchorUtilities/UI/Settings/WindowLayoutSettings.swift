@@ -65,8 +65,12 @@ struct WindowLayoutSettings: View {
             }
 
             if AppFeature.windowLayout.isAvailable {
+                Section("macOS window tiling") {
+                    NativeWindowTilingSettings()
+                }
+
                 Section(text.gestureSection) {
-                    Toggle(text.edgeSnapEnable, isOn: $edgeSnapEnabled)
+                    Toggle("Use Anchor’s custom edge zones", isOn: $edgeSnapEnabled)
                         .onChange(of: edgeSnapEnabled) { _, _ in
                             WindowLayoutService.shared.syncWithPreferences()
                         }

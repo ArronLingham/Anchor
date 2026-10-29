@@ -173,11 +173,13 @@ struct GeneralSettings: View {
             }
 
             Section {
+                NativeWindowTilingSettings()
+                    .settingsHighlight(id: highlightID("Window tiling (macOS)"))
                 Defaults.Toggle(key: .enableSnapZones) {
-                    Text("Snap windows to screen edges")
+                    Text("Enable custom window shortcuts")
                 }
-                .settingsHighlight(id: highlightID("Snap windows to screen edges"))
-                .settingsInfo("Drag a window against the left or right edge to tile it to that half, or the top edge to fill the screen. Sixteen zones are also available as shortcuts in the Shortcuts pane. Needs Accessibility, which dictation already requires. Nothing is observed until a drag begins.")
+                .settingsHighlight(id: highlightID("Enable custom window shortcuts"))
+                .settingsInfo("Enables Anchor’s configurable keyboard placements, including thirds and centering. macOS handles edge dragging using the switches above.")
 
                 Defaults.Toggle(key: .enableQuitOnLastWindowClose) {
                     Text("Quit apps when their last window closes")

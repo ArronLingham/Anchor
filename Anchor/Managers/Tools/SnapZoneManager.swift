@@ -156,7 +156,9 @@ final class SnapZoneManager: ObservableObject {
     }
 
     private func syncToSettings() {
-        if Defaults[.enableSnapZones] { startWatching() } else { stopWatching() }
+        // Edge dragging uses the shared native switches. Keep this preference
+        // for Anchor’s configurable keyboard placements only.
+        stopWatching()
     }
 
     // MARK: - Monitors

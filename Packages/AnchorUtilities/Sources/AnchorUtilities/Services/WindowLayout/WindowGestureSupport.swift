@@ -632,12 +632,15 @@ enum WindowEdgeSnapSupport {
     private static let sizeTolerance: CGFloat = 2
 
     static var isSystemTilingEnabled: Bool {
-        guard #available(macOS 15.0, *),
-              let defaults = UserDefaults(suiteName: "com.apple.WindowManager") else { return false }
+        guard #available(macOS 15.0, *) else { return false }
+        let preferences = NativeWindowTilingPreferences()
+        // Re-read the cross-process domain; an Anchor-owned cached value must
+        // never decide whether macOS is currently handling a drag.
+        guard preferences.refresh() else { return true }
         return systemTilingEnabled(
             valueFor: { key in
-                guard defaults.object(forKey: key) != nil else { return nil }
-                return defaults.bool(forKey: key)
+                guard let preference = NativeWindowTilingPreference(rawValue: key) else { return nil }
+                return preferences.value(preference)
             },
             displaysSpan: displaysSpan(spacesPreference("spans-displays"))
         )
