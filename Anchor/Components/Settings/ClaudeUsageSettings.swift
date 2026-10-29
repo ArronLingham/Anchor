@@ -180,7 +180,9 @@ struct ClaudeUsageSettings: View {
 
     private func loadTopic() {
         guard !topicLoaded else { return }
-        topic = ClaudeUsageKeychain.ntfyTopic() ?? ""
+        // A design review needs the layout, never a credential or a Keychain
+        // prompt. The snapshot harness is disabled in Release builds.
+        topic = UISnapshotHarness.requestedDirectory == nil ? ClaudeUsageKeychain.ntfyTopic() ?? "" : ""
         topicLoaded = true
     }
 

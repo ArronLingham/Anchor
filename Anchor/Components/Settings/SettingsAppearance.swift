@@ -47,15 +47,6 @@ struct Appearance: View {
     @Default(.closedNotchWidth) var closedNotchWidth
     @Default(.customizePhysicalNotchWidth) var customizePhysicalNotchWidth
     @Default(.enableMinimalisticUI) var enableMinimalisticUI
-    @Default(.lockScreenGlassCustomizationMode) private var lockScreenGlassCustomizationMode
-    @Default(.lockScreenGlassStyle) private var lockScreenGlassStyle
-    @Default(.lockScreenMusicLiquidGlassVariant) private var lockScreenMusicLiquidGlassVariant
-    @Default(.lockScreenTimerLiquidGlassVariant) private var lockScreenTimerLiquidGlassVariant
-    @Default(.lockScreenTimerGlassStyle) private var lockScreenTimerGlassStyle
-    @Default(.lockScreenTimerGlassCustomizationMode) private var lockScreenTimerGlassCustomizationMode
-    @Default(.lockScreenTimerWidgetUsesBlur) private var timerGlassModeIsGlass
-    @Default(.enableLockScreenMediaWidget) private var enableLockScreenMediaWidget
-    @Default(.enableLockScreenTimerWidget) private var enableLockScreenTimerWidget
     @Default(.externalDisplayStyle) private var externalDisplayStyle
     @State private var selectedListVisualizer: CustomVisualizer? = nil
 
@@ -101,37 +92,6 @@ struct Appearance: View {
 
     private func highlightID(_ title: String) -> String {
         SettingsTab.appearance.highlightID(for: title)
-    }
-
-    private var liquidVariantRange: ClosedRange<Double> {
-        Double(LiquidGlassVariant.supportedRange.lowerBound)...Double(LiquidGlassVariant.supportedRange.upperBound)
-    }
-
-    private var appearanceMusicVariantBinding: Binding<Double> {
-        Binding(
-            get: { Double(lockScreenMusicLiquidGlassVariant.rawValue) },
-            set: { newValue in
-                let raw = Int(newValue.rounded())
-                lockScreenMusicLiquidGlassVariant = LiquidGlassVariant.clamped(raw)
-            }
-        )
-    }
-
-    private var appearanceTimerVariantBinding: Binding<Double> {
-        Binding(
-            get: { Double(lockScreenTimerLiquidGlassVariant.rawValue) },
-            set: { newValue in
-                let raw = Int(newValue.rounded())
-                lockScreenTimerLiquidGlassVariant = LiquidGlassVariant.clamped(raw)
-            }
-        )
-    }
-
-    private var timerSurfaceBinding: Binding<LockScreenTimerSurfaceMode> {
-        Binding(
-            get: { timerGlassModeIsGlass ? .glass : .classic },
-            set: { mode in timerGlassModeIsGlass = (mode == .glass) }
-        )
     }
 
     var body: some View {
@@ -190,80 +150,18 @@ struct Appearance: View {
             notchWidthControls()
 
             Section {
-                if #available(macOS 26.0, *) {
-                    Picker("Material", selection: $lockScreenGlassStyle) {
-                        ForEach(LockScreenGlassStyle.allCases) { style in
-                            Text(style.localizedName).tag(style)
-                        }
-                    }
-                    .settingsHighlight(id: highlightID("Lock screen material"))
-                } else {
-                    Picker("Material", selection: $lockScreenGlassStyle) {
-                        ForEach(LockScreenGlassStyle.allCases) { style in
-                            Text(style.localizedName).tag(style)
-                        }
-                    }
-                    .disabled(true)
-                    .settingsHighlight(id: highlightID("Lock screen material"))
-                    Text("Liquid Glass requires macOS 26 or later.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                Button {
+                    SettingsWindowController.shared.showWindow(
+                        tab: .lockScreen,
+                        highlightID: SettingsTab.lockScreen.highlightID(for: "Material"))
+                } label: {
+                    Label("Customize lock screen widgets…", systemImage: "lock.laptopcomputer")
                 }
-
-                if lockScreenGlassStyle == .liquid {
-                    Picker("Lock screen glass mode", selection: $lockScreenGlassCustomizationMode) {
-                        ForEach(LockScreenGlassCustomizationMode.allCases) { mode in
-                            Text(mode.localizedName).tag(mode)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                    .settingsHighlight(id: highlightID("Lock screen glass mode"))
-
-                    if lockScreenGlassCustomizationMode == .customLiquid {
-                        Text("Pick a glass finish for each widget below. Changes mirror the Lock Screen tab.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-
-                        VStack(alignment: .leading, spacing: 6) {
-                            HStack {
-                                Text("Music panel variant")
-                                Spacer()
-                                Text(lockScreenMusicLiquidGlassVariant.displayName)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                            Slider(value: appearanceMusicVariantBinding, in: liquidVariantRange, step: 1)
-
-                            LockScreenGlassVariantPreviewCell(variant: $lockScreenMusicLiquidGlassVariant)
-                                .padding(.top, 6)
-                        }
-                        .settingsHighlight(id: highlightID("Music panel variant (appearance)"))
-                        .disabled(!enableLockScreenMediaWidget)
-                        .opacity(enableLockScreenMediaWidget ? 1 : 0.4)
-
-                        VStack(alignment: .leading, spacing: 6) {
-                            HStack {
-                                Text("Timer widget variant")
-                                Spacer()
-                                Text(lockScreenTimerLiquidGlassVariant.displayName)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                            Slider(value: appearanceTimerVariantBinding, in: liquidVariantRange, step: 1)
-                        }
-                        .settingsHighlight(id: highlightID("Timer widget variant (appearance)"))
-                        .disabled(!enableLockScreenTimerWidget)
-                        .opacity(enableLockScreenTimerWidget ? 1 : 0.4)
-                    }
-                } else {
-                    Text("Custom Liquid settings require the Liquid Glass material.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
+                .settingsHighlight(id: highlightID("Customize lock screen widgets"))
             } header: {
-                Text("Lock Screen Glass")
+                Text("Lock screen")
             } footer: {
-                Text("Configure lock screen materials from the Appearance tab. Custom Liquid unlocks variant sliders for both widgets whenever Liquid Glass is selected.")
+                Text("Choose materials, widget styles, and a preview together in Lock Screen settings.")
             }
 
             Section {
@@ -573,9 +471,6 @@ struct Appearance: View {
                 }
             }
         }
-        .onAppear(perform: enforceLockScreenGlassConsistency)
-        .onChange(of: lockScreenGlassStyle) { _, _ in enforceLockScreenGlassConsistency() }
-        .onChange(of: lockScreenGlassCustomizationMode) { _, _ in enforceLockScreenGlassConsistency() }
         .fileImporter(
             isPresented: $isIconImporterPresented,
             allowedContentTypes: [.png, .jpeg, .tiff, .icns, .image]
@@ -747,39 +642,33 @@ struct Appearance: View {
                 }
                 .settingsHighlight(id: highlightID("Customize physical notch width"))
                 
-                Slider(
-                    value: closedWidthBinding,
-                    in: closedRange,
-                    step: 5
-                ) {
+                VStack(alignment: .leading, spacing: 6) {
                     HStack {
                         Text("Closed notch / pill width")
                         Spacer()
-                        Text("\(Int(closedNotchWidth)) px")
-                            .foregroundStyle(.secondary)
+                        Text("\(Int(closedNotchWidth)) pt").monospacedDigit().foregroundStyle(.secondary)
                     }
+                    Slider(value: closedWidthBinding, in: closedRange, step: 5)
+                        .labelsHidden().accessibilityLabel("Closed notch / pill width")
                 }
                 .settingsHighlight(id: highlightID("Closed notch / pill width"))
 
                 Divider().padding(.vertical, 4)
 
-                Slider(
-                    value: widthBinding,
-                    in: dynamicRange,
-                    step: 10
-                ) {
+                VStack(alignment: .leading, spacing: 6) {
                     HStack {
                         Text("Expanded notch width")
                         Spacer()
-                        Text("\(Int(openNotchWidth)) px")
-                            .foregroundStyle(.secondary)
+                        Text("\(Int(openNotchWidth)) pt").monospacedDigit().foregroundStyle(.secondary)
                     }
+                    Slider(value: widthBinding, in: dynamicRange, step: 10)
+                        .labelsHidden().accessibilityLabel("Expanded notch width")
                 }
                 .disabled(enableMinimalisticUI)
                 .settingsHighlight(id: highlightID("Expanded notch width"))
 
                 HStack {
-                    Text("\(tabCount) tab\(tabCount == 1 ? "" : "s") enabled · min \(Int(recommendedMin)) px")
+                    Text("\(tabCount) tab\(tabCount == 1 ? "" : "s") enabled · min \(Int(recommendedMin)) pt")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     Spacer()
@@ -809,63 +698,4 @@ struct Appearance: View {
         }
     }
 
-    private func enforceLockScreenGlassConsistency() {
-        if lockScreenGlassStyle == .frosted && lockScreenGlassCustomizationMode != .standard {
-            lockScreenGlassCustomizationMode = .standard
-        }
-        if lockScreenGlassCustomizationMode == .customLiquid && lockScreenGlassStyle != .liquid {
-            lockScreenGlassStyle = .liquid
-        }
-    }
-}
-
-private struct LockScreenGlassVariantPreviewCell: View {
-    @Binding var variant: LiquidGlassVariant
-
-    private let cornerRadius: CGFloat = 16
-    private let previewCornerRadius: CGFloat = 14
-    private let previewSize = CGSize(width: 190, height: 96)
-
-    var body: some View {
-        ZStack {
-            Image("glassdesktop")
-                .resizable()
-                .scaledToFill()
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .clipped()
-
-            liquidGlassPreview
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
-        }
-        .frame(maxWidth: .infinity)
-        .frame(height: 120)
-        .clipShape(AnchorCorners.rectangle(cornerRadius: cornerRadius))
-        .anchorCornerContainer(radius: cornerRadius)
-        .overlay(
-            AnchorCorners.rectangle(cornerRadius: cornerRadius)
-                .stroke(Color.white.opacity(0.12), lineWidth: 1)
-        )
-        .padding(.vertical, 6)
-        .allowsHitTesting(false)
-        .onAppear {
-            Logger.log("Lock screen glass preview appeared (variant v\(variant.rawValue))", category: .performance)
-        }
-        .onDisappear {
-            Logger.log("Lock screen glass preview disappeared", category: .performance)
-        }
-        .onChange(of: variant) { _, newValue in
-            Logger.log("Lock screen glass preview variant changed to v\(newValue.rawValue)", category: .performance)
-        }
-    }
-
-    private var liquidGlassPreview: some View {
-        LiquidGlassBackground(
-            variant: variant,
-            cornerRadius: previewCornerRadius
-        ) {
-            Color.white.opacity(0.04)
-        }
-        .frame(width: previewSize.width, height: previewSize.height)
-        .shadow(color: Color.black.opacity(0.2), radius: 10, x: 0, y: 6)
-    }
 }

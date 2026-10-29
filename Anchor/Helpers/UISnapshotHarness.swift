@@ -99,6 +99,26 @@ enum UISnapshotHarness {
             let viewModel = AnchorViewModel()
 
             #if DEBUG
+            if ProcessInfo.processInfo.environment["ANCHOR_AUDIT_REVIEW"] == "1" {
+                let hardware = DashboardHardwareState()
+                hardware.start()
+                for section in DashboardSection.allCases {
+                    for width in [CGFloat(1040), 620] {
+                        await capture(DashboardView(hardware: hardware, section: section),
+                            size: CGSize(width: width, height: 1000), scheme: .dark,
+                            to: directory.appendingPathComponent("dashboard-\(section.rawValue)-\(Int(width)).png"))
+                    }
+                }
+                hardware.stop()
+                for tab in [SettingsTab.general, .appearance, .lockScreen, .calendar, .media, .devices] {
+                    SettingsNavigationState.shared.select(tab: tab)
+                    await capture(SettingsView(), size: CGSize(width: 980, height: 760), scheme: .dark,
+                        to: directory.appendingPathComponent("settings-\(tab.rawValue).png"))
+                }
+                await DashboardWindowController.shared.reviewResourceLifecycle(into: directory)
+                NSApplication.shared.terminate(nil)
+                return
+            }
             if ProcessInfo.processInfo.environment["ANCHOR_CORNER_REVIEW"] == "1" {
                 await AppSwitcherPanelManager.shared.reviewCornerNavigation(into: directory)
                 let index = AppIndex.shared

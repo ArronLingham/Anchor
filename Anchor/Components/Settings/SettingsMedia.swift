@@ -55,12 +55,7 @@ struct Media: View {
     @Default(.showShuffleAndRepeat) private var showShuffleAndRepeat
     @Default(.musicSkipBehavior) private var musicSkipBehavior
     @Default(.musicControlWindowEnabled) private var musicControlWindowEnabled
-    @Default(.enableLockScreenMediaWidget) private var enableLockScreenMediaWidget
     @Default(.showSneakPeekOnTrackChange) private var showSneakPeekOnTrackChange
-    @Default(.lockScreenGlassStyle) private var lockScreenGlassStyle
-    @Default(.lockScreenGlassCustomizationMode) private var lockScreenGlassCustomizationMode
-    @Default(.lockScreenMusicAlbumParallaxEnabled) private var lockScreenMusicAlbumParallaxEnabled
-    @Default(.lockScreenMusicFullscreenArtworkEnabled) private var lockScreenMusicFullscreenArtworkEnabled
     @Default(.showStandardMediaControls) private var showStandardMediaControls
     @Default(.autoHideInactiveNotchMediaPlayer) private var autoHideInactiveNotchMediaPlayer
     @Default(.visualizerBarCount) private var visualizerBarCount
@@ -113,7 +108,7 @@ struct Media: View {
             } header: {
                 Text("Per-app audio")
             } footer: {
-                Text("Mute or set the volume of one app without touching system volume. Both are released when you undo them, when the app quits, and if Anchor stops running — macOS owns the tap, so nothing stays muted or quietened after Anchor is gone.\n\nA volume other than 100% is not a property write: CoreAudio has no per-process volume, so Anchor taps the app, mutes it at the device, and re-renders its audio at the level you chose through a private aggregate device. That path only runs while a slider is away from 100%, and if any part of it fails to start the app is left at normal volume rather than muted with nothing replacing it.")
+                Text("Change one app’s volume without changing system volume. Effects stop when an app quits or Anchor closes. Audio processing runs only for apps with active volume or EQ adjustments.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }
@@ -135,7 +130,7 @@ struct Media: View {
             } header: {
                 Text("Audio devices")
             } footer: {
-                Text("macOS reassigns the default microphone whenever anything with one appears \u{2014} a monitor, AirPods, a headset. Pinning holds your choice instead. It gives up if the pinned device is unplugged, so macOS takes over again rather than leaving you with no microphone.\n\nShortcuts for cycling the output device and muting every microphone at once are in the Shortcuts pane.")
+                Text("Keep a preferred microphone selected. If it disconnects, macOS chooses another input. Configure output cycling and global microphone mute in Shortcuts.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }
@@ -163,7 +158,7 @@ struct Media: View {
             } header: {
                 Text("Camera")
             } footer: {
-                Text("Adds a Mirror tab to the open notch showing a live camera preview. **Nothing is recorded, saved or sent anywhere** \u{2014} the capture session has no file, photo or data output at all, which a test enforces rather than a promise.\n\nThe camera runs only while the Mirror tab is on screen, so the green indicator light is lit for exactly as long as you can see the preview, and never otherwise.")
+                Text("Show a live camera preview in the notch. The camera runs only while Mirror is visible. Nothing is recorded, saved, or shared.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }
@@ -216,7 +211,7 @@ struct Media: View {
             } header: {
                 Text("External display brightness")
             } footer: {
-                Text("macOS's own brightness API covers the built-in screen only \u{2014} it returns an error for external displays, which is why this uses DDC/CI over I2C instead, the same channel a monitor's own buttons use.\n\nNothing is sent until you move a slider, and a display that does not answer a read is never written to: without a working read there is no way to put the brightness back.")
+                Text("Adjust supported external displays. Compatibility depends on the display, cable, and adapter. Anchor checks support before changing brightness.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }
@@ -320,15 +315,6 @@ struct Media: View {
                 Text("Media controls")
             }
 
-            Section(header: Text("Lock Screen Media")) {
-                Defaults.Toggle(key: .lockScreenMusicAlbumParallaxEnabled) {
-                    Text("Enable album art parallax")
-                }
-                .settingsHighlight(id: highlightID("Enable album art parallax"))
-                Text("Applies the notch-style parallax effect to the lock screen media widget album art.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
             if musicControlWindowEnabled {
                 Section {
                     Picker("Skip buttons", selection: $musicSkipBehavior) {
@@ -469,77 +455,20 @@ struct Media: View {
             } header: {
                 Text("Music Visualizer")
             } footer: {
-                Text("When enabled, the music visualizer displays real-time audio spectrum data synced to your music. Requires macOS 14.2+ and uses minimal CPU/GPU resources via the Accelerate framework.")
+                Text("Show live audio levels while music is playing. Updates pause when the visualizer is hidden.")
             }
 
             Section {
-                Defaults.Toggle(key: .enableLockScreenMediaWidget) {
-                    Text("Show lock screen media panel")
+                Button {
+                    SettingsWindowController.shared.showWindow(tab: .lockScreen,
+                        highlightID: SettingsTab.lockScreen.highlightID(for: "Show lock screen media panel"))
+                } label: {
+                    Label("Customize the lock screen player…", systemImage: "lock.laptopcomputer")
                 }
-                Defaults.Toggle(key: .lockScreenShowAppIcon) {
-                    Text("Show media app icon")
-                }
-                .disabled(!enableLockScreenMediaWidget)
-                if isAppleMusicActive {
-                    Defaults.Toggle(key: .lockScreenMusicMergedAirPlayOutput) {
-                        Text("Show merged AirPlay and output devices")
-                    }
-                    .disabled(!enableLockScreenMediaWidget)
-                    .settingsHighlight(id: highlightID("Show merged AirPlay and output devices"))
-                }
-                Defaults.Toggle(key: .lockScreenPanelShowsBorder) {
-                    Text("Show panel border")
-                }
-                .disabled(!enableLockScreenMediaWidget)
-                if lockScreenGlassCustomizationMode == .customLiquid {
-                    Defaults.Toggle(key: .lockScreenMusicUsesEnhancedLiquidBorder) {
-                        Text("Use enhanced liquid border")
-                    }
-                    .disabled(!enableLockScreenMediaWidget)
-                }
-                if lockScreenGlassCustomizationMode == .customLiquid {
-                    customLiquidBlurRow
-                        .opacity(enableLockScreenMediaWidget ? 1 : 0.5)
-                        .settingsHighlight(id: highlightID("Enable media panel blur"))
-                } else if lockScreenGlassStyle == .frosted {
-                    Defaults.Toggle(key: .lockScreenPanelUsesBlur) {
-                        Text("Enable media panel blur")
-                    }
-                    .disabled(!enableLockScreenMediaWidget)
-                    .settingsHighlight(id: highlightID("Enable media panel blur"))
-                } else {
-                    unavailableBlurRow
-                        .opacity(enableLockScreenMediaWidget ? 1 : 0.5)
-                        .settingsHighlight(id: highlightID("Enable media panel blur"))
-                }
-                VStack(alignment: .leading, spacing: 4) {
-                    Defaults.Toggle(key: .lockScreenMusicFullscreenArtworkEnabled) {
-                        Text("Fullscreen artwork on right-click")
-                    }
-                    .disabled(!enableLockScreenMediaWidget)
-                    .settingsHighlight(id: highlightID("Fullscreen artwork on right-click"))
-                    Defaults.Toggle(key: .lockScreenUseArtworkLayoutOverFullscreenCanvas) {
-                        Text("Use album art layout over fullscreen canvas")
-                    }
-                    .disabled(!enableLockScreenMediaWidget || !lockScreenMusicFullscreenArtworkEnabled)
-                    .settingsHighlight(id: highlightID("Use album art layout over fullscreen canvas"))
-                    Defaults.Toggle(key: .lockScreenKeepAlbumArtVisibleDuringFullscreenArtwork) {
-                        Text("Keep album art visible during fullscreen artwork")
-                    }
-                    .disabled(!enableLockScreenMediaWidget || !lockScreenMusicFullscreenArtworkEnabled)
-                    .settingsHighlight(id: highlightID("Keep album art visible during fullscreen artwork"))
-                    Text("Right-click the album art on the lock screen to set it as the wallpaper. Right-click again or click the background to restore the original wallpaper. If a canvas is available, Anchor can also keep the same album art + player layout on top of the live canvas.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
+                .settingsHighlight(id: highlightID("Customize the lock screen player"))
             } header: {
-                Text("Lock Screen Integration")
-            } footer: {
-                Text("These controls mirror the Lock Screen tab so you can tune the media overlay while focusing on playback settings.")
+                Text("Lock screen")
             }
-            .disabled(!showStandardMediaControls)
-            .opacity(showStandardMediaControls ? 1 : 0.5)
 
             Picker(selection: $hideNotchOption, label:
                     HStack {
@@ -566,24 +495,4 @@ struct Media: View {
         }
     }
 
-    private var unavailableBlurRow: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text("Enable media panel blur")
-                .foregroundStyle(.secondary)
-            Text("Only applies when Material is set to Frosted Glass.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-    private var customLiquidBlurRow: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text("Enable media panel blur")
-                .foregroundStyle(.secondary)
-            Text("Custom liquid glass already renders with Apple's liquid material, so this option is managed automatically.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
 }

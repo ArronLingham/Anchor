@@ -1,11 +1,25 @@
 import AppKit
 import AnchorUtilities
 import Defaults
+import EventKit
 import SwiftUI
+
+extension EnvironmentValues {
+    @Entry var dashboardIsActive = true
+}
 
 struct DashboardView: View {
     let hardware: DashboardHardwareState
     @State private var section: DashboardSection = .overview
+    @Environment(\.dashboardIsActive) private var isActive
+    var onSectionChange: (DashboardSection) -> Void = { _ in }
+
+    init(hardware: DashboardHardwareState, section: DashboardSection = .overview,
+         onSectionChange: @escaping (DashboardSection) -> Void = { _ in }) {
+        self.hardware = hardware
+        _section = State(initialValue: section)
+        self.onSectionChange = onSectionChange
+    }
 
     @AppStorage("AnchorDashboardLayout") private var savedLayout = Data()
     @State private var isCustomizing = false
@@ -15,17 +29,19 @@ struct DashboardView: View {
         GeometryReader { geometry in
             VStack(spacing: 0) {
                 HStack(spacing: 12) {
-                    Image(systemName: "mountain.2.fill").font(.system(size: 16, weight: .medium))
-                    Text("Anchor").font(.system(size: 16, weight: .semibold, design: .rounded))
-                    Spacer()
-                    DashboardBatteryBadge()
-                    Button { UtilityWorkspace.shared.showLibrary() } label: {
-                        Label("Features & Tools", systemImage: "square.grid.2x2")
-                            .font(.system(size: 12, weight: .medium))
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Dashboard").font(.system(size: 24, weight: .semibold, design: .rounded))
+                        if isActive {
+                            TimelineView(.everyMinute) { context in dashboardDate(context.date) }
+                        } else { dashboardDate(.now) }
                     }
-                    .buttonStyle(.borderless)
+                    Spacer()
+                    ViewThatFits(in: .horizontal) {
+                        HStack(spacing: 12) { DashboardBatteryBadge(); libraryButton }
+                        libraryButton
+                    }
                     Button { isCustomizing.toggle() } label: {
-                        Label("Customize", systemImage: "square.grid.2x2")
+                        Label("Customize", systemImage: "slider.horizontal.3")
                             .font(.system(size: 12, weight: .medium))
                     }
                     .buttonStyle(.borderless)
@@ -36,10 +52,13 @@ struct DashboardView: View {
                     }
                         .buttonStyle(.plain)
                         .help("Open settings")
-                }.padding(.horizontal, 28).padding(.top, 32).padding(.bottom, 12)
+                        .accessibilityLabel("Open settings")
+                }.padding(.horizontal, 28).padding(.top, 32).padding(.bottom, 16)
                 sectionPicker.padding(.horizontal, 28)
                 ScrollView {
                     VStack(alignment: .leading, spacing: 0) {
+                        Text(section.subtitle).font(.callout).foregroundStyle(AnchorDesign.muted)
+                            .padding(.vertical, 20)
                         DashboardNotice(hardware: hardware)
                         sectionContent(isWide: geometry.size.width >= 860)
                     }
@@ -52,6 +71,21 @@ struct DashboardView: View {
         .background(AnchorCanvas().ignoresSafeArea())
         .frame(minWidth: 620, minHeight: 540)
         .anchorTheme()
+        .onChange(of: section) { _, value in onSectionChange(value) }
+    }
+
+    private func dashboardDate(_ date: Date) -> some View {
+        Text(date, format: .dateTime.weekday(.wide).month(.wide).day())
+            .font(.system(size: 12)).foregroundStyle(AnchorDesign.muted)
+    }
+
+    private var libraryButton: some View {
+        Button { UtilityWorkspace.shared.showLibrary() } label: {
+            Label("Tools", systemImage: "square.grid.2x2")
+                .font(.system(size: 12, weight: .medium))
+        }
+        .buttonStyle(.borderless)
+        .help("Browse Features & Tools")
     }
 
     private var sectionPicker: some View {
@@ -91,7 +125,6 @@ struct DashboardView: View {
             }.frame(maxWidth: .infinity).padding(.vertical, 70)
         } else {
             ForEach(rows) { row in
-                if row.id != rows.first?.id { DashboardDivider() }
                 if row.cards.count == 2 {
                     DashboardColumns(isWide: isWide) {
                         card(row.cards[0])
@@ -117,6 +150,7 @@ struct DashboardView: View {
             case .clipboard: DashboardClipboardCard()
             case .quicklinks: DashboardQuicklinksCard()
             case .appAudio: DashboardAppAudioCard()
+            case .systemStatus: DashboardSystemCard()
             case .soundDisplay: DashboardSoundDisplayCard(hardware: hardware)
             case .quickControls: DashboardToolsCard(hardware: hardware)
             case .featureFavorites: UtilityFavoritesView()
@@ -133,6 +167,7 @@ private struct DashboardBatteryBadge: View {
         Label("\(Int(battery.levelBattery))%", systemImage: battery.isCharging ? "battery.100percent.bolt" : "battery.75percent")
             .font(.system(size: 11, weight: .medium, design: .rounded)).monospacedDigit()
             .foregroundStyle(AnchorDesign.muted)
+            .help(battery.isInLowPowerMode ? "Low Power Mode is on" : battery.isCharging ? "Battery charging" : battery.isPluggedIn ? "Connected to power" : "Running on battery")
     }
 }
 
@@ -150,7 +185,9 @@ private struct DashboardNotice: View {
                 Text(message).font(.callout)
                 Spacer()
                 Button { hardware.message = nil } label: { Image(systemName: "xmark") }.buttonStyle(.plain)
+                    .accessibilityLabel("Dismiss message")
             }.padding(12).background(Color.accentColor.opacity(0.1), in: AnchorCorners.rectangle(cornerRadius: 10))
+                .padding(.bottom, 16)
         }
     }
 }
@@ -166,9 +203,10 @@ private struct DashboardSectionContent<Content: View>: View {
                 Image(systemName: symbol).font(.system(size: 12, weight: .medium))
                 Text(title).font(.system(size: 13, weight: .semibold))
                 Spacer(minLength: 0)
-            }.foregroundStyle(AnchorDesign.muted)
+            }.foregroundStyle(AnchorDesign.text)
             content()
-        }.padding(.vertical, 26).frame(maxWidth: .infinity, alignment: .topLeading)
+        }.padding(20).frame(maxWidth: .infinity, alignment: .topLeading)
+            .anchorCard(radius: 18).padding(.bottom, 16)
     }
 }
 
@@ -179,17 +217,28 @@ private struct DashboardColumns<Leading: View, Trailing: View>: View {
 
     var body: some View {
         if isWide {
-            HStack(alignment: .top, spacing: 28) {
+            HStack(alignment: .top, spacing: 16) {
                 leading().frame(maxWidth: .infinity, alignment: .topLeading)
-                Divider().overlay(AnchorDesign.edge)
                 trailing().frame(maxWidth: .infinity, alignment: .topLeading)
             }.fixedSize(horizontal: false, vertical: true)
         } else {
             VStack(spacing: 0) {
                 leading()
-                DashboardDivider()
                 trailing()
             }
+        }
+    }
+}
+
+/// Uses the existing shared sampler. Its lease ends when the card leaves the
+/// selected tab or the window releases its content; no second monitor is created.
+private struct DashboardSystemCard: View {
+    @Environment(\.dashboardIsActive) private var isActive
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            NotchStatsView(isActive: isActive).frame(minHeight: 145)
+            Text("CPU and memory describe your Mac. Updates pause when this window is hidden.")
+                .font(.caption).foregroundStyle(AnchorDesign.muted)
         }
     }
 }
@@ -227,8 +276,9 @@ private struct DashboardSoundDisplayCard: View {
                 Text("This display does not expose brightness through macOS.").font(.caption).foregroundStyle(.secondary)
             }
             HStack {
-                Button("Disconnect External Monitors") { monitors.disconnectExternalMonitors() }
-                Button("Reconnect Monitors") { monitors.reconnectMonitors() }
+                Button("Disconnect displays") { monitors.disconnectExternalMonitors() }
+                    .disabled(!hardware.displays.contains { CGDisplayIsBuiltin($0.id) == 0 })
+                Button("Reconnect displays") { monitors.reconnectMonitors() }
             }.disabled(monitors.isChangingDisplays)
             Text(monitors.displayControlMessage.isEmpty ? "Stops the display signal while the cable stays plugged in." : monitors.displayControlMessage)
                 .font(.caption).foregroundStyle(.secondary)
@@ -245,7 +295,13 @@ private struct DashboardMediaCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: expanded ? 22 : 16) {
             HStack(spacing: expanded ? 24 : 14) {
-                Image(nsImage: music.albumArt).resizable().scaledToFill()
+                Group {
+                    if music.hasActiveSession { Image(nsImage: music.albumArt).resizable().scaledToFill() }
+                    else {
+                        Rectangle().fill(AnchorDesign.inset)
+                            .overlay { Image(systemName: "music.note").font(.title).foregroundStyle(AnchorDesign.muted) }
+                    }
+                }
                     .frame(width: expanded ? 144 : 64, height: expanded ? 144 : 64)
                     .clipShape(AnchorCorners.rectangle(cornerRadius: expanded ? 16 : 10))
                     .anchorCornerContainer(radius: expanded ? 16 : 10)
@@ -263,12 +319,12 @@ private struct DashboardMediaCard: View {
             }
             HStack {
                 HStack(spacing: 14) {
-                Button { music.toggleShuffle() } label: { Image(systemName: "shuffle").foregroundStyle(music.isShuffled ? Color.accentColor : .secondary) }.help("Shuffle")
-                Button { music.previousTrack() } label: { Image(systemName: "backward.fill") }.help("Previous track")
-                Button { music.playPause() } label: { Image(systemName: music.isPlaying ? "pause.fill" : "play.fill").font(.title2) }.help(music.isPlaying ? "Pause" : "Play")
-                Button { music.nextTrack() } label: { Image(systemName: "forward.fill") }.help("Next track")
+                Button { music.toggleShuffle() } label: { Image(systemName: "shuffle").foregroundStyle(music.isShuffled ? Color.accentColor : .secondary) }.help("Shuffle").accessibilityLabel("Shuffle")
+                Button { music.previousTrack() } label: { Image(systemName: "backward.fill") }.help("Previous track").accessibilityLabel("Previous track")
+                Button { music.playPause() } label: { Image(systemName: music.isPlaying ? "pause.fill" : "play.fill").font(.title2) }.help(music.isPlaying ? "Pause" : "Play").accessibilityLabel(music.isPlaying ? "Pause" : "Play")
+                Button { music.nextTrack() } label: { Image(systemName: "forward.fill") }.help("Next track").accessibilityLabel("Next track")
                 Button { music.toggleRepeat() } label: { Image(systemName: music.repeatMode == .one ? "repeat.1" : "repeat")
-                    .foregroundStyle(music.repeatMode == .off ? Color.secondary : .accentColor) }.help("Repeat")
+                    .foregroundStyle(music.repeatMode == .off ? Color.secondary : .accentColor) }.help("Repeat").accessibilityLabel("Repeat")
                 }.buttonStyle(AnchorButtonStyle()).disabled(!music.hasActiveSession)
                 Spacer(minLength: 12)
                 if expanded {
@@ -311,7 +367,6 @@ private struct DashboardMediaCard: View {
 
 private struct DashboardTimerCard: View {
     @ObservedObject private var timer = TimerManager.shared
-    @ObservedObject private var focus = FocusSessionManager.shared
     @Default(.enableTimerFeature) private var enabled
     @State private var mode = "focus"
     var body: some View {
@@ -362,11 +417,13 @@ private struct DashboardTaskCard: View {
                 TextField("Add a task", text: $title).textFieldStyle(AnchorFieldStyle()).onSubmit(add)
                 priorityPicker(selection: $draftPriority, label: "Priority for new task")
                 Button(action: add) { Image(systemName: "plus.circle.fill") }.buttonStyle(.borderless).disabled(title.trimmingCharacters(in: .whitespaces).isEmpty || todos.storageNeedsRecovery)
+                    .accessibilityLabel("Add task")
             }
             if todos.openItems.isEmpty { Text("You’re all caught up.").font(.callout).foregroundStyle(.secondary) }
             ForEach(showsAll ? todos.openItems : Array(todos.openItems.prefix(5))) { item in
                 HStack {
                     Button { todos.complete(item) } label: { Image(systemName: "circle") }.buttonStyle(.plain).help("Complete task")
+                        .accessibilityLabel("Complete \(item.title)")
                     Text(item.title).font(.callout).lineLimit(1)
                     Spacer()
                     priorityPicker(selection: Binding(
@@ -396,6 +453,7 @@ private struct DashboardTaskCard: View {
                     ForEach(todos.doneItems) { item in
                         HStack {
                             Button { todos.toggle(item) } label: { Image(systemName: "checkmark.circle.fill") }.buttonStyle(.plain).help("Reopen task")
+                                .accessibilityLabel("Reopen \(item.title)")
                             Text(item.title).font(.callout).lineLimit(1).foregroundStyle(.secondary)
                         }
                     }
@@ -451,10 +509,27 @@ private struct DashboardClipboardCard: View {
 
 private struct DashboardCalendarCard: View {
     @ObservedObject private var calendar = CalendarManager.shared
+    @Environment(\.dashboardIsActive) private var isActive
     var body: some View {
+        if isActive {
+            TimelineView(.everyMinute) { context in
+                content(at: context.date)
+                    .task(id: Int(context.date.timeIntervalSince1970 / 60)) {
+                        await calendar.updateLauncherEvents()
+                    }
+            }
+        } else { content(at: .now) }
+    }
+
+    private func content(at now: Date) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            let events = calendar.events.filter { !$0.type.isReminder && $0.end > Date() }.sorted { $0.start < $1.start }
-            if events.isEmpty { Text("No upcoming events in the current calendar view.").font(.callout).foregroundStyle(.secondary) }
+            let events = calendar.launcherEvents.filter { $0.end > now }
+            if !calendar.hasCalendarAccess {
+                Text("Connect your calendar to see upcoming events.").font(.callout).foregroundStyle(.secondary)
+                Button("Connect calendar") { Task { await calendar.checkCalendarAuthorization(); await calendar.updateLauncherEvents(force: true) } }
+            } else if events.isEmpty {
+                Text("No upcoming events in the next seven days.").font(.callout).foregroundStyle(.secondary)
+            }
             ForEach(events.prefix(4)) { event in
                 HStack {
                     RoundedRectangle(cornerRadius: 2).fill(Color(nsColor: event.calendar.color)).frame(width: 3, height: 30)
@@ -466,7 +541,18 @@ private struct DashboardCalendarCard: View {
                     if let url = event.conferenceURL { Button("Join") { NSWorkspace.shared.open(url) }.buttonStyle(AnchorButtonStyle()) }
                 }
             }
-            Button("Open calendar") { DashboardWindowController.openNotch(.home) }.font(.caption)
+            Button("Open calendar") {
+                let identifiers = Defaults[.enableThirdPartyCalendarApp]
+                    ? Defaults[.selectedCalendarApp].bundleIdentifiers + ["com.apple.iCal"] : ["com.apple.iCal"]
+                if let url = identifiers.compactMap({ NSWorkspace.shared.urlForApplication(withBundleIdentifier: $0) }).first {
+                    NSWorkspace.shared.open(url)
+                }
+            }.font(.caption)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .EKEventStoreChanged)
+            .debounce(for: .milliseconds(500), scheduler: RunLoop.main)) { _ in
+            guard isActive else { return }
+            Task { await calendar.updateLauncherEvents(force: true) }
         }
     }
 }
@@ -505,8 +591,8 @@ private struct DashboardToolsCard: View {
             Label(title, systemImage: symbol)
                 .font(.system(size: 12, weight: .medium))
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.vertical, 9).contentShape(Rectangle())
-        }.buttonStyle(.plain)
+                .padding(.vertical, 2).contentShape(Rectangle())
+        }.buttonStyle(AnchorButtonStyle())
     }
 }
 

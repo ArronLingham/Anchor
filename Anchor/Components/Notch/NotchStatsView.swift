@@ -23,6 +23,9 @@ import SwiftUI
 /// see SystemStatsManager on why that is not optional.
 struct NotchStatsView: View {
     @ObservedObject private var stats = SystemStatsManager.shared
+    var isActive = true
+    @State private var holdsLease = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         VStack(spacing: 12) {
@@ -52,8 +55,17 @@ struct NotchStatsView: View {
         .font(.system(size: 11)).monospacedDigit()
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(.horizontal, 10)
-        .onAppear { stats.acquire() }
-        .onDisappear { stats.release() }
+        .onAppear { updateLease() }
+        .onChange(of: isActive) { _, _ in updateLease() }
+        .onDisappear {
+            if holdsLease { stats.release(); holdsLease = false }
+        }
+    }
+
+    private func updateLease() {
+        guard isActive != holdsLease else { return }
+        holdsLease = isActive
+        if isActive { stats.acquire() } else { stats.release() }
     }
 
     private func temperature(_ name: String, _ value: Double?) -> some View {
@@ -70,7 +82,7 @@ struct NotchStatsView: View {
                     .trim(from: 0, to: min(1, max(0, (value ?? 0) / 100)))
                     .stroke(tint, style: StrokeStyle(lineWidth: 5, lineCap: .round))
                     .rotationEffect(.degrees(-90))
-                    .animation(.easeOut(duration: 0.4), value: value)
+                    .animation(reduceMotion ? nil : .easeOut(duration: 0.4), value: value)
                 Text(value.map { String(Int($0.rounded())) } ?? "—")
                     .font(.system(size: 13, weight: .semibold))
                     .monospacedDigit()

@@ -7,17 +7,36 @@ import IOKit.pwr_mgt
 import SwiftUI
 
 @MainActor
+private final class DashboardActivity: ObservableObject {
+    @Published var isActive = false
+}
+
+private struct DashboardRootView: View {
+    @ObservedObject var activity: DashboardActivity
+    let hardware: DashboardHardwareState
+    let section: DashboardSection
+    let onSectionChange: (DashboardSection) -> Void
+    var body: some View {
+        DashboardView(hardware: hardware, section: section, onSectionChange: onSectionChange)
+            .environment(\.dashboardIsActive, activity.isActive)
+    }
+}
+
+@MainActor
 final class DashboardWindowController: NSWindowController, NSWindowDelegate {
     static let shared = DashboardWindowController()
     let hardware = DashboardHardwareState()
     private var previousApp: NSRunningApplication?
     private var lockObserver: NSObjectProtocol?
+    private let activity = DashboardActivity()
+    private var selectedSection: DashboardSection = .overview
+    private var contentInstalled = false
 
     private init() {
         super.init(window: nil)
         lockObserver = DistributedNotificationCenter.default().addObserver(
             forName: .init("com.apple.screenIsLocked"), object: nil, queue: .main
-        ) { [weak self] _ in Task { @MainActor in self?.window?.orderOut(nil); self?.hardware.stop() } }
+        ) { [weak self] _ in Task { @MainActor in self?.hideAndReleaseContent() } }
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
 
@@ -32,34 +51,97 @@ final class DashboardWindowController: NSWindowController, NSWindowDelegate {
             created.titleVisibility = .hidden
             created.appearance = NSAppearance(named: .darkAqua)
             created.isReleasedWhenClosed = false; created.minSize = NSSize(width: 620, height: 540)
-            created.contentView = NSHostingView(rootView: DashboardView(hardware: hardware))
             created.delegate = self
             created.setFrameAutosaveName("AnchorDashboard")
             if !created.setFrameUsingName("AnchorDashboard") { created.center() }
             ScreenCaptureVisibilityManager.shared.register(created, scope: .panelsOnly)
             window = created
         }
+        installContentIfNeeded()
         if let window {
             AnchorApplicationPresentation.shared.register(window)
             if window.isMiniaturized { window.deminiaturize(nil) }
         }
+        activity.isActive = true
         hardware.start()
         window?.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true)
     }
 
     func windowDidBecomeKey(_ notification: Notification) {
         if let window { AnchorApplicationPresentation.shared.register(window) }
-        hardware.start()
+        updateActivity()
     }
     func windowWillClose(_ notification: Notification) {
+        activity.isActive = false
         hardware.stop()
+        // A closed NSWindow retains its content. Release observations, decoded
+        // images, and view-owned sampling leases instead of retaining the UI.
+        window?.contentView = nil
+        contentInstalled = false
         if let window { AnchorApplicationPresentation.shared.unregister(window) }
     }
+
+    func windowDidMiniaturize(_ notification: Notification) { updateActivity() }
+    func windowDidDeminiaturize(_ notification: Notification) { updateActivity() }
+    func windowDidChangeOcclusionState(_ notification: Notification) { updateActivity() }
+
+    private func updateActivity() {
+        let active = window.map { $0.isVisible && !$0.isMiniaturized && $0.occlusionState.contains(.visible) } ?? false
+        if activity.isActive != active { activity.isActive = active }
+        if active { hardware.start() } else { hardware.stop() }
+    }
+
+    private func installContentIfNeeded() {
+        guard let window, !contentInstalled else { return }
+        window.contentView = NSHostingView(rootView: DashboardRootView(activity: activity, hardware: hardware,
+            section: selectedSection, onSectionChange: { [weak self] in self?.selectedSection = $0 }))
+        contentInstalled = true
+    }
+
+    private func hideAndReleaseContent() {
+        activity.isActive = false
+        window?.orderOut(nil)
+        hardware.stop()
+        window?.contentView = nil
+        contentInstalled = false
+        if let window { AnchorApplicationPresentation.shared.unregister(window) }
+    }
+
+    #if DEBUG
+    func reviewResourceLifecycle(into directory: URL) async {
+        var checks: [String] = []
+        func check(_ name: String, _ passed: Bool) { checks.append("\(passed ? "PASS" : "FAIL"): \(name)") }
+        selectedSection = .system
+        show()
+        try? await Task.sleep(for: .milliseconds(600))
+        check("dashboard content installed", contentInstalled)
+        check("system card acquires shared sampler", SystemStatsManager.shared.isSampling)
+        window?.miniaturize(nil)
+        try? await Task.sleep(for: .milliseconds(600))
+        check("minimizing parks shared sampler", !SystemStatsManager.shared.isSampling)
+        check("minimizing retains view content", contentInstalled)
+        show()
+        try? await Task.sleep(for: .milliseconds(600))
+        check("restoring resumes shared sampler", SystemStatsManager.shared.isSampling)
+        window?.close()
+        try? await Task.sleep(for: .milliseconds(300))
+        check("closing releases content", !contentInstalled && window?.contentView == nil)
+        check("closing releases shared sampler", !SystemStatsManager.shared.isSampling)
+        show()
+        try? await Task.sleep(for: .milliseconds(600))
+        check("reopening restores section", selectedSection == .system && SystemStatsManager.shared.isSampling)
+        hideAndReleaseContent()
+        try? await Task.sleep(for: .milliseconds(300))
+        check("hiding releases content and sampler", !contentInstalled && !SystemStatsManager.shared.isSampling)
+        try? checks.joined(separator: "\n").write(to: directory.appendingPathComponent("dashboard-lifecycle.txt"),
+            atomically: true, encoding: .utf8)
+    }
+    #endif
 
     func arrangePreviousWindow(_ zone: SnapZoneManager.Zone) {
         guard AXIsProcessTrusted() else { hardware.message = "Allow Accessibility in Anchor’s settings to arrange windows."; return }
         guard let app = previousApp, !app.isTerminated else { hardware.message = "Open the dashboard while another app is active to arrange its window."; return }
-        window?.orderOut(nil); hardware.stop()
+        hideAndReleaseContent()
         app.activate(options: [.activateIgnoringOtherApps])
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { SnapZoneManager.shared.apply(zone) }
     }

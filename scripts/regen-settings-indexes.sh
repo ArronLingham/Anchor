@@ -1,0 +1,63 @@
+#!/bin/bash
+# Regenerates the two hand-maintained settings indexes from the panes themselves.
+#
+#   SettingsSectionIndex.swift  — the sidebar's per-pane section list
+#   settingsSearchIndex         — appends an entry for any row that has none
+#
+# Both drift the moment a pane grows a row, and both are pinned by harnesses, so
+# this is the thing to run after adding settings rather than hand-patching two
+# lists. Existing search entries are never rewritten: their keywords are
+# hand-written and better than anything generated.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+python3 - <<'PY'
+import re, glob, os
+
+from scripts.settings_index import scan
+SETTINGS = "Anchor/Components/Settings"
+rows, sections = scan(SETTINGS)
+
+# ---- section index ----
+idx = "Anchor/Components/Settings/SettingsSectionIndex.swift"
+src = open(idx).read()
+head = src[:src.index("    static let sections: [SettingsTab: [Section]] = [")]
+tail = src[src.index("    ]\n\n    static func sections(for tab:"):]
+lines = []
+for tab in sorted(sections):
+    items = ", ".join(f'.init(title: "{t}", anchor: "{a}")' for t, a in sections[tab])
+    lines.append(f"        .{tab}: [{items}],")
+open(idx, "w").write(head + "    static let sections: [SettingsTab: [Section]] = [\n"
+                     + "\n".join(lines) + "\n" + tail)
+print(f"section index: {sum(len(v) for v in sections.values())} sections across {len(sections)} tabs")
+
+# ---- search entries for rows that have none ----
+shell_path = os.path.join(SETTINGS, "SettingsView.swift")
+shell = open(shell_path).read()
+have = {(m.group(1), m.group(2)) for m in
+        re.finditer(r'SettingsSearchEntry\(tab: \.(\w+), title: "([^"]+)"', shell)}
+missing = sorted(rows - have)
+if not missing:
+    print("search index: already complete")
+else:
+    STOP = {"the","a","an","of","to","in","on","for","and","or","is","as","with","when",
+            "this","that","it","at","by","be","from","use","show","enable"}
+    def kws(tab, title):
+        words = [w.lower().strip(",.—-()") for w in re.split(r'[\s/]+', title)]
+        words = [w for w in words if w and w not in STOP and len(w) > 2]
+        ks = list(dict.fromkeys(words))[:5]
+        tw = re.sub(r'(?<!^)(?=[A-Z])', ' ', tab).lower()
+        if tw not in ks: ks.append(tw)
+        return ks
+    gen = []
+    for tab, title in missing:
+        esc = title.replace('\\', '\\\\').replace('"', '\\"')
+        k = ", ".join(f'"{x}"' for x in kws(tab, title))
+        gen.append(f'            SettingsSearchEntry(tab: .{tab}, title: "{esc}", keywords: [{k}], '
+                   f'highlightID: SettingsTab.{tab}.highlightID(for: "{esc}")),')
+    i = shell.index("    private static let settingsSearchIndex: [SettingsSearchEntry] = [")
+    j = shell.index("\n        ]\n", i)
+    shell = shell[:j] + "\n" + "\n".join(gen) + shell[j:]
+    open(shell_path, "w").write(shell)
+    print(f"search index: added {len(missing)} entries")
+PY

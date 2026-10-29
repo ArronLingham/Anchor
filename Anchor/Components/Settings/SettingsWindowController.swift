@@ -31,11 +31,22 @@ import Sparkle
 final class SettingsNavigationState: ObservableObject {
     static let shared = SettingsNavigationState()
 
-    @Published var selectedTab: SettingsTab = .general
+    @Published var selectedTab: SettingsTab {
+        didSet {
+            // Design reviews use real view navigation without changing which
+            // pane the user's next Settings window will restore.
+            if UISnapshotHarness.requestedDirectory == nil {
+                UserDefaults.standard.set(selectedTab.rawValue, forKey: "settings.lastPane")
+            }
+        }
+    }
     @Published private(set) var requestID = UUID()
     let highlightCoordinator = SettingsHighlightCoordinator()
 
-    private init() {}
+    private init() {
+        selectedTab = UserDefaults.standard.string(forKey: "settings.lastPane")
+            .flatMap(SettingsTab.init(rawValue:)) ?? .general
+    }
 
     func select(tab: SettingsTab, highlightID: String? = nil) {
         requestID = UUID()
@@ -149,6 +160,10 @@ class SettingsWindowController: NSWindowController {
         contentInstalled = true
     }
     
+    func updateTitle(for tab: SettingsTab) {
+        window?.title = "\(tab.title) — Anchor Settings"
+    }
+
     func showWindow(tab: SettingsTab? = nil, highlightID: String? = nil) {
         if let tab {
             SettingsNavigationState.shared.select(tab: tab, highlightID: highlightID)
@@ -251,9 +266,6 @@ extension SettingsWindowController: NSWindowDelegate {
     func windowDidBecomeKey(_ notification: Notification) {
         // Ensure app is in regular mode when window becomes key
         if let window { AnchorApplicationPresentation.shared.register(window) }
-    }
-    
-    func windowDidResignKey(_ notification: Notification) {
     }
     
 }

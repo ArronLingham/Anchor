@@ -21,12 +21,13 @@ import UniformTypeIdentifiers
 /// Groups for organizing settings tabs in the sidebar.
 enum SettingsTabGroup: String, CaseIterable, Identifiable {
     case core
+    case workspace
+    case notch
     case mediaAndDisplay
-    case system
     case productivity
-    case utilities
-    case developer
+    case system
     case integrations
+    case developer
     case info
 
     var id: String { rawValue }
@@ -35,12 +36,13 @@ enum SettingsTabGroup: String, CaseIterable, Identifiable {
     var title: String? {
         switch self {
         case .core:             return nil
-        case .mediaAndDisplay:  return String(localized: "Media & Display")
-        case .system:           return String(localized: "System")
+        case .workspace:        return String(localized: "Workspace")
+        case .notch:            return String(localized: "Notch & Lock Screen")
+        case .mediaAndDisplay:  return String(localized: "Sound & Display")
         case .productivity:     return String(localized: "Productivity")
-        case .utilities:        return String(localized: "Utilities")
+        case .system:           return String(localized: "System")
+        case .integrations:     return String(localized: "Connections & AI")
         case .developer:        return String(localized: "Developer")
-        case .integrations:     return String(localized: "Integrations")
         case .info:             return nil
         }
     }
@@ -82,16 +84,15 @@ enum SettingsTab: String, CaseIterable, Identifiable {
     /// Which sidebar group this tab belongs to.
     var group: SettingsTabGroup {
         switch self {
-        case .general, .appearance:                                          return .core
-        case .media, .liveActivities, .lockScreen, .devices, .vinyl:         return .mediaAndDisplay
-        case .hudAndOSD, .battery, .menuBar:                                 return .system
-        case .timer, .calendar, .notes, .todo, .docks, .workspaceModes:                               return .productivity
-        case .cleanup, .features:                                            return .utilities
-        case .gemini, .connections:                                          return .integrations
-        case .dictation, .launcher, .claudeUsage:                            return .integrations
-        case .clipboard, .downloads, .shortcuts:                             return .utilities
-        case .terminal, .gitCommit:                                          return .developer
-        case .about:                                                         return .info
+        case .general, .appearance, .features, .shortcuts:                   return .core
+        case .launcher, .docks, .workspaceModes:                             return .workspace
+        case .liveActivities, .lockScreen:                                  return .notch
+        case .media, .devices, .vinyl, .hudAndOSD:                            return .mediaAndDisplay
+        case .timer, .calendar, .notes, .todo, .clipboard, .dictation:        return .productivity
+        case .battery, .menuBar, .downloads, .cleanup:                        return .system
+        case .gemini, .connections:                                         return .integrations
+        case .terminal, .gitCommit, .claudeUsage:                             return .developer
+        case .about:                                                        return .info
         }
     }
 
@@ -105,10 +106,10 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         case .lockScreen: return String(localized: "Lock Screen")
         case .media: return String(localized: "Media")
         case .vinyl: return String(localized: "Vinyl")
-        case .devices: return String(localized: "Devices")
+        case .devices: return String(localized: "Bluetooth Devices")
         case .timer: return String(localized: "Timer")
         case .calendar: return String(localized: "Calendar")
-        case .hudAndOSD: return String(localized: "Controls")
+        case .hudAndOSD: return String(localized: "Volume & Brightness")
         case .battery: return String(localized: "Battery")
         case .menuBar: return String(localized: "Menu Bar")
         case .dictation: return String(localized: "Dictation")
@@ -122,7 +123,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         case .notes: return String(localized: "Notes")
         case .todo: return String(localized: "To-Do")
         case .cleanup: return String(localized: "Maintenance")
-        case .gemini: return String(localized: "Gemini")
+        case .gemini: return String(localized: "AI Assistant")
         case .terminal: return String(localized: "Terminal")
         case .gitCommit: return String(localized: "Daily Commit")
         case .about: return String(localized: "About")
@@ -162,8 +163,6 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         case .about: return "info.circle"
         }
     }
-
-    var tint: Color { AnchorDesign.accent }
 
     func highlightID(for title: String) -> String {
         "\(rawValue)-\(title)"
@@ -270,6 +269,7 @@ private struct SettingsForm<Content: View>: View {
     @ViewBuilder var content: () -> Content
 
     @EnvironmentObject private var highlightCoordinator: SettingsHighlightCoordinator
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         ScrollViewReader { proxy in
@@ -278,7 +278,7 @@ private struct SettingsForm<Content: View>: View {
                     guard let request, request.tab == tab else { return nil }
                     return request
                 }) { request in
-                    withAnimation(.easeInOut(duration: 0.45)) {
+                    withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.25)) {
                         proxy.scrollTo(request.id, anchor: .center)
                     }
                     highlightCoordinator.consumeScrollRequest(request)
@@ -322,6 +322,18 @@ struct SettingsView: View {
                 SettingsSidebarSearchBar(text: $searchText, suggestions: searchSuggestions, onSuggestionSelected: handleSearchSuggestionSelection)
                     .padding(.horizontal, 14)
                 List {
+                    if groupedFilteredTabs.isEmpty {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Label("No matching settings", systemImage: "magnifyingglass")
+                                .font(.callout.weight(.semibold))
+                            Text("Try a feature name, a control, or a permission.")
+                                .font(.caption).foregroundStyle(.secondary)
+                            Button("Clear search") { searchText = "" }
+                        }
+                        .padding(.vertical, 12)
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
+                    }
                     ForEach(groupedFilteredTabs, id: \.group) { section in
                         Section {
                             ForEach(section.tabs) { tab in
@@ -337,15 +349,10 @@ struct SettingsView: View {
                                     .listRowInsets(EdgeInsets(top: 3, leading: 8, bottom: 3, trailing: 8))
                                     .listRowBackground(Color.clear)
                                     .listRowSeparator(.hidden)
-                                if tab == resolvedSelection {
-                                    ForEach(SettingsSectionIndex.sections(for: tab)) { entry in sectionRow(entry, in: tab) }
-                                        .listRowBackground(Color.clear)
-                                    .listRowSeparator(.hidden)
-                                }
                             }
                         } header: {
                             if let title = section.group.title {
-                                Text(title.uppercased()).font(.system(size: 9, weight: .bold)).tracking(1.5).foregroundStyle(AnchorDesign.muted)
+                                Text(title.uppercased()).font(.system(size: 10, weight: .semibold)).tracking(0.7).foregroundStyle(AnchorDesign.muted)
                             }
                         }
                     }
@@ -356,8 +363,11 @@ struct SettingsView: View {
             }.frame(width: 238).background(AnchorDesign.canvas.opacity(0.65))
             Rectangle().fill(AnchorDesign.edge).frame(width: 1)
             VStack(alignment: .leading, spacing: 0) {
-                AnchorPageHeader(title: resolvedSelection.title, subtitle: settingsSubtitle, symbol: resolvedSelection.systemImage)
-                    .padding(.horizontal, 28).padding(.top, 28).padding(.bottom, 20)
+                HStack(alignment: .center, spacing: 12) {
+                    AnchorPageHeader(title: resolvedSelection.title, subtitle: settingsSubtitle, symbol: resolvedSelection.systemImage)
+                    sectionMenu
+                }
+                .padding(.horizontal, 28).padding(.top, 24).padding(.bottom, 20)
                 Rectangle().fill(AnchorDesign.edge).frame(height: 1).padding(.horizontal, 28)
                 detailView(for: resolvedSelection).frame(maxWidth: .infinity, maxHeight: .infinity)
             }
@@ -367,6 +377,8 @@ struct SettingsView: View {
         .formStyle(AnchorFormStyle())
         .frame(minWidth: 900, idealWidth: 980, minHeight: 640)
         .anchorTheme()
+        .onAppear { SettingsWindowController.shared.updateTitle(for: resolvedSelection) }
+        .onChange(of: resolvedSelection) { _, tab in SettingsWindowController.shared.updateTitle(for: tab) }
         .onChange(of: searchText) { _, newValue in
             let matches = tabsMatchingSearch(newValue)
             guard let firstMatch = matches.first else { return }
@@ -376,16 +388,36 @@ struct SettingsView: View {
 
     private var settingsSubtitle: String {
         switch resolvedSelection {
-        case .general: return "Make Anchor feel at home on your Mac."
-        case .appearance: return "Shape the surfaces, spacing, and personality of your workspace."
-        case .connections: return "Your services, connected and ready."
-        case .launcher: return "Your apps, widgets, and shortcuts, within reach."
-        case .hudAndOSD: return "Quiet, tactile controls for sound and display."
-        case .clipboard: return "A thoughtful place for the things you copy."
-        case .lockScreen: return "Useful information, even when you step away."
-        case .timer: return "Find your rhythm. Make time for a break."
-        case .media, .vinyl: return "A comfortable home for what is playing."
-        default: return "Fine-tune \(resolvedSelection.title.lowercased()) for the way you work."
+        case .general: return "Startup, notch behavior, input, and system alerts."
+        case .appearance: return "Notch dimensions, animation, artwork, and color."
+        case .features: return "Discover tools and choose your dashboard favorites."
+        case .connections: return "Connection status, account access, and repair actions."
+        case .shortcuts: return "Set the keys you use to open and control Anchor."
+        case .launcher: return "App search, the switcher, widgets, and quicklinks."
+        case .docks: return "Create and arrange app docks across your displays."
+        case .workspaceModes: return "Save app layouts and switch them by context."
+        case .liveActivities: return "Choose the activity and privacy indicators in the notch."
+        case .hudAndOSD: return "Choose how volume and brightness controls appear."
+        case .clipboard: return "Capture, retention, privacy, and backup of copied items."
+        case .lockScreen: return "Choose widgets, materials, and information shown while locked."
+        case .timer: return "Timer controls, focus sessions, presets, and sounds."
+        case .media: return "Playback, per-app audio, input, and external displays."
+        case .devices: return "Connection notifications and headphone battery indicators."
+        case .vinyl: return "A desktop record widget for the music you play."
+        case .calendar: return "Choose calendars, events, and meeting behavior."
+        case .notes: return "Quick notes and optional Apple Notes synchronization."
+        case .todo: return "Task sorting, appearance, and Reminders synchronization."
+        case .dictation: return "Voice capture, text insertion, and dictation feedback."
+        case .menuBar: return "Resource readouts and menu bar organization."
+        case .battery: return "Charge information, history, and battery notifications."
+        case .downloads: return "Choose how Anchor detects and presents downloads."
+        case .cleanup: return "Review reclaimable storage and available app updates."
+        case .gemini: return "Choose an AI provider, model, and account credentials."
+        case .claudeUsage: return "Usage-limit notifications and optional session recovery."
+        case .terminal: return "Shell, text, colors, and terminal input."
+        case .gitCommit: return "Choose repositories and a daily commit schedule."
+        case .about: return "Version, updates, credits, and support."
+
         }
     }
 
@@ -393,39 +425,28 @@ struct SettingsView: View {
         availableTabs.contains(navigation.selectedTab) ? navigation.selectedTab : (availableTabs.first ?? .general)
     }
 
-    @ToolbarContentBuilder
-    private var toolbarSpacingShim: some ToolbarContent {
-        if #available(macOS 26.0, *) {
-            ToolbarItem(placement: .primaryAction) {
-                toolbarSpacerView
-            }
-            .sharedBackgroundVisibility(.hidden)
-        } else {
-            ToolbarItem(placement: .primaryAction) {
-                toolbarSpacerView
-            }
-        }
-    }
-
-    @ViewBuilder
-    private var toolbarSpacerView: some View {
-        Color.clear
-            .frame(width: 96, height: 32)
-            .allowsHitTesting(false)
-            .accessibilityHidden(true)
-    }
-
     private var filteredTabs: [SettingsTab] {
         tabsMatchingSearch(searchText)
     }
 
-    private var selectionBinding: Binding<SettingsTab> {
-        Binding(
-            get: { resolvedSelection },
-            set: { newValue in
-                navigation.selectedTab = newValue
+    @ViewBuilder
+    private var sectionMenu: some View {
+        let sections = SettingsSectionIndex.sections(for: resolvedSelection)
+        if !sections.isEmpty {
+            Menu {
+                ForEach(sections) { entry in
+                    Button(entry.title) {
+                        navigation.highlightCoordinator.focus(
+                            onHighlightID: resolvedSelection.highlightID(for: entry.anchor),
+                            in: resolvedSelection)
+                    }
+                }
+            } label: {
+                Label("Sections", systemImage: "list.bullet")
             }
-        )
+            .fixedSize()
+            .help("Jump to a section in \(resolvedSelection.title)")
+        }
     }
 
     @ViewBuilder
@@ -435,33 +456,6 @@ struct SettingsView: View {
             .foregroundStyle(tab == resolvedSelection ? AnchorDesign.accent : AnchorDesign.muted)
             .frame(width: 28, height: 28)
             .background(AnchorSurface(depth: .inset, radius: 9))
-    }
-
-    /// One of the selected pane's own sections, in the sidebar.
-    ///
-    /// Split out of the List body because inlining it made the type-checker
-    /// give up on that expression entirely.
-    @ViewBuilder
-    private func sectionRow(_ entry: SettingsSectionIndex.Section, in tab: SettingsTab) -> some View {
-        Button {
-            navigation.highlightCoordinator.focus(onHighlightID: tab.highlightID(for: entry.anchor), in: tab)
-        } label: {
-            HStack(spacing: 8) {
-                Rectangle()
-                    .fill(Color.secondary.opacity(0.35))
-                    .frame(width: 2, height: 12)
-                Text(entry.title)
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                Spacer(minLength: 0)
-            }
-            .padding(.leading, 18)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .listRowInsets(EdgeInsets(top: 1, leading: 8, bottom: 1, trailing: 8))
-        .listRowSeparator(.hidden)
     }
 
     @ViewBuilder
@@ -480,62 +474,24 @@ struct SettingsView: View {
                         Capsule()
                             .fill(AnchorDesign.accent)
                     )
-            } else if false {
-                Spacer()
-                Text("BETA")
-                    .font(.system(size: 9, weight: .bold))
-                    .foregroundStyle(AnchorDesign.canvas)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(
-                        Capsule()
-                            .fill(AnchorDesign.accent)
-                    )
+
             }
         }
         .padding(.vertical, 4)
     }
 
     private var availableTabs: [SettingsTab] {
-        // Ordered to match group layout: core → media & display → system →
-        // productivity → utilities → developer → integrations → info.
+        // Keep task-related panes together. Section shortcuts live in the
+        // pane header so choosing a pane never shifts the sidebar below it.
         let ordered: [SettingsTab] = [
-            // Core
-            .general,
-            .appearance,
-            // Media & Display
-            .media,
-            .vinyl,
-            .liveActivities,
-            .lockScreen,
-            .devices,
-            // System
-            .hudAndOSD,
-            .battery,
-            .menuBar,
-            // Productivity
-            .docks,
-            .workspaceModes,
-            .timer,
-            .calendar,
-            .notes,
-            .todo,
-            .cleanup,
-            .connections,
-            .gemini,
-            // Utilities
-            .features,
-            .clipboard,
-            .downloads,
-            .shortcuts,
-            .gitCommit,
-            // Developer
-            .terminal,
-            // Integrations
-            .dictation,
-            .launcher,
-            .claudeUsage,
-            // Info
+            .general, .appearance, .features, .shortcuts,
+            .launcher, .docks, .workspaceModes,
+            .liveActivities, .lockScreen,
+            .media, .hudAndOSD, .devices, .vinyl,
+            .timer, .calendar, .todo, .notes, .clipboard, .dictation,
+            .menuBar, .battery, .downloads, .cleanup,
+            .connections, .gemini,
+            .terminal, .gitCommit, .claudeUsage,
             .about
         ]
 
@@ -583,11 +539,10 @@ struct SettingsView: View {
     }
 
     private var searchSuggestions: [SettingsSearchEntry] {
-        Array(searchEntries(matching: searchText).filter { $0.tab != .downloads }.prefix(8))
+        Array(searchEntries(matching: searchText).prefix(8))
     }
 
     private func handleSearchSuggestionSelection(_ suggestion: SettingsSearchEntry) {
-        guard suggestion.tab != .downloads else { return }
         searchText = ""
         navigation.highlightCoordinator.focus(on: suggestion)
         navigation.selectedTab = suggestion.tab
@@ -598,8 +553,10 @@ struct SettingsView: View {
         let suggestions: [SettingsSearchEntry]
         let onSuggestionSelected: (SettingsSearchEntry) -> Void
 
-        @FocusState private var isFocused: Bool
+        @State private var isFocused = false
         @State private var hoveredSuggestionID: SettingsSearchEntry.ID?
+        @State private var keyboardSelectionID: SettingsSearchEntry.ID?
+        @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
         var body: some View {
             VStack(spacing: 6) {
@@ -608,7 +565,8 @@ struct SettingsView: View {
                     suggestionList
                 }
             }
-            .animation(.easeInOut(duration: 0.15), value: showSuggestions)
+            .animation(reduceMotion ? nil : .easeInOut(duration: 0.15), value: showSuggestions)
+            .onChange(of: text) { _, _ in keyboardSelectionID = nil }
         }
 
         private var showSuggestions: Bool {
@@ -620,10 +578,9 @@ struct SettingsView: View {
                 Image(systemName: "magnifyingglass")
                     .foregroundStyle(Color.secondary)
 
-                TextField("Search Settings", text: $text)
-                    .textFieldStyle(.plain)
-                    .focused($isFocused)
-                    .onSubmit(triggerFirstSuggestion)
+                SettingsSearchInput(text: $text, isFocused: $isFocused,
+                    onMove: moveSuggestion, onSubmit: triggerFirstSuggestion, onCancel: { text = "" })
+                    .frame(height: 18)
 
                 if !text.isEmpty {
                     Button {
@@ -640,7 +597,7 @@ struct SettingsView: View {
             .padding(.vertical, 8)
             .background(
                 AnchorCorners.rectangle(cornerRadius: 12)
-                    .fill(.ultraThinMaterial)
+                    .fill(AnchorDesign.inset)
             )
             .clipShape(AnchorCorners.rectangle(cornerRadius: 12))
             .overlay(
@@ -657,12 +614,12 @@ struct SettingsView: View {
                     } label: {
                         HStack(spacing: 10) {
                             AnchorCorners.rectangle(cornerRadius: 8)
-                                .fill(suggestion.tab.tint)
+                                .fill(AnchorDesign.raised)
                                 .frame(width: 28, height: 28)
                                 .overlay {
                                     Image(systemName: suggestion.tab.systemImage)
                                         .font(.system(size: 13, weight: .semibold))
-                                        .foregroundStyle(Color.white)
+                                        .foregroundStyle(AnchorDesign.text)
                                 }
 
                             VStack(alignment: .leading, spacing: 2) {
@@ -694,19 +651,18 @@ struct SettingsView: View {
             }
             .background(
                 AnchorCorners.rectangle(cornerRadius: 12)
-                    .fill(.ultraThinMaterial)
+                    .fill(AnchorDesign.inset)
             )
             .overlay(
                 AnchorCorners.rectangle(cornerRadius: 12)
                     .stroke(Color.white.opacity(0.08))
             )
-            .shadow(color: Color.black.opacity(0.2), radius: 8, y: 4)
-            .transition(.opacity.combined(with: .move(edge: .top)))
+            .transition(reduceMotion ? .opacity : .opacity.combined(with: .move(edge: .top)))
         }
 
         private func rowBackground(for suggestion: SettingsSearchEntry) -> some View {
             AnchorCorners.rectangle(cornerRadius: 8)
-                .fill(hoveredSuggestionID == suggestion.id ? Color.white.opacity(0.08) : Color.clear)
+                .fill(hoveredSuggestionID == suggestion.id || keyboardSelectionID == suggestion.id ? Color.white.opacity(0.08) : Color.clear)
         }
 
         private func selectSuggestion(_ suggestion: SettingsSearchEntry) {
@@ -714,9 +670,68 @@ struct SettingsView: View {
             isFocused = false
         }
 
+        private func moveSuggestion(by offset: Int) {
+            guard !suggestions.isEmpty else { return }
+            let current = suggestions.firstIndex { $0.id == keyboardSelectionID }
+            let next = current.map { ($0 + offset + suggestions.count) % suggestions.count }
+                ?? (offset > 0 ? 0 : suggestions.count - 1)
+            keyboardSelectionID = suggestions[next].id
+        }
+
         private func triggerFirstSuggestion() {
-            guard let first = suggestions.first else { return }
-            selectSuggestion(first)
+            guard let selection = suggestions.first(where: { $0.id == keyboardSelectionID }) ?? suggestions.first else { return }
+            selectSuggestion(selection)
+        }
+    }
+
+    /// AppKit's field editor consumes arrow commands before SwiftUI's
+    /// onMoveCommand. Its delegate handles only suggestion navigation, leaving
+    /// ordinary editing, selection, and input methods to the native control.
+    private struct SettingsSearchInput: NSViewRepresentable {
+        @Binding var text: String
+        @Binding var isFocused: Bool
+        let onMove: (Int) -> Void
+        let onSubmit: () -> Void
+        let onCancel: () -> Void
+
+        func makeCoordinator() -> Coordinator { Coordinator(self) }
+        func makeNSView(context: Context) -> NSTextField {
+            let field = NSTextField()
+            field.isBordered = false
+            field.drawsBackground = false
+            field.focusRingType = .none
+            field.font = .systemFont(ofSize: 13)
+            field.textColor = .labelColor
+            field.placeholderString = String(localized: "Search Settings")
+            field.setAccessibilityLabel(String(localized: "Search Settings"))
+            field.delegate = context.coordinator
+            return field
+        }
+        func updateNSView(_ field: NSTextField, context: Context) {
+            context.coordinator.parent = self
+            if field.stringValue != text { field.stringValue = text }
+            if !isFocused, field.currentEditor() != nil { field.window?.makeFirstResponder(nil) }
+        }
+        static func dismantleNSView(_ field: NSTextField, coordinator: Coordinator) { field.delegate = nil }
+
+        final class Coordinator: NSObject, NSTextFieldDelegate {
+            var parent: SettingsSearchInput
+            init(_ parent: SettingsSearchInput) { self.parent = parent }
+            func controlTextDidBeginEditing(_ notification: Notification) { parent.isFocused = true }
+            func controlTextDidEndEditing(_ notification: Notification) { parent.isFocused = false }
+            func controlTextDidChange(_ notification: Notification) {
+                if let field = notification.object as? NSTextField { parent.text = field.stringValue }
+            }
+            func control(_ control: NSControl, textView: NSTextView, doCommandBy command: Selector) -> Bool {
+                switch command {
+                case #selector(NSResponder.moveDown(_:)): parent.onMove(1)
+                case #selector(NSResponder.moveUp(_:)): parent.onMove(-1)
+                case #selector(NSResponder.insertNewline(_:)): parent.onSubmit()
+                case #selector(NSResponder.cancelOperation(_:)): parent.onCancel()
+                default: return false
+                }
+                return true
+            }
         }
     }
 
@@ -746,7 +761,7 @@ struct SettingsView: View {
             SettingsSearchEntry(tab: .launcher, title: "Show Apple Shortcuts", keywords: ["shortcuts", "apple shortcuts", "workflow", "automation", "run shortcut"], highlightID: SettingsTab.launcher.highlightID(for: "Show Apple Shortcuts")),
             SettingsSearchEntry(tab: .connections, title: "Connections", keywords: ["lunar", "spotify", "calendar", "reminders", "repair", "integration", "reconnect"], highlightID: nil),
             SettingsSearchEntry(tab: .gemini, title: "AI Assistant", keywords: ["gemini", "ai", "assistant", "chat", "google ai", "llm"], highlightID: SettingsTab.gemini.highlightID(for: "AI Assistant")),
-            SettingsSearchEntry(tab: .gemini, title: "API key", keywords: ["gemini key", "api key", "google ai studio"], highlightID: SettingsTab.gemini.highlightID(for: "API key")),
+            SettingsSearchEntry(tab: .gemini, title: "API key", keywords: ["gemini key", "api key", "google ai studio"], highlightID: nil),
             SettingsSearchEntry(tab: .gemini, title: "Model", keywords: ["model", "gemini", "gpt", "claude", "llm", "which model", "model list"], highlightID: SettingsTab.gemini.highlightID(for: "Model")),
             SettingsSearchEntry(tab: .media, title: "Show the volume control", keywords: ["per-app volume", "app volume", "volume stepper", "hide volume"], highlightID: SettingsTab.media.highlightID(for: "Show the volume control")),
             SettingsSearchEntry(tab: .media, title: "Volume control", keywords: ["preset volumes", "volume booster", "boost", "louder", "per-app volume mode"], highlightID: SettingsTab.media.highlightID(for: "Volume control")),
@@ -763,8 +778,7 @@ struct SettingsView: View {
             SettingsSearchEntry(tab: .general, title: "Dynamic Island", keywords: ["notch", "island", "enable", "disable"], highlightID: SettingsTab.general.highlightID(for: "Dynamic Island")),
             SettingsSearchEntry(tab: .general, title: "Keep the notch open", keywords: ["pin", "pinned", "stay open", "notch pin"], highlightID: SettingsTab.general.highlightID(for: "Keep the notch open")),
             SettingsSearchEntry(tab: .general, title: "Show a pill on displays without a notch", keywords: ["external display", "external monitor", "pill", "second monitor", "second screen", "multi-display", "non-notch", "no notch", "permanent pill", "hover to open", "always show on external displays"], highlightID: SettingsTab.general.highlightID(for: "Show a pill on displays without a notch")),
-            SettingsSearchEntry(tab: .shortcuts, title: "Pick a colour", keywords: ["colour picker", "color picker", "eyedropper", "pick colour"], highlightID: SettingsTab.shortcuts.highlightID(for: "Pick a colour")),
-            SettingsSearchEntry(tab: .shortcuts, title: "Keep the notch open", keywords: ["pin notch", "keep open", "notch pin shortcut"], highlightID: SettingsTab.shortcuts.highlightID(for: "Keep the notch open")),
+            SettingsSearchEntry(tab: .shortcuts, title: "Pick a colour", keywords: ["colour picker", "color picker", "eyedropper", "pick colour"], highlightID: nil),
             SettingsSearchEntry(tab: .general, title: "Offer to install apps from disk images", keywords: ["dmg", "disk image", "install app", "drag to applications"], highlightID: SettingsTab.general.highlightID(for: "Offer to install apps from disk images")),
             SettingsSearchEntry(tab: .menuBar, title: "Show CPU", keywords: ["menu bar cpu", "cpu readout", "cpu meter", "istat"], highlightID: SettingsTab.menuBar.highlightID(for: "Show CPU")),
             SettingsSearchEntry(tab: .menuBar, title: "Show memory", keywords: ["menu bar ram", "memory readout", "ram meter"], highlightID: SettingsTab.menuBar.highlightID(for: "Show memory")),
@@ -781,8 +795,8 @@ struct SettingsView: View {
             SettingsSearchEntry(tab: .media, title: "External display brightness", keywords: ["ddc", "monitor brightness", "external monitor", "second screen brightness", "ddc/ci"], highlightID: SettingsTab.media.highlightID(for: "External display brightness")),
             SettingsSearchEntry(tab: .media, title: "Pin microphone", keywords: ["microphone", "mic", "input device", "default input", "pin mic", "airpods steal"], highlightID: SettingsTab.media.highlightID(for: "Pin microphone")),
             SettingsSearchEntry(tab: .media, title: "Audio device HUD", keywords: ["output device", "speaker switch", "audio hud"], highlightID: SettingsTab.media.highlightID(for: "Audio device HUD")),
-            SettingsSearchEntry(tab: .shortcuts, title: "Next output device", keywords: ["cycle output", "switch speakers", "audio output shortcut"], highlightID: SettingsTab.shortcuts.highlightID(for: "Next output device")),
-            SettingsSearchEntry(tab: .shortcuts, title: "Mute all microphones", keywords: ["mute mic", "microphone mute", "mute all"], highlightID: SettingsTab.shortcuts.highlightID(for: "Mute all microphones")),
+            SettingsSearchEntry(tab: .shortcuts, title: "Next output device", keywords: ["cycle output", "switch speakers", "audio output shortcut"], highlightID: nil),
+            SettingsSearchEntry(tab: .shortcuts, title: "Mute all microphones", keywords: ["mute mic", "microphone mute", "mute all"], highlightID: nil),
             SettingsSearchEntry(tab: .general, title: "Menubar icon", keywords: ["menu bar", "status bar", "icon"], highlightID: SettingsTab.general.highlightID(for: "Menubar icon")),
             SettingsSearchEntry(tab: .general, title: "Launch at login", keywords: ["autostart", "startup"], highlightID: SettingsTab.general.highlightID(for: "Launch at login")),
             SettingsSearchEntry(tab: .general, title: "Show on all displays", keywords: ["multi-display", "external monitor"], highlightID: SettingsTab.general.highlightID(for: "Show on all displays")),
@@ -870,23 +884,12 @@ struct SettingsView: View {
             SettingsSearchEntry(tab: .media, title: "Show live canvas in Dynamic Island", keywords: ["canvas", "live canvas", "album art", "dynamic island", "spotify canvas"], highlightID: SettingsTab.media.highlightID(for: "Show live canvas in Dynamic Island")),
             SettingsSearchEntry(tab: .media, title: "Auto-hide inactive notch media player", keywords: ["auto hide", "inactive", "placeholder", "notch media"], highlightID: SettingsTab.media.highlightID(for: "Auto-hide inactive notch media player")),
             SettingsSearchEntry(tab: .media, title: "Show Change Media Output control", keywords: ["airplay", "route picker", "media output"], highlightID: SettingsTab.media.highlightID(for: "Show Change Media Output control")),
-            SettingsSearchEntry(tab: .media, title: "Enable album art parallax", keywords: ["parallax", "lock screen", "album art"], highlightID: SettingsTab.media.highlightID(for: "Enable album art parallax")),
             SettingsSearchEntry(tab: .media, title: "Enable album art parallax effect", keywords: ["parallax", "parallax effect", "album art"], highlightID: SettingsTab.media.highlightID(for: "Enable album art parallax effect")),
 
             // Calendar
             SettingsSearchEntry(tab: .calendar, title: "Show calendar", keywords: ["calendar", "events"], highlightID: SettingsTab.calendar.highlightID(for: "Show calendar")),
             SettingsSearchEntry(tab: .calendar, title: "Enable reminder live activity", keywords: ["reminder", "live activity"], highlightID: SettingsTab.calendar.highlightID(for: "Enable reminder live activity")),
             SettingsSearchEntry(tab: .calendar, title: "Countdown style", keywords: ["reminder countdown"], highlightID: SettingsTab.calendar.highlightID(for: "Countdown style")),
-            SettingsSearchEntry(tab: .calendar, title: "Show lock screen reminder", keywords: ["lock screen", "reminder widget"], highlightID: SettingsTab.calendar.highlightID(for: "Show lock screen reminder")),
-            SettingsSearchEntry(tab: .calendar, title: "Show next calendar event", keywords: ["calendar widget", "lock screen", "next event"], highlightID: SettingsTab.calendar.highlightID(for: "Show next calendar event")),
-            SettingsSearchEntry(tab: .calendar, title: "Show events within the next", keywords: ["calendar widget", "lookahead"], highlightID: SettingsTab.calendar.highlightID(for: "Show events within the next")),
-            SettingsSearchEntry(tab: .calendar, title: "Show events from all calendars", keywords: ["calendar widget", "selection"], highlightID: SettingsTab.calendar.highlightID(for: "Show events from all calendars")),
-            SettingsSearchEntry(tab: .calendar, title: "Show countdown", keywords: ["calendar widget", "countdown"], highlightID: SettingsTab.calendar.highlightID(for: "Show countdown")),
-            SettingsSearchEntry(tab: .calendar, title: "Show event for entire duration", keywords: ["calendar widget", "duration"], highlightID: SettingsTab.calendar.highlightID(for: "Show event for entire duration")),
-            SettingsSearchEntry(tab: .calendar, title: "Hide active event and show next upcoming event", keywords: ["calendar widget", "after start"], highlightID: SettingsTab.calendar.highlightID(for: "Hide active event and show next upcoming event")),
-            SettingsSearchEntry(tab: .calendar, title: "Show time remaining", keywords: ["calendar widget", "remaining"], highlightID: SettingsTab.calendar.highlightID(for: "Show time remaining")),
-            SettingsSearchEntry(tab: .calendar, title: "Show start time after event begins", keywords: ["calendar widget", "start time"], highlightID: SettingsTab.calendar.highlightID(for: "Show start time after event begins")),
-            SettingsSearchEntry(tab: .calendar, title: "Chip color", keywords: ["reminder chip", "color"], highlightID: SettingsTab.calendar.highlightID(for: "Chip color")),
             SettingsSearchEntry(tab: .calendar, title: "Hide all-day events", keywords: ["calendar", "all-day"], highlightID: SettingsTab.calendar.highlightID(for: "Hide all-day events")),
             SettingsSearchEntry(tab: .calendar, title: "Hide completed reminders", keywords: ["reminder", "completed"], highlightID: SettingsTab.calendar.highlightID(for: "Hide completed reminders")),
             SettingsSearchEntry(tab: .calendar, title: "Show full event titles", keywords: ["calendar", "titles"], highlightID: SettingsTab.calendar.highlightID(for: "Show full event titles")),
@@ -900,7 +903,7 @@ struct SettingsView: View {
             SettingsSearchEntry(tab: .appearance, title: "Enable window shadow", keywords: ["shadow", "appearance"], highlightID: SettingsTab.appearance.highlightID(for: "Enable window shadow")),
             SettingsSearchEntry(tab: .appearance, title: "Corner radius scaling", keywords: ["corner radius", "shape"], highlightID: SettingsTab.appearance.highlightID(for: "Corner radius scaling")),
             SettingsSearchEntry(tab: .appearance, title: "Use simpler close animation", keywords: ["close animation", "notch"], highlightID: SettingsTab.appearance.highlightID(for: "Use simpler close animation")),
-            SettingsSearchEntry(tab: .appearance, title: "Notch Width", keywords: ["expanded notch", "width", "resize"], highlightID: SettingsTab.appearance.highlightID(for: "Expanded notch width")),
+            SettingsSearchEntry(tab: .appearance, title: "Notch Width", keywords: ["expanded notch", "width", "resize"], highlightID: nil),
             SettingsSearchEntry(tab: .appearance, title: "Enable colored spectrograms", keywords: ["spectrogram", "audio"], highlightID: SettingsTab.appearance.highlightID(for: "Enable colored spectrograms")),
             SettingsSearchEntry(tab: .appearance, title: "Enable blur effect behind album art", keywords: ["blur", "album art"], highlightID: SettingsTab.appearance.highlightID(for: "Enable blur effect behind album art")),
             SettingsSearchEntry(tab: .appearance, title: "Slider color", keywords: ["slider", "accent"], highlightID: SettingsTab.appearance.highlightID(for: "Slider color")),
@@ -920,7 +923,7 @@ struct SettingsView: View {
             SettingsSearchEntry(tab: .lockScreen, title: "Timer surface", keywords: ["timer glass", "classic", "blur"], highlightID: SettingsTab.lockScreen.highlightID(for: "Timer surface")),
             SettingsSearchEntry(tab: .lockScreen, title: "Timer glass material", keywords: ["frosted", "liquid", "timer material"], highlightID: SettingsTab.lockScreen.highlightID(for: "Timer glass material")),
             SettingsSearchEntry(tab: .lockScreen, title: "Timer liquid mode", keywords: ["timer", "standard", "custom"], highlightID: SettingsTab.lockScreen.highlightID(for: "Timer liquid mode")),
-            SettingsSearchEntry(tab: .lockScreen, title: "Timer widget variant", keywords: ["timer variant", "liquid"], highlightID: SettingsTab.lockScreen.highlightID(for: "Timer widget variant")),
+            SettingsSearchEntry(tab: .lockScreen, title: "Timer widget variant", keywords: ["timer variant", "liquid"], highlightID: nil),
             SettingsSearchEntry(tab: .lockScreen, title: "Show lock screen weather", keywords: ["weather widget"], highlightID: SettingsTab.lockScreen.highlightID(for: "Show lock screen weather")),
             SettingsSearchEntry(tab: .lockScreen, title: "Layout", keywords: ["inline", "circular", "weather layout"], highlightID: SettingsTab.lockScreen.highlightID(for: "Layout")),
             SettingsSearchEntry(tab: .lockScreen, title: "Weather data provider", keywords: ["wttr", "open meteo"], highlightID: SettingsTab.lockScreen.highlightID(for: "Weather data provider")),
@@ -947,15 +950,10 @@ struct SettingsView: View {
             // Timer
             SettingsSearchEntry(tab: .timer, title: "Enable timer feature", keywords: ["timer", "enable"], highlightID: SettingsTab.timer.highlightID(for: "Enable timer feature")),
             SettingsSearchEntry(tab: .timer, title: "Mirror macOS Clock timers", keywords: ["system timer", "clock app"], highlightID: SettingsTab.timer.highlightID(for: "Mirror macOS Clock timers")),
-            SettingsSearchEntry(tab: .timer, title: "Show lock screen timer widget", keywords: ["lock screen", "timer widget"], highlightID: SettingsTab.timer.highlightID(for: "Show lock screen timer widget")),
-            SettingsSearchEntry(tab: .timer, title: "Timer surface", keywords: ["timer glass", "classic", "blur"], highlightID: SettingsTab.timer.highlightID(for: "Timer surface")),
-            SettingsSearchEntry(tab: .timer, title: "Timer glass material", keywords: ["frosted", "liquid", "timer material"], highlightID: SettingsTab.timer.highlightID(for: "Timer glass material")),
-            SettingsSearchEntry(tab: .timer, title: "Timer liquid mode", keywords: ["timer", "standard", "custom"], highlightID: SettingsTab.timer.highlightID(for: "Timer liquid mode")),
-            SettingsSearchEntry(tab: .timer, title: "Timer widget variant", keywords: ["timer variant", "liquid"], highlightID: SettingsTab.timer.highlightID(for: "Timer widget variant")),
             SettingsSearchEntry(tab: .timer, title: "Timer tint", keywords: ["timer colour", "preset"], highlightID: SettingsTab.timer.highlightID(for: "Timer tint")),
             SettingsSearchEntry(tab: .timer, title: "Solid colour", keywords: ["timer colour", "custom"], highlightID: SettingsTab.timer.highlightID(for: "Solid colour")),
             SettingsSearchEntry(tab: .timer, title: "Progress style", keywords: ["progress", "bar", "ring"], highlightID: SettingsTab.timer.highlightID(for: "Progress style")),
-            SettingsSearchEntry(tab: .timer, title: "Accent colour", keywords: ["accent", "timer"], highlightID: SettingsTab.timer.highlightID(for: "Accent colour")),
+            SettingsSearchEntry(tab: .timer, title: "Accent colour", keywords: ["accent", "timer"], highlightID: nil),
 
             // Stats
 
@@ -1010,12 +1008,8 @@ struct SettingsView: View {
             SettingsSearchEntry(tab: .appearance, title: "Copy as", keywords: ["copy", "appearance"], highlightID: SettingsTab.appearance.highlightID(for: "Copy as")),
             SettingsSearchEntry(tab: .appearance, title: "Customize physical notch width", keywords: ["customize", "physical", "notch", "width", "appearance"], highlightID: SettingsTab.appearance.highlightID(for: "Customize physical notch width")),
             SettingsSearchEntry(tab: .appearance, title: "Expanded notch width", keywords: ["expanded", "notch", "width", "appearance"], highlightID: SettingsTab.appearance.highlightID(for: "Expanded notch width")),
-            SettingsSearchEntry(tab: .appearance, title: "Lock screen glass mode", keywords: ["lock", "screen", "glass", "mode", "appearance"], highlightID: SettingsTab.appearance.highlightID(for: "Lock screen glass mode")),
-            SettingsSearchEntry(tab: .appearance, title: "Lock screen material", keywords: ["lock", "screen", "material", "appearance"], highlightID: SettingsTab.appearance.highlightID(for: "Lock screen material")),
-            SettingsSearchEntry(tab: .appearance, title: "Music panel variant (appearance)", keywords: ["music", "panel", "variant", "appearance"], highlightID: SettingsTab.appearance.highlightID(for: "Music panel variant (appearance)")),
             SettingsSearchEntry(tab: .appearance, title: "Open and close", keywords: ["open", "close", "appearance"], highlightID: SettingsTab.appearance.highlightID(for: "Open and close")),
             SettingsSearchEntry(tab: .appearance, title: "Screen colour picker", keywords: ["screen", "colour", "picker", "appearance"], highlightID: SettingsTab.appearance.highlightID(for: "Screen colour picker")),
-            SettingsSearchEntry(tab: .appearance, title: "Timer widget variant (appearance)", keywords: ["timer", "widget", "variant", "appearance"], highlightID: SettingsTab.appearance.highlightID(for: "Timer widget variant (appearance)")),
             SettingsSearchEntry(tab: .appearance, title: "Tint the player with the album art", keywords: ["tint", "player", "album", "art", "appearance"], highlightID: SettingsTab.appearance.highlightID(for: "Tint the player with the album art")),
             SettingsSearchEntry(tab: .battery, title: "Record battery history", keywords: ["record", "battery", "history"], highlightID: SettingsTab.battery.highlightID(for: "Record battery history")),
             SettingsSearchEntry(tab: .calendar, title: "Calendar App", keywords: ["calendar", "app"], highlightID: SettingsTab.calendar.highlightID(for: "Calendar App")),
@@ -1055,24 +1049,17 @@ struct SettingsView: View {
             SettingsSearchEntry(tab: .gitCommit, title: "Add Repository…", keywords: ["add", "repository…", "git commit"], highlightID: SettingsTab.gitCommit.highlightID(for: "Add Repository…")),
             SettingsSearchEntry(tab: .gitCommit, title: "Also commit uncommitted changes", keywords: ["also", "commit", "uncommitted", "changes", "git commit"], highlightID: SettingsTab.gitCommit.highlightID(for: "Also commit uncommitted changes")),
             SettingsSearchEntry(tab: .gitCommit, title: "Commit Now", keywords: ["commit", "now", "git commit"], highlightID: SettingsTab.gitCommit.highlightID(for: "Commit Now")),
-            SettingsSearchEntry(tab: .gitCommit, title: "Commit at a random time", keywords: ["commit", "random", "time", "git commit"], highlightID: SettingsTab.gitCommit.highlightID(for: "Commit at a random time")),
-            SettingsSearchEntry(tab: .gitCommit, title: "Commits per day", keywords: ["commits", "per", "day", "git commit"], highlightID: SettingsTab.gitCommit.highlightID(for: "Commits per day")),
+            SettingsSearchEntry(tab: .gitCommit, title: "Commit at a random time", keywords: ["commit", "random", "time", "git commit"], highlightID: nil),
+            SettingsSearchEntry(tab: .gitCommit, title: "Commits per day", keywords: ["commits", "per", "day", "git commit"], highlightID: nil),
             SettingsSearchEntry(tab: .gitCommit, title: "Message", keywords: ["message", "git commit"], highlightID: SettingsTab.gitCommit.highlightID(for: "Message")),
-            SettingsSearchEntry(tab: .gitCommit, title: "Not after", keywords: ["not", "after", "git commit"], highlightID: SettingsTab.gitCommit.highlightID(for: "Not after")),
-            SettingsSearchEntry(tab: .gitCommit, title: "Not before", keywords: ["not", "before", "git commit"], highlightID: SettingsTab.gitCommit.highlightID(for: "Not before")),
+            SettingsSearchEntry(tab: .gitCommit, title: "Not after", keywords: ["not", "after", "git commit"], highlightID: nil),
+            SettingsSearchEntry(tab: .gitCommit, title: "Not before", keywords: ["not", "before", "git commit"], highlightID: nil),
             SettingsSearchEntry(tab: .gitCommit, title: "Push after committing", keywords: ["push", "after", "committing", "git commit"], highlightID: SettingsTab.gitCommit.highlightID(for: "Push after committing")),
             SettingsSearchEntry(tab: .gitCommit, title: "Time of day", keywords: ["time", "day", "git commit"], highlightID: SettingsTab.gitCommit.highlightID(for: "Time of day")),
-            SettingsSearchEntry(tab: .gitCommit, title: "Vary the commit message", keywords: ["vary", "commit", "message", "git commit"], highlightID: SettingsTab.gitCommit.highlightID(for: "Vary the commit message")),
-            SettingsSearchEntry(tab: .hudAndOSD, title: "Color-coded battery display", keywords: ["color-coded", "battery", "display", "hud and o s d"], highlightID: SettingsTab.hudAndOSD.highlightID(for: "Color-coded battery display")),
+            SettingsSearchEntry(tab: .gitCommit, title: "Vary the commit message", keywords: ["vary", "commit", "message", "git commit"], highlightID: nil),
             SettingsSearchEntry(tab: .hudAndOSD, title: "Play feedback when volume is changed", keywords: ["play", "feedback", "volume", "changed", "hud and o s d"], highlightID: SettingsTab.hudAndOSD.highlightID(for: "Play feedback when volume is changed")),
-            SettingsSearchEntry(tab: .hudAndOSD, title: "Scroll device name in HUD", keywords: ["scroll", "device", "name", "hud", "hud and o s d"], highlightID: SettingsTab.hudAndOSD.highlightID(for: "Scroll device name in HUD")),
-            SettingsSearchEntry(tab: .hudAndOSD, title: "Show AirPods listening mode changes", keywords: ["airpods", "listening", "mode", "changes", "hud and o s d"], highlightID: SettingsTab.hudAndOSD.highlightID(for: "Show AirPods listening mode changes")),
-            SettingsSearchEntry(tab: .hudAndOSD, title: "Show Bluetooth device connections", keywords: ["bluetooth", "device", "connections", "hud and o s d"], highlightID: SettingsTab.hudAndOSD.highlightID(for: "Show Bluetooth device connections")),
-            SettingsSearchEntry(tab: .hudAndOSD, title: "Show battery percentage text in HUD", keywords: ["battery", "percentage", "text", "hud", "hud and o s d"], highlightID: SettingsTab.hudAndOSD.highlightID(for: "Show battery percentage text in HUD")),
-            SettingsSearchEntry(tab: .hudAndOSD, title: "Use 3D Bluetooth HUD icon", keywords: ["bluetooth", "hud", "icon", "hud and o s d"], highlightID: SettingsTab.hudAndOSD.highlightID(for: "Use 3D Bluetooth HUD icon")),
             SettingsSearchEntry(tab: .hudAndOSD, title: "Use F1 and F2 for brightness", keywords: ["brightness", "hud and o s d"], highlightID: SettingsTab.hudAndOSD.highlightID(for: "Use F1 and F2 for brightness")),
             SettingsSearchEntry(tab: .hudAndOSD, title: "Use F10, F11 and F12 for volume", keywords: ["volume keys", "function keys", "external keyboard", "f10", "f11", "f12", "mute", "system hud"], highlightID: SettingsTab.hudAndOSD.highlightID(for: "Use F10, F11 and F12 for volume")),
-            SettingsSearchEntry(tab: .hudAndOSD, title: "Use circular battery indicator", keywords: ["circular", "battery", "indicator", "hud and o s d"], highlightID: SettingsTab.hudAndOSD.highlightID(for: "Use circular battery indicator")),
             SettingsSearchEntry(tab: .launcher, title: "Open switcher", keywords: ["open", "switcher", "launcher"], highlightID: SettingsTab.launcher.highlightID(for: "Open switcher")),
             SettingsSearchEntry(tab: .launcher, title: "Open switcher backwards", keywords: ["open", "switcher", "backwards", "launcher"], highlightID: SettingsTab.launcher.highlightID(for: "Open switcher backwards")),
             SettingsSearchEntry(tab: .launcher, title: "Ring size", keywords: ["ring", "size", "launcher"], highlightID: SettingsTab.launcher.highlightID(for: "Ring size")),
@@ -1096,17 +1083,12 @@ struct SettingsView: View {
             SettingsSearchEntry(tab: .lockScreen, title: "Show time remaining", keywords: ["time", "remaining", "lock screen"], highlightID: SettingsTab.lockScreen.highlightID(for: "Show time remaining")),
             SettingsSearchEntry(tab: .lockScreen, title: "Use album art layout over fullscreen canvas", keywords: ["album", "art", "layout", "over", "fullscreen", "lock screen"], highlightID: SettingsTab.lockScreen.highlightID(for: "Use album art layout over fullscreen canvas")),
             SettingsSearchEntry(tab: .lockScreen, title: "Use enhanced liquid border", keywords: ["enhanced", "liquid", "border", "lock screen"], highlightID: SettingsTab.lockScreen.highlightID(for: "Use enhanced liquid border")),
-            SettingsSearchEntry(tab: .media, title: "Enable media panel blur", keywords: ["media", "panel", "blur"], highlightID: SettingsTab.media.highlightID(for: "Enable media panel blur")),
             SettingsSearchEntry(tab: .media, title: "Enable real-time waveform", keywords: ["real-time", "waveform", "media"], highlightID: SettingsTab.media.highlightID(for: "Enable real-time waveform")),
-            SettingsSearchEntry(tab: .media, title: "Fullscreen artwork on right-click", keywords: ["fullscreen", "artwork", "right-click", "media"], highlightID: SettingsTab.media.highlightID(for: "Fullscreen artwork on right-click")),
-            SettingsSearchEntry(tab: .media, title: "Keep album art visible during fullscreen artwork", keywords: ["keep", "album", "art", "visible", "during", "media"], highlightID: SettingsTab.media.highlightID(for: "Keep album art visible during fullscreen artwork")),
             SettingsSearchEntry(tab: .media, title: "Lyrics timing", keywords: ["lyrics", "timing", "media"], highlightID: SettingsTab.media.highlightID(for: "Lyrics timing")),
             SettingsSearchEntry(tab: .media, title: "Per-app mute", keywords: ["per-app", "mute", "media"], highlightID: SettingsTab.media.highlightID(for: "Per-app mute")),
             SettingsSearchEntry(tab: .media, title: "Show media controls in Dynamic Island", keywords: ["media", "controls", "dynamic", "island"], highlightID: SettingsTab.media.highlightID(for: "Show media controls in Dynamic Island")),
-            SettingsSearchEntry(tab: .media, title: "Show merged AirPlay and output devices", keywords: ["merged", "airplay", "output", "devices", "media"], highlightID: SettingsTab.media.highlightID(for: "Show merged AirPlay and output devices")),
             SettingsSearchEntry(tab: .media, title: "Show song title and artist in closed notch", keywords: ["song", "title", "artist", "closed", "notch", "media"], highlightID: SettingsTab.media.highlightID(for: "Show song title and artist in closed notch")),
             SettingsSearchEntry(tab: .media, title: "Translate lyrics", keywords: ["translate", "lyrics", "media"], highlightID: SettingsTab.media.highlightID(for: "Translate lyrics")),
-            SettingsSearchEntry(tab: .media, title: "Use album art layout over fullscreen canvas", keywords: ["album", "art", "layout", "over", "fullscreen", "media"], highlightID: SettingsTab.media.highlightID(for: "Use album art layout over fullscreen canvas")),
             SettingsSearchEntry(tab: .menuBar, title: "Add an always-hidden section", keywords: ["add", "always-hidden", "section", "menu bar"], highlightID: SettingsTab.menuBar.highlightID(for: "Add an always-hidden section")),
             SettingsSearchEntry(tab: .menuBar, title: "Expand on hover", keywords: ["expand", "hover", "menu bar"], highlightID: SettingsTab.menuBar.highlightID(for: "Expand on hover")),
             SettingsSearchEntry(tab: .menuBar, title: "Hide again after", keywords: ["hide", "again", "after", "menu bar"], highlightID: SettingsTab.menuBar.highlightID(for: "Hide again after")),
@@ -1165,6 +1147,12 @@ struct SettingsView: View {
             SettingsSearchEntry(tab: .timer, title: "Focus rounds", keywords: ["focus", "rounds", "timer"], highlightID: SettingsTab.timer.highlightID(for: "Focus rounds")),
             SettingsSearchEntry(tab: .timer, title: "Long break duration", keywords: ["long", "break", "duration", "timer"], highlightID: SettingsTab.timer.highlightID(for: "Long break duration")),
             SettingsSearchEntry(tab: .timer, title: "Short break duration", keywords: ["short", "break", "duration", "timer"], highlightID: SettingsTab.timer.highlightID(for: "Short break duration")),
+            SettingsSearchEntry(tab: .appearance, title: "Customize lock screen widgets", keywords: ["customize", "lock", "screen", "widgets", "appearance"], highlightID: SettingsTab.appearance.highlightID(for: "Customize lock screen widgets")),
+            SettingsSearchEntry(tab: .timer, title: "Customize the lock screen timer", keywords: ["customize", "lock", "screen", "timer"], highlightID: SettingsTab.timer.highlightID(for: "Customize the lock screen timer")),
+            SettingsSearchEntry(tab: .calendar, title: "Customize lock screen calendar and reminders", keywords: ["customize", "lock", "screen", "calendar", "reminders"], highlightID: SettingsTab.calendar.highlightID(for: "Customize lock screen calendar and reminders")),
+            SettingsSearchEntry(tab: .devices, title: "Show AirPods listening mode changes", keywords: ["airpods", "listening", "mode", "changes", "devices"], highlightID: SettingsTab.devices.highlightID(for: "Show AirPods listening mode changes")),
+            SettingsSearchEntry(tab: .lockScreen, title: "Enable album art parallax", keywords: ["album", "art", "parallax", "lock screen"], highlightID: SettingsTab.lockScreen.highlightID(for: "Enable album art parallax")),
+            SettingsSearchEntry(tab: .media, title: "Customize the lock screen player", keywords: ["customize", "lock", "screen", "player", "media"], highlightID: SettingsTab.media.highlightID(for: "Customize the lock screen player")),
         ]
 
     private func isTabVisible(_ tab: SettingsTab) -> Bool {
@@ -1293,25 +1281,6 @@ struct SettingsView: View {
     }
 }
 
-func proFeatureBadge() -> some View {
-    Text("Upgrade to Pro")
-        .foregroundStyle(Color(red: 0.545, green: 0.196, blue: 0.98))
-        .font(.footnote.bold())
-        .padding(.vertical, 3)
-        .padding(.horizontal, 6)
-        .background(RoundedRectangle(cornerRadius: 4).stroke(Color(red: 0.545, green: 0.196, blue: 0.98), lineWidth: 1))
-}
-
-func comingSoonTag() -> some View {
-    Text("Coming soon")
-        .foregroundStyle(.secondary)
-        .font(.footnote.bold())
-        .padding(.vertical, 3)
-        .padding(.horizontal, 6)
-        .background(Color(nsColor: .secondarySystemFill))
-        .clipShape(.capsule)
-}
-
 func customBadge(text: String) -> some View {
     Text(LocalizedStringKey(text))
         .foregroundStyle(.secondary)
@@ -1332,21 +1301,4 @@ func alphaBadge() -> some View {
             Capsule()
                 .fill(Color.orange.opacity(0.9))
         )
-}
-
-func warningBadge(_ text: String, _ description: String) -> some View {
-    Section {
-        HStack(spacing: 12) {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .font(.system(size: 22))
-                .foregroundStyle(.yellow)
-            VStack(alignment: .leading) {
-                Text(text)
-                    .font(.headline)
-                Text(description)
-                    .foregroundStyle(.secondary)
-            }
-            Spacer()
-        }
-    }
 }
