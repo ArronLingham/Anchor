@@ -38,93 +38,133 @@ final class AppIconCache {
     /// at this size, and is what the built-in panel runs at.
     private static let iconScale = 2
 
-    private let pathMemory = NSCache<NSString, NSImage>()
-    private let memory = NSCache<NSString, NSImage>()
-    private let directory: URL
-    /// Concurrent on purpose. Rasterising an .icns and writing its PNG takes
-    /// long enough that a serial queue warms roughly five icons per second —
-    /// the grid showed placeholders for everything past the first row. Each
-    /// entry writes to its own file and NSCache is thread-safe, so there is
-    /// nothing to serialise.
-    private let io = DispatchQueue(
-        label: "com.anchor.app-icon-cache", qos: .utility, attributes: .concurrent)
-
-    private init() {
-        let base = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
-            ?? URL(fileURLWithPath: NSTemporaryDirectory())
-        // Versioned: v1 stored whatever `tiffRepresentation` produced, which was
-        // the full-size .icns slice. Reading those back would keep the old
-        // 1024x1024 images alive indefinitely, because the cache key is derived
-        // from the app path and mtime and neither of those changed.
-        directory = base.appendingPathComponent("Anchor/AppIcons-v2", isDirectory: true)
-        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-
-        // Reclaim v1. Off the calling thread: this deleted 129 MB on the machine
-        // where the bug was found, and per CLAUDE.md nothing in a manager's init
-        // may block.
-        let legacy = base.appendingPathComponent("Anchor/AppIcons", isDirectory: true)
-        DispatchQueue.global(qos: .utility).async {
-            try? FileManager.default.removeItem(at: legacy)
+    private final class Entry: NSObject {
+        let image: NSImage
+        let revision: String
+        init(image: NSImage, revision: String) {
+            self.image = image
+            self.revision = revision
         }
-
-        pathMemory.countLimit = 512
-        memory.countLimit = 512
     }
 
-    /// Returns a cached icon immediately if there is one, otherwise nil and
-    /// calls `completion` on the main queue once the icon has been produced.
-    func icon(for app: LauncherApp, completion: @escaping (NSImage) -> Void) -> NSImage? {
-        if let hit = pathMemory.object(forKey: app.url.path as NSString) { return hit }
-        io.async { [weak self] in
-            guard let self else { return }
-            let key = self.cacheKey(for: app)
-            let image: NSImage
-            if let onDisk = self.readFromDisk(key: key) {
-                image = onDisk
-            } else {
-                image = self.render(app)
-                self.writeToDisk(image, key: key)
-            }
-            self.memory.setObject(image, forKey: key as NSString)
-            self.pathMemory.setObject(image, forKey: app.url.path as NSString)
-            DispatchQueue.main.async { completion(image) }
+    private struct PendingLoad {
+        let id = UUID()
+        var completions: [(NSImage) -> Void]
+    }
+
+    /// One purgeable cache: aliases in a second cache kept images alive after
+    /// the first evicted them. Charge decoded pixels, rather than PNG bytes.
+    private let memory = NSCache<NSString, Entry>()
+    private let directory: URL
+    private let renderer: (LauncherApp) -> NSImage
+    private let lock = NSLock()
+    private var pending: [String: PendingLoad] = [:]
+    private var generation = 0
+    /// Bound peak .icns decoding memory and disk work during a full index scan.
+    private let io: OperationQueue = {
+        let queue = OperationQueue()
+        queue.name = "com.anchor.app-icon-cache"
+        queue.qualityOfService = .utility
+        queue.maxConcurrentOperationCount = 2
+        return queue
+    }()
+
+    init(directory: URL? = nil, renderer: @escaping (LauncherApp) -> NSImage = {
+        AppIconCache.rasterised(NSWorkspace.shared.icon(forFile: $0.url.path))
+    }) {
+        let base = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
+            ?? URL(fileURLWithPath: NSTemporaryDirectory())
+        self.directory = directory ?? base.appendingPathComponent("Anchor/AppIcons-v2", isDirectory: true)
+        self.renderer = renderer
+        // Directory creation and legacy cleanup belong off the caller's thread.
+        io.addBarrierBlock { [directory = self.directory] in
+            try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         }
+        if directory == nil {
+            let legacy = base.appendingPathComponent("Anchor/AppIcons", isDirectory: true)
+            io.addOperation { try? FileManager.default.removeItem(at: legacy) }
+        }
+        memory.countLimit = 256
+        memory.totalCostLimit = 24 * 1_024 * 1_024
+    }
+
+    /// Returns immediately on a hit. Concurrent warm/grid/switcher misses
+    /// share one decode and receive their completions on the main queue.
+    func icon(for app: LauncherApp, completion: @escaping (NSImage) -> Void) -> NSImage? {
+        if let hit = memory.object(forKey: app.url.path as NSString) { return hit.image }
+        enqueue(app, completion: completion)
         return nil
     }
 
-    /// Renders and caches icons for `apps` ahead of them being shown.
-    ///
-    /// Without this, the first open of the grid is a sheet of grey placeholders:
-    /// every visible tile requests its icon at once, and each request rasterises
-    /// an .icns and writes a PNG on a single serial queue. Warming after the
-    /// index scan moves that cost off the moment the user is looking.
+    /// Revalidate revisions after an application-directory change. Existing
+    /// entries avoid decoding; visible requests join an in-flight warm instead
+    /// of decoding and writing the same image again.
     func warm(_ apps: [LauncherApp]) {
-        for app in apps {
-            io.async { [weak self] in
+        for app in apps { enqueue(app, completion: nil) }
+    }
+
+    private func enqueue(_ app: LauncherApp, completion: ((NSImage) -> Void)?) {
+        let path = app.url.path
+        lock.lock()
+        if pending[path] != nil {
+            if let completion { pending[path]?.completions.append(completion) }
+            lock.unlock()
+            return
+        }
+        let load = PendingLoad(completions: completion.map { [$0] } ?? [])
+        let requestedGeneration = generation
+        pending[path] = load
+        // Enqueue while locked so clear's barrier always follows earlier work.
+        io.addOperation { [weak self] in
+            autoreleasepool {
                 guard let self else { return }
                 let key = self.cacheKey(for: app)
-                if let hit = self.memory.object(forKey: key as NSString) {
-                    self.pathMemory.setObject(hit, forKey: app.url.path as NSString)
+                let image: NSImage
+                if let entry = self.memory.object(forKey: path as NSString), entry.revision == key {
+                    image = entry.image
+                } else if let diskImage = self.readFromDisk(key: key) {
+                    image = diskImage
+                } else {
+                    image = self.renderer(app)
+                    self.writeToDisk(image, key: key)
+                }
+                self.lock.lock()
+                guard self.pending[path]?.id == load.id else {
+                    self.lock.unlock()
                     return
                 }
-                let image = self.readFromDisk(key: key) ?? {
-                    let rendered = self.render(app)
-                    self.writeToDisk(rendered, key: key)
-                    return rendered
-                }()
-                self.memory.setObject(image, forKey: key as NSString)
-                self.pathMemory.setObject(image, forKey: app.url.path as NSString)
+                let callbacks = self.pending.removeValue(forKey: path)?.completions ?? []
+                let pixelBytes = Int(Self.iconSize.width * Self.iconSize.height)
+                    * Self.iconScale * Self.iconScale * 4
+                self.memory.setObject(Entry(image: image, revision: key),
+                                      forKey: path as NSString, cost: pixelBytes)
+                self.lock.unlock()
+                guard !callbacks.isEmpty else { return }
+                DispatchQueue.main.async { [weak self] in
+                    guard let self else { return }
+                    self.lock.lock()
+                    let current = self.generation == requestedGeneration
+                    self.lock.unlock()
+                    if current { callbacks.forEach { $0(image) } }
+                }
             }
         }
+        lock.unlock()
     }
 
     func clear() {
-        pathMemory.removeAllObjects()
+        lock.lock()
+        generation += 1
+        pending.removeAll()
         memory.removeAllObjects()
-        io.async { [directory] in
+        io.cancelAllOperations()
+        // Wait for already-running writes before deleting, and finish before
+        // accepting new work. Old requests cannot repopulate the cleared cache.
+        io.addBarrierBlock { [directory] in
             try? FileManager.default.removeItem(at: directory)
             try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         }
+        lock.unlock()
     }
 
     // MARK: - Internals
@@ -133,15 +173,11 @@ final class AppIconCache {
     /// icon rather than showing the old one forever.
     private func cacheKey(for app: LauncherApp) -> String {
         let modified =
-            (try? app.url.resourceValues(forKeys: [.contentModificationDateKey]))?
+            (try? URL(fileURLWithPath: app.url.path).resourceValues(forKeys: [.contentModificationDateKey]))?
             .contentModificationDate?.timeIntervalSince1970 ?? 0
         let raw = "\(app.url.path)|\(Int(modified))"
         let digest = SHA256.hash(data: Data(raw.utf8))
         return digest.map { String(format: "%02x", $0) }.joined()
-    }
-
-    private func render(_ app: LauncherApp) -> NSImage {
-        Self.rasterised(NSWorkspace.shared.icon(forFile: app.url.path))
     }
 
     /// Draws `image` into a bitmap of exactly the size this cache stores.

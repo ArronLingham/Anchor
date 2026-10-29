@@ -1,5 +1,5 @@
 {
-  "originHash" : "61983d5f3db4df09cb31e827b733ebc6c3f30e227253b76aea1deed931adc4a3",
+  "originHash" : "2e68d32725921c9fc9da5eddff406bcf5fafca5b632500ce3d924308c4a7f870",
   "pins" : [
     {
       "identity" : "defaults",
@@ -54,24 +54,6 @@
       }
     },
     {
-      "identity" : "open-meteo",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/open-meteo/open-meteo",
-      "state" : {
-        "revision" : "f18ccb781804c444b87e6175a4b62ecfbe0212dc",
-        "version" : "1.4.16"
-      }
-    },
-    {
-      "identity" : "pow",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/EmergeTools/Pow",
-      "state" : {
-        "revision" : "a504eb6d144bcf49f4f33029a2795345cb39e6b4",
-        "version" : "1.0.5"
-      }
-    },
-    {
       "identity" : "skylightwindow",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/Lakr233/SkyLightWindow",
@@ -95,15 +77,6 @@
       "state" : {
         "revision" : "626b5b7b2f45e1b0b1c6f4a309296d1d21d7311b",
         "version" : "1.7.1"
-      }
-    },
-    {
-      "identity" : "swift-collections",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/apple/swift-collections.git",
-      "state" : {
-        "revision" : "671108c96644956dddcd89dd59c203dcdb36cec7",
-        "version" : "1.1.4"
       }
     },
     {

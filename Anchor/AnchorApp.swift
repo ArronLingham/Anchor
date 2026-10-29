@@ -145,7 +145,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     let vm: AnchorViewModel = .init()
     @ObservedObject var coordinator = AnchorViewCoordinator.shared
     var whatsNewWindow: NSWindow?
-    var timer: Timer?
     // These MUST be lazy.
     //
     // SwiftUI builds the delegate during App.main(), on the main thread and
@@ -973,7 +972,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             self?.debouncedUpdateWindowSize()
         }.store(in: &cancellables)
 
-        MemoryUsageMonitor.shared.startMonitoring()
 
         // Deferred a tick: `start()` stats ~/.claude and opens an FSEvents
         // stream, and nothing that touches the filesystem may run while the

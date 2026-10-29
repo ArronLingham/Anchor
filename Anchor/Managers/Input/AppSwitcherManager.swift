@@ -141,7 +141,10 @@ final class AppSwitcherManager: ObservableObject {
 
     private func cacheIcon(_ app: NSRunningApplication) {
         let pid = app.processIdentifier
-        guard icons[pid] == nil, let url = app.bundleURL else { return }
+        // Background helpers can never appear in the ring. Keeping their
+        // decoded icons here defeated the shared cache's eviction budget.
+        guard app.activationPolicy == .regular, pid != ProcessInfo.processInfo.processIdentifier,
+              icons[pid] == nil, let url = app.bundleURL else { return }
         let entry = LauncherApp(url: url, name: app.localizedName ?? "", bundleIdentifier: app.bundleIdentifier)
         if let cached = AppIconCache.shared.icon(for: entry, completion: { [weak self] image in
             guard let self, !app.isTerminated else { return }

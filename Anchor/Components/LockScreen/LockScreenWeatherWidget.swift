@@ -515,6 +515,10 @@ struct LockScreenWeatherWidget: View {
 		.background(Color.clear)
 		.shadow(color: .black.opacity(0.35), radius: 8, x: 0, y: 3)
 		.onReceive(minuteTicker.$now) { currentTime = $0 }
+        .task(id: lockScreenShowCalendarEvent ? Int(currentTime.timeIntervalSince1970 / 60) : nil) {
+            guard lockScreenShowCalendarEvent, calendarManager.hasCalendarAccess else { return }
+            await calendarManager.updateLockScreenEvents()
+        }
 		.onAppear {
 			minuteTicker.start()
 			minuteTicker.setMinuteAlignedEnabled(lockScreenShowCalendarEvent)

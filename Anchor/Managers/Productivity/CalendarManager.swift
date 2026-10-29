@@ -58,17 +58,23 @@ class CalendarManager: ObservableObject {
     private let eventFetchLimiter = EventFetchLimiter()
     private var lastLockScreenEventsFetchDate: Date?
     private let lockScreenRefreshInterval: TimeInterval = 15
-    private var lockScreenRefreshTask: Task<Void, Never>?
 
     var hasCalendarAccess: Bool { isAuthorized(calendarAuthorizationStatus) }
     var hasReminderAccess: Bool { isAuthorized(reminderAuthorizationStatus) }
+
+    /// Settings can display permission state without requesting new access.
+    func refreshAuthorizationStatus() {
+        let calendar = EKEventStore.authorizationStatus(for: .event)
+        let reminders = EKEventStore.authorizationStatus(for: .reminder)
+        if calendarAuthorizationStatus != calendar { calendarAuthorizationStatus = calendar }
+        if reminderAuthorizationStatus != reminders { reminderAuthorizationStatus = reminders }
+    }
 
     private init() {
         currentWeekStartDate = CalendarManager.startOfDay(Date())
         calendarAuthorizationStatus = EKEventStore.authorizationStatus(for: .event)
         reminderAuthorizationStatus = EKEventStore.authorizationStatus(for: .reminder)
         setupEventStoreChangedObserver()
-        startLockScreenRefreshLoop()
         Task {
             await reloadCalendarAndReminderLists()
         }
@@ -79,7 +85,6 @@ class CalendarManager: ObservableObject {
             NotificationCenter.default.removeObserver(observer)
         }
         pendingEventStoreRefreshTask?.cancel()
-        lockScreenRefreshTask?.cancel()
     }
 
     private func setupEventStoreChangedObserver() {
@@ -116,11 +121,11 @@ class CalendarManager: ObservableObject {
     private func scheduleEventStoreRefresh(after delay: TimeInterval) {
         pendingEventStoreRefreshTask?.cancel()
         pendingEventStoreRefreshTask = Task { [weak self] in
-            guard let self else { return }
             if delay > 0 {
-                let nanoseconds = UInt64(delay * 1_000_000_000)
-                try? await Task.sleep(nanoseconds: nanoseconds)
+                do { try await Task.sleep(for: .seconds(delay)) }
+                catch { return }
             }
+            guard !Task.isCancelled, let self else { return }
             await self.performEventStoreRefresh()
         }
     }
@@ -373,19 +378,6 @@ class CalendarManager: ObservableObject {
             lockScreenEvents = events
         }
         lastLockScreenEventsFetchDate = Date()
-    }
-
-    private func startLockScreenRefreshLoop() {
-        lockScreenRefreshTask?.cancel()
-        lockScreenRefreshTask = Task { [weak self] in
-            guard let self else { return }
-            while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: 60 * 1_000_000_000)
-                if Task.isCancelled { break }
-                guard self.hasCalendarAccess else { continue }
-                await self.updateLockScreenEvents(force: false)
-            }
-        }
     }
 
     private func updateEvents(force: Bool = false) async {

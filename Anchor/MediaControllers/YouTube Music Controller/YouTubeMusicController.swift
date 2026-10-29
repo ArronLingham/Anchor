@@ -32,6 +32,7 @@ final class YouTubeMusicController: MediaControllerProtocol {
     )
 
     private var artworkFetchTask: Task<Void, Never>?
+    private var currentArtworkURL: URL?
     
     var playbackStatePublisher: AnyPublisher<PlaybackState, Never> {
         $playbackState.eraseToAnyPublisher()
@@ -50,6 +51,7 @@ final class YouTubeMusicController: MediaControllerProtocol {
     private var updateTimer: Timer?
     private var appStateObserver: Task<Void, Never>?
     private var reconnectDelay: TimeInterval = 1.0
+    private var reconnectTask: Task<Void, Never>?
     
     // MARK: - Initialization
     init(configuration: YouTubeMusicConfiguration = .default) {
@@ -59,9 +61,17 @@ final class YouTubeMusicController: MediaControllerProtocol {
         
         setupAppStateObserver()
         
-        Task {
-            await initializeIfAppActive()
+        Task { [weak self] in
+            await self?.initializeIfAppActive()
         }
+    }
+
+    deinit {
+        updateTimer?.invalidate()
+        appStateObserver?.cancel()
+        reconnectTask?.cancel()
+        artworkFetchTask?.cancel()
+        if let client = webSocketClient { Task { await client.disconnect() } }
     }
     
     // MARK: - MediaControllerProtocol Implementation
@@ -155,7 +165,8 @@ final class YouTubeMusicController: MediaControllerProtocol {
         
         Task { @MainActor in
             stopPeriodicUpdates()
-            appStateObserver?.cancel()
+            reconnectTask?.cancel()
+            reconnectTask = nil
         }
         
         Task {
@@ -288,11 +299,17 @@ final class YouTubeMusicController: MediaControllerProtocol {
     }
     
     private func scheduleReconnect() async {
-        try? await Task.sleep(for: .seconds(reconnectDelay))
+        guard reconnectTask == nil, isActive() else { return }
+        let delay = reconnectDelay
         reconnectDelay = min(reconnectDelay * 2, configuration.reconnectDelay.upperBound)
-        
-        if isActive() {
-            await initializeIfAppActive()
+        // One cancellable retry instead of an async recursion retaining every
+        // prior failed connection frame and controller after a source switch.
+        reconnectTask = Task { [weak self] in
+            do { try await Task.sleep(for: .seconds(delay)) }
+            catch { return }
+            guard !Task.isCancelled, let self else { return }
+            self.reconnectTask = nil
+            await self.initializeIfAppActive()
         }
     }
     
@@ -306,6 +323,7 @@ final class YouTubeMusicController: MediaControllerProtocol {
                 await self?.updatePlaybackInfo()
             }
         }
+        updateTimer?.tolerance = min(1, configuration.updateInterval * 0.2)
     }
     
     private func stopPeriodicUpdates() {
@@ -409,26 +427,35 @@ final class YouTubeMusicController: MediaControllerProtocol {
             }
         }
 
-        // Always update - removed comparison since PlaybackState doesn't conform to Equatable
+        // Keep the playback time anchor fresh; unchanged artwork is reused below.
         playbackState = newState
 
+        let url = response.imageSrc.flatMap(URL.init(string:))
+        guard url != currentArtworkURL else { return }
         artworkFetchTask?.cancel()
         artworkFetchTask = nil
-
-        if let artworkURL = response.imageSrc,
-           let url = URL(string: artworkURL) {
-            artworkFetchTask = Task {
+        currentArtworkURL = url
+        if let url {
+            artworkFetchTask = Task { [weak self] in
                 do {
                     let data = try await ImageService.shared.fetchImageData(from: url)
+                    guard !Task.isCancelled else { return }
                     await MainActor.run { [weak self] in
+                        guard self?.currentArtworkURL == url else { return }
                         self?.playbackState.artwork = data
                     }
-                } catch { /* ignore */ }
+                } catch {
+                    guard !Task.isCancelled else { return }
+                    if self?.currentArtworkURL == url { self?.currentArtworkURL = nil }
+                }
             }
         }
     }
     
     private func resetPlaybackState() {
+        artworkFetchTask?.cancel()
+        artworkFetchTask = nil
+        currentArtworkURL = nil
         playbackState = PlaybackState(
             bundleIdentifier: configuration.bundleIdentifier,
             isPlaying: false

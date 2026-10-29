@@ -30,6 +30,7 @@ class RealTimeAudioSpectrum: NSView {
     private var barLayers: [CAShapeLayer] = []
     private var isPlaying: Bool = true
     private var animationTimer: Timer?
+    private var visibilityObservers: [NSObjectProtocol] = []
     
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -38,6 +39,7 @@ class RealTimeAudioSpectrum: NSView {
     }
 
     deinit {
+        visibilityObservers.forEach(NotificationCenter.default.removeObserver)
         stopAnimating()
     }
     
@@ -60,7 +62,7 @@ class RealTimeAudioSpectrum: NSView {
         barLayers.forEach { $0.removeFromSuperlayer() }
         barLayers.removeAll()
 
-        let barCount = max(1, Defaults[.visualizerBarCount])
+        let barCount = min(128, max(1, Defaults[.visualizerBarCount]))
         let height = max(4, bounds.height)
         let width = max(CGFloat(barCount), bounds.width)
         // Half the slot is bar, half is gap — the proportion the fixed 2pt/2pt
@@ -108,7 +110,7 @@ class RealTimeAudioSpectrum: NSView {
         CATransaction.setDisableActions(true)
         setupBars()
         CATransaction.commit()
-        appliedBarCount = max(1, Defaults[.visualizerBarCount])
+        appliedBarCount = min(128, max(1, Defaults[.visualizerBarCount]))
         appliedColour = barColor
     }
 
@@ -123,7 +125,7 @@ class RealTimeAudioSpectrum: NSView {
     private var appliedColour: NSColor?
 
     func refreshAppearance() {
-        let wantedCount = max(1, Defaults[.visualizerBarCount])
+        let wantedCount = min(128, max(1, Defaults[.visualizerBarCount]))
         let wantedColour = barColor
         guard wantedCount != appliedBarCount || wantedColour != appliedColour else { return }
         appliedBarCount = wantedCount
@@ -136,11 +138,30 @@ class RealTimeAudioSpectrum: NSView {
     
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
-        if window == nil {
-            stopAnimating()
-        } else if isPlaying {
-            startAnimating()
+        visibilityObservers.forEach(NotificationCenter.default.removeObserver)
+        visibilityObservers.removeAll()
+        if let window {
+            for name in [NSWindow.didChangeOcclusionStateNotification, NSWindow.didMiniaturizeNotification,
+                         NSWindow.didDeminiaturizeNotification] {
+                visibilityObservers.append(NotificationCenter.default.addObserver(forName: name, object: window,
+                    queue: .main) { [weak self] _ in self?.refreshAnimationDemand() })
+            }
+            for name in [NSApplication.didHideNotification, NSApplication.didUnhideNotification] {
+                visibilityObservers.append(NotificationCenter.default.addObserver(forName: name, object: nil,
+                    queue: .main) { [weak self] _ in self?.refreshAnimationDemand() })
+            }
         }
+        refreshAnimationDemand()
+    }
+
+    override func viewDidHide() { super.viewDidHide(); refreshAnimationDemand() }
+    override func viewDidUnhide() { super.viewDidUnhide(); refreshAnimationDemand() }
+
+    private func refreshAnimationDemand() {
+        if isPlaying, let window, window.isVisible, !window.isMiniaturized,
+           window.occlusionState.contains(.visible), !isHiddenOrHasHiddenAncestor, !NSApp.isHidden {
+            startAnimating()
+        } else { stopAnimating() }
     }
 
     private func startAnimating() {
@@ -166,8 +187,6 @@ class RealTimeAudioSpectrum: NSView {
         resetBars()
     }
     
-    private var debugLogCounter = 0
-    
     private func updateBarsFromAudio() {
         guard isPlaying else {
             resetBars()
@@ -177,14 +196,8 @@ class RealTimeAudioSpectrum: NSView {
         // Get real-time magnitudes from AudioTap
         let magnitudes = AudioTap.shared.getSmoothedMagnitudes()
         
-        // Debug: log magnitudes periodically
-        debugLogCounter += 1
-        if debugLogCounter % 60 == 0 { // Every 2 seconds at 30fps
-            if magnitudes.count >= 4 {
-                print("📊 [Spectrum] Magnitudes: [\(magnitudes[0]), \(magnitudes[1]), \(magnitudes[2]), \(magnitudes[3])]")
-            }
-        }
-        
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
         // Update each bar with its corresponding band magnitude
         for (index, barLayer) in barLayers.enumerated() {
             guard index < magnitudes.count else { break }
@@ -192,29 +205,23 @@ class RealTimeAudioSpectrum: NSView {
             // Map magnitude (0-1) to scale (0.2 - 1.0) for visual appeal
             let scale = max(0.2, min(1.0, CGFloat(magnitude) * 1.5 + 0.2))
             
-            CATransaction.begin()
-            CATransaction.setDisableActions(true)
             barLayer.transform = CATransform3DMakeScale(1, scale, 1)
-            CATransaction.commit()
         }
+        CATransaction.commit()
     }
     
     private func resetBars() {
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
         for barLayer in barLayers {
-            CATransaction.begin()
-            CATransaction.setDisableActions(true)
             barLayer.transform = CATransform3DMakeScale(1, 0.2, 1)
-            CATransaction.commit()
         }
+        CATransaction.commit()
     }
     
     func setPlaying(_ playing: Bool) {
         isPlaying = playing
-        if isPlaying {
-            startAnimating()
-        } else {
-            stopAnimating()
-        }
+        refreshAnimationDemand()
     }
 }
 
