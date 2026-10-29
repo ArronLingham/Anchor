@@ -11,32 +11,21 @@ import CoreText
 /// exactly once and composites a texture for the rest of it.
 enum RecorderTextRenderer {
 
-    private static var cache: [String: CGImage] = [:]
-    private static let lock = NSLock()
+    private static let cache = RecorderBitmapCache(byteLimit: 16 * 1024 * 1024)
 
     static func image(for overlay: RecorderTextOverlay, canvasHeight: CGFloat) -> CGImage? {
         let pointSize = max(8, (canvasHeight * CGFloat(overlay.size)).rounded())
         let key = "\(overlay.text)|\(Int(pointSize))|\(overlay.palette.rawValue)"
-        lock.lock()
-        if let hit = cache[key] {
-            lock.unlock()
-            return hit
-        }
-        lock.unlock()
+        if let hit = cache.image(for: key) { return hit }
 
         guard let image = render(overlay.text, pointSize: pointSize, palette: overlay.palette)
         else { return nil }
-        lock.lock()
-        if cache.count > 48 { cache.removeAll() }
-        cache[key] = image
-        lock.unlock()
+        cache.insert(image, for: key)
         return image
     }
 
     static func clearCache() {
-        lock.lock()
         cache.removeAll()
-        lock.unlock()
     }
 
     private static func render(_ text: String,

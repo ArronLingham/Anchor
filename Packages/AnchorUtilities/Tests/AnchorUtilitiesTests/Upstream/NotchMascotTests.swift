@@ -113,14 +113,16 @@ enum NotchMascotTests {
                      && NotchMascotLook.standard == NotchMascotLook(style: .minimal, shape: .ball, palette: .pearl),
                      "it starts as a pearl ball with two ink eyes")
         defaults.set(true, forKey: DefaultsKey.notchMascotEnabled)
-        suite.expect(NotchMascotSupport.isEnabled(in: defaults) && NotchMascotSupport.visits(in: defaults)
-                     && NotchMascotSupport.reacts(in: defaults)
-                     && NotchMascotSupport.commandBarStyle(in: defaults) == .droplet,
-                     "turned on, it visits now and then, reacts, and the Command Bar falls from the island as a drop")
+        // Anchor retires the imported island renderer. Legacy toggles must
+        // never start a competing island or capture Command Bar presentation.
+        suite.expect(!NotchMascotSupport.isEnabled(in: defaults) && !NotchMascotSupport.visits(in: defaults)
+                     && !NotchMascotSupport.reacts(in: defaults)
+                     && NotchMascotSupport.commandBarStyle(in: defaults) == nil,
+                     "legacy mascot switches cannot start a competing Anchor island")
         defaults.set(false, forKey: DefaultsKey.notchMascotReactions)
-        suite.expect(NotchMascotSupport.isEnabled(in: defaults) && !NotchMascotSupport.reacts(in: defaults)
-                     && NotchMascotSupport.visits(in: defaults),
-                     "its reactions can be turned off while it still rests and visits")
+        suite.expect(!NotchMascotSupport.isEnabled(in: defaults) && !NotchMascotSupport.reacts(in: defaults)
+                     && !NotchMascotSupport.visits(in: defaults),
+                     "reaction preferences cannot reenable the retired island")
         defaults.set(true, forKey: DefaultsKey.notchMascotReactions)
         defaults.set(false, forKey: AppFeature.notchMascot.availabilityKey)
         suite.expect(!NotchMascotSupport.isEnabled(in: defaults) && !NotchMascotSupport.visits(in: defaults)
@@ -128,9 +130,9 @@ enum NotchMascotTests {
                      "uninstalled, it leaves the island and the Command Bar keeps its own window")
         defaults.set(true, forKey: AppFeature.notchMascot.availabilityKey)
         defaults.set(NotchCommandBarStyle.island.rawValue, forKey: DefaultsKey.notchCommandBarStyle)
-        suite.expect(NotchMascotSupport.commandBarStyle(in: defaults) == .island, "the bar can open inside the island instead")
+        suite.expect(NotchMascotSupport.commandBarStyle(in: defaults) == nil, "legacy island style cannot capture Anchor Command Bar")
         defaults.set("puddle", forKey: DefaultsKey.notchCommandBarStyle)
-        suite.expect(NotchMascotSupport.commandBarStyle(in: defaults) == .droplet, "an unknown style falls back to the drop")
+        suite.expect(NotchMascotSupport.commandBarStyle(in: defaults) == nil, "an unknown legacy style leaves Command Bar in its own window")
         defaults.set(false, forKey: DefaultsKey.notchCommandBar)
         suite.expect(NotchMascotSupport.commandBarStyle(in: defaults) == nil, "turned off, the bar keeps its own window")
         defaults.set(true, forKey: DefaultsKey.notchCommandBar)
@@ -139,8 +141,8 @@ enum NotchMascotTests {
                      "a Command Bar taken off the Features page never comes out of the island")
         defaults.set(true, forKey: AppFeature.commandBar.availabilityKey)
         defaults.set(false, forKey: DefaultsKey.notchMascotVisits)
-        suite.expect(NotchMascotSupport.isEnabled(in: defaults) && !NotchMascotSupport.visits(in: defaults),
-                     "visits can be turned off while it still rests")
+        suite.expect(!NotchMascotSupport.isEnabled(in: defaults) && !NotchMascotSupport.visits(in: defaults),
+                     "visit preferences cannot reenable the retired island")
         defaults.set(true, forKey: DefaultsKey.notchMascotVisits)
         defaults.set(false, forKey: DefaultsKey.notchEnabled)
         suite.expect(!NotchMascotSupport.isEnabled(in: defaults) && !NotchMascotSupport.visits(in: defaults)
@@ -418,16 +420,16 @@ enum NotchMascotTests {
         defaults.removeObject(forKey: DefaultsKey.notchMascotHidesWhenIdle)
         let hidingDefault = [DefaultsKey.notchMascotHidesWhenIdle: Defaults.registeredDefaults[DefaultsKey.notchMascotHidesWhenIdle]!]
         defaults.register(defaults: hidingDefault)
-        suite.expect(NotchMascotSupport.hidesWhenIdle(in: defaults),
-                     "the companion hides when idle by default")
+        suite.expect(!NotchMascotSupport.hidesWhenIdle(in: defaults),
+                     "the retired companion never installs an idle hiding timer")
         defaults.set(false, forKey: DefaultsKey.notchMascotHidesWhenIdle)
         defaults.register(defaults: hidingDefault)
         suite.expect(!NotchMascotSupport.hidesWhenIdle(in: defaults),
                      "a saved choice to stay visible survives registration of the enabled default")
         defaults.set(true, forKey: DefaultsKey.notchMascotHidesWhenIdle)
-        suite.expect(NotchMascotSupport.hidesWhenIdle(in: defaults) && NotchMascotSupport.visits(in: defaults)
-                     && NotchMascotSupport.reacts(in: defaults),
-                     "hiding when idle, it still visits and reacts")
+        suite.expect(!NotchMascotSupport.hidesWhenIdle(in: defaults) && !NotchMascotSupport.visits(in: defaults)
+                     && !NotchMascotSupport.reacts(in: defaults),
+                     "idle preferences cannot reenable the retired companion")
         defaults.set(false, forKey: DefaultsKey.notchMascotEnabled)
         suite.expect(!NotchMascotSupport.hidesWhenIdle(in: defaults), "switched off, it has nothing to hide from")
 

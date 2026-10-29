@@ -530,9 +530,14 @@ private struct QuickEntryView: View, Equatable {
         guard let bundleID = entry.sourceBundleID else { return nil }
         if let cached = Self.sourceApps[bundleID] { return cached }
         let app = InstalledApps.url(for: bundleID).map {
-            (name: InstalledApps.name(for: bundleID), icon: NSWorkspace.shared.icon(forFile: $0.path))
+            let source = NSWorkspace.shared.icon(forFile: $0.path)
+            return (name: InstalledApps.name(for: bundleID),
+                    icon: ImageThumbnailer.thumbnail(for: source, pointSize: 20) ?? source)
         }
-        if let app { Self.sourceApps[bundleID] = app }
+        if let app {
+            if Self.sourceApps.count >= 120 { Self.sourceApps.removeAll() }
+            Self.sourceApps[bundleID] = app
+        }
         return app
     }
 

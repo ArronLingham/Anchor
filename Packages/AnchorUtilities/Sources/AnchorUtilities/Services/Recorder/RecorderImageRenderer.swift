@@ -10,15 +10,11 @@ import Foundation
 /// while the plan is built, so every frame after that is a composite of a
 /// texture already at the size it is drawn. Sizes repeat as soon as anything
 /// else about the edit changes, which is what the cache is for; it is held to
-/// a budget in pixels rather than in entries, because one mark covering most
+/// a budget in decoded bytes, because one mark covering most
 /// of a 4K frame is worth as much memory as a hundred captions.
 enum RecorderImageRenderer {
 
-    private static let pixelBudget = 24_000_000
-
-    private static var cache: [String: CGImage] = [:]
-    private static var cachedPixels = 0
-    private static let lock = NSLock()
+    private static let cache = RecorderBitmapCache(byteLimit: 32 * 1024 * 1024)
 
     static func image(for overlay: RecorderImageOverlay, canvas: CGSize) -> CGImage? {
         let url = URL(fileURLWithPath: overlay.path)
@@ -39,24 +35,14 @@ enum RecorderImageRenderer {
         let stamp = "\(values.fileSize ?? 0)|"
             + "\(values.contentModificationDate?.timeIntervalSinceReferenceDate ?? 0)"
         let key = "\(overlay.path)|\(Int(drawn.width))x\(Int(drawn.height))|\(stamp)"
-        lock.lock()
-        if let hit = cache[key] {
-            lock.unlock()
-            return hit
-        }
-        lock.unlock()
+        if let hit = cache.image(for: key) { return hit }
 
         guard let image = render(overlay.path, drawn: drawn) else { return nil }
-        lock.lock()
-        if cachedPixels > pixelBudget {
-            cache.removeAll()
-            cachedPixels = 0
-        }
-        cache[key] = image
-        cachedPixels += image.width * image.height
-        lock.unlock()
+        cache.insert(image, for: key)
         return image
     }
+
+    static func clearCache() { cache.removeAll() }
 
     /// Decoded no larger than it is drawn, then drawn at exactly that size, so
     /// a photograph never arrives at full resolution and a small logo asked to

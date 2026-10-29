@@ -11,7 +11,7 @@ final class FocusFollowsMouseService {
     private let queryQueue = DispatchQueue(label: "com.vorssaint.focus-follows-mouse")
     private var timer: Timer?
     private var mouseMonitor: Any?
-    private var observers: [NSObjectProtocol] = []
+    private var observers: [(center: NotificationCenter, token: NSObjectProtocol)] = []
     private var state = FocusFollowsMouseState()
     private var delayMilliseconds = FocusFollowsMouseSupport.defaultDelayMilliseconds
     private var isRunning = false
@@ -45,7 +45,7 @@ final class FocusFollowsMouseService {
         resetMovement()
         if let mouseMonitor { NSEvent.removeMonitor(mouseMonitor) }
         mouseMonitor = nil
-        observers.forEach(NotificationCenter.default.removeObserver)
+        observers.forEach { $0.center.removeObserver($0.token) }
         observers.removeAll()
         isRunning = false
     }
@@ -66,17 +66,17 @@ final class FocusFollowsMouseService {
         self.mouseMonitor = mouseMonitor
 
         let workspaceCenter = NSWorkspace.shared.notificationCenter
-        observers.append(workspaceCenter.addObserver(forName: NSWorkspace.activeSpaceDidChangeNotification,
+        observers.append((workspaceCenter, workspaceCenter.addObserver(forName: NSWorkspace.activeSpaceDidChangeNotification,
                                                       object: nil, queue: .main) { [weak self] _ in
             self?.resetMovement()
-        })
-        observers.append(workspaceCenter.addObserver(forName: NSWorkspace.didWakeNotification,
+        }))
+        observers.append((workspaceCenter, workspaceCenter.addObserver(forName: NSWorkspace.didWakeNotification,
                                                       object: nil, queue: .main) { [weak self] _ in
             self?.resetMovement()
-        })
-        observers.append(NotificationCenter.default.addObserver(
+        }))
+        observers.append((NotificationCenter.default, NotificationCenter.default.addObserver(
             forName: NSApplication.didChangeScreenParametersNotification,
-            object: nil, queue: .main) { [weak self] _ in self?.resetMovement() })
+            object: nil, queue: .main) { [weak self] _ in self?.resetMovement() }))
         isRunning = true
     }
 

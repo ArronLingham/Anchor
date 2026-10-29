@@ -12,8 +12,7 @@ import CoreGraphics
 /// stop working. A vector arrow also stays crisp at any zoom.
 enum RecorderCursorSprite {
 
-    private static var cache: [String: CGImage] = [:]
-    private static let lock = NSLock()
+    private static let cache = RecorderBitmapCache(byteLimit: 4 * 1024 * 1024)
 
     /// The last-resort pointer, for a recording where the system never gave
     /// up a real one. Black fill with a white outline and a soft shadow, which
@@ -87,26 +86,13 @@ enum RecorderCursorSprite {
     }
 
     static func clearCache() {
-        lock.lock()
         cache.removeAll()
-        lock.unlock()
     }
 
     private static func cached(_ key: String, _ make: () -> CGImage?) -> CGImage? {
-        lock.lock()
-        if let hit = cache[key] {
-            lock.unlock()
-            return hit
-        }
-        lock.unlock()
+        if let hit = cache.image(for: key) { return hit }
         guard let image = make() else { return nil }
-        lock.lock()
-        // The cache exists to keep a per-frame draw from re-rasterizing the
-        // same sprite, not to grow forever: a handful of sizes is all a
-        // recording ever asks for.
-        if cache.count > 64 { cache.removeAll() }
-        cache[key] = image
-        lock.unlock()
+        cache.insert(image, for: key)
         return image
     }
 

@@ -118,6 +118,9 @@ final class RecorderEditorModel: ObservableObject, BackdropEditing {
         waveformTask?.cancel()
         previewTask?.cancel()
         compositionTask?.cancel()
+        RecorderTextRenderer.clearCache()
+        RecorderImageRenderer.clearCache()
+        RecorderCursorSprite.clearCache()
     }
 
     // MARK: - Loading
