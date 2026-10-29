@@ -13,7 +13,7 @@
 
 </div>
 
-[![Anchor Dashboard and workspace overview](media/overview.jpg)](https://github.com/user-attachments/assets/05d5f209-45a3-4e10-8875-d3d8fc9cd695)
+[![Anchor Dashboard and workspace overview](media/overview.jpg)](#see-anchor-in-action)
 
 Anchor brings playback, tasks, timers, files, and system controls to the top edge of your screen. Expand the notch for a quick action, open Dashboard for a wider workspace, or use the launcher to find an app, command, Shortcut, or quicklink.
 
@@ -21,7 +21,7 @@ It is a native SwiftUI and AppKit application for Apple Silicon. Optional tools 
 
 ## See Anchor in action
 
-**[Watch the 36-second tour](https://github.com/user-attachments/assets/05d5f209-45a3-4e10-8875-d3d8fc9cd695)**
+**36-second interface tour · 1080p**
 
 https://github.com/user-attachments/assets/05d5f209-45a3-4e10-8875-d3d8fc9cd695
 
