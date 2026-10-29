@@ -47,14 +47,19 @@ final class FeatureResourceTests: XCTestCase {
     func testSwitcherCreatedDuringShortcutCaptureRemainsSuspended() {
         let defaults = UtilityPreferences.standard
         let old = AppFeature.allCases.map { ($0.availabilityKey, defaults.object(forKey: $0.availabilityKey)) }
+        let oldSwitcherEnabled = defaults.object(forKey: DefaultsKey.switcherEnabled)
         defer {
             ShortcutCapture.end()
             for (key, value) in old {
                 if let value { defaults.set(value, forKey: key) } else { defaults.removeObject(forKey: key) }
             }
+            if let oldSwitcherEnabled { defaults.set(oldSwitcherEnabled, forKey: DefaultsKey.switcherEnabled) }
+            else { defaults.removeObject(forKey: DefaultsKey.switcherEnabled) }
         }
         for feature in AppFeature.allCases { defaults.set(false, forKey: feature.availabilityKey) }
+        defaults.set(false, forKey: DefaultsKey.switcherEnabled)
         ShortcutCapture.begin()
+        defaults.set(true, forKey: AppFeature.switcher.availabilityKey)
         let switcher = AppSwitcher.shared
         switcher.syncWithPreferences()
         XCTAssertTrue(switcher.isCapturingShortcut)
