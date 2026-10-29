@@ -40,8 +40,7 @@ class BluetoothAudioManager: ObservableObject {
     private var observers: [NSObjectProtocol] = []
     private var cancellables = Set<AnyCancellable>()
     // `lazy` rather than a stored-property initializer: constructing a
-    // main-actor singleton in a property initializer is the deadlock shape
-    // CLAUDE.md warns about.
+    // main-actor singleton in a property initializer can deadlock startup.
     //
     // This still warns under Swift 6 — the lazy initializer runs in whichever
     // context touches it first, and this class is not `@MainActor`. Fixing it

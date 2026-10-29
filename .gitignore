@@ -1,217 +1,125 @@
-# xcede
+# macOS and editors
+.DS_Store
+*.swp
+*.swo
+*.tmp
+.vscode/
+.idea/
 .xcede/
 .xcrc
 buildServer.json
 
-.DS_Store
-# Xcode
-*.xcuserstate
-*.xcuserdata
-*.xcuserdatad
-*.pbxuser
-*.xccheckout
-*.xcplayground
-*.xcuserdatad
-*.xctest
-*.xcuserdata
-*.xcodeproj/xcshareddata/WorkspaceSettings.xcsettings
-*.xcsettings
-# CocoaPods
-Pods/
-podfile.lock
-
-# Carthage
-Carthage/Build/
-/temp/
-# Swift Package Manager
-.swiftpm/
-.build/
-
-# Derived data
-DerivedData/
-
-# Build output
+# Xcode, signing/build products, and profiling
 build/
+builds/
+DerivedData/
+xcuserdata/
+*.xcuserstate
+*.xcuserdatad/
+*.xcuserdata
+*.pbxuser
+*.mode1v3
+*.mode2v3
+*.perspectivev3
+*.xccheckout
+*.xcscmblueprint
+*.xcsettings
+*.xctest
 *.app
 *.dSYM
+*.dSYM.zip
 *.dmg
-
-# Temporary files
-*.swp
-*.swo
-*.tmp
+*.ipa
+*.xcarchive
+*.profraw
 *.log
 
-# Other
-*.DS_Store
-*.vscode/
-*.idea/
-
-# User-specific files
-*.xcuserdatad/
-*.xcodeproj/xcuserdata
-*.xcodeproj/project.xcuserdata
-
-# Build artifacts
-*.ipa
-*.xcarchive
-*.dSYM
-
-
-# Xcode
-#
-build/
-DerivedData/
-*.pbxuser
-!default.pbxuser
-*.mode1v3
-!default.mode1v3
-*.mode2v3
-!default.mode2v3
-*.perspectivev3
-!default.perspectivev3
-xcuserdata/
-*.xcscmblueprint
-
-# SwiftPM
-#
+# Dependency/build caches (the Xcode Package.resolved is tracked)
 .build/
-Package.resolved
-
-# CocoaPods
-#
+.swiftpm/
 Pods/
 Podfile.lock
-
-# Carthage
-#
 Carthage/Build/
-
-# Fastlane
-#
 fastlane/report.xml
 fastlane/Preview.html
-fastlane/screenshots
-fastlane/test_output
-
-# Archives
-#
-*.xcarchive
-
-# App data
-#
-*.ipa
-*.dSYM.zip
-*.dSYM
-
-# Playgrounds
-#
-timeline.xctimeline
-playground.xcworkspace
-
-# Xcode Server
-#
-integration.json
-
-# Other
-#
-*.moved-aside
-*.xcuserstate
-
-# GitHub instructions and agent files
-#
-.github/instructions/
-.github/assets/
-rough_note.md
-Solid
-SettingsView.swift.md
-logic.md
-TheBoringWorker-HUD
-boringnotch + meteo +  airpods + traduzione modificabile
-segmentedhud.swift.ref
-gemini-apireference.md
-
-ScreenshotApp-main
-/stats/
-boring.notch
-referenceimages
-
-PrivateWorks
-
-*.py
-*.sh
-
-# Testing & Measurement (Not needed to run Anchor)
-tests/*
-!tests/TodoStorageTests.swift
-!tests/run_todo_storage_tests.sh
-!tests/NotchClickRoutingTests.swift
-!tests/run_notch_click_tests.sh
-!tests/audio_diagnostics/
-!tests/audio_diagnostics/**
-!tests/focus_diagnostics/
-!tests/focus_diagnostics/**
-AnchorUITests/
-TESTING.md
-scripts/
-comparison_report.json
-*.txt
-ANIMATION_DEBUG_GUIDE.md
-MIGRATION_SUMMARY.md
-ONBOARDING_ENHANCEMENT.md
-SHEET_PRESENTATION_FIX.md
-lock_mode_reference.md
-liquid_glass.md
-huds.md
-borrow_migrations.md
-borrowing/
-MoveToSky.xcodeproj
-/MoveToSky/
-mew-notch/
-
-/References/
-/builds/
-/appdmg.json
-COMPREHENSIVE_DOCUMENTATION.md
-implementation_plan.md
-walkthrough.md
-TemporaryAssets/
-
-# Python test bytecode
+fastlane/screenshots/
+fastlane/test_output/
 __pycache__/
 *.pyc
 
-# Coverage artifact emitted by instrumented builds.
-default.profraw
+# Public project documentation lives in README; keep local notes private.
+/docs/
+/*.md
+!/README.md
+/.github/instructions/
+/.github/assets/
+/AnchorUITests/
+/comparison_report.json
+/appdmg.json
+*.txt
 
-# Build/coverage artefacts that kept reappearing at the repo root
-*.profraw
+# Local experiments and reference checkouts are not build inputs.
+/temp/
+/Solid
+/TheBoringWorker-HUD
+/boringnotch + meteo +  airpods + traduzione modificabile
+/segmentedhud.swift.ref
+/ScreenshotApp-main/
+/stats/
+/boring.notch/
+/referenceimages/
+/PrivateWorks/
+/borrowing/
+/MoveToSky.xcodeproj/
+/MoveToSky/
+/mew-notch/
+/References/
+/TemporaryAssets/
+/*.py
+/*.sh
 
-!tests/ExternalPillPolicyTests.swift
-!tests/run_external_pill_tests.sh
-!tests/LauncherExperienceTests.swift
-!tests/run_launcher_experience_tests.sh
-
-# Research workflow regression harnesses
-!tests/ProductivityWorkflowTests.swift
-!tests/run_productivity_workflow_tests.sh
-!tests/ShelfFileActionTests.swift
-!tests/run_shelf_file_action_tests.sh
-
-# Switcher corner navigation and Dashboard customization regressions
-!tests/SwitcherDashboardTests.swift
-!tests/run_switcher_dashboard_tests.sh
-
-!tests/LockSoundAudioTests.swift
-!tests/run_lock_sound_tests.sh
-
-# Native utility integration support is part of the reproducible app build.
-!Packages/AnchorUtilities/Support/*.sh
-!tests/UtilityOwnershipTests.swift
-!tests/run_utility_ownership_tests.sh
-!tests/AIAssistantCredentialTests.swift
-!tests/run_ai_credential_tests.sh
-!tests/ConcentricCornerTests.swift
-!tests/run_concentric_corner_tests.sh
-!tests/LiquidGlassRenderingTests.swift
-!tests/run_liquid_glass_tests.sh
+# Keep the maintained tooling; leave ad hoc local experiments untracked.
+/scripts/*
+!/scripts/measure.sh
+!/scripts/regen-settings-indexes.sh
+!/scripts/settings_index.py
+/tests/*
+!/tests/AIAssistantCredentialTests.swift
+!/tests/AppIconCacheTests.swift
+!/tests/ConcentricCornerTests.swift
+!/tests/ExternalPillPolicyTests.swift
+!/tests/FullscreenLayoutTests.swift
+!/tests/LauncherExperienceTests.swift
+!/tests/LiquidGlassRenderingTests.swift
+!/tests/LockSoundAudioTests.swift
+!/tests/NotchClickRoutingTests.swift
+!/tests/ProductivityWorkflowTests.swift
+!/tests/ShelfFileActionTests.swift
+!/tests/SwitcherDashboardTests.swift
+!/tests/TodoStorageTests.swift
+!/tests/UtilityOwnershipTests.swift
+!/tests/YouTubeMusicResourceTests.swift
+!/tests/run_ai_credential_tests.sh
+!/tests/run_concentric_corner_tests.sh
+!/tests/run_external_pill_tests.sh
+!/tests/run_fullscreen_layout_tests.sh
+!/tests/run_icon_cache_tests.sh
+!/tests/run_launcher_experience_tests.sh
+!/tests/run_liquid_glass_tests.sh
+!/tests/run_lock_sound_tests.sh
+!/tests/run_media_resource_tests.sh
+!/tests/run_notch_click_tests.sh
+!/tests/run_productivity_workflow_tests.sh
+!/tests/run_settingsbinding_tests.sh
+!/tests/run_settingssearch_tests.sh
+!/tests/run_settingssections_tests.sh
+!/tests/run_shelf_file_action_tests.sh
+!/tests/run_switcher_dashboard_tests.sh
+!/tests/run_todo_storage_tests.sh
+!/tests/run_utility_ownership_tests.sh
+!/tests/test_privacy_configuration.py
+!/tests/audio_diagnostics/
+/tests/audio_diagnostics/*
+!/tests/audio_diagnostics/AudioContinuityTests.swift
+!/tests/audio_diagnostics/audio_continuity_source_probe.py
+!/tests/audio_diagnostics/run_audio_continuity_probe.sh

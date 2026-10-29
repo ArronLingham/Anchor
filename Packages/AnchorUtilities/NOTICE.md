@@ -5,8 +5,8 @@ This native library incorporates Vorssaint v3.4.1, commit
 https://github.com/vorssaint/vorssaint-utils.
 
 Copyright (C) 2026 Vorssaint. Licensed under GPL-3.0-or-later; see LICENSE.
-Original source attribution and SPDX headers are preserved. UPSTREAM.json records
-the SHA-256 of each original source file. Existing notices in those files also
+Original source attribution and SPDX headers are preserved. The release and
+commit above identify the imported source. Existing notices in those files also
 apply, including third-party work identified by the upstream authors.
 
 Anchor's integration changes use a separate preferences domain and data directory,

@@ -1,0 +1,16 @@
+Anchor
+
+Anchor derives from Atoll (DynamicIsland), itself derived from boring.notch.
+Copyright (C) 2024-2026 Atoll Contributors. Existing source headers identify
+additional authors and retained notices. See LICENSE for GPL version 3.
+
+The per-application audio engine incorporates FineTune source by Ronit Singh
+(https://github.com/ronitsingh10/FineTune), licensed under GPL version 3.
+
+Packages/AnchorUtilities incorporates Vorssaint v3.4.1, commit
+aea106cb5d52045c99810cf672da891d2a20b67d, with Anchor integration changes.
+Its LICENSE, NOTICE.md and TRADEMARKS.md preserve the upstream terms and identity
+requirements. Other dependencies retain their respective licenses and notices.
+
+Anchor is a separate project. References to upstream projects identify the
+original work and its contributors; they do not imply endorsement.

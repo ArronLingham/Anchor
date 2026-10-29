@@ -32,11 +32,10 @@ final class IntegrationTests: XCTestCase {
         XCTAssertEqual(prices, AgentPriceSource.bundled(), "The actual package resource must resolve")
         XCTAssertFalse(prices.claude.isEmpty)
         XCTAssertFalse(prices.codex.isEmpty)
-        let manifest = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf:
-            root.appendingPathComponent("UPSTREAM.json"))) as? [String: Any])
-        let resources = try XCTUnwrap(manifest["originalResourceSHA256"] as? [String: String])
+        // Released v3.4.1 resource at aea106cb5d52045c99810cf672da891d2a20b67d.
+        let expectedDigest = "336bec6cd5f08ae73164530aec597fe4f956db223b2c0409f1aecf721dc60d23"
         let digest = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
-        XCTAssertEqual(digest, resources["Resources/agent-prices.json"])
+        XCTAssertEqual(digest, expectedDigest)
     }
 
     func testLibraryUsesTheHostFavoriteChooser() {

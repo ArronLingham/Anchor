@@ -73,7 +73,7 @@ final class EyeBreakManager: ObservableObject {
     }
 
     private init() {
-        // Deferred: per CLAUDE.md nothing may block in a manager's init, and this
+        // Defer subscriptions until the main run loop starts; this
         // subscribes to a published gate that AppDelegate builds around us.
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }

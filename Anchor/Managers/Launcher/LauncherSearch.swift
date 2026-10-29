@@ -1,7 +1,7 @@
 import Foundation
 
 /// Local app retrieval and ranking. Tiers protect explicit intent from popularity;
-/// frecency only reorders comparably relevant results. See docs/SPOTLIGHT-SEARCH.md.
+/// frecency only reorders comparably relevant results. Exact and prefix tiers stay ahead of usage history.
 enum LauncherSearch {
     struct Document {
         let name: String

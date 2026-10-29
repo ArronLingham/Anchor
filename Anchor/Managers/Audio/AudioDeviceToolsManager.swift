@@ -352,8 +352,7 @@ final class AudioDeviceToolsManager: ObservableObject {
     /// Uses the existing `.mic` sneak-peek type, which `InlineHUD` already
     /// renders — a mic glyph that gains a slash when `value <= 0`. A *new*
     /// `SneakContentType` case would be worse than useless here: an unhandled
-    /// type still wins the branch and then draws nothing, which CLAUDE.md
-    /// records as a real bug already made once.
+    /// type still wins the branch and then draws nothing.
     private func announceMicMute(muted: Bool) {
         guard Defaults[.enableAudioDeviceHUD] else { return }
         AnchorViewCoordinator.shared.toggleSneakPeek(

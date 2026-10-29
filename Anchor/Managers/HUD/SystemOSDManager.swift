@@ -480,14 +480,14 @@ class SystemOSDManager {
     /// SIGSTOP makes it structurally impossible: the helper is always present
     /// and never able to execute, so it cannot draw no matter what wakes it.
     /// It is also what makes the documented check meaningful —
-    /// `ps -o state= -p $(pgrep -x OSDUIHelper)` prints `T` (TESTING.md §1.4).
+    /// `ps -o state= -p $(pgrep -x OSDUIHelper)` prints `T` while the native HUD is suspended.
     private static func suspendOSDUIHelper() { signalOSDUIHelper(SIGSTOP) }
 
     /// SIGCONT — the actual inverse of SIGSTOP, and the same signal
     /// `resumeOSDUIHelperForTermination` already sends.
     ///
     /// This was `launchctl kickstart gui/<uid>/com.apple.OSDUIHelper`, which
-    /// could never have worked: CLAUDE.md records that kickstarting OSDUIHelper
+    /// could never have worked: kickstarting OSDUIHelper
     /// always fails under SIP with `150: Operation not permitted`. Under
     /// SIGKILL there was also nothing to resume, so turning suppression *off*
     /// had no way to bring the native HUD back.

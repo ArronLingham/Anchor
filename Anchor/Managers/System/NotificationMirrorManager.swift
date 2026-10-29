@@ -105,7 +105,7 @@ final class NotificationMirrorManager: ObservableObject {
     }
 
     private init() {
-        // Never block in a manager's init — see CLAUDE.md.
+        // Defer subscriptions until after the main run loop starts.
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
             Defaults.publisher(.enableNotificationMirroring)

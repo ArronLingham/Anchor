@@ -60,7 +60,7 @@ final class ShelfManager: ObservableObject {
     private init() {
         storeURL = AppSupportDirectory.subdirectory("Shelf")
             .appendingPathComponent("items.json")
-        // Deferred per CLAUDE.md: reading a bookmark can touch a volume, and
+        // Defer loading: reading a bookmark can touch a volume, and
         // nothing in a manager's init may block the run loop starting.
         DispatchQueue.main.async { [weak self] in self?.load() }
     }

@@ -21,7 +21,7 @@ import SwiftUI
 
 /// Which desktop you are on, in the notch header.
 ///
-/// A leaf view that observes `SpaceIndicatorManager` directly. Per CLAUDE.md,
+/// A leaf view that observes `SpaceIndicatorManager` directly, so
 /// `ContentView` must not take another `@ObservedObject` — every publish from
 /// one re-renders the whole notch, and this value changes on every desktop
 /// switch.

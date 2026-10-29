@@ -57,7 +57,7 @@ final class BatteryHistoryManager: ObservableObject {
     }
 
     private init() {
-        // Never block in a manager's init — see CLAUDE.md. Reading the store
+        // Defer disk and IOKit work until after the main run loop starts. The store
         // touches disk, and subscribing reaches into IOKit.
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }

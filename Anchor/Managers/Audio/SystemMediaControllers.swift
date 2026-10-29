@@ -547,8 +547,7 @@ final class SystemBrightnessController {
         // The loop only does anything useful while `userInitiatedBrightnessChange`
         // is set: its own `else` branch absorbs non-user changes silently. So
         // it now runs only for the ~1.5s window after a brightness key is
-        // pressed — see `markUserInitiated()`. "A loop that no-ops is still a
-        // loop", per CLAUDE.md.
+        // pressed — see `markUserInitiated()`; idle ticks still cost wakeups.
     }
 
     func stop() {
