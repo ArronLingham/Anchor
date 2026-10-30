@@ -866,7 +866,7 @@ final class CommandBarService: ObservableObject {
             // session. Scan on demand, then retry once without presenting it.
             if refreshAppsIfMissing, CommandBarPreferences.source(ofRowID: key) == .apps {
                 pendingAppShortcut.schedule(key, in: rowShortcuts)
-                loadAppsIfNeeded(for: presentationID)
+                loadAppsIfNeeded(for: presentationID, force: true)
                 return
             }
             if CommandBarPreferences.source(ofRowID: key) == .macSettings {
@@ -2888,14 +2888,19 @@ final class CommandBarService: ObservableObject {
         guard AppFeature.commandBar.isAvailable else { return }
         reloadPreferenceCaches()
         ensureCatalogIndexed()
-        loadAppsIfNeeded(for: presentationID)
+        // The shortcut editor needs the list even when app search is hidden.
+        loadAppsIfNeeded(for: presentationID, force: true)
     }
 
-    private func loadAppsIfNeeded(for id: UUID) {
+    private func loadAppsIfNeeded(for id: UUID, force: Bool = false) {
         guard AppFeature.commandBar.isAvailable, !appsLoading else { return }
-        appsLoading = true
         let listsUninstallable = AppFeature.uninstaller.isAvailable
             && UtilityPreferences.standard.bool(forKey: DefaultsKey.uninstallerCommandBarEnabled)
+        // Do not launch Spotlight and enumerate app bundles for a source the
+        // user has disabled. Explicit shortcut editing and a shortcut invoked
+        // before its app is cached still need a scan.
+        guard force || isEnabled(.apps) || listsUninstallable else { return }
+        appsLoading = true
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             let apps = SpotlightNames.enriching(InstalledApps.installedApplications(
                 includeSystemApplications: true,
