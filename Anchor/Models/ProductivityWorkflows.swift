@@ -63,6 +63,13 @@ struct AnchorQuicklink: Identifiable, Codable, Equatable {
 }
 
 enum ClipboardCapturePolicy {
+    /// A delayed clear belongs to the copy that armed it. A newer copy gets
+    /// its own delay when the watcher observes it; sleep/lock clears are
+    /// intentionally unconditional.
+    static func shouldClear(expectedChangeCount: Int?, currentChangeCount: Int) -> Bool {
+        expectedChangeCount == nil || expectedChangeCount == currentChangeCount
+    }
+
     static func needsWatcher(history: Bool, cleanURLs: Bool, autoClear: Bool) -> Bool {
         history || cleanURLs || autoClear
     }

@@ -238,10 +238,11 @@ final class ClipboardToolsManager: ObservableObject {
 
         guard Defaults[.autoClearClipboardEnabled] else { return }
         let delay = max(5, Defaults[.autoClearClipboardSeconds])
+        let expectedChangeCount = NSPasteboard.general.changeCount
         let timer = Timer(timeInterval: TimeInterval(delay), repeats: false) { [weak self] _ in
             MainActor.assumeIsolated {
                 guard Defaults[.autoClearClipboardEnabled] else { return }
-                self?.clearPasteboard(reason: "timer")
+                self?.clearPasteboard(reason: "timer", expectedChangeCount: expectedChangeCount)
             }
         }
         RunLoop.main.add(timer, forMode: .common)
@@ -291,9 +292,12 @@ final class ClipboardToolsManager: ObservableObject {
     /// pasteboard stops holding a password or token, not that the user loses
     /// what they deliberately kept. The change count is suppressed so clearing
     /// does not itself get filed as a new clipboard entry.
-    private func clearPasteboard(reason: String) {
+    private func clearPasteboard(reason: String, expectedChangeCount: Int? = nil) {
         let pasteboard = NSPasteboard.general
-        guard pasteboard.changeCount != lastClearedChangeCount else { return }
+        let currentChangeCount = pasteboard.changeCount
+        guard ClipboardCapturePolicy.shouldClear(expectedChangeCount: expectedChangeCount,
+                                                  currentChangeCount: currentChangeCount),
+              currentChangeCount != lastClearedChangeCount else { return }
         pasteboard.clearContents()
         lastClearedChangeCount = pasteboard.changeCount
         ClipboardManager.shared.ignoreChangeCount(pasteboard.changeCount)
