@@ -1687,9 +1687,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             guard let self else { return }
             guard Defaults[.enableShortcuts], Defaults[.enableClipboardManager] else { return }
 
-            if !ClipboardManager.shared.isMonitoring {
-                ClipboardManager.shared.startMonitoring()
-            }
+            ClipboardToolsManager.shared.syncPasteboardWatch()
 
             switch Defaults[.clipboardDisplayMode] {
             case .panel:

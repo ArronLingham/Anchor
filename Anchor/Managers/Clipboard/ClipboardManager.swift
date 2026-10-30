@@ -241,13 +241,19 @@ class ClipboardManager: ObservableObject {
     private static let idleThreshold: TimeInterval = 30.0
     private var lastClipboardChange = Date.distantPast
     private var activityGateCancellable: AnyCancellable?
+    private var activitySuspended = false
+
+    private var pollingAllowed: Bool {
+        ClipboardCapturePolicy.shouldPoll(isMonitoring: isMonitoring, isPaused: isCapturePaused,
+                                          isSuspended: activitySuspended)
+    }
 
     func startMonitoring() {
         guard !isMonitoring else { return }
 
         isMonitoring = true
         observeActivityGate()
-        scheduleClipboardTimer(interval: Self.activePollInterval)
+        if timer == nil { scheduleClipboardTimer(interval: Self.activePollInterval) }
     }
 
     /// Nothing can reach the pasteboard while the screen is locked or asleep,
@@ -258,6 +264,9 @@ class ClipboardManager: ObservableObject {
             .removeDuplicates()
             .sink { [weak self] suspend in
                 guard let self, self.isMonitoring else { return }
+                // @Published sends before its property changes. Use the value
+                // delivered here rather than rereading the gate during wake.
+                self.activitySuspended = suspend
                 if suspend {
                     self.timer?.invalidate()
                     self.timer = nil
@@ -269,8 +278,9 @@ class ClipboardManager: ObservableObject {
     }
 
     private func scheduleClipboardTimer(interval: TimeInterval) {
-        guard !isCapturePaused else { return }
         timer?.invalidate()
+        timer = nil
+        guard pollingAllowed else { return }
         let timer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
             self?.pollClipboard()
         }
@@ -281,6 +291,7 @@ class ClipboardManager: ObservableObject {
     }
 
     private func pollClipboard() {
+        guard pollingAllowed else { timer?.invalidate(); timer = nil; return }
         let previousChangeCount = lastChangeCount
         checkClipboard()
         if lastChangeCount != previousChangeCount {
@@ -321,6 +332,8 @@ class ClipboardManager: ObservableObject {
 
     func stopMonitoring() {
         isMonitoring = false
+        activityGateCancellable?.cancel()
+        activityGateCancellable = nil
         timer?.invalidate()
         timer = nil
     }

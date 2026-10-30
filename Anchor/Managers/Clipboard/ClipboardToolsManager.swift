@@ -93,8 +93,9 @@ final class ClipboardToolsManager: ObservableObject {
             clearTimer?.invalidate()
             clearTimer = nil
         }
-        let needsWatch = Defaults[.enableClipboardManager]
-            || Defaults[.autoCleanCopiedURLs] || Defaults[.autoClearClipboardEnabled]
+        let needsWatch = ClipboardCapturePolicy.needsWatcher(
+            history: Defaults[.enableClipboardManager], cleanURLs: Defaults[.autoCleanCopiedURLs],
+            autoClear: Defaults[.autoClearClipboardEnabled])
         if needsWatch {
             ClipboardManager.shared.startMonitoring()
         } else {

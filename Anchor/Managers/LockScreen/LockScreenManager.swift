@@ -252,10 +252,7 @@ class LockScreenManager: ObservableObject {
     // the moment the OS flips. The handler's duplicate-event guard makes this
     // safe to call alongside any later-arriving notification.
     private static func sessionLockStatus() -> Bool? {
-        guard let session = CGSessionCopyCurrentDictionary() as? [String: Any] else {
-            return nil
-        }
-        return session["CGSSessionScreenIsLocked"] as? Bool ?? false
+        SystemActivityGate.sessionLockStatus()
     }
 
     private func startLockStatePolling() {

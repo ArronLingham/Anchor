@@ -127,11 +127,7 @@ struct LockScreenWeatherWidget: View {
 		}
 
 		private func refreshLockStateFromSystem() {
-			if let dict = CGSessionCopyCurrentDictionary() as? [String: Any] {
-				if let locked = dict["CGSSessionScreenIsLocked"] as? Bool {
-					isLocked = locked
-				}
-			}
+			if let locked = SystemActivityGate.sessionLockStatus() { isLocked = locked }
 		}
 
 		private func installLockObservers() {

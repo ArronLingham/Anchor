@@ -44,6 +44,17 @@ final class SystemActivityGate: ObservableObject, @unchecked Sendable {
     @Published private(set) var isScreenLocked = false
     @Published private(set) var isLowPowerModeEnabled = false
 
+    /// A missing lock key means an unlocked session; a missing session is
+    /// unknown. Shared with lock-screen UI so both interpret it the same way.
+    static func sessionLockStatus() -> Bool? {
+        sessionLockStatus(from: CGSessionCopyCurrentDictionary() as? [String: Any])
+    }
+
+    static func sessionLockStatus(from session: [String: Any]?) -> Bool? {
+        guard let session else { return nil }
+        return session["CGSSessionScreenIsLocked"] as? Bool ?? false
+    }
+
     private init() {
         isLowPowerModeEnabled = ProcessInfo.processInfo.isLowPowerModeEnabled
 
@@ -78,6 +89,7 @@ final class SystemActivityGate: ObservableObject, @unchecked Sendable {
             self?.update { $0.isLowPowerModeEnabled = ProcessInfo.processInfo.isLowPowerModeEnabled }
         }
 
+        isScreenLocked = Self.sessionLockStatus() ?? isScreenLocked
         recomputeSuspension()
     }
 

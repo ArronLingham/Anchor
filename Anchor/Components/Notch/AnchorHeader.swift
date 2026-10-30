@@ -114,9 +114,7 @@ struct AnchorHeader: View {
                             }
                         }
                         .onAppear {
-                            if Defaults[.enableClipboardManager] && !clipboardManager.isMonitoring {
-                                clipboardManager.startMonitoring()
-                            }
+                            ClipboardToolsManager.shared.syncPasteboardWatch()
                         }
                     }
                     

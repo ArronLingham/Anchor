@@ -221,9 +221,7 @@ struct ClipboardSettings: View {
         .formStyle(AnchorFormStyle())
         .navigationTitle("Clipboard")
         .onAppear {
-            if enableClipboardManager && !clipboardManager.isMonitoring {
-                clipboardManager.startMonitoring()
-            }
+            ClipboardToolsManager.shared.syncPasteboardWatch()
         }
     }
 

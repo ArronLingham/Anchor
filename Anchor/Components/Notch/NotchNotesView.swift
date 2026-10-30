@@ -558,9 +558,7 @@ struct NotchClipboardList: View {
             vm.setAutoCloseSuppression(isShowing, token: autoCloseToken)
         }
         .onAppear {
-            if !clipboardManager.isMonitoring {
-                clipboardManager.startMonitoring()
-            }
+            ClipboardToolsManager.shared.syncPasteboardWatch()
         }
     }
 

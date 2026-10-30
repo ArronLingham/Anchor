@@ -13,6 +13,7 @@ source+='\nclass ClipboardManager { static let clipboardDataDirectory = FileMana
 PY
 swiftc -O -module-cache-path "$work/modules" \
   Anchor/Models/ProductivityWorkflows.swift Anchor/Models/CircularHUDLayout.swift \
+  Anchor/Managers/System/SystemActivityGate.swift \
   Anchor/Models/LockScreenPresentationState.swift "$work/ClipboardItem.swift" \
   tests/ProductivityWorkflowTests.swift -o "$work/check"
 "$work/check"
