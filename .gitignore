@@ -86,6 +86,7 @@ __pycache__/
 /tests/*
 !/tests/AIAssistantCredentialTests.swift
 !/tests/AppIconCacheTests.swift
+!/tests/ApplicationDirectoryMonitorTests.swift
 !/tests/ConcentricCornerTests.swift
 !/tests/ExternalPillPolicyTests.swift
 !/tests/FullscreenLayoutTests.swift
@@ -100,6 +101,7 @@ __pycache__/
 !/tests/UtilityOwnershipTests.swift
 !/tests/YouTubeMusicResourceTests.swift
 !/tests/run_ai_credential_tests.sh
+!/tests/run_application_directory_monitor_tests.sh
 !/tests/run_concentric_corner_tests.sh
 !/tests/run_external_pill_tests.sh
 !/tests/run_fullscreen_layout_tests.sh

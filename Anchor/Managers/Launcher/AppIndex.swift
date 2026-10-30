@@ -73,6 +73,8 @@ final class AppIndex: ObservableObject {
 
     private var rootMTimes: [URL: TimeInterval] = [:]
     private var directoryMonitor: ApplicationDirectoryMonitor?
+    private var launcherSubscription: AnyCancellable?
+    private var scanGeneration = UUID()
 
     private nonisolated static let searchRoots: [URL] = {
         var roots = [
@@ -93,11 +95,32 @@ final class AppIndex: ObservableObject {
     }()
 
     private init() {
-        directoryMonitor = ApplicationDirectoryMonitor(directories: Self.searchRoots) { [weak self] in
-            Task { @MainActor [weak self] in
-                self?.refresh()
+        launcherSubscription = Defaults.publisher(.enableLauncher, options: [])
+            .sink { [weak self] _ in Task { @MainActor [weak self] in self?.syncMonitoring() } }
+        syncMonitoring()
+    }
+
+    private func syncMonitoring() {
+        guard Defaults[.enableLauncher] else {
+            directoryMonitor?.stop()
+            directoryMonitor = nil
+            // A scan already running must not repopulate the disabled index or
+            // enqueue a full icon warm after the user has switched it off.
+            scanGeneration = UUID()
+            isIndexing = false
+            if !apps.isEmpty { apps.removeAll() }
+            rootMTimes.removeAll()
+            return
+        }
+        if directoryMonitor == nil {
+            directoryMonitor = ApplicationDirectoryMonitor(directories: Self.searchRoots) { [weak self] in
+                Task { @MainActor [weak self] in
+                    guard Defaults[.enableLauncher] else { return }
+                    self?.refresh()
+                }
             }
         }
+        refreshIfNeeded()
     }
 
     // MARK: - Indexing
@@ -119,8 +142,10 @@ final class AppIndex: ObservableObject {
     }
 
     func refresh() {
-        guard !isIndexing else { return }
+        guard !isIndexing, Defaults[.enableLauncher] || UISnapshotHarness.requestedDirectory != nil else { return }
         isIndexing = true
+        let generation = UUID()
+        scanGeneration = generation
 
         Task.detached(priority: .userInitiated) {
             let found = Self.scan()
@@ -131,7 +156,8 @@ final class AppIndex: ObservableObject {
             }
             
             await MainActor.run { [weak self] in
-                guard let self else { return }
+                guard let self, self.scanGeneration == generation,
+                      Defaults[.enableLauncher] || UISnapshotHarness.requestedDirectory != nil else { return }
                 self.apps = found
                 self.rootMTimes = newMTimes
                 self.isIndexing = false

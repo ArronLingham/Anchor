@@ -28,11 +28,17 @@ final class ApplicationDirectoryMonitor {
         let source: DispatchSourceFileSystemObject
     }
 
+    private final class State {
+        var observations: [Observation] = []
+        var pendingWorkItem: DispatchWorkItem?
+        var stopped = false
+    }
+
     private let queue: DispatchQueue
+    private let queueKey = DispatchSpecificKey<Bool>()
     private let debounceInterval: TimeInterval
     private let changeHandler: @Sendable () -> Void
-    private var observations: [Observation] = []
-    private var pendingWorkItem: DispatchWorkItem?
+    private let state = State()
 
     init(
         directories: [URL],
@@ -43,6 +49,7 @@ final class ApplicationDirectoryMonitor {
         self.queue = queue
         self.debounceInterval = debounceInterval
         self.changeHandler = changeHandler
+        queue.setSpecific(key: queueKey, value: true)
         observe(directories: directories)
     }
 
@@ -52,12 +59,16 @@ final class ApplicationDirectoryMonitor {
 
     /// Cancels all observations and stops scheduling refresh callbacks.
     func stop() {
-        pendingWorkItem?.cancel()
-        pendingWorkItem = nil
-        for observation in observations {
-            observation.source.cancel()
+        let state = self.state
+        let cancel = {
+            state.stopped = true
+            state.pendingWorkItem?.cancel()
+            state.pendingWorkItem = nil
+            for observation in state.observations { observation.source.cancel() }
+            state.observations.removeAll()
         }
-        observations.removeAll()
+        if DispatchQueue.getSpecific(key: queueKey) == true { cancel() }
+        else { queue.sync(execute: cancel) }
     }
 
     /// Registers file system watchers for the provided application directories.
@@ -91,7 +102,7 @@ final class ApplicationDirectoryMonitor {
                 close(descriptor)
             }
             source.resume()
-            observations.append(Observation(descriptor: descriptor, source: source))
+            state.observations.append(Observation(descriptor: descriptor, source: source))
         }
     }
 
@@ -116,11 +127,13 @@ final class ApplicationDirectoryMonitor {
 
     /// Debounces rapid file system signals before invoking the caller's handler.
     private func scheduleChange() {
-        pendingWorkItem?.cancel()
+        guard !state.stopped else { return }
+        state.pendingWorkItem?.cancel()
         let work = DispatchWorkItem { [weak self] in
-            self?.changeHandler()
+            guard let self, !self.state.stopped else { return }
+            self.changeHandler()
         }
-        pendingWorkItem = work
+        state.pendingWorkItem = work
         queue.asyncAfter(deadline: .now() + debounceInterval, execute: work)
     }
 }
