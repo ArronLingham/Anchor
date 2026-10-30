@@ -88,9 +88,8 @@ enum SelfUninstall {
             DispatchQueue.global(qos: .userInitiated).async {
                 // Sleep may still be restored through the rule, and a refused
                 // rule removal must stop before anything else is removed. The
-                // Space arrangement marker goes with the preferences, so that
-                // setting is put back first too.
-                guard SpacesOrderHold.restoreForRemoval(), restoreSleepBeforeRemoval() else {
+                // Adopt any legacy Space arrangement journal before removing it.
+                guard LegacySpacesOrderRecovery.adopt(), restoreSleepBeforeRemoval() else {
                     stop(L10n.shared.s.advancedUninstallFailedBody)
                     return
                 }

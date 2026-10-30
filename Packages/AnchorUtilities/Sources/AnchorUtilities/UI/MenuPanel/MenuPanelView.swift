@@ -1195,7 +1195,7 @@ struct QuickControlsSection: View {
     @ObservedObject private var inverter = ScrollInverter.shared
     @ObservedObject private var switcher = AppSwitcher.shared
     @ObservedObject private var dockPreview = DockPreviewService.shared
-    @ObservedObject private var spacesOrder = SpacesOrderHold.shared
+    @ObservedObject private var spacesOrder = NativeSpacesOrder.shared
     @ObservedObject private var cutPaste = FinderCutPaste.shared
     @ObservedObject private var autoQuit = AutoQuitService.shared
     @ObservedObject private var windowMaximizer = WindowMaximizer.shared
@@ -1220,7 +1220,6 @@ struct QuickControlsSection: View {
     @AppStorage(DefaultsKey.dockClickMinimize, store: UtilityPreferences.standard) private var dockClickEnabled = false
     @AppStorage(DefaultsKey.dockClickHide, store: UtilityPreferences.standard) private var dockClickHideEnabled = false
     @AppStorage(DefaultsKey.dockClickCycleWindows, store: UtilityPreferences.standard) private var dockClickCycleEnabled = false
-    @AppStorage(DefaultsKey.spacesOrderEnabled, store: UtilityPreferences.standard) private var spacesOrderEnabled = false
     @AppStorage(DefaultsKey.middleClickEnabled, store: UtilityPreferences.standard) private var middleClickEnabled = false
     @AppStorage(DefaultsKey.textSnippetsEnabled, store: UtilityPreferences.standard) private var textSnippetsEnabled = false
     @AppStorage(DefaultsKey.notchEnabled, store: UtilityPreferences.standard) private var notchEnabled = false
@@ -1373,7 +1372,7 @@ struct QuickControlsSection: View {
         case .dockClick: return dockClickEnabled
         case .dockClickHide: return dockClickHideEnabled
         case .dockClickCycle: return dockClickCycleEnabled
-        case .spacesOrder: return spacesOrderEnabled
+        case .spacesOrder: return spacesOrder.fixedOrder ?? false
         case .middleClick: return middleClickEnabled
         case .textSnippets: return textSnippetsEnabled
         case .notch: return notchEnabled
@@ -1860,20 +1859,18 @@ struct QuickControlsSection: View {
                 }
         case .spacesOrder:
             PanelToggleRow(title: l10n.s.spacesOrderName,
-                           caption: l10n.s.spacesOrderCaption,
+                           caption: spacesOrder.error ?? (spacesOrder.isManaged ? "This setting cannot be changed by Anchor on this Mac." : l10n.s.spacesOrderCaption),
                            systemImage: "rectangle.split.3x1",
-                           isOn: $spacesOrderEnabled,
+                           isOn: Binding(get: { spacesOrder.fixedOrder ?? false },
+                                         set: { spacesOrder.setFixedOrder($0) }),
                            isEditing: editing,
                            showsDragHandle: true,
                            visibility: $showSpacesOrder)
-                .disabled(spacesOrder.isApplying)
+                .disabled(spacesOrder.isApplying || spacesOrder.fixedOrder == nil || spacesOrder.isManaged)
                 .overlay(alignment: .trailing) {
-                    if spacesOrder.isApplying {
+                    if spacesOrder.isApplying || (spacesOrder.fixedOrder == nil && spacesOrder.error == nil) {
                         ProgressView().controlSize(.small).padding(.trailing, 12)
                     }
-                }
-                .onChange(of: spacesOrderEnabled) { _, _ in
-                    spacesOrder.syncWithPreferences()
                 }
         case .mouseClickDebounce:
             let debounceStrings = FeatureStrings.mouseClickDebounce(l10n.language)

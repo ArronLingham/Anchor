@@ -102,6 +102,7 @@ enum SettingsBackupSupport {
         DefaultsKey.displaysSwitchedOff,
         DefaultsKey.displaysSwitchedOffFingerprints,
         DefaultsKey.dockPreviewRestoreAutohide,
+        DefaultsKey.spacesOrderEnabled, // legacy copy; the native Dock value is authoritative
         // The Space arrangement setting to put back, and a Dock restart still
         // owed, belong to this Mac's Dock.
         DefaultsKey.spacesOrderRestore,

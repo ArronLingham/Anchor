@@ -37,10 +37,10 @@ enum Uninstaller {
                   ? "UNINSTALL: normal sleep restored"
                   : "UNINSTALL: sleep is still disabled")
         }
-        if SpacesOrderHold.hasPendingRestore {
-            print(SpacesOrderHold.restoreForRemoval()
-                  ? "UNINSTALL: Space rearranging restored"
-                  : "UNINSTALL: Space arrangement restoration could not be confirmed")
+        if LegacySpacesOrderRecovery.hasPendingRestore {
+            print(LegacySpacesOrderRecovery.adopt()
+                  ? "UNINSTALL: existing Space arrangement retained"
+                  : "UNINSTALL: Space arrangement migration could not be confirmed")
         }
         do {
             try SMAppService.mainApp.unregister()

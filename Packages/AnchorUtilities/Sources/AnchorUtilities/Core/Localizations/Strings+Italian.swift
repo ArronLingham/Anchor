@@ -1093,6 +1093,6 @@ extension Strings {
         shelfShortcutFinderSelection: "Aggiungi la selezione del Finder con la scorciatoia",
         shelfShortcutFinderSelectionCaption: "Con il Finder in primo piano, la scorciatoia apre il ripiano con i file selezionati già dentro. Senza selezione si apre come sempre.",
         spacesOrderName: "Mantieni gli Spazi in ordine fisso",
-        spacesOrderCaption: "Impedisce a macOS di riordinare gli Spazi in base all’uso più recente, così restano nell’ordine che hai scelto. L’impostazione precedente torna quando disattivi questa opzione. Il Dock potrebbe riavviarsi una volta per applicare la modifica."
+        spacesOrderCaption: "Modifica direttamente l’impostazione Spaces di macOS."
     )
 }

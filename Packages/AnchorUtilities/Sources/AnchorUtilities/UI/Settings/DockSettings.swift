@@ -10,7 +10,7 @@ struct DockSettings: View {
     @ObservedObject private var features = FeatureRuntime.shared
     @ObservedObject private var permissions = Permissions.shared
     @ObservedObject private var dockPreview = DockPreviewService.shared
-    @ObservedObject private var spacesOrder = SpacesOrderHold.shared
+    @ObservedObject private var spacesOrder = NativeSpacesOrder.shared
     @AppStorage(DefaultsKey.dockPreviewEnabled, store: UtilityPreferences.standard) private var dockPreviewEnabled = false
     @AppStorage(DefaultsKey.dockPreviewCurrentSpaceOnly, store: UtilityPreferences.standard) private var dockPreviewCurrentSpaceOnly = false
     @AppStorage(DefaultsKey.dockPreviewBackgroundOpacity, store: UtilityPreferences.standard) private var dockPreviewBackgroundOpacity = 1.0
@@ -24,7 +24,6 @@ struct DockSettings: View {
     @AppStorage(DefaultsKey.dockClickMinimize, store: UtilityPreferences.standard) private var dockClickMinimize = false
     @AppStorage(DefaultsKey.dockClickHide, store: UtilityPreferences.standard) private var dockClickHide = false
     @AppStorage(DefaultsKey.dockClickCycleWindows, store: UtilityPreferences.standard) private var dockClickCycleWindows = false
-    @AppStorage(DefaultsKey.spacesOrderEnabled, store: UtilityPreferences.standard) private var spacesOrderEnabled = false
 
     private var pages: SettingsPageStrings { FeatureStrings.settingsPages(l10n.language) }
     private var dockPreviewEngaged: Bool { dockPreviewEnabled && AppFeature.dockPreview.isAvailable }
@@ -186,15 +185,16 @@ struct DockSettings: View {
             SettingsRow(symbol: AppFeature.spacesOrder.symbolName, title: l10n.s.spacesOrderName,
                         caption: l10n.s.spacesOrderCaption) {
                 HStack {
-                    if spacesOrder.isApplying { ProgressView().controlSize(.small) }
-                    Toggle(l10n.s.spacesOrderName, isOn: $spacesOrderEnabled)
+                    if spacesOrder.isApplying || (spacesOrder.fixedOrder == nil && spacesOrder.error == nil) { ProgressView().controlSize(.small) }
+                    Toggle(l10n.s.spacesOrderName, isOn: Binding(
+                        get: { spacesOrder.fixedOrder ?? false },
+                        set: { spacesOrder.setFixedOrder($0) }))
                         .labelsHidden()
-                        .disabled(spacesOrder.isApplying)
-                        .onChange(of: spacesOrderEnabled) { _, _ in
-                            spacesOrder.syncWithPreferences()
-                        }
+                        .disabled(spacesOrder.isApplying || spacesOrder.fixedOrder == nil || spacesOrder.isManaged)
                 }
             }
+            if let error = spacesOrder.error { Text(error).font(.caption).foregroundStyle(.orange) }
+            if spacesOrder.isManaged { Text("This setting cannot be changed by Anchor on this Mac.").font(.caption).foregroundStyle(.secondary) }
         }
     }
 

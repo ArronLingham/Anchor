@@ -121,6 +121,8 @@ final class FeatureRuntime: ObservableObject {
             return "Finish removing the app before disabling the Uninstaller."
         case .cleaner where JunkCleaner.existing?.phase == .cleaning:
             return "Finish the cleanup before disabling the Cleaner."
+        case .spacesOrder where NativeSpacesOrder.shared.isApplying:
+            return "Wait for the Spaces setting to finish changing before disabling it."
         case .scratchpad:
             if ScratchpadService.existing?.prepareForDisable() == false {
                 return "Scratchpad could not save its edits. Close any open dialog and retry saving before disabling it."
@@ -322,7 +324,10 @@ final class FeatureRuntime: ObservableObject {
             PointerDisplayService.shared.syncWithPreferences()
         },
         .autoQuit: { AutoQuitService.shared.syncWithPreferences() },
-        .spacesOrder: { SpacesOrderHold.shared.syncWithPreferences() },
+        .spacesOrder: {
+            if AppFeature.spacesOrder.isAvailable { NativeSpacesOrder.shared.start() }
+            else { NativeSpacesOrder.shared.stop() }
+        },
         .scrollInverter: { ScrollInverter.shared.syncWithPreferences() },
         .scrollHorizontal: { ScrollInverter.shared.syncWithPreferences() },
         .focusFollowsMouse: { FocusFollowsMouseService.shared.syncWithPreferences() },

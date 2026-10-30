@@ -67,7 +67,7 @@ public final class UtilityWorkspace: ObservableObject {
         HorizontalWheelScrolling.install()
         MouseAccelerationService.recoverPendingAtLaunch()
         SystemShortcutTakeover.recoverIfNeeded(keeping: AppSwitcher.launchTakeoverIDs())
-        SpacesOrderHold.recoverIfNeeded()
+        LegacySpacesOrderRecovery.recoverIfNeeded()
         if Bundle.main.bundleIdentifier != nil, UNUserNotificationCenter.current().delegate == nil {
             UNUserNotificationCenter.current().delegate = host
         }
