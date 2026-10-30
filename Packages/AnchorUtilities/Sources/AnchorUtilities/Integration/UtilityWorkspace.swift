@@ -140,6 +140,11 @@ public final class UtilityWorkspace: ObservableObject {
                         DefaultsKey.windowLayoutShortcutsEnabled].contains {
                     UtilityPreferences.standard.bool(forKey: $0)
                 }
+            case .textSnippets:
+                // The library can be used on its own without intercepting
+                // typing. Only the automatic expander conflicts with the
+                // classic expander and needs to take ownership of it.
+                return UtilityPreferences.standard.bool(forKey: DefaultsKey.textSnippetsEnabled)
             case .notch: return false
             default:
                 return feature.enabledKeys.isEmpty || feature.enabledKeys.contains {

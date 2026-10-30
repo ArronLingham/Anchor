@@ -3,6 +3,33 @@ import CryptoKit
 @testable import AnchorUtilities
 
 final class IntegrationTests: XCTestCase {
+    func testSnippetLibraryAloneDoesNotClaimAutomaticExpansion() {
+        let defaults = UtilityPreferences.standard
+        let keys = [AppFeature.textSnippets.availabilityKey,
+                    DefaultsKey.textSnippetsEnabled, DefaultsKey.snippetLibraryEnabled]
+        let previous = keys.map { defaults.object(forKey: $0) }
+        defer {
+            for (key, value) in zip(keys, previous) {
+                if let value { defaults.set(value, forKey: key) }
+                else { defaults.removeObject(forKey: key) }
+            }
+            UtilityWorkspace.shared.prepareOwnership()
+        }
+        defaults.set(true, forKey: keys[0])
+        defaults.set(false, forKey: keys[1])
+        defaults.set(true, forKey: keys[2])
+        UtilityWorkspace.shared.prepareOwnership()
+        XCTAssertFalse(UtilityWorkspace.shared.controlOwners.contains("textSnippets"))
+
+        defaults.set(true, forKey: keys[1])
+        UtilityWorkspace.shared.prepareOwnership()
+        XCTAssertTrue(UtilityWorkspace.shared.controlOwners.contains("textSnippets"))
+
+        defaults.set(false, forKey: keys[1])
+        UtilityWorkspace.shared.prepareOwnership()
+        XCTAssertFalse(UtilityWorkspace.shared.controlOwners.contains("textSnippets"))
+    }
+
     func testClipboardAutoClearOwnershipTracksIndependentTriggers() throws {
         let name = "AnchorClipboardOwnershipTests.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: name))
