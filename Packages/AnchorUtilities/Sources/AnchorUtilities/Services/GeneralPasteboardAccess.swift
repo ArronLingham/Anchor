@@ -3,6 +3,44 @@
 
 import Foundation
 
+/// One main-run-loop wakeup for utility consumers that poll at the same rate.
+/// Each consumer retains its own baseline and pasteboard processing on the
+/// serialized lane; removing one consumer must not stop the others.
+final class GeneralPasteboardPoller {
+    static let shared = GeneralPasteboardPoller()
+
+    private var callbacks: [UUID: () -> Void] = [:]
+    private var timer: Timer?
+
+    @discardableResult
+    func add(_ callback: @escaping () -> Void) -> UUID {
+        let id = UUID()
+        callbacks[id] = callback
+        if timer == nil {
+            let timer = Timer(timeInterval: 0.8, repeats: true) { [weak self] _ in
+                self?.fire()
+            }
+            timer.tolerance = 0.25
+            RunLoop.main.add(timer, forMode: .common)
+            self.timer = timer
+        }
+        return id
+    }
+
+    func remove(_ id: UUID) {
+        callbacks.removeValue(forKey: id)
+        if callbacks.isEmpty {
+            timer?.invalidate()
+            timer = nil
+        }
+    }
+
+    private func fire() {
+        // Callbacks can remove themselves or another consumer while firing.
+        for id in Array(callbacks.keys) { callbacks[id]?() }
+    }
+}
+
 /// Serializes every access the app makes to the general pasteboard.
 /// NSPasteboard keeps a mutable type cache on its shared instance, so reading
 /// it from two queues at once can race inside AppKit, and a read has no time

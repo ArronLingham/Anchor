@@ -111,7 +111,7 @@ final class ClipboardHistoryService: ObservableObject {
     /// always agree, even if the setting changes while it is open.
     @Published private(set) var quickLayout = ClipboardHistoryLayout.current()
 
-    private var timer: Timer?
+    private var pollerSubscription: UUID?
     private var lastChangeCount = 0
     /// The poll reads the pasteboard off the main thread: while a password
     /// prompt is up the pasteboard server can take seconds to answer, and a
@@ -701,16 +701,13 @@ final class ClipboardHistoryService: ObservableObject {
     }
 
     private func start() {
-        guard timer == nil else {
+        guard pollerSubscription == nil else {
             isRunning = true
             return
         }
-        let timer = Timer(timeInterval: 0.8, repeats: true) { [weak self] _ in
+        pollerSubscription = GeneralPasteboardPoller.shared.add { [weak self] in
             self?.captureIfChanged()
         }
-        timer.tolerance = 0.25
-        RunLoop.main.add(timer, forMode: .common)
-        self.timer = timer
         isRunning = true
         ClipboardIgnoredApps.shared.setHistoryRunning(true)
         captureState.restart()
@@ -718,8 +715,8 @@ final class ClipboardHistoryService: ObservableObject {
     }
 
     private func stop() {
-        timer?.invalidate()
-        timer = nil
+        if let pollerSubscription { GeneralPasteboardPoller.shared.remove(pollerSubscription) }
+        pollerSubscription = nil
         isRunning = false
         ClipboardIgnoredApps.shared.setHistoryRunning(false)
         captureState.invalidate()
