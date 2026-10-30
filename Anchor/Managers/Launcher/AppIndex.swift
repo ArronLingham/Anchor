@@ -340,7 +340,7 @@ final class AppIndex: ObservableObject {
             // alphabetical position behind them. A stored id for an app that is
             // no longer installed is simply skipped rather than leaving a hole.
             let order = Defaults[.launcherCustomOrder]
-            let rank = Dictionary(uniqueKeysWithValues: order.enumerated().map { ($1, $0) })
+            let rank = LauncherSearch.customOrderRanks(order)
             ordered = apps.sorted { lhs, rhs in
                 switch (rank[lhs.id], rank[rhs.id]) {
                 case let (l?, r?): return l < r

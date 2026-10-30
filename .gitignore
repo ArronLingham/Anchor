@@ -91,6 +91,7 @@ __pycache__/
 !/tests/ExternalPillPolicyTests.swift
 !/tests/FullscreenLayoutTests.swift
 !/tests/LauncherExperienceTests.swift
+!/tests/LauncherSearchTests.swift
 !/tests/LiquidGlassRenderingTests.swift
 !/tests/LockSoundAudioTests.swift
 !/tests/NotchClickRoutingTests.swift
@@ -107,6 +108,7 @@ __pycache__/
 !/tests/run_fullscreen_layout_tests.sh
 !/tests/run_icon_cache_tests.sh
 !/tests/run_launcher_experience_tests.sh
+!/tests/run_launcher_search_tests.sh
 !/tests/run_liquid_glass_tests.sh
 !/tests/run_lock_sound_tests.sh
 !/tests/run_media_resource_tests.sh

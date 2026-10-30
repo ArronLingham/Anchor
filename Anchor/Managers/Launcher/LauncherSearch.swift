@@ -3,6 +3,12 @@ import Foundation
 /// Local app retrieval and ranking. Tiers protect explicit intent from popularity;
 /// frecency only reorders comparably relevant results. Exact and prefix tiers stay ahead of usage history.
 enum LauncherSearch {
+    /// Saved orders can contain duplicates after a partial migration or an
+    /// external edit. Keep the first placement instead of trapping.
+    static func customOrderRanks(_ order: [String]) -> [String: Int] {
+        Dictionary(order.enumerated().map { ($1, $0) }, uniquingKeysWith: min)
+    }
+
     struct Document {
         let name: String
         let aliases: [String]
