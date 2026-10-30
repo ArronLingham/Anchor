@@ -75,6 +75,7 @@ final class AppIndex: ObservableObject {
     private var directoryMonitor: ApplicationDirectoryMonitor?
     private var launcherSubscription: AnyCancellable?
     private var scanGeneration = UUID()
+    private var refreshPending = false
 
     private nonisolated static let searchRoots: [URL] = {
         var roots = [
@@ -107,6 +108,7 @@ final class AppIndex: ObservableObject {
             // A scan already running must not repopulate the disabled index or
             // enqueue a full icon warm after the user has switched it off.
             scanGeneration = UUID()
+            refreshPending = false
             isIndexing = false
             if !apps.isEmpty { apps.removeAll() }
             rootMTimes.removeAll()
@@ -142,7 +144,13 @@ final class AppIndex: ObservableObject {
     }
 
     func refresh() {
-        guard !isIndexing, Defaults[.enableLauncher] || UISnapshotHarness.requestedDirectory != nil else { return }
+        guard Defaults[.enableLauncher] || UISnapshotHarness.requestedDirectory != nil else { return }
+        // A filesystem change may arrive after a scan has passed the affected
+        // directory. Remember it instead of silently accepting a stale result.
+        guard !isIndexing else {
+            refreshPending = true
+            return
+        }
         isIndexing = true
         let generation = UUID()
         scanGeneration = generation
@@ -161,6 +169,11 @@ final class AppIndex: ObservableObject {
                 self.apps = found
                 self.rootMTimes = newMTimes
                 self.isIndexing = false
+                if self.refreshPending {
+                    self.refreshPending = false
+                    self.refresh()
+                    return
+                }
                 // Rasterising icons is the slow part of showing the grid; do it
                 // now rather than when the user is waiting on it.
                 AppIconCache.shared.warm(found)
