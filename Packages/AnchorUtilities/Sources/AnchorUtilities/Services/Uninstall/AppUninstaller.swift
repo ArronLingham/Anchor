@@ -465,7 +465,7 @@ final class AppUninstaller: ObservableObject {
             guard UninstallerSupport.isConfirmedAbsent(at: url) else { return }
             let remaining: Set<String> = bundleIDs.isEmpty ? [] : Set(InstalledApps.installedApplications(
                 includeSystemApplications: true,
-                spotlightPaths: CommandBarService.spotlightApplicationPaths())
+                spotlightPaths: InstalledApps.spotlightApplicationPaths())
                 .compactMap(\.bundleID))
             DispatchQueue.main.async {
                 // A reinstall while the scan was pending must keep its state.

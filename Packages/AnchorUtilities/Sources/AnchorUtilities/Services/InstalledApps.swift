@@ -101,9 +101,8 @@ enum InstalledApps {
         return roots.contains { containingDirectory == $0 || containingDirectory.hasPrefix($0 + "/") }
     }
 
-    static func installedApplications(includeSystemApplications: Bool = false,
-                                      spotlightPaths: [String] = []) -> [InstalledApp] {
-        let fm = FileManager.default
+    /// Shared raw discovery; consumers retain their own filtering and metadata.
+    static func applicationRoots(includeSystemApplications: Bool) -> [URL] {
         var roots = [
             URL(fileURLWithPath: "/Applications", isDirectory: true),
             URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Applications", isDirectory: true),
@@ -111,30 +110,47 @@ enum InstalledApps {
         if includeSystemApplications {
             roots.append(URL(fileURLWithPath: "/System/Applications", isDirectory: true))
         }
-        let keys: [URLResourceKey] = [.isDirectoryKey, .isPackageKey]
+        return roots
+    }
+
+    static func forEachApplication(in roots: [URL], _ visit: (URL) -> Void) {
+        let fm = FileManager.default
+        for root in roots where fm.fileExists(atPath: root.path) {
+            // Include hidden symlinks, and never descend into app bundles.
+            guard let enumerator = fm.enumerator(at: root,
+                includingPropertiesForKeys: [.isDirectoryKey, .isPackageKey],
+                options: [.skipsPackageDescendants]) else { continue }
+            for case let url as URL in enumerator where url.pathExtension == "app" {
+                visit(url)
+            }
+        }
+    }
+
+    /// One query definition, with caller-specific limits for interactive and
+    /// background scans. The result is filtered separately by each consumer.
+    static func spotlightApplicationPaths(timeout: TimeInterval = Shell.defaultTimeout,
+                                          maxOutputBytes: Int = 4 * 1024 * 1024) -> [String] {
+        let result = Shell.run("/usr/bin/mdfind",
+            ["-onlyin", NSHomeDirectory(), "kMDItemContentType == 'com.apple.application-bundle'"],
+            timeout: timeout, maxOutputBytes: maxOutputBytes)
+        guard result.status == 0 else { return [] }
+        return result.output.split(separator: "\n").map(String.init)
+    }
+
+    static func installedApplications(includeSystemApplications: Bool = false,
+                                      spotlightPaths: [String] = []) -> [InstalledApp] {
+        let fm = FileManager.default
         var seen = Set<String>()
         var apps: [InstalledApp] = []
 
-        for root in roots where fm.fileExists(atPath: root.path) {
-            // Hidden entries are deliberately NOT skipped: the browser that
-            // ships with macOS lives on the system volume and is exposed in
-            // /Applications as a hidden symlink, so skipping them left it out
-            // of every picker. Only bundles ending in .app are taken anyway.
-            guard let enumerator = fm.enumerator(at: root,
-                                                includingPropertiesForKeys: keys,
-                                                options: [.skipsPackageDescendants]) else {
-                continue
-            }
-            for case let url as URL in enumerator {
-                guard url.pathExtension == "app" else { continue }
-                // A link's target decides whether the app is the system's:
-                // the path inside the application folder says nothing.
-                let resolved = url.resolvingSymlinksInPath()
-                let isSystemApp = isSystemApplication(at: url)
-                guard includeSystemApplications || !isSystemApp else { continue }
-                guard seen.insert(resolved.standardizedFileURL.path).inserted else { continue }
-                apps.append(app(at: url, fileManager: fm))
-            }
+        forEachApplication(in: applicationRoots(includeSystemApplications: includeSystemApplications)) { url in
+            // A link's target, not its displayed path, decides whether the
+            // app is a system app and whether it has already been included.
+            let resolved = url.resolvingSymlinksInPath()
+            let isSystemApp = isSystemApplication(at: url)
+            guard includeSystemApplications || !isSystemApp else { return }
+            guard seen.insert(resolved.standardizedFileURL.path).inserted else { return }
+            apps.append(app(at: url, fileManager: fm))
         }
 
         if includeSystemApplications {

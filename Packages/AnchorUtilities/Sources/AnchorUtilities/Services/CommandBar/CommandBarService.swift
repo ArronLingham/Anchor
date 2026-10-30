@@ -2904,7 +2904,7 @@ final class CommandBarService: ObservableObject {
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             let apps = SpotlightNames.enriching(InstalledApps.installedApplications(
                 includeSystemApplications: true,
-                spotlightPaths: Self.spotlightApplicationPaths()))
+                spotlightPaths: InstalledApps.spotlightApplicationPaths()))
             // The uninstall browse offers only what the uninstaller will
             // take, and its check reads the disk for every app.
             let uninstallable = listsUninstallable
@@ -2968,18 +2968,6 @@ final class CommandBarService: ObservableObject {
         _ = deferredRowShortcut.take(for: id)
         run(entry)
         return true
-    }
-
-    /// Apps Spotlight finds in the home folder, which the bar lists beside the
-    /// application folders. The uninstaller asks for the same paths, so a copy
-    /// the bar still lists keeps its shortcut.
-    static func spotlightApplicationPaths() -> [String] {
-        let result = Shell.run(
-            "/usr/bin/mdfind",
-            ["-onlyin", NSHomeDirectory(),
-             "kMDItemContentType == 'com.apple.application-bundle'"])
-        guard result.status == 0 else { return [] }
-        return result.output.split(separator: "\n").map(String.init)
     }
 
     /// Open windows, listed away from the main thread because the walk asks

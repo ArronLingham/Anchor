@@ -767,39 +767,17 @@ final class AppUpdatesService: ObservableObject {
     private static func scanInstalledApps(includePublisherFeeds: Bool) -> [AppUpdatesSupport.InstalledApp] {
         InstalledApps.applicationScanPaths(
             folderPaths: folderApplicationPaths(),
-            spotlightPaths: spotlightApplicationPaths(),
+            spotlightPaths: InstalledApps.spotlightApplicationPaths(timeout: commandTimeout, maxOutputBytes: commandOutputLimit),
             homeDirectory: NSHomeDirectory()
         ).compactMap { scannedApp(at: URL(fileURLWithPath: $0), includePublisherFeeds: includePublisherFeeds) }
     }
 
     private static func folderApplicationPaths() -> [String] {
-        let fm = FileManager.default
-        let roots = [
-            URL(fileURLWithPath: "/Applications", isDirectory: true),
-            URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Applications",
-                                                                          isDirectory: true),
-        ]
         var paths: [String] = []
-        for root in roots where fm.fileExists(atPath: root.path) {
-            guard let enumerator = fm.enumerator(at: root,
-                                                 includingPropertiesForKeys: [.isDirectoryKey],
-                                                 options: [.skipsPackageDescendants]) else { continue }
-            for case let url as URL in enumerator {
-                guard url.pathExtension == "app" else { continue }
-                paths.append(url.path)
-            }
+        InstalledApps.forEachApplication(in: InstalledApps.applicationRoots(includeSystemApplications: false)) {
+            paths.append($0.path)
         }
         return paths
-    }
-
-    private static func spotlightApplicationPaths() -> [String] {
-        let command = HomebrewCommand(
-            executable: "/usr/bin/mdfind",
-            arguments: ["-onlyin", NSHomeDirectory(),
-                        "kMDItemContentType == 'com.apple.application-bundle'"])
-        let result = runCommand(command)
-        guard result.status == 0 else { return [] }
-        return result.output.split(separator: "\n").map(String.init)
     }
 
     private static func scannedApp(at url: URL, includePublisherFeeds: Bool) -> AppUpdatesSupport.InstalledApp? {
