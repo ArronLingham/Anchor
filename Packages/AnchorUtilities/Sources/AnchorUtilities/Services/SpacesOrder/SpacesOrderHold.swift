@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import AppKit
+import Combine
 import Darwin
 import Foundation
 import os
@@ -207,13 +208,16 @@ extension SpacesOrderSystem {
 /// quit would change the Dock twice per session. Rearranging turned back on in
 /// System Settings turns the feature off, noticed at the next Space change or
 /// when the app comes forward.
-final class SpacesOrderHold {
+final class SpacesOrderHold: ObservableObject {
     static let shared = SpacesOrderHold(defaults: UtilityPreferences.standard, system: .live)
+
+    @Published private(set) var isApplying = false
 
     private static let log = Logger(subsystem: Bundle.main.bundleIdentifier ?? "vorssaint",
                                     category: "spaces-order")
     private let defaults: UserDefaults
     private let system: SpacesOrderSystem
+    private let prepareOwnership: () -> Void
     /// Serial, so preference writes and a restart never overlap.
     private let queue = DispatchQueue(label: "com.vorssaint.spaces-order")
     private let queueKey = DispatchSpecificKey<Bool>()
@@ -231,9 +235,11 @@ final class SpacesOrderHold {
     /// a Space change and the app coming forward. Touched only on `queue`.
     private var watchTokens: [(center: NotificationCenter, token: NSObjectProtocol)] = []
 
-    init(defaults: UserDefaults, system: SpacesOrderSystem) {
+    init(defaults: UserDefaults, system: SpacesOrderSystem,
+         prepareOwnership: @escaping () -> Void = { UtilityWorkspace.shared.prepareOwnership() }) {
         self.defaults = defaults
         self.system = system
+        self.prepareOwnership = prepareOwnership
         queue.setSpecific(key: queueKey, value: true)
     }
 
@@ -253,6 +259,13 @@ final class SpacesOrderHold {
         requestLock.lock()
         defer { requestLock.unlock() }
         return requestGeneration
+    }
+
+    private func publishApplying(_ applying: Bool, generation: UInt64) {
+        DispatchQueue.main.async { [weak self] in
+            guard let self, generation == self.currentRequest() else { return }
+            self.isApplying = applying
+        }
     }
 
     private func awaitingLetGoPersistence() -> Bool {
@@ -294,9 +307,11 @@ final class SpacesOrderHold {
     /// Follows the toggle and the hub's availability. The wanted state is read
     /// when the work runs, so rapid toggles settle on the last one.
     func syncWithPreferences() {
-        UtilityWorkspace.shared.prepareOwnership()
+        prepareOwnership()
         let generation = newRequest()
+        publishApplying(true, generation: generation)
         queue.async { [self] in
+            defer { publishApplying(false, generation: generation) }
             guard generation == currentRequest() else { return }
             let wanted = isWanted
             let completed = reconcileOnQueue(wanted: wanted, generation: generation)
@@ -377,6 +392,7 @@ final class SpacesOrderHold {
         // Checked on the queue, behind any sync still waiting to hold, so a
         // marker that sync is about to write is seen and put back too.
         let generation = newRequest()
+        publishApplying(false, generation: generation)
         return onQueue {
             guard generation == currentRequest() else { return false }
             guard Self.isOwed(in: defaults) else { return true }
@@ -390,6 +406,7 @@ final class SpacesOrderHold {
     @discardableResult
     func reconcile(wanted: Bool) -> Bool {
         let generation = newRequest()
+        publishApplying(false, generation: generation)
         return onQueue { reconcileOnQueue(wanted: wanted, generation: generation) }
     }
 

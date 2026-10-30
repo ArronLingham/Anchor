@@ -1195,6 +1195,7 @@ struct QuickControlsSection: View {
     @ObservedObject private var inverter = ScrollInverter.shared
     @ObservedObject private var switcher = AppSwitcher.shared
     @ObservedObject private var dockPreview = DockPreviewService.shared
+    @ObservedObject private var spacesOrder = SpacesOrderHold.shared
     @ObservedObject private var cutPaste = FinderCutPaste.shared
     @ObservedObject private var autoQuit = AutoQuitService.shared
     @ObservedObject private var windowMaximizer = WindowMaximizer.shared
@@ -1865,8 +1866,14 @@ struct QuickControlsSection: View {
                            isEditing: editing,
                            showsDragHandle: true,
                            visibility: $showSpacesOrder)
+                .disabled(spacesOrder.isApplying)
+                .overlay(alignment: .trailing) {
+                    if spacesOrder.isApplying {
+                        ProgressView().controlSize(.small).padding(.trailing, 12)
+                    }
+                }
                 .onChange(of: spacesOrderEnabled) { _, _ in
-                    SpacesOrderHold.shared.syncWithPreferences()
+                    spacesOrder.syncWithPreferences()
                 }
         case .mouseClickDebounce:
             let debounceStrings = FeatureStrings.mouseClickDebounce(l10n.language)

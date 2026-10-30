@@ -10,6 +10,7 @@ struct DockSettings: View {
     @ObservedObject private var features = FeatureRuntime.shared
     @ObservedObject private var permissions = Permissions.shared
     @ObservedObject private var dockPreview = DockPreviewService.shared
+    @ObservedObject private var spacesOrder = SpacesOrderHold.shared
     @AppStorage(DefaultsKey.dockPreviewEnabled, store: UtilityPreferences.standard) private var dockPreviewEnabled = false
     @AppStorage(DefaultsKey.dockPreviewCurrentSpaceOnly, store: UtilityPreferences.standard) private var dockPreviewCurrentSpaceOnly = false
     @AppStorage(DefaultsKey.dockPreviewBackgroundOpacity, store: UtilityPreferences.standard) private var dockPreviewBackgroundOpacity = 1.0
@@ -184,11 +185,15 @@ struct DockSettings: View {
         SettingsCard {
             SettingsRow(symbol: AppFeature.spacesOrder.symbolName, title: l10n.s.spacesOrderName,
                         caption: l10n.s.spacesOrderCaption) {
-                Toggle(l10n.s.spacesOrderName, isOn: $spacesOrderEnabled)
-                    .labelsHidden()
-                    .onChange(of: spacesOrderEnabled) { _, _ in
-                        SpacesOrderHold.shared.syncWithPreferences()
-                    }
+                HStack {
+                    if spacesOrder.isApplying { ProgressView().controlSize(.small) }
+                    Toggle(l10n.s.spacesOrderName, isOn: $spacesOrderEnabled)
+                        .labelsHidden()
+                        .disabled(spacesOrder.isApplying)
+                        .onChange(of: spacesOrderEnabled) { _, _ in
+                            spacesOrder.syncWithPreferences()
+                        }
+                }
             }
         }
     }
