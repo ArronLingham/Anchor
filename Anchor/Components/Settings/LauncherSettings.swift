@@ -25,6 +25,7 @@ struct LauncherSettings: View {
     @ObservedObject private var index = AppIndex.shared
     @ObservedObject private var navigationShortcuts = SystemNavigationShortcutManager.shared
     @Default(.enableLauncher) private var enableLauncher
+    @Default(.enableShortcuts) private var enableShortcuts
     @Default(.launcherShowGridWhenEmpty) private var showGrid
     @Default(.launcherLayoutMode) private var launcherLayoutMode
     @Default(.launcherSortMode) private var launcherSortMode
@@ -82,7 +83,7 @@ struct LauncherSettings: View {
                 .disabled(!enableLauncher)
                 .settingsInfo("Replaces Spotlight while Anchor is running. Your other launcher shortcut still works.")
                 .settingsHighlight(id: highlightID("Use ⌘Space for Launchpad"))
-                shortcutPermissionHint
+                shortcutAvailabilityHint(requested: enableLauncher && useCommandSpace)
 
                 Button("Preview launcher") {
                     LauncherPanelManager.shared.show()
@@ -108,7 +109,7 @@ struct LauncherSettings: View {
                 .disabled(!enableAppSwitcher)
                 .settingsInfo("Hold Command and tap Tab to cycle. Add Shift to go backwards; release Command to switch.")
                 .settingsHighlight(id: highlightID("Use ⌘Tab for Anchor’s app switcher"))
-                shortcutPermissionHint
+                shortcutAvailabilityHint(requested: enableAppSwitcher && useCommandTab)
 
                 KeyboardShortcuts.Recorder("Open switcher:", name: .appSwitcher)
                     .disabled(!enableAppSwitcher)
@@ -398,10 +399,9 @@ struct LauncherSettings: View {
         }
     }
 
-    @ViewBuilder private var shortcutPermissionHint: some View {
-        if (useCommandSpace || useCommandTab),
-           !navigationShortcuts.isAvailable {
-            Text("Allow Anchor in System Settings → Privacy & Security → Accessibility, then return to Anchor to enable these shortcuts.")
+    @ViewBuilder private func shortcutAvailabilityHint(requested: Bool) -> some View {
+        if requested && enableShortcuts && !navigationShortcuts.isAvailable {
+            Text("This shortcut is unavailable. Check Anchor’s Accessibility permission in System Settings, then return to Anchor.")
                 .font(.caption).foregroundStyle(.secondary)
         }
     }
