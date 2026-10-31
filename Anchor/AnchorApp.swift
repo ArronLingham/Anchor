@@ -523,6 +523,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // constraints and abort the process.
         hostingView.sizingOptions = []
         window.contentView = hostingView
+        window.takeOwnershipOfSize()
         
         if !utilityIslandActive { window.orderFrontRegardless() }
         // Pin above every space (fullscreen included) only for "Never hide"; the
@@ -555,12 +556,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let newX = (centerX - (roundedWidth / 2)).rounded()
         let newY = (screenFrame.origin.y + screenFrame.height - roundedHeight).rounded()
 
-        window.setFrame(NSRect(
+        let frame = NSRect(
             x: newX,
             y: newY,
             width: roundedWidth,
             height: roundedHeight
-        ), display: false)
+        )
+        if let island = window as? AnchorWindow {
+            island.setManagedFrame(frame, display: false)
+        } else {
+            window.setFrame(frame, display: false)
+        }
         
         if changeAlpha {
             window.alphaValue = 1
@@ -740,7 +746,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let targetFrame = NSRect(x: newX, y: newY, width: clampedWidth, height: clampedHeight)
 
         if window.frame != targetFrame {
-            window.setFrame(targetFrame, display: true)
+            if let island = window as? AnchorWindow {
+                island.setManagedFrame(targetFrame, display: true)
+            } else {
+                window.setFrame(targetFrame, display: true)
+            }
         }
     }
 

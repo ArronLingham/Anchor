@@ -26,6 +26,7 @@ import Cocoa
 class AnchorWindow: NSPanel {
     private weak var interactionSurface: NotchInteractionSurface?
     private var mouseCapture = NotchMouseCapture()
+    private var managesOwnSize = false
 
     override init(
         contentRect: NSRect,
@@ -131,7 +132,22 @@ class AnchorWindow: NSPanel {
     }
 
     override func setFrame(_ frameRect: NSRect, display flag: Bool) {
+        // SwiftUI can request an animated window resize from inside AppKit's
+        // layout pass even when the hosting view has no sizing options. The
+        // island already computes its own size; a second resize there can
+        // recursively invalidate constraints and abort AppKit.
+        if managesOwnSize && (frameRect.size != frame.size || frameRect == frame) { return }
         super.setFrame(frameRect, display: flag)
+        refreshMouseInteractivity()
+    }
+
+    func takeOwnershipOfSize() {
+        managesOwnSize = true
+    }
+
+    func setManagedFrame(_ frameRect: NSRect, display: Bool) {
+        guard frameRect != frame else { return }
+        super.setFrame(frameRect, display: display)
         refreshMouseInteractivity()
     }
 

@@ -28,6 +28,13 @@ enum NotchClickReview {
         check("Live notch window exists", !pairs.isEmpty)
         var frames: [[String: Any]] = []
         for (window, model) in pairs {
+            let originalFrame = window.frame
+            let proposedFrame = originalFrame.insetBy(dx: -8, dy: -8)
+            window.setFrame(proposedFrame, display: false)
+            check("Unmanaged resize cannot change island size", window.frame.size == originalFrame.size)
+            window.setManagedFrame(proposedFrame, display: false)
+            check("Anchor can resize its island", window.frame.size == proposedFrame.size)
+            window.setManagedFrame(originalFrame, display: false)
             let token = UUID()
             model.setAutoCloseSuppression(true, token: token)
             model.close()
