@@ -3,6 +3,79 @@
 
 import Foundation
 
+/// Value transferred from the older Anchor snippet store. The older store is
+/// retained as a backup after migration.
+public struct LegacyAnchorSnippet {
+    public let id: UUID
+    public let trigger: String
+    public let replacement: String
+    public let immediate: Bool
+
+    public init(id: UUID, trigger: String, replacement: String, immediate: Bool) {
+        self.id = id; self.trigger = trigger; self.replacement = replacement; self.immediate = immediate
+    }
+}
+
+enum LegacySnippetMigration {
+    /// Idempotent across an interrupted write. If two lists use the same
+    /// trigger, keep both and disable the inactive list's conflicting entry.
+    static func merge(_ legacy: [LegacyAnchorSnippet], into existing: [TextSnippet],
+                      legacyWasActive: Bool, advancedWasActive: Bool) -> [TextSnippet] {
+        var merged = existing
+        for item in legacy where !merged.contains(where: { $0.legacySourceID == item.id }) {
+            let conflicts = merged.indices.filter {
+                guard merged[$0].enabled, !item.trigger.isEmpty else { return false }
+                return merged[$0].ignoresCase
+                    ? merged[$0].trigger.compare(item.trigger, options: .caseInsensitive) == .orderedSame
+                    : merged[$0].trigger == item.trigger
+            }
+            let valid = !item.trigger.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                && !item.replacement.isEmpty
+            // Preserve the first active classic entry when its own list has
+            // duplicates; importing a later copy must not change its result.
+            let legacyWins = valid && legacyWasActive && !advancedWasActive
+                && !conflicts.contains(where: { merged[$0].legacyBehavior })
+            if legacyWins {
+                for index in conflicts { merged[index].enabled = false }
+            }
+            var imported = TextSnippet()
+            imported.id = merged.contains(where: { $0.id == item.id }) ? UUID() : item.id
+            imported.name = !conflicts.isEmpty ? "Imported snippet (conflict)"
+                : (advancedWasActive ? "Imported snippet (previously off)" : "Imported snippet")
+            imported.trigger = item.trigger
+            imported.replacement = item.replacement
+            imported.expansion = item.immediate ? .immediate : .afterDelimiter
+            // The classic editor allows unfinished rows but never expands
+            // them; the newer engine must not turn an empty replacement into
+            // a destructive deletion.
+            imported.enabled = valid && !advancedWasActive && (conflicts.isEmpty || legacyWins)
+            imported.legacyBehavior = true
+            imported.legacySourceID = item.id
+            merged.append(imported)
+        }
+        return merged
+    }
+}
+
+/// A delayed paste completion may only arm undo if no new input or focus
+/// change has occurred since the triggering key.
+struct LegacySnippetUndoState {
+    struct Entry { let trigger: String; let inserted: String }
+    private(set) var generation: UInt64 = 0
+    private var pending: Entry?
+
+    mutating func observeInput() -> Entry? {
+        generation &+= 1
+        defer { pending = nil }
+        return pending
+    }
+    mutating func reset() { generation &+= 1; pending = nil }
+    mutating func arm(trigger: String, inserted: String, generation: UInt64) {
+        guard self.generation == generation, !inserted.isEmpty else { return }
+        pending = Entry(trigger: trigger, inserted: inserted)
+    }
+}
+
 /// One text snippet: typing the trigger inserts the replacement. Stored as
 /// JSON in defaults; ids and raw values are persisted, so keep them stable.
 struct TextSnippet: Codable, Identifiable, Equatable {
@@ -27,9 +100,12 @@ struct TextSnippet: Codable, Identifiable, Equatable {
     /// migrate or orphan.
     var folder = ""
     var showsInLibrary = true
+    /// Imported classic snippets retain their original delimiters and single-brace variables.
+    var legacyBehavior = false
+    var legacySourceID: UUID? = nil
 
     enum CodingKeys: String, CodingKey {
-        case id, name, trigger, replacement, expansion, enabled, ignoresCase, folder, showsInLibrary
+        case id, name, trigger, replacement, expansion, enabled, ignoresCase, folder, showsInLibrary, legacyBehavior, legacySourceID
     }
 }
 
@@ -48,6 +124,8 @@ extension TextSnippet {
         ignoresCase = try container.decodeIfPresent(Bool.self, forKey: .ignoresCase) ?? false
         folder = try container.decodeIfPresent(String.self, forKey: .folder) ?? ""
         showsInLibrary = try container.decodeIfPresent(Bool.self, forKey: .showsInLibrary) ?? true
+        legacyBehavior = try container.decodeIfPresent(Bool.self, forKey: .legacyBehavior) ?? false
+        legacySourceID = try container.decodeIfPresent(UUID.self, forKey: .legacySourceID)
     }
 }
 
@@ -61,6 +139,7 @@ enum TextSnippetSupport {
 
     /// Characters that fire an afterDelimiter snippet.
     static let delimiters: Set<Character> = [" ", "\t", "\r", "\n"]
+    static let legacyDelimiters: Set<Character> = [" ", "\t", "\n", ".", ",", ";", ":", "!", "?", ")", "]", "}", "\"", "'"]
 
     static let systemSoundsPath = "/System/Library/Sounds"
 
@@ -131,11 +210,36 @@ enum TextSnippetSupport {
         for snippet in snippets where snippet.enabled
             && snippet.expansion == expansion
             && !snippet.trigger.isEmpty
+            && !snippet.replacement.isEmpty
             && completes(buffer, trigger: snippet.trigger, ignoresCase: snippet.ignoresCase) {
             if let current = best, current.trigger.count >= snippet.trigger.count { continue }
             best = snippet
         }
         return best
+    }
+
+    static func matchAfterDelimiter(buffer: String, delimiter: Character,
+                                    snippets: [TextSnippet]) -> TextSnippet? {
+        guard delimiters.contains(delimiter) || legacyDelimiters.contains(delimiter) else { return nil }
+        let candidates: [TextSnippet]
+        if delimiter == " " { candidates = snippets }
+        else if delimiters.contains(delimiter) { candidates = snippets.filter { !$0.legacyBehavior } }
+        else { candidates = snippets.filter(\.legacyBehavior) }
+        return match(buffer: buffer, expansion: .afterDelimiter, snippets: candidates)
+    }
+
+    static func conflicts(_ first: TextSnippet, _ second: TextSnippet) -> Bool {
+        guard !first.trigger.isEmpty, !second.trigger.isEmpty else { return false }
+        if first.ignoresCase || second.ignoresCase {
+            return first.trigger.compare(second.trigger, options: .caseInsensitive) == .orderedSame
+        }
+        return first.trigger == second.trigger
+    }
+
+    static func longerMatch(_ first: TextSnippet?, _ second: TextSnippet?) -> TextSnippet? {
+        guard let first else { return second }
+        guard let second else { return first }
+        return second.trigger.count > first.trigger.count ? second : first
     }
 
     /// Whether the buffer just finished typing the trigger. The insensitive
@@ -156,6 +260,26 @@ enum TextSnippetSupport {
     /// this first, so a replacement without the variable pays nothing.
     static func needsClipboard(_ replacement: String) -> Bool {
         replacement.contains("{{clipboard}}")
+    }
+
+    static func needsClipboard(_ snippet: TextSnippet) -> Bool {
+        snippet.legacyBehavior ? snippet.replacement.contains("{clipboard}") : needsClipboard(snippet.replacement)
+    }
+
+    static func expand(_ snippet: TextSnippet, date: Date, clipboard: String?, locale: Locale = .current) -> String {
+        guard snippet.legacyBehavior else {
+            return expand(snippet.replacement, date: date, clipboard: clipboard, locale: locale)
+        }
+        var result = snippet.replacement.replacingOccurrences(of: "{clipboard}", with: clipboard ?? "")
+        if result.contains("{date}") {
+            let formatter = DateFormatter(); formatter.locale = locale; formatter.dateStyle = .long
+            result = result.replacingOccurrences(of: "{date}", with: formatter.string(from: date))
+        }
+        if result.contains("{time}") {
+            let formatter = DateFormatter(); formatter.locale = locale; formatter.timeStyle = .short
+            result = result.replacingOccurrences(of: "{time}", with: formatter.string(from: date))
+        }
+        return result
     }
 
     static func requiresPaste(_ text: String) -> Bool {

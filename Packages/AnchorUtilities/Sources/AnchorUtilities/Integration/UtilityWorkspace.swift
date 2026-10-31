@@ -55,6 +55,65 @@ public final class UtilityWorkspace: ObservableObject {
         MouseAccelerationGuard.runIfRequestedAndExit()
     }
 
+    /// Imports the original Anchor snippets before either typing engine starts.
+    /// The caller keeps the old store; malformed advanced data is never replaced.
+    public func migrateLegacySnippets(_ snippets: [LegacyAnchorSnippet], wasEnabled: Bool) -> Bool {
+        Self.migrateLegacySnippets(snippets, wasEnabled: wasEnabled, defaults: UtilityPreferences.standard,
+                                   domain: UtilityPreferences.domainName)
+    }
+
+    static func migrateLegacySnippets(_ snippets: [LegacyAnchorSnippet], wasEnabled: Bool,
+                                      defaults: UserDefaults, domain: String) -> Bool {
+        // The classic key registers an empty array in the process-wide
+        // registration domain. Looking up the utility key with object(forKey:)
+        // can see that array even when the utility store has no saved value.
+        let persisted = defaults.persistentDomain(forName: domain) ?? [:]
+        let raw = persisted[DefaultsKey.textSnippets]
+        let existing: [TextSnippet]
+        if let raw {
+            guard let data = raw as? Data,
+                  let decoded = try? JSONDecoder().decode([TextSnippet].self, from: data) else { return false }
+            existing = decoded
+        } else {
+            existing = []
+        }
+        // Longer triggers worked in the old engine but cannot fit in the new
+        // engine's bounded buffer. Leave the old engine and editor in place.
+        guard snippets.allSatisfy({ $0.trigger.count <= TextSnippetSupport.bufferLimit }) else { return false }
+        let active = AppFeature.textSnippets.isAvailable(in: defaults)
+            && defaults.bool(forKey: DefaultsKey.textSnippetsEnabled)
+        // Enabling the advanced engine would also activate every previously
+        // enabled row in its disabled list. Keep both old engines as-is until
+        // that case can be reconciled without enabling unwanted expansions.
+        guard !(wasEnabled && !active && existing.contains(where: \.enabled)) else { return false }
+        let merged = LegacySnippetMigration.merge(snippets, into: existing,
+                                                   legacyWasActive: wasEnabled, advancedWasActive: active)
+        guard let data = TextSnippetSupport.encode(merged),
+              (try? JSONDecoder().decode([TextSnippet].self, from: data)) == merged else { return false }
+        let availabilityKey = AppFeature.textSnippets.availabilityKey
+        let previousAvailability = persisted[availabilityKey]
+        let previousEnabled = persisted[DefaultsKey.textSnippetsEnabled]
+        func restore(_ value: Any?, key: String) {
+            if let value { defaults.set(value, forKey: key) } else { defaults.removeObject(forKey: key) }
+        }
+        func rollback() {
+            restore(raw, key: DefaultsKey.textSnippets)
+            restore(previousAvailability, key: availabilityKey)
+            restore(previousEnabled, key: DefaultsKey.textSnippetsEnabled)
+            defaults.synchronize()
+        }
+        defaults.set(data, forKey: DefaultsKey.textSnippets)
+        guard defaults.data(forKey: DefaultsKey.textSnippets) == data else { rollback(); return false }
+        if wasEnabled {
+            defaults.set(true, forKey: availabilityKey)
+            defaults.set(true, forKey: DefaultsKey.textSnippetsEnabled)
+        }
+        guard defaults.synchronize(), defaults.data(forKey: DefaultsKey.textSnippets) == data else {
+            rollback(); return false
+        }
+        return true
+    }
+
     public func start() {
         guard !started else { return }
         started = true

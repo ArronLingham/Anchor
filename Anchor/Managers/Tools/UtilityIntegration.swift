@@ -41,6 +41,17 @@ final class UtilityIntegration: ObservableObject {
         "lockSounds": [.enableLockSounds],
     ]
 
+    private static let migratedControlKeys: [String: [Defaults.Key<Bool>]] = {
+        var keys = UtilityIntegration.controlKeys
+        keys.removeValue(forKey: "textSnippets")
+        return keys
+    }()
+
+    private var activeControlKeys: [String: [Defaults.Key<Bool>]] {
+        UserDefaults.standard.bool(forKey: "Anchor.legacySnippetsMigrated.v1")
+            ? Self.migratedControlKeys : Self.controlKeys
+    }
+
     private init() {
         let saved = UserDefaults.standard.dictionary(forKey: "Anchor.utilitySuspendedControls.v1") ?? [:]
         handover = UtilityOwnership(paused: saved.compactMapValues { ($0 as? NSNumber)?.boolValue })
@@ -50,6 +61,7 @@ final class UtilityIntegration: ObservableObject {
         guard !started else { return }
         started = true
         let workspace = UtilityWorkspace.shared
+        migrateLegacySnippetsIfNeeded(workspace)
         workspace.onControlOwnershipChange = { [weak self, weak delegate] owners in
             MainActor.assumeIsolated {
                 self?.apply(owners)
@@ -90,6 +102,28 @@ final class UtilityIntegration: ObservableObject {
         delegate.setUtilityIslandActive(workspace.controlOwners.contains("notch"))
     }
 
+    private func migrateLegacySnippetsIfNeeded(_ workspace: UtilityWorkspace) {
+        let marker = "Anchor.legacySnippetsMigrated.v1"
+        guard !UserDefaults.standard.bool(forKey: marker) else { return }
+        let old = Defaults[.textSnippets]
+        if let raw = UserDefaults.standard.object(forKey: Defaults.Keys.textSnippets.name) {
+            // If Defaults could not decode the saved value, do not interpret it
+            // as an empty list and retire its editor.
+            guard let stored = raw as? [Any], stored.count == old.count else { return }
+        }
+        let entries = old.map { LegacyAnchorSnippet(id: $0.id, trigger: $0.trigger,
+                                                      replacement: $0.expansion,
+                                                      immediate: $0.expandImmediately) }
+        let previouslyEnabled = Defaults[.enableTextSnippets]
+            || handover.paused[Defaults.Keys.enableTextSnippets.name] == true
+        guard workspace.migrateLegacySnippets(entries, wasEnabled: previouslyEnabled) else { return }
+        UserDefaults.standard.set(previouslyEnabled, forKey: "Anchor.legacySnippetsEnabledBackup.v1")
+        handover.paused.removeValue(forKey: Defaults.Keys.enableTextSnippets.name)
+        UserDefaults.standard.set(handover.paused, forKey: savedChoicesKey)
+        Defaults[.enableTextSnippets] = false
+        UserDefaults.standard.set(true, forKey: marker)
+    }
+
     func stop() {
         guard started else { return }
         started = false
@@ -101,7 +135,7 @@ final class UtilityIntegration: ObservableObject {
         guard !changingOwnership else { return }
         changingOwnership = true
         defer { changingOwnership = false }
-        let controls = Self.controlKeys.mapValues { $0.map(\.name) }
+        let controls = activeControlKeys.mapValues { $0.map(\.name) }
         let allKeys = Set(controls.values.flatMap { $0 })
         let current = Dictionary(uniqueKeysWithValues: allKeys.map {
             ($0, UserDefaults.standard.bool(forKey: $0))
@@ -140,7 +174,7 @@ final class UtilityIntegration: ObservableObject {
         let resumed = Set(handover.paused.keys.filter { UserDefaults.standard.bool(forKey: $0) })
         guard !resumed.isEmpty else { return }
         for key in resumed { handover.paused[key] = true }
-        for owner in owners where Self.controlKeys[owner]?.contains(where: { resumed.contains($0.name) }) == true {
+        for owner in owners where activeControlKeys[owner]?.contains(where: { resumed.contains($0.name) }) == true {
             switch owner {
             case "clipboardAutoClearDelay":
                 UtilityWorkspace.shared.releaseClipboardAutoClearOwnership(owner)

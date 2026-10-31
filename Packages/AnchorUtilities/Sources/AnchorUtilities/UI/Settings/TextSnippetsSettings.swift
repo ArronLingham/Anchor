@@ -20,6 +20,7 @@ struct TextSnippetsSettings: View {
         UtilityPreferences.standard.data(forKey: DefaultsKey.textSnippets))
     @State private var editing: TextSnippet?
     @State private var creating = false
+    @State private var snippetNotice: String?
 
     private var text: SnippetFeatureStrings {
         FeatureStrings.snippets(l10n.language)
@@ -102,6 +103,10 @@ struct TextSnippetsSettings: View {
             }
 
             Section {
+                if let snippetNotice {
+                    Text(snippetNotice)
+                        .font(.caption).foregroundStyle(.orange)
+                }
                 if snippets.isEmpty {
                     Text(text.emptyList)
                         .font(.caption)
@@ -166,6 +171,15 @@ struct TextSnippetsSettings: View {
 
     private func setEnabled(_ on: Bool, id: UUID) {
         guard let index = snippets.firstIndex(where: { $0.id == id }) else { return }
+        if on && (snippets[index].trigger.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || snippets[index].replacement.isEmpty) {
+            snippetNotice = "Add a trigger and replacement before enabling this snippet."
+            return
+        }
+        if on && snippets.contains(where: { $0.id != id && $0.enabled && TextSnippetSupport.conflicts($0, snippets[index]) }) {
+            snippetNotice = "Another enabled snippet uses this trigger. Turn it off or change a trigger first."
+            return
+        }
+        snippetNotice = nil
         snippets[index].enabled = on
         persist()
     }
@@ -255,15 +269,17 @@ private struct SnippetEditor: View {
     @State private var replacementEditor = EditorHandle()
 
     private var sanitizedTrigger: String {
-        TextSnippetSupport.sanitizedTrigger(snippet.trigger)
+        snippet.legacyBehavior ? snippet.trigger : TextSnippetSupport.sanitizedTrigger(snippet.trigger)
     }
 
     private var triggerTooShort: Bool {
-        sanitizedTrigger.count < 2
+        snippet.legacyBehavior ? sanitizedTrigger.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty : sanitizedTrigger.count < 2
     }
 
     private var duplicateTrigger: Bool {
-        others.contains { other in
+        guard snippet.enabled else { return false }
+        return others.contains { other in
+            guard other.enabled else { return false }
             if snippet.ignoresCase || other.ignoresCase {
                 return other.trigger.compare(sanitizedTrigger, options: .caseInsensitive) == .orderedSame
             }
@@ -338,26 +354,28 @@ private struct SnippetEditor: View {
                     HStack {
                         Text(text.replacementLabel)
                         Spacer()
-                        Button {
-                            dateBuilderInitial = detectedTokenAtCursor
-                            showingDateBuilder = true
-                        } label: {
-                            Label(detectedTokenAtCursor == nil ? text.dateTimeInsertButton : text.dateTimeEditButton,
-                                  systemImage: "calendar.badge.plus")
-                        }
-                        .popover(isPresented: $showingDateBuilder) {
-                            DateVariableBuilder(
-                                text: text,
-                                cancelLabel: l10n.s.uninstallerCancel,
-                                locale: .current,
-                                initial: dateBuilderInitial,
-                                confirm: { tokenText in
-                                    insertDateToken(tokenText)
-                                    showingDateBuilder = false
-                                },
-                                cancel: { showingDateBuilder = false }
-                            )
-                            .frame(width: 340)
+                        if !snippet.legacyBehavior {
+                            Button {
+                                dateBuilderInitial = detectedTokenAtCursor
+                                showingDateBuilder = true
+                            } label: {
+                                Label(detectedTokenAtCursor == nil ? text.dateTimeInsertButton : text.dateTimeEditButton,
+                                      systemImage: "calendar.badge.plus")
+                            }
+                            .popover(isPresented: $showingDateBuilder) {
+                                DateVariableBuilder(
+                                    text: text,
+                                    cancelLabel: l10n.s.uninstallerCancel,
+                                    locale: .current,
+                                    initial: dateBuilderInitial,
+                                    confirm: { tokenText in
+                                        insertDateToken(tokenText)
+                                        showingDateBuilder = false
+                                    },
+                                    cancel: { showingDateBuilder = false }
+                                )
+                                .frame(width: 340)
+                            }
                         }
                     }
                     PlainTextEditor(text: $snippet.replacement,
@@ -368,12 +386,12 @@ private struct SnippetEditor: View {
                             AnchorCorners.rectangle(cornerRadius: 6)
                                 .anchorStrokeBorder(Color.primary.opacity(0.12))
                         )
-                    Text(text.variablesHint)
+                    Text(snippet.legacyBehavior ? "Imported snippet variables: {date}, {time}, and {clipboard}." : text.variablesHint)
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                    Text(text.editorFormatCaption)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    if !snippet.legacyBehavior {
+                        Text(text.editorFormatCaption).font(.caption).foregroundStyle(.secondary)
+                    }
                 }
             }
             .formStyle(.columns)

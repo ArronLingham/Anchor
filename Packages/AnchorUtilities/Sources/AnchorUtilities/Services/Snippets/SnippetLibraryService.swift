@@ -167,10 +167,10 @@ final class SnippetLibraryService: ObservableObject {
             }
             return
         }
-        let clipboard = TextSnippetSupport.needsClipboard(snippet.replacement)
+        let clipboard = TextSnippetSupport.needsClipboard(snippet)
             ? NSPasteboard.general.string(forType: .string)
             : nil
-        let text = TextSnippetSupport.expand(snippet.replacement,
+        let text = TextSnippetSupport.expand(snippet,
                                              date: Date(),
                                              clipboard: clipboard)
         // A beat for the panel to leave the screen; the target app kept focus

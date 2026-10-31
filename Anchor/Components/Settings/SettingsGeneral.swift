@@ -322,7 +322,17 @@ struct GeneralSettings: View {
             }
 
 
-            SettingsSnippets()
+            if UserDefaults.standard.bool(forKey: "Anchor.legacySnippetsMigrated.v1") {
+                Section("Text snippets") {
+                    Button("Manage text snippets…") { UtilityWorkspace.shared.showFeature("textSnippets") }
+                    Text("Edit and manage snippets in one place.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+            } else {
+                SettingsSnippets()
+                Text("Your existing snippets remain here because they could not yet be safely combined.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
 
             Section {
                 Defaults.Toggle(key: .enableSystemStats) {

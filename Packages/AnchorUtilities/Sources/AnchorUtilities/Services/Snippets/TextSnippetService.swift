@@ -13,6 +13,19 @@ import CoreGraphics
 final class TextSnippetService {
     static let shared = TextSnippetService()
 
+    #if DEBUG
+    typealias TestPoster = (Int, String, CGKeyCode?, CGEventFlags, String, CGKeyCode?, CGEventFlags, (() -> Void)?) -> Bool
+    private var testPoster: TestPoster?
+
+    init(testPoster: @escaping TestPoster) {
+        self.testPoster = testPoster
+    }
+
+    func configureForTest(_ snippets: [TextSnippet]) {
+        inputLock.withLock { installSnippets(snippets) }
+    }
+    #endif
+
     /// Marks our own synthetic events so the tap never re-processes them.
     private static let syntheticMarker = OwnKeyEvent.textSnippetMarker
 
@@ -28,6 +41,8 @@ final class TextSnippetService {
     private var activationObserver: NSObjectProtocol?
     private let inputLock = NSLock()
     private var buffer = ""
+    private var legacyBuffer = ""
+    private var legacyUndo = LegacySnippetUndoState()
     private var libraryVisible = false
     private var commandBarVisible = false
     /// Registered once when the preferences change, so no expansion pays
@@ -36,6 +51,8 @@ final class TextSnippetService {
     /// Split by expansion mode at load time; the tap callback only scans.
     private var immediateSnippets: [TextSnippet] = []
     private var delimiterSnippets: [TextSnippet] = []
+    private var legacyImmediateSnippets: [TextSnippet] = []
+    private var legacyDelimiterSnippets: [TextSnippet] = []
 
     private init() {
         SessionActivity.shared.onChange { [weak self] _ in self?.syncWithPreferences() }
@@ -49,7 +66,8 @@ final class TextSnippetService {
             && UtilityPreferences.standard.bool(forKey: DefaultsKey.textSnippetsEnabled)
         reloadSnippets()
         let hasWork = inputLock.withLock {
-            !(immediateSnippets.isEmpty && delimiterSnippets.isEmpty)
+            !(immediateSnippets.isEmpty && delimiterSnippets.isEmpty
+              && legacyImmediateSnippets.isEmpty && legacyDelimiterSnippets.isEmpty)
         }
         syncExpansionSound(featureEnabled: enabled)
         if SessionActivitySupport.tapShouldRun(featureWanted: enabled && hasWork,
@@ -108,14 +126,14 @@ final class TextSnippetService {
     func setLibraryVisible(_ visible: Bool) {
         inputLock.withLock {
             libraryVisible = visible
-            if visible { buffer = "" }
+            if visible { buffer = ""; legacyBuffer = ""; legacyUndo.reset() }
         }
     }
 
     func setCommandBarVisible(_ visible: Bool) {
         inputLock.withLock {
             commandBarVisible = visible
-            if visible { buffer = "" }
+            if visible { buffer = ""; legacyBuffer = ""; legacyUndo.reset() }
         }
     }
 
@@ -123,10 +141,15 @@ final class TextSnippetService {
     private func reloadSnippets() {
         let all = TextSnippetSupport.decode(
             UtilityPreferences.standard.data(forKey: DefaultsKey.textSnippets))
-        inputLock.withLock {
-            immediateSnippets = all.filter { $0.enabled && $0.expansion == .immediate }
-            delimiterSnippets = all.filter { $0.enabled && $0.expansion == .afterDelimiter }
-        }
+        inputLock.withLock { installSnippets(all) }
+    }
+
+    /// Called with inputLock held.
+    private func installSnippets(_ all: [TextSnippet]) {
+        immediateSnippets = all.filter { $0.enabled && !$0.legacyBehavior && $0.expansion == .immediate }
+        delimiterSnippets = all.filter { $0.enabled && !$0.legacyBehavior && $0.expansion == .afterDelimiter }
+        legacyImmediateSnippets = all.filter { $0.enabled && $0.legacyBehavior && $0.expansion == .immediate }
+        legacyDelimiterSnippets = all.filter { $0.enabled && $0.legacyBehavior && $0.expansion == .afterDelimiter }
     }
 
     private func start() {
@@ -260,13 +283,14 @@ final class TextSnippetService {
     }
 
     private func resetBuffer() {
-        inputLock.withLock { buffer = "" }
+        inputLock.withLock { buffer = ""; legacyBuffer = ""; legacyUndo.reset() }
     }
 
     // MARK: - Tap
 
-    private func handle(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
+    func handle(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
         if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
+            resetBuffer()
             let currentTap = tapLifecycleLock.withLock { shouldStopTapThread ? nil : tap }
             if SessionActivity.shared.isActive, AXIsProcessTrusted(), let currentTap {
                 CGEvent.tapEnable(tap: currentTap, enable: true)
@@ -308,10 +332,23 @@ final class TextSnippetService {
         }
 
         let keyCode = Int(event.getIntegerValueField(.keyboardEventKeycode))
+        let optionHeld = event.flags.contains(.maskAlternate)
+        let previous = inputLock.withLock { () -> LegacySnippetUndoState.Entry? in
+            if optionHeld { legacyBuffer = ""; legacyUndo.reset() }
+            return legacyUndo.observeInput()
+        }
         switch keyCode {
         case kVK_Delete:
+            if let previous, event.getIntegerValueField(.keyboardEventAutorepeat) == 0 {
+                inputLock.withLock { buffer = ""; legacyBuffer = "" }
+                return postExpansion(deleteCount: previous.inserted.count,
+                                     text: previous.trigger,
+                                     trailingKeyCode: nil, trailingFlags: [])
+                    ? nil : Unmanaged.passUnretained(event)
+            }
             inputLock.withLock {
                 if !buffer.isEmpty { buffer.removeLast() }
+                if !legacyBuffer.isEmpty { legacyBuffer.removeLast() }
             }
             return Unmanaged.passUnretained(event)
         case kVK_LeftArrow, kVK_RightArrow, kVK_UpArrow, kVK_DownArrow, kVK_Escape,
@@ -328,36 +365,47 @@ final class TextSnippetService {
         guard length > 0 else { return Unmanaged.passUnretained(event) }
         let typed = String(utf16CodeUnits: characters, count: length)
 
-        if let first = typed.first, TextSnippetSupport.delimiters.contains(first) {
+        let first = typed.first
+        let standardDelimiter = first.map(TextSnippetSupport.delimiters.contains) ?? false
+        let legacyDelimiter = first.map(TextSnippetSupport.legacyDelimiters.contains) ?? false
+        if standardDelimiter || legacyDelimiter {
             // A delimiter can complete an afterDelimiter trigger. The typed
             // delimiter is swallowed and kept after the replacement, either
             // in the same paste or as the original key after typed injection.
             let matched = inputLock.withLock { () -> TextSnippet? in
-                let match = TextSnippetSupport.match(buffer: buffer,
-                                                     expansion: .afterDelimiter,
-                                                     snippets: delimiterSnippets)
-                buffer = ""
+                let advanced = standardDelimiter ? first.flatMap {
+                    TextSnippetSupport.matchAfterDelimiter(buffer: buffer, delimiter: $0, snippets: delimiterSnippets)
+                } : nil
+                let classic = !optionHeld && legacyDelimiter ? first.flatMap {
+                    TextSnippetSupport.matchAfterDelimiter(buffer: legacyBuffer, delimiter: $0, snippets: legacyDelimiterSnippets)
+                } : nil
+                let match = TextSnippetSupport.longerMatch(advanced, classic)
+                if standardDelimiter || match != nil { buffer = ""; legacyBuffer = "" }
                 return match
             }
             if let matched {
                 return expand(matched,
                               deleteCount: matched.trigger.count,
-                              trailingKeyCode: CGKeyCode(keyCode),
+                              trailingKeyCode: matched.legacyBehavior ? nil : CGKeyCode(keyCode),
                               trailingFlags: event.flags,
-                              trailingText: typed,
+                              trailingText: matched.legacyBehavior ? "" : typed,
                               failureKeyCode: CGKeyCode(keyCode))
                     ? nil
                     : Unmanaged.passUnretained(event)
             }
-            return Unmanaged.passUnretained(event)
+            if standardDelimiter { return Unmanaged.passUnretained(event) }
         }
 
         let matched = inputLock.withLock { () -> TextSnippet? in
             buffer = TextSnippetSupport.bufferAppending(buffer, typed: typed)
-            let match = TextSnippetSupport.match(buffer: buffer,
-                                                 expansion: .immediate,
-                                                 snippets: immediateSnippets)
-            if match != nil { buffer = "" }
+            if !optionHeld && (!legacyImmediateSnippets.isEmpty || !legacyDelimiterSnippets.isEmpty) {
+                legacyBuffer = TextSnippetSupport.bufferAppending(legacyBuffer, typed: typed)
+            }
+            let advanced = TextSnippetSupport.match(buffer: buffer, expansion: .immediate, snippets: immediateSnippets)
+            let classic = !optionHeld && !legacyDelimiter
+                ? TextSnippetSupport.match(buffer: legacyBuffer, expansion: .immediate, snippets: legacyImmediateSnippets) : nil
+            let match = TextSnippetSupport.longerMatch(advanced, classic)
+            if match != nil { buffer = ""; legacyBuffer = "" }
             return match
         }
         if let matched {
@@ -386,21 +434,29 @@ final class TextSnippetService {
                         trailingText: String,
                         failureKeyCode: CGKeyCode?,
                         failureFlags: CGEventFlags = []) -> Bool {
-        let didExpand = expansionSoundCue()
+        let playSound = expansionSoundCue()
+        let generation = inputLock.withLock { legacyUndo.generation }
         let post = { () -> Bool in
             // Variable expansion is decided while the triggering event still
             // belongs to this callback. Only an explicit clipboard variable
             // pays for a synchronous read; the multiline write itself runs on
             // the shared pasteboard lane.
-            let clipboard = TextSnippetSupport.needsClipboard(snippet.replacement)
+            let clipboard = TextSnippetSupport.needsClipboard(snippet)
                 ? NSPasteboard.general.string(forType: .string)
                 : nil
             let text = TextSnippetSupport.expand(
-                snippet.replacement,
+                snippet,
                 date: Date(),
                 clipboard: clipboard
             )
-            return Self.postExpansion(deleteCount: deleteCount,
+            let didExpand = { [weak self] in
+                playSound?()
+                guard snippet.legacyBehavior, !text.isEmpty, let self else { return }
+                self.inputLock.withLock {
+                    self.legacyUndo.arm(trigger: snippet.trigger, inserted: text, generation: generation)
+                }
+            }
+            return self.postExpansion(deleteCount: deleteCount,
                                       text: text,
                                       trailingKeyCode: trailingKeyCode,
                                       trailingFlags: trailingFlags,
@@ -429,6 +485,21 @@ final class TextSnippetService {
             // window macOS disables the tap for.
             DispatchQueue.main.async { sound.play() }
         }
+    }
+
+    private func postExpansion(deleteCount: Int, text: String, trailingKeyCode: CGKeyCode?,
+                               trailingFlags: CGEventFlags, trailingText: String = "",
+                               failureKeyCode: CGKeyCode? = nil, failureFlags: CGEventFlags = [],
+                               didExpand: (() -> Void)? = nil) -> Bool {
+        #if DEBUG
+        if let testPoster {
+            return testPoster(deleteCount, text, trailingKeyCode, trailingFlags, trailingText,
+                              failureKeyCode, failureFlags, didExpand)
+        }
+        #endif
+        return Self.postExpansion(deleteCount: deleteCount, text: text, trailingKeyCode: trailingKeyCode,
+                                  trailingFlags: trailingFlags, trailingText: trailingText,
+                                  failureKeyCode: failureKeyCode, failureFlags: failureFlags, didExpand: didExpand)
     }
 
     /// Also the snippet library's insertion path (deleteCount 0): one typing

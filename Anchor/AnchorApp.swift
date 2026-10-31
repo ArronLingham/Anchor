@@ -1009,7 +1009,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             // of them off it registers nothing.
             PointerInputManager.shared.start()
             // Creates its (listen-only) tap only when snippets are on.
-            TextSnippetManager.shared.start()
+            if !UserDefaults.standard.bool(forKey: "Anchor.legacySnippetsMigrated.v1") {
+                TextSnippetManager.shared.start()
+            }
             // Creates its tap only when debounce is on.
             KeyDebounceManager.shared.start()
             SystemNavigationShortcutManager.shared.start()
