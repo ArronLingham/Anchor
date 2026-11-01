@@ -60,10 +60,12 @@ struct AppIconCacheTests {
         let app = LauncherApp(url: appURL)
         let probe = RenderProbe()
         let cache = AppIconCache(directory: directory.appendingPathComponent("icons"), renderer: probe.render)
+        cache.revalidateCached([app])
+        try? await Task.sleep(for: .milliseconds(100))
+        check("indexing does not decode an unseen icon", probe.count == 0)
         var completions = 0
         var onMain = true
         var firstImage: NSImage?
-        cache.warm([app])
         for _ in 0..<40 {
             let hit = cache.icon(for: app) { image in
                 onMain = onMain && Thread.isMainThread
@@ -73,15 +75,15 @@ struct AppIconCacheTests {
             if hit != nil { completions += 1 }
         }
         check("all callers finish", await waitUntil { completions == 40 })
-        check("warm and visible misses render once", probe.count == 1)
+        check("concurrent visible misses render once", probe.count == 1)
         check("callbacks run on the main thread", onMain)
         check("subsequent lookup is immediate", cache.icon(for: app, completion: { _ in }) === firstImage)
-        cache.warm([app])
+        cache.revalidateCached([app])
         try? await Task.sleep(for: .milliseconds(100))
-        check("unchanged warm avoids a second decode", probe.count == 1)
+        check("unchanged revalidation avoids a second decode", probe.count == 1)
 
         try! FileManager.default.setAttributes([.modificationDate: Date().addingTimeInterval(10)], ofItemAtPath: appURL.path)
-        cache.warm([app])
+        cache.revalidateCached([app])
         check("changed application revision replaces its icon", await waitUntil {
             let updated = cache.icon(for: app, completion: { _ in })
             return updated != nil && updated !== firstImage

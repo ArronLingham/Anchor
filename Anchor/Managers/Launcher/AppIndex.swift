@@ -174,9 +174,9 @@ final class AppIndex: ObservableObject {
                     self.refresh()
                     return
                 }
-                // Rasterising icons is the slow part of showing the grid; do it
-                // now rather than when the user is waiting on it.
-                AppIconCache.shared.warm(found)
+                // Refresh icons already in use without decoding the entire
+                // application library at startup. Visible rows load lazily.
+                AppIconCache.shared.revalidateCached(found)
             }
         }
     }

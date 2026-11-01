@@ -88,7 +88,7 @@ final class AppIconCache {
         memory.totalCostLimit = 24 * 1_024 * 1_024
     }
 
-    /// Returns immediately on a hit. Concurrent warm/grid/switcher misses
+    /// Returns immediately on a hit. Concurrent grid/switcher misses
     /// share one decode and receive their completions on the main queue.
     func icon(for app: LauncherApp, completion: @escaping (NSImage) -> Void) -> NSImage? {
         if let hit = memory.object(forKey: app.url.path as NSString) { return hit.image }
@@ -96,11 +96,12 @@ final class AppIconCache {
         return nil
     }
 
-    /// Revalidate revisions after an application-directory change. Existing
-    /// entries avoid decoding; visible requests join an in-flight warm instead
-    /// of decoding and writing the same image again.
-    func warm(_ apps: [LauncherApp]) {
-        for app in apps { enqueue(app, completion: nil) }
+    /// Directory changes only need to revalidate icons already in use. New
+    /// icons load on demand, avoiding a full-library decode at app launch.
+    func revalidateCached(_ apps: [LauncherApp]) {
+        for app in apps where memory.object(forKey: app.url.path as NSString) != nil {
+            enqueue(app, completion: nil)
+        }
     }
 
     private func enqueue(_ app: LauncherApp, completion: ((NSImage) -> Void)?) {
