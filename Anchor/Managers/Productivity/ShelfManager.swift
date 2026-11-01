@@ -89,10 +89,18 @@ final class ShelfManager: ObservableObject {
     }
 
     func remove(_ item: Item) {
-        thumbnailTasks[item.id]?.cancel()
-        thumbnailTasks[item.id] = nil
-        thumbnails[item.id] = nil
-        items.removeAll { $0.id == item.id }
+        remove([item])
+    }
+
+    func remove(_ selection: [Item]) {
+        let removedIDs = Set(selection.map(\.id))
+        guard items.contains(where: { removedIDs.contains($0.id) }) else { return }
+        for id in removedIDs {
+            thumbnailTasks[id]?.cancel()
+            thumbnailTasks[id] = nil
+        }
+        thumbnails = thumbnails.filter { !removedIDs.contains($0.key) }
+        items.removeAll { removedIDs.contains($0.id) }
         save()
     }
 
@@ -103,7 +111,7 @@ final class ShelfManager: ObservableObject {
     }
 
     func clearUnpinned() {
-        for item in items where item.isPinned != true { remove(item) }
+        remove(items.filter { $0.isPinned != true })
     }
 
     func pasteFiles() {

@@ -94,7 +94,7 @@ struct ShelfWorkspaceView: View {
                         .disabled(!actions.available(action, urls: urls))
                 }
                 Divider()
-                Button("Remove selected from shelf") { picked.forEach { shelf.remove($0) }; selected = [] }
+                Button("Remove selected from shelf") { shelf.remove(picked); selected = [] }
                     .disabled(picked.isEmpty)
             } label: {
                 Label(selected.isEmpty ? "Actions" : "\(picked.count)", systemImage: "ellipsis.circle")
