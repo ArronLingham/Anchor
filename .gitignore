@@ -50,6 +50,7 @@ __pycache__/
 # Public project documentation lives in README; keep local notes private.
 /docs/
 /*.md
+!/AGENTS.md
 !/README.md
 /.github/instructions/
 /.github/assets/
