@@ -81,7 +81,7 @@ struct LauncherSettings: View {
                     Text("Use ⌘Space for Launchpad")
                 }
                 .disabled(!enableLauncher)
-                .settingsInfo("Replaces Spotlight while Anchor is running. Your other launcher shortcut still works.")
+                .settingsInfo("While Anchor is running, ⌘Space opens Anchor’s launcher instead of Spotlight. When Anchor quits, macOS uses ⌘Space for Spotlight as usual.")
                 .settingsHighlight(id: highlightID("Use ⌘Space for Launchpad"))
                 shortcutAvailabilityHint(requested: enableLauncher && useCommandSpace)
 
@@ -107,7 +107,7 @@ struct LauncherSettings: View {
                     Text("Use ⌘Tab for Anchor’s app switcher")
                 }
                 .disabled(!enableAppSwitcher)
-                .settingsInfo("Hold Command and tap Tab to cycle. Add Shift to go backwards; release Command to switch.")
+                .settingsInfo("While Anchor is running, hold Command and tap Tab to cycle through Anchor’s app switcher. Add Shift to go backwards; release Command to switch. When Anchor quits, macOS uses ⌘Tab for its app switcher as usual.")
                 .settingsHighlight(id: highlightID("Use ⌘Tab for Anchor’s app switcher"))
                 shortcutAvailabilityHint(requested: enableAppSwitcher && useCommandTab)
 

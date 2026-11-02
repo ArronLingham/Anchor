@@ -968,7 +968,7 @@ extension Defaults.Keys {
     // MARK: - Launcher
     /// Spotlight-style application launcher panel.
     static let enableLauncher = Key<Bool>("enableLauncher", default: true)
-    static let launcherUsesCommandSpace = Key<Bool>("launcherUsesCommandSpace", default: false)
+    static let launcherUsesCommandSpace = Key<Bool>("launcherUsesCommandSpace", default: true)
     /// Frecency bookkeeping, keyed by app bundle path.
     static let launcherFrecencyScores = Key<[String: Double]>("launcherFrecencyScores", default: [:])
     static let launcherLastLaunched = Key<[String: Date]>("launcherLastLaunched", default: [:])
@@ -1390,8 +1390,8 @@ extension Defaults.Keys {
     // MARK: App switcher (ring)
     /// Option-Tab opens a ring of running apps. Costs one NSWorkspace
     /// notification while enabled and nothing at all while the ring is closed.
-    static let enableAppSwitcher = Key<Bool>("enableAppSwitcher", default: false)
-    static let appSwitcherUsesCommandTab = Key<Bool>("appSwitcherUsesCommandTab", default: false)
+    static let enableAppSwitcher = Key<Bool>("enableAppSwitcher", default: true)
+    static let appSwitcherUsesCommandTab = Key<Bool>("appSwitcherUsesCommandTab", default: true)
     static let appSwitcherRingDiameter = Key<Double>("appSwitcherRingDiameter", default: 420)
 
     // MARK: Menu bar shrinker
