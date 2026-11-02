@@ -167,8 +167,8 @@ final class AppSwitcherManager: ObservableObject {
 
     /// Builds the ring, most-recently-used first.
     private func snapshot() -> [SwitchableApp] {
-        // `.regular` only: agents and UI elements have no windows to switch to,
-        // and Anchor itself is one of them, so this also excludes us.
+        // Anchor is normally an accessory, but becomes a regular app while
+        // its settings or dashboard is open and can then appear in the ring.
         let running = NSWorkspace.shared.runningApplications.filter {
             $0.activationPolicy == .regular && !$0.isTerminated
         }
@@ -191,7 +191,8 @@ final class AppSwitcherManager: ObservableObject {
                 pid: $0.processIdentifier,
                 name: $0.localizedName ?? "—",
                 bundleID: $0.bundleIdentifier,
-                icon: icons[$0.processIdentifier])
+                icon: $0.processIdentifier == ProcessInfo.processInfo.processIdentifier
+                    ? NSApp.applicationIconImage : icons[$0.processIdentifier])
         }
     }
 
