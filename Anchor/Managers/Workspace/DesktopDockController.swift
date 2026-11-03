@@ -21,7 +21,7 @@ final class DesktopDockController {
         updating = true
         defer { updating = false }
         let visible = manager.configuration.docks.filter { dock in
-            dock.enabled && (manager.forceShowAllDocks || dock.workspaceModeIDs.isEmpty || manager.activeModeID.map(dock.workspaceModeIDs.contains) == true)
+            manager.forceShowAllDocks || (dock.enabled && (dock.workspaceModeIDs.isEmpty || manager.activeModeID.map(dock.workspaceModeIDs.contains) == true))
         }
         let ids = Set(visible.map(\.id))
         for id in Array(panels.keys) where !ids.contains(id) {
@@ -144,15 +144,16 @@ struct DesktopDockView: View {
                     }
                 }
             }
-            .opacity(dock.autoHide && !pointerInside ? 0 : 1)
-            .animation(.easeInOut(duration: 0.18), value: pointerInside)
-            .onHover { pointerInside = $0 }
             .padding(8)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(.ultraThinMaterial, in: AnchorCorners.rectangle(cornerRadius: 18))
             .anchorCornerContainer(radius: 18)
             .overlay(AnchorCorners.rectangle(cornerRadius: 18).stroke(.white.opacity(0.16)))
             .padding(1)
+            .opacity(dock.autoHide && !pointerInside && !manager.forceShowAllDocks ? 0 : 1)
+            .animation(.easeInOut(duration: 0.18), value: pointerInside)
+            .contentShape(Rectangle())
+            .onHover { pointerInside = $0 }
             .preferredColorScheme(.dark)
             .contextMenu {
                 Button("Edit Docks…") { SettingsWindowController.shared.showWindow(tab: .docks) }

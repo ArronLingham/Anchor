@@ -1204,6 +1204,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             name: NSNotification.Name(rawValue: "com.apple.screenIsUnlocked"), object: nil)
 
         Self.migrateReversedLauncherCommandBarShortcuts()
+        Self.migrateDockShowAllShortcut()
 
         KeyboardShortcuts.onKeyDown(for: .toggleDashboard) {
             guard Defaults[.enableShortcuts] else { return }
@@ -1597,6 +1598,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 }
             }
         }
+    }
+
+    private static func migrateDockShowAllShortcut() {
+        let marker = "Anchor.dockShowAllShortcut.v1"
+        guard !UserDefaults.standard.bool(forKey: marker) else { return }
+        if let shortcut = KeyboardShortcuts.getShortcut(for: .showAllDesktopDocks),
+           shortcut.key == .d, shortcut.modifiers == [.control, .option, .command] {
+            KeyboardShortcuts.setShortcut(.init(.d, modifiers: [.control, .option, .shift, .command]), for: .showAllDesktopDocks)
+        }
+        UserDefaults.standard.set(true, forKey: marker)
     }
 
     private static func migrateReversedLauncherCommandBarShortcuts() {
