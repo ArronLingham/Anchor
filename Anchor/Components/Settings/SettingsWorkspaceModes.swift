@@ -74,7 +74,7 @@ private struct WorkspaceModeEditor: View {
                 if manager.applying { Button("Stop") { manager.cancelApply() } }
                 Button("Capture Current Apps & Layout") { manager.captureLayout(for: mode.id) }.disabled(manager.applying)
             }
-            Text("Arrange your windows, then capture. Saved windows restore by title, with an app-window-order fallback. Apps must have a window or restored document; Anchor does not create documents. Full-screen windows are skipped during capture.")
+            Text("Arrange your apps and windows, then capture. This replaces the mode’s app and window lists with the currently open apps and accessible standard windows across connected displays. Saved windows restore by title, with an app-window-order fallback. Anchor does not create missing documents. Full-screen windows are skipped. macOS desktops (Spaces) are not saved or changed.")
                 .font(.caption).foregroundStyle(.secondary)
             if !WorkspaceWindows.permitted {
                 Button("Allow Accessibility for Window Layouts…") { WorkspaceWindows.requestAccess() }
@@ -162,7 +162,7 @@ private struct WorkspaceModeEditor: View {
                 }
             }
             TextField("Run macOS Shortcut (optional)", text: $mode.shortcutName)
-            Text("A named Shortcut runs last. Use the Shortcuts app to add Focus, network, or other supported system settings. Applying a different mode changes only the settings enabled in that mode.")
+            Text("A named Shortcut runs last. On macOS 26.4 or later, add Set Battery Charge Limit to that Shortcut to set this mode’s limit. Applying a different mode changes only the settings enabled in that mode.")
                 .font(.caption).foregroundStyle(.secondary)
         } header: { Text("Settings") }
 

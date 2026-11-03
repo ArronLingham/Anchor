@@ -248,12 +248,14 @@ final class DesktopWorkspaceManager: ObservableObject {
         }
         guard let index = configuration.modes.firstIndex(where: { $0.id == id }) else { return }
         let windows = WorkspaceWindows.capture()
-        guard !windows.isEmpty else { status = "No standard windows found. Existing layout was kept."; return }
+        let apps = NSWorkspace.shared.runningApplications
+            .filter { $0.activationPolicy == .regular && $0.processIdentifier != ProcessInfo.processInfo.processIdentifier }
+            .compactMap(WorkspaceApp.init)
+        guard !apps.isEmpty || !windows.isEmpty else { status = "No apps or standard windows found. Existing layout was kept."; return }
         configuration.modes[index].windows = windows
-        var apps = configuration.modes[index].apps
-        for window in windows where !apps.contains(where: { $0.bundleID == window.app.bundleID }) { apps.append(window.app) }
-        configuration.modes[index].apps = apps
-        status = "Saved \(windows.count) windows for \(configuration.modes[index].name)."
+        configuration.modes[index].apps = Array(Dictionary(grouping: apps + windows.map(\.app), by: \.bundleID).values.compactMap(\.first))
+            .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+        status = "Saved \(configuration.modes[index].apps.count) apps and \(windows.count) windows for \(configuration.modes[index].name)."
     }
 
     func chooseApps(_ completion: ([WorkspaceApp]) -> Void) {
