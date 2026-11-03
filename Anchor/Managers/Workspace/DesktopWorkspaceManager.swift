@@ -95,6 +95,22 @@ final class DesktopWorkspaceManager: ObservableObject {
         runningBundleIDs = Set(NSWorkspace.shared.runningApplications.compactMap(\.bundleIdentifier))
     }
 
+    func recentApps(for dockID: UUID) -> [WorkspaceApp] {
+        guard let dock = configuration.docks.first(where: { $0.id == dockID }) else { return [] }
+        let pinned = Set(dock.apps.map(\.bundleID))
+        return NSWorkspace.shared.runningApplications
+            .filter { $0.activationPolicy == .regular && $0.processIdentifier != ProcessInfo.processInfo.processIdentifier }
+            .compactMap(WorkspaceApp.init)
+            .filter { !pinned.contains($0.bundleID) }
+            .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+    }
+
+    func dockEntries(for id: UUID, includeRecent: Bool) -> [WorkspaceApp] {
+        guard let dock = configuration.docks.first(where: { $0.id == id }) else { return [] }
+        guard includeRecent else { return dock.apps }
+        return dock.apps + recentApps(for: id)
+    }
+
     func scheduleEnvironmentCheck() {
         guard started else { return }
         environmentWork?.cancel()

@@ -41,6 +41,12 @@ struct DesktopDock: Codable, Equatable, Identifiable {
     var x = 0.02
     var y = 0.5
     var iconSize = 40.0
+    /// nil keeps the original one-dimensional layout. A value uses a grid.
+    var gridColumns: Int? = nil
+    var standardIconSize = true
+    var showsRecentApps = false
+    var autoHide = false
+    var workspaceModeIDs: [UUID] = []
     var apps: [WorkspaceApp] = []
 }
 

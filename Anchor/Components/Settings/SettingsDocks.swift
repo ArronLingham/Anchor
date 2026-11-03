@@ -31,6 +31,22 @@ struct SettingsDocks: View {
                     Text("Vertical").tag(true)
                     Text("Horizontal").tag(false)
                 }
+                Stepper("Grid columns · \(dock.gridColumns ?? (dock.vertical ? 1 : max(1, dock.apps.count)))", value: Binding(get: { dock.gridColumns ?? (dock.vertical ? 1 : max(1, dock.apps.count)) }, set: { dock.gridColumns = $0 }), in: 1...8)
+                Toggle("Standard icon size", isOn: $dock.standardIconSize)
+                if !dock.standardIconSize {
+                    LabeledContent("Custom icon size · \(Int(dock.iconSize)) px") { Slider(value: $dock.iconSize, in: 32...128, step: 4).frame(width: 200) }
+                }
+                Toggle("Show recent and running apps", isOn: $dock.showsRecentApps)
+                Toggle("Auto-hide when pointer leaves", isOn: $dock.autoHide)
+                if !manager.configuration.modes.isEmpty {
+                    Text("Show this dock in workspaces")
+                    ForEach(manager.configuration.modes) { mode in
+                        Toggle(mode.name, isOn: Binding(get: { dock.workspaceModeIDs.contains(mode.id) }, set: { enabled in
+                            if enabled && !dock.workspaceModeIDs.contains(mode.id) { dock.workspaceModeIDs.append(mode.id) }
+                            if !enabled { dock.workspaceModeIDs.removeAll { $0 == mode.id } }
+                        }))
+                    }
+                }
                 WorkspaceDisplayPicker(selection: $dock.displayID)
                 HStack {
                     Text("Position")
@@ -42,7 +58,6 @@ struct SettingsDocks: View {
                 }
                 LabeledContent("Horizontal position") { Slider(value: $dock.x, in: 0...1).frame(width: 200) }
                 LabeledContent("Vertical position") { Slider(value: $dock.y, in: 0...1).frame(width: 200) }
-                LabeledContent("Icon size · \(Int(dock.iconSize))") { Slider(value: $dock.iconSize, in: 24...72, step: 2).frame(width: 200) }
                 ForEach(dock.apps) { app in
                     WorkspaceAppRow(app: app) {
                         HStack(spacing: 6) {
