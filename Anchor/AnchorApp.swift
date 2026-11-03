@@ -1602,14 +1602,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private static func migrateReversedLauncherCommandBarShortcuts() {
         let domain = (Bundle.main.bundleIdentifier ?? "com.arronlingham.Anchor") + ".utilities"
         guard let store = UserDefaults(suiteName: domain),
-              !store.bool(forKey: "Anchor.launcherCommandBarSwap.v1"),
-              store.string(forKey: "commandBarShortcut") == "command:49",
-              let launcher = KeyboardShortcuts.getShortcut(for: .toggleLauncher),
-              launcher.key == .space, launcher.modifiers == [.option] else { return }
+              !store.bool(forKey: "Anchor.launcherCommandBarSwap.v2") else { return }
         store.set("option:49", forKey: "commandBarShortcut")
         KeyboardShortcuts.setShortcut(.init(.space, modifiers: [.command]), for: .toggleLauncher)
-        Defaults[.launcherUsesCommandSpace] = false
-        store.set(true, forKey: "Anchor.launcherCommandBarSwap.v1")
+        Defaults[.launcherUsesCommandSpace] = true
+        store.set(true, forKey: "Anchor.launcherCommandBarSwap.v2")
     }
 
     private func registerOptionalShortcutHandlers() {
