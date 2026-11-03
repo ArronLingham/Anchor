@@ -331,7 +331,7 @@ final class AppLifecycleManager {
                 self.pendingCheck.remove(pid)
                 guard !app.isTerminated else { return }
 
-                let counts = self.windowCounts(pid: pid)
+                guard let counts = self.windowCounts(pid: pid) else { return }
                 let state = QuitOnCloseDecision.State(
                     bundleID: app.bundleIdentifier,
                     visibleWindowCount: counts.visible,
@@ -354,13 +354,13 @@ final class AppLifecycleManager {
     /// Minimised is counted separately rather than filtered out, because
     /// "minimised" and "no windows" must lead to opposite decisions and a
     /// single total cannot distinguish them.
-    private func windowCounts(pid: pid_t) -> (visible: Int, minimised: Int) {
+    private func windowCounts(pid: pid_t) -> (visible: Int, minimised: Int)? {
         let element = AXUIElementCreateApplication(pid)
         var value: CFTypeRef?
         guard AXUIElementCopyAttributeValue(
                 element, kAXWindowsAttribute as CFString, &value) == .success,
               let windows = value as? [AXUIElement]
-        else { return (0, 0) }
+        else { return nil }
 
         var visible = 0, minimised = 0
         for window in windows {
@@ -369,6 +369,16 @@ final class AppLifecycleManager {
                 window, kAXMinimizedAttribute as CFString, &minValue) == .success
                 && (minValue as? Bool == true)
             isMinimised ? (minimised += 1) : (visible += 1)
+        }
+        // AX can briefly report an empty list when a window enters full screen
+        // or moves to another Space. WindowServer can still see that window.
+        // An uncertain count must never turn a Space switch into a quit request.
+        if visible == 0 && minimised == 0 {
+            guard let list = CGWindowListCopyWindowInfo(.optionAll, kCGNullWindowID) as? [[String: Any]] else { return nil }
+            if list.contains(where: {
+               ($0[kCGWindowOwnerPID as String] as? NSNumber)?.int32Value == pid &&
+               ($0[kCGWindowLayer as String] as? NSNumber)?.intValue == 0
+            }) { return nil }
         }
         return (visible, minimised)
     }
