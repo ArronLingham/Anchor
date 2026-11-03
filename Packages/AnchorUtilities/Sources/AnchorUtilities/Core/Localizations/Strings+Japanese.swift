@@ -875,7 +875,7 @@ extension Strings {
         keyDebounceRemoveKey: "キーを削除",
         cleaningPanelCaption: "安全に掃除できるようキーボードをロックします。",
         cleaningOverlayTitle: "クリーニングのためキーボードをロック中",
-        cleaningOverlaySubtitle: "Escキーを5回押すとロックを解除します",
+        cleaningOverlaySubtitle: "Escキーを5秒間押し続けるとロックを解除します",
         cleaningOverlayUnlock: "ロックを解除",
         cleaningOverlayMouseHint: "マウスとトラックパッドはそのまま使えます",
         cleaningKeepScreenVisibleToggle: "画面を表示したままにする",

@@ -14,9 +14,8 @@ import SwiftUI
 /// The very same tap watches for the unlock gesture, so there is always a way
 /// back.
 ///
-/// Two deliberate escapes guarantee no one is ever stranded:
-///   1. press Escape five times in a row,
-///   2. click Unlock on the overlay (pointer movement and clicks stay available).
+/// Hold Escape for five continuous seconds to unlock. Tap/session failures
+/// still fail open so a broken input filter cannot strand the user.
 ///
 /// Requires Accessibility, like the app's other event taps. If it is missing the
 /// tap can't be created, so we never lock the keyboard with no way to unlock it.
@@ -43,6 +42,10 @@ final class CleaningModeManager: ObservableObject {
         .rightMouseUp,
         .otherMouseDown,
         .otherMouseUp,
+        .mouseMoved,
+        .leftMouseDragged,
+        .rightMouseDragged,
+        .otherMouseDragged,
         systemDefinedEventType,
         gestureEventType,
     ].reduce(CGEventMask(0)) { mask, type in
@@ -50,37 +53,24 @@ final class CleaningModeManager: ObservableObject {
     }
 
     @Published private(set) var isActive = false
-    /// Consecutive Escape presses so far (0...unlockThreshold). The
-    /// overlay shows this as progress.
+    /// Whole seconds of the current Escape hold (0...unlockThreshold).
     @Published private(set) var unlockProgress = 0
 
-    /// Deliberate Escape presses needed to unlock. Other keys reset the count so
-    /// wiping the keyboard cannot complete the gesture accidentally.
+    /// Seconds of continuous Escape hold required to unlock.
     let unlockThreshold = 5
+    private var escapeHold = CleaningEscapeHold(requiredKeyCode: 53, duration: 5)
+    private var escapeTimer: DispatchSourceTimer?
 
     private var tap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
     private var overlays: [NSPanel] = []
     private var screenObserver: NSObjectProtocol?
     private var shouldRestoreSuspendedFeaturesOnSessionReturn = false
-    // Mouse events still pass through Cleaning Mode. We only remember the
-    // down/up lifecycle so teardown never cuts a click in half.
+    // Track button down/up while swallowing mouse input so teardown never
+    // cuts a physical click in half.
     private var mouseReleaseGate = CleaningMouseReleaseGate()
     /// Ends a user unlock's wait for a release this tap never sees.
     private var releaseDeadline: DispatchWorkItem?
-
-    /// The unlock-gesture state machine (pure, unit-tested separately).
-    /// The 6s press window forgives hesitant, deliberate presses — at 2s a user
-    /// pressing Escape slower than once per two seconds could never unlock
-    /// (progress restarted at 1 on every press). The window's one remaining job
-    /// is rejecting five isolated Esc-only contacts spread across a long wipe:
-    /// every other key resets the count — modifiers included, they reach the
-    /// counter as flags-changed events — and auto-repeat never counts, but a
-    /// cloth can strike Escape alone. Widening to 6s weakens that guard on
-    /// purpose — a gesture a deliberate user cannot complete protects nothing.
-    private lazy var unlock = CleaningUnlockCounter(requiredKeyCode: Self.escapeKeyCode,
-                                                    threshold: unlockThreshold,
-                                                    pressWindow: 6.0)
 
     private init() {
         // A switched-away login session cannot keep a filter tap in the input
@@ -127,8 +117,7 @@ final class CleaningModeManager: ObservableObject {
         // the cleaning overlay.
         MouseButtonShortcutService.shared.suspend()
         RadialMenuService.shared.suspend()
-        unlock.reset()
-        unlockProgress = 0
+        resetEscapeHold()
         isActive = true
         installScreenObserver()
         showOverlays()
@@ -189,8 +178,7 @@ final class CleaningModeManager: ObservableObject {
         removeTap()
         removeScreenObserver()
         hideOverlays()
-        unlock.reset()
-        unlockProgress = 0
+        resetEscapeHold()
         isActive = false
         guard restoreSuspendedFeatures else {
             shouldRestoreSuspendedFeaturesOnSessionReturn = true
@@ -259,6 +247,7 @@ final class CleaningModeManager: ObservableObject {
                 // already requested deactivation, fail open after the callback.
                 let shouldFinishUserDeactivation = mouseReleaseGate.deactivationPending
                 mouseReleaseGate.invalidateTrackedPresses()
+                resetEscapeHold()
                 CGEvent.tapEnable(tap: tap, enable: true)
                 if shouldFinishUserDeactivation {
                     scheduleUserDeactivation()
@@ -272,18 +261,17 @@ final class CleaningModeManager: ObservableObject {
             return Unmanaged.passUnretained(event)
         }
 
-        // Mouse clicks are never locked. Observe only their boundaries so a
-        // user-requested teardown can wait for a matching real release.
+        // Mouse input is swallowed while cleaning, including the overlay.
         if handleMouseButton(type: type, event: event) {
-            return Unmanaged.passUnretained(event)
+            return nil
         }
 
-        // Feed key-downs to the unlock state machine. Auto-repeat (holding a key)
-        // is ignored, so only distinct, deliberate taps of the same key count.
         if type == .keyDown {
             let code = event.getIntegerValueField(.keyboardEventKeycode)
             let isRepeat = event.getIntegerValueField(.keyboardEventAutorepeat) != 0
             registerUnlockKeyDown(code: code, isRepeat: isRepeat)
+        } else if type == .keyUp {
+            if event.getIntegerValueField(.keyboardEventKeycode) == Self.escapeKeyCode { resetEscapeHold() }
         } else if type == .flagsChanged {
             // Shift, control, option, command, fn and caps lock arrive here rather
             // than as key-downs, and they are the keys nearest Escape — a cloth
@@ -299,8 +287,7 @@ final class CleaningModeManager: ObservableObject {
             registerUnlockKeyDown(code: systemKey.code, isRepeat: systemKey.isRepeat)
         }
 
-        // Swallow keys, scrolling and trackpad gestures while the lock is on.
-        // Pointer movement and clicks remain available for the Unlock button.
+        // Swallow all keyboard, mouse, scroll and trackpad input while locked.
         return nil
     }
 
@@ -348,15 +335,30 @@ final class CleaningModeManager: ObservableObject {
     }
 
     private func registerUnlockKeyDown(code: Int64, isRepeat: Bool) {
-        let unlocked = unlock.registerKeyDown(code: code,
-                                              time: ProcessInfo.processInfo.systemUptime,
-                                              isRepeat: isRepeat)
-        unlockProgress = unlock.progress
-        if unlocked {
-            // deactivate() only records the request here; actual teardown is
-            // scheduled after this tap callback has returned.
-            deactivate()
+        if code != Self.escapeKeyCode { resetEscapeHold(); return }
+        escapeHold.keyDown(code: code, time: ProcessInfo.processInfo.systemUptime, isRepeat: isRepeat)
+        guard escapeHold.pressedSince != nil, escapeTimer == nil else { return }
+        let timer = DispatchSource.makeTimerSource(queue: .main)
+        timer.schedule(deadline: .now() + .milliseconds(100), repeating: .milliseconds(100))
+        timer.setEventHandler { [weak self] in
+            guard let self, self.isActive, self.escapeHold.pressedSince != nil else { return }
+            let now = ProcessInfo.processInfo.systemUptime
+            let elapsed = self.escapeHold.elapsed(at: now)
+            self.unlockProgress = min(self.unlockThreshold, Int(elapsed))
+            if self.escapeHold.isComplete(at: now) {
+                self.resetEscapeHold()
+                self.deactivate()
+            }
         }
+        escapeTimer = timer
+        timer.resume()
+    }
+
+    private func resetEscapeHold() {
+        escapeTimer?.cancel()
+        escapeTimer = nil
+        escapeHold.reset()
+        unlockProgress = 0
     }
 
     // MARK: - Overlay

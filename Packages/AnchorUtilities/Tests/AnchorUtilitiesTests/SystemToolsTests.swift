@@ -177,15 +177,19 @@ final class SystemToolsTests: XCTestCase {
         XCTAssertTrue(conversation.serverRequestSeen, "Recovery must stop for a request even when it arrived before turn/start's reply")
     }
 
-    func testCleaningUnlockIgnoresRepeatAndRequiresDeliberateEscapes() {
-        var unlock = CleaningUnlockCounter(requiredKeyCode: 53, threshold: 5, pressWindow: 6)
-        for n in 0..<10 { XCTAssertFalse(unlock.registerKeyDown(code: 53, time: Double(n), isRepeat: true)) }
-        XCTAssertEqual(unlock.progress, 0)
-        for n in 0..<4 { XCTAssertFalse(unlock.registerKeyDown(code: 53, time: Double(n), isRepeat: false)) }
-        XCTAssertFalse(unlock.registerKeyDown(code: 0, time: 4, isRepeat: false))
-        XCTAssertEqual(unlock.progress, 0)
-        for n in 5..<9 { XCTAssertFalse(unlock.registerKeyDown(code: 53, time: Double(n), isRepeat: false)) }
-        XCTAssertTrue(unlock.registerKeyDown(code: 53, time: 9, isRepeat: false))
+    func testCleaningUnlockRequiresContinuousFiveSecondHold() {
+        var hold = CleaningEscapeHold(requiredKeyCode: 53, duration: 5)
+        hold.keyDown(code: 53, time: 0, isRepeat: true)
+        XCTAssertNil(hold.pressedSince)
+        hold.keyDown(code: 53, time: 1, isRepeat: false)
+        hold.keyDown(code: 53, time: 3, isRepeat: true)
+        XCTAssertFalse(hold.isComplete(at: 5.9))
+        hold.keyUp(code: 53)
+        XCTAssertFalse(hold.isComplete(at: 7))
+        hold.keyDown(code: 53, time: 8, isRepeat: false)
+        XCTAssertTrue(hold.isComplete(at: 13))
+        hold.keyDown(code: 0, time: 13.1, isRepeat: false)
+        XCTAssertFalse(hold.isComplete(at: 14))
     }
 
     func testCodexCancellationEndsABlockedRPC() throws {

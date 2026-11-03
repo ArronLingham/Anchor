@@ -876,7 +876,7 @@ extension Strings {
         keyDebounceRemoveKey: "移除按鍵",
         cleaningPanelCaption: "鎖定鍵盤，方便安全清潔。",
         cleaningOverlayTitle: "鍵盤已鎖定，方便清潔",
-        cleaningOverlaySubtitle: "按 Esc 鍵 5 次即可解鎖",
+        cleaningOverlaySubtitle: "按住 Esc 鍵 5 秒即可解鎖",
         cleaningOverlayUnlock: "解鎖",
         cleaningOverlayMouseHint: "滑鼠和觸控板仍可使用",
         cleaningKeepScreenVisibleToggle: "保持螢幕可見",

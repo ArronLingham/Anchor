@@ -875,7 +875,7 @@ extension Strings {
         keyDebounceRemoveKey: "Tuşu kaldır",
         cleaningPanelCaption: "Güvenle temizleyebilmen için klavyeyi kilitler.",
         cleaningOverlayTitle: "Klavye temizlik için kilitlendi",
-        cleaningOverlaySubtitle: "Kilidi açmak için Esc tuşuna 5 kez bas",
+        cleaningOverlaySubtitle: "Kilidi açmak için Esc tuşunu 5 saniye basılı tut",
         cleaningOverlayUnlock: "Kilidi aç",
         cleaningOverlayMouseHint: "Fare ve izleme dörtgeni çalışmaya devam eder",
         cleaningKeepScreenVisibleToggle: "Ekranı görünür tut",

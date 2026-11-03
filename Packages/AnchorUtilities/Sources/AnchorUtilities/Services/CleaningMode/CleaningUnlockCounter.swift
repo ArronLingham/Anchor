@@ -3,49 +3,24 @@
 
 import Foundation
 
-/// Pure state machine for the cleaning-mode unlock gesture: it counts deliberate
-/// presses of one required key. Other keys reset the count, auto-repeat is ignored,
-/// and a long pause restarts it. Extracted from the event tap so the logic can be
-/// tested deterministically.
-struct CleaningUnlockCounter {
+/// Pure state for a continuous Escape hold, separate from event-tap timing.
+struct CleaningEscapeHold {
     let requiredKeyCode: Int64
-    let threshold: Int
-    /// A required-key press only counts if it lands within this window of the previous
-    /// one; a longer gap restarts the count.
-    let pressWindow: TimeInterval
+    let duration: TimeInterval
+    private(set) var pressedSince: TimeInterval?
 
-    private(set) var progress = 0
-    private var lastKeyTime: TimeInterval = -.greatestFiniteMagnitude
-
-    init(requiredKeyCode: Int64, threshold: Int, pressWindow: TimeInterval) {
-        self.requiredKeyCode = requiredKeyCode
-        self.threshold = threshold
-        self.pressWindow = pressWindow
+    mutating func keyDown(code: Int64, time: TimeInterval, isRepeat: Bool) {
+        guard code == requiredKeyCode else { reset(); return }
+        if !isRepeat && pressedSince == nil { pressedSince = time }
     }
 
-    /// Registers a key-down at `time` (a monotonic clock). `isRepeat` is true for
-    /// auto-repeat events, which never count. Returns true once `progress` reaches
-    /// the threshold, signalling the caller to unlock.
-    mutating func registerKeyDown(code: Int64, time: TimeInterval, isRepeat: Bool) -> Bool {
-        guard !isRepeat else { return false }
-        guard code == requiredKeyCode else {
-            progress = 0
-            lastKeyTime = -.greatestFiniteMagnitude
-            return false
-        }
-        if time - lastKeyTime <= pressWindow {
-            progress += 1
-        } else {
-            progress = 1
-        }
-        lastKeyTime = time
-        return progress >= threshold
+    mutating func keyUp(code: Int64) {
+        if code == requiredKeyCode { reset() }
     }
 
-    mutating func reset() {
-        progress = 0
-        lastKeyTime = -.greatestFiniteMagnitude
-    }
+    func elapsed(at time: TimeInterval) -> TimeInterval { pressedSince.map { max(0, time - $0) } ?? 0 }
+    func isComplete(at time: TimeInterval) -> Bool { pressedSince != nil && elapsed(at: time) >= duration }
+    mutating func reset() { pressedSince = nil }
 }
 
 struct CleaningSystemKeyEvent: Equatable {

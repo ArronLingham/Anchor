@@ -846,7 +846,7 @@ extension Strings {
         keyDebounceRemoveKey: "Видалити клавішу",
         cleaningPanelCaption: "Блокує клавіатуру, щоб можна було безпечно почистити її.",
         cleaningOverlayTitle: "Клавіатуру заблоковано для чищення",
-        cleaningOverlaySubtitle: "Натисніть Esc 5 разів, щоб розблокувати",
+        cleaningOverlaySubtitle: "Утримуйте Esc 5 секунд, щоб розблокувати",
         cleaningOverlayUnlock: "Розблокувати",
         cleaningOverlayMouseHint: "Миша та трекпед продовжують працювати",
         cleaningKeepScreenVisibleToggle: "Залишати екран видимим",

@@ -42,24 +42,6 @@ struct CleaningOverlayView: View {
             fullProgressDots
                 .padding(.top, 2)
 
-            Button(action: { manager.deactivate() }) {
-                Text(l10n.s.cleaningOverlayUnlock)
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(.black)
-                    .frame(minWidth: 130)
-                    .padding(.vertical, 10)
-                    .padding(.horizontal, 18)
-                    .background(
-                        Capsule(style: .continuous)
-                            .fill(Color.white)
-                    )
-            }
-            .buttonStyle(.plain)
-            .padding(.top, 6)
-
-            Text(l10n.s.cleaningOverlayMouseHint)
-                .font(.system(size: 12))
-                .foregroundStyle(.white.opacity(0.5))
         }
         .padding(44)
         .frame(maxWidth: 460)
@@ -91,12 +73,6 @@ struct CleaningOverlayView: View {
                     }
                 }
 
-                Button(action: { manager.deactivate() }) {
-                    Text(l10n.s.cleaningOverlayUnlock)
-                        .font(.system(size: 11, weight: .semibold))
-                }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.small)
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 10)

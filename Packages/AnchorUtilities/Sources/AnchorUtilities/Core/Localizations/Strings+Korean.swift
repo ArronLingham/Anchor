@@ -876,7 +876,7 @@ extension Strings {
         keyDebounceRemoveKey: "키 제거",
         cleaningPanelCaption: "안전하게 청소할 수 있도록 키보드를 잠급니다.",
         cleaningOverlayTitle: "청소를 위해 키보드 잠김",
-        cleaningOverlaySubtitle: "Esc 키를 5번 눌러 잠금을 해제하세요",
+        cleaningOverlaySubtitle: "Esc 키를 5초 동안 길게 눌러 잠금을 해제하세요",
         cleaningOverlayUnlock: "잠금 해제",
         cleaningOverlayMouseHint: "마우스와 트랙패드는 계속 사용할 수 있습니다",
         cleaningKeepScreenVisibleToggle: "화면을 켠 상태로 유지",

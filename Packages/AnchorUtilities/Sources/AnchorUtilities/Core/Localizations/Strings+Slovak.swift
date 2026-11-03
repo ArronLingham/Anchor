@@ -875,7 +875,7 @@ extension Strings {
         keyDebounceRemoveKey: "Odstrániť kláves",
         cleaningPanelCaption: "Uzamkne klávesnicu, aby ste ju mohli bezpečne vyčistiť.",
         cleaningOverlayTitle: "Klávesnica je uzamknutá na čistenie",
-        cleaningOverlaySubtitle: "Odomknete piatimi stlačeniami Escape",
+        cleaningOverlaySubtitle: "Podržte Escape 5 sekúnd na odomknutie",
         cleaningOverlayUnlock: "Odomknúť",
         cleaningOverlayMouseHint: "Myš a trackpad fungujú ďalej",
         cleaningKeepScreenVisibleToggle: "Ponechať obrazovku viditeľnú",
