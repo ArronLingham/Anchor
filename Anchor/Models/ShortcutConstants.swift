@@ -29,6 +29,7 @@ extension KeyboardShortcuts.Name {
     static let clipboardHistoryPanel = Self("clipboardHistoryPanel", default: .init(.c, modifiers: [.shift, .command]))
     /// Opens the application launcher panel.
     static let toggleLauncher = Self("toggleLauncher", default: .init(.space, modifiers: [.option]))
+    static let showAllDesktopDocks = Self("showAllDesktopDocks", default: .init(.d, modifiers: [.control, .option, .command]))
     /// Push-to-talk: hold to dictate, release to paste the transcript.
     static let pushToTalkDictation = Self("pushToTalkDictation", default: .init(.d, modifiers: [.shift, .command]))
     static let toggleSneakPeek = Self("toggleSneakPeek", default: .init(.h, modifiers: [.command, .shift]))

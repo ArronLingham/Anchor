@@ -7,6 +7,7 @@ import IOKit.ps
 final class DesktopWorkspaceManager: ObservableObject {
     static let shared = DesktopWorkspaceManager()
     static let storageKey = "Anchor.desktopWorkspace.v1"
+    private let recentAppsStorageKey = "Anchor.desktopDock.recentApps.v1"
     private let preferences: UserDefaults
 
     @Published var configuration: DesktopWorkspaceConfiguration {
@@ -21,7 +22,8 @@ final class DesktopWorkspaceManager: ObservableObject {
             } catch { status = "Could not save workspace: \(error.localizedDescription)" }
         }
     }
-    @Published private(set) var activeModeID: UUID?
+    @Published private(set) var activeModeID: UUID? { didSet { dockController?.reconcile() } }
+    @Published private(set) var forceShowAllDocks = false
     @Published private(set) var applying = false
     @Published var status = "Choose a mode, or save your current layout."
     @Published private(set) var issues: [String] = []
@@ -60,6 +62,17 @@ final class DesktopWorkspaceManager: ObservableObject {
         for name in [NSWorkspace.didLaunchApplicationNotification, NSWorkspace.didTerminateApplicationNotification] {
             observe(NSWorkspace.shared.notificationCenter, name) { [weak self] in self?.refreshRunningApps() }
         }
+        observe(NSWorkspace.shared.notificationCenter, NSWorkspace.didActivateApplicationNotification) { [weak self] in
+            guard let self,
+                  let app = NSWorkspace.shared.frontmostApplication,
+                  app.processIdentifier != ProcessInfo.processInfo.processIdentifier,
+                  let bundleID = app.bundleIdentifier else { return }
+            var recent = self.preferences.stringArray(forKey: self.recentAppsStorageKey) ?? []
+            recent.removeAll { $0 == bundleID }
+            recent.insert(bundleID, at: 0)
+            self.preferences.set(Array(recent.prefix(20)), forKey: self.recentAppsStorageKey)
+            self.dockController?.reconcile()
+        }
         if let source = IOPSNotificationCreateRunLoopSource({ context in
             guard let context else { return }
             let manager = Unmanaged<DesktopWorkspaceManager>.fromOpaque(context).takeUnretainedValue()
@@ -93,22 +106,42 @@ final class DesktopWorkspaceManager: ObservableObject {
 
     private func refreshRunningApps() {
         runningBundleIDs = Set(NSWorkspace.shared.runningApplications.compactMap(\.bundleIdentifier))
+        dockController?.reconcile()
     }
 
     func recentApps(for dockID: UUID) -> [WorkspaceApp] {
         guard let dock = configuration.docks.first(where: { $0.id == dockID }) else { return [] }
         let pinned = Set(dock.apps.map(\.bundleID))
-        return NSWorkspace.shared.runningApplications
+        var seen = pinned
+        var result = (preferences.stringArray(forKey: recentAppsStorageKey) ?? []).compactMap { bundleID -> WorkspaceApp? in
+            guard !seen.contains(bundleID),
+                  let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID),
+                  let app = WorkspaceApp(url: url) else { return nil }
+            seen.insert(bundleID)
+            return app
+        }
+        let runningApps = NSWorkspace.shared.runningApplications
             .filter { $0.activationPolicy == .regular && $0.processIdentifier != ProcessInfo.processInfo.processIdentifier }
-            .compactMap(WorkspaceApp.init)
-            .filter { !pinned.contains($0.bundleID) }
-            .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+            .compactMap { app -> (WorkspaceApp, Date)? in
+                guard let workspaceApp = WorkspaceApp(app) else { return nil }
+                return (workspaceApp, app.launchDate ?? .distantPast)
+            }
+            .filter { !seen.contains($0.0.bundleID) }
+            .sorted { $0.1 > $1.1 }
+            .map(\.0)
+        result.append(contentsOf: runningApps)
+        return result
     }
 
     func dockEntries(for id: UUID, includeRecent: Bool) -> [WorkspaceApp] {
         guard let dock = configuration.docks.first(where: { $0.id == id }) else { return [] }
         guard includeRecent else { return dock.apps }
         return dock.apps + recentApps(for: id)
+    }
+
+    func toggleShowAllDocks() {
+        forceShowAllDocks.toggle()
+        dockController?.reconcile()
     }
 
     func scheduleEnvironmentCheck() {

@@ -48,6 +48,49 @@ struct DesktopDock: Codable, Equatable, Identifiable {
     var autoHide = false
     var workspaceModeIDs: [UUID] = []
     var apps: [WorkspaceApp] = []
+
+    init(id: UUID = UUID(), name: String = "New Dock", enabled: Bool = true, vertical: Bool = true,
+         displayID: String = "", x: Double = 0.02, y: Double = 0.5, iconSize: Double = 40,
+         gridColumns: Int? = nil, standardIconSize: Bool = true, showsRecentApps: Bool = false,
+         autoHide: Bool = false, workspaceModeIDs: [UUID] = [], apps: [WorkspaceApp] = []) {
+        self.id = id
+        self.name = name
+        self.enabled = enabled
+        self.vertical = vertical
+        self.displayID = displayID
+        self.x = x
+        self.y = y
+        self.iconSize = iconSize
+        self.gridColumns = gridColumns
+        self.standardIconSize = standardIconSize
+        self.showsRecentApps = showsRecentApps
+        self.autoHide = autoHide
+        self.workspaceModeIDs = workspaceModeIDs
+        self.apps = apps
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, name, enabled, vertical, displayID, x, y, iconSize, gridColumns
+        case standardIconSize, showsRecentApps, autoHide, workspaceModeIDs, apps
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        id = try values.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        name = try values.decodeIfPresent(String.self, forKey: .name) ?? "New Dock"
+        enabled = try values.decodeIfPresent(Bool.self, forKey: .enabled) ?? true
+        vertical = try values.decodeIfPresent(Bool.self, forKey: .vertical) ?? true
+        displayID = try values.decodeIfPresent(String.self, forKey: .displayID) ?? ""
+        x = try values.decodeIfPresent(Double.self, forKey: .x) ?? 0.02
+        y = try values.decodeIfPresent(Double.self, forKey: .y) ?? 0.5
+        iconSize = try values.decodeIfPresent(Double.self, forKey: .iconSize) ?? 40
+        gridColumns = try values.decodeIfPresent(Int.self, forKey: .gridColumns)
+        standardIconSize = try values.decodeIfPresent(Bool.self, forKey: .standardIconSize) ?? true
+        showsRecentApps = try values.decodeIfPresent(Bool.self, forKey: .showsRecentApps) ?? false
+        autoHide = try values.decodeIfPresent(Bool.self, forKey: .autoHide) ?? false
+        workspaceModeIDs = try values.decodeIfPresent([UUID].self, forKey: .workspaceModeIDs) ?? []
+        apps = try values.decodeIfPresent([WorkspaceApp].self, forKey: .apps) ?? []
+    }
 }
 
 enum WorkspaceDisplayCondition: String, Codable, CaseIterable {

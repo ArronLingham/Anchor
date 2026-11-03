@@ -1203,6 +1203,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             self, selector: #selector(onScreenUnlocked(_:)),
             name: NSNotification.Name(rawValue: "com.apple.screenIsUnlocked"), object: nil)
 
+        Self.migrateReversedLauncherCommandBarShortcuts()
+
         KeyboardShortcuts.onKeyDown(for: .toggleDashboard) {
             guard Defaults[.enableShortcuts] else { return }
             DashboardWindowController.shared.toggle()
@@ -1211,6 +1213,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         KeyboardShortcuts.onKeyDown(for: .toggleLauncher) {
             guard Defaults[.enableShortcuts], Defaults[.enableLauncher] else { return }
             LauncherPanelManager.shared.toggle()
+        }
+
+        KeyboardShortcuts.onKeyDown(for: .showAllDesktopDocks) {
+            guard Defaults[.enableShortcuts] else { return }
+            DesktopWorkspaceManager.shared.toggleShowAllDocks()
         }
 
         LauncherHotCornerMonitor.shared.setup()
@@ -1590,6 +1597,19 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 }
             }
         }
+    }
+
+    private static func migrateReversedLauncherCommandBarShortcuts() {
+        let domain = (Bundle.main.bundleIdentifier ?? "com.arronlingham.Anchor") + ".utilities"
+        guard let store = UserDefaults(suiteName: domain),
+              !store.bool(forKey: "Anchor.launcherCommandBarSwap.v1"),
+              store.string(forKey: "commandBarShortcut") == "command:49",
+              let launcher = KeyboardShortcuts.getShortcut(for: .toggleLauncher),
+              launcher.key == .space, launcher.modifiers == [.option] else { return }
+        store.set("option:49", forKey: "commandBarShortcut")
+        KeyboardShortcuts.setShortcut(.init(.space, modifiers: [.command]), for: .toggleLauncher)
+        Defaults[.launcherUsesCommandSpace] = false
+        store.set(true, forKey: "Anchor.launcherCommandBarSwap.v1")
     }
 
     private func registerOptionalShortcutHandlers() {

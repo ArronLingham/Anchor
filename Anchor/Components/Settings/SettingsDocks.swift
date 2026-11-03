@@ -1,4 +1,5 @@
 import AppKit
+import KeyboardShortcuts
 import SwiftUI
 
 struct SettingsDocks: View {
@@ -7,6 +8,7 @@ struct SettingsDocks: View {
 
     var body: some View {
         Section {
+            KeyboardShortcuts.Recorder("Show all docks:", name: .showAllDesktopDocks)
             HStack {
                 Text("Create separate docks for work, communication, or tools.")
                 Spacer()
