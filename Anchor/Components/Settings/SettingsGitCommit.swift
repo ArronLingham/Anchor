@@ -236,16 +236,36 @@ struct GitCommitScheduleSection: View {
     @Default(.gitDailyCommitWindowStartHour) private var windowStart
     @Default(.gitDailyCommitWindowEndHour) private var windowEnd
     @Default(.gitDailyCommitCount) private var commitCount
+    @State private var countText = ""
+    @FocusState private var editingCount: Bool
 
     let highlightID: (String) -> String
 
     var body: some View {
         Section("Schedule") {
-            Stepper(value: $commitCount, in: 1...12) {
+            Stepper(value: $commitCount, in: 1...(Int.max - 1)) {
                 LabeledContent("Commits per day") {
-                    Text("\(commitCount)")
+                    TextField("Commits per day", text: $countText)
+                        .labelsHidden()
+                        .focused($editingCount)
+                        .multilineTextAlignment(.trailing)
                         .monospacedDigit()
-                        .foregroundStyle(.secondary)
+                        .frame(width: 90)
+                        .onAppear { countText = String(commitCount) }
+                        .onChange(of: countText) { _, input in
+                            let digits = String(input.filter { $0.isASCII && $0.isNumber })
+                            if input != digits { countText = digits }
+                            if let value = Int(digits), value > 0, value < Int.max {
+                                commitCount = value
+                            }
+                        }
+                        .onSubmit { countText = String(commitCount) }
+                        .onChange(of: editingCount) { _, focused in
+                            if !focused { countText = String(commitCount) }
+                        }
+                        .onChange(of: commitCount) { _, value in
+                            if Int(countText) != value { countText = String(value) }
+                        }
                 }
             }
             .disabled(!enabled)
