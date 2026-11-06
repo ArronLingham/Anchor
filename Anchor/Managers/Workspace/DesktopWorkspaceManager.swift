@@ -9,6 +9,24 @@ final class DesktopWorkspaceManager: ObservableObject {
     static let storageKey = "Anchor.desktopWorkspace.v1"
     private let recentAppsStorageKey = "Anchor.desktopDock.recentApps.v1"
     private let preferences: UserDefaults
+    private static let modesEnabledKey = "Anchor.workspaceModes.enabled"
+
+    @Published var modesEnabled: Bool {
+        didSet {
+            preferences.set(modesEnabled, forKey: Self.modesEnabledKey)
+            if modesEnabled {
+                automation.resume()
+                manualHold = false
+                scheduleEnvironmentCheck()
+            } else {
+                environmentWork?.cancel()
+                applyTask?.cancel()
+                automation = WorkspaceAutomationState()
+                manualHold = false
+                status = "Workspace Modes are disabled. Changes already made remain in place."
+            }
+        }
+    }
 
     @Published var configuration: DesktopWorkspaceConfiguration {
         didSet {
@@ -40,6 +58,7 @@ final class DesktopWorkspaceManager: ObservableObject {
 
     init(preferences: UserDefaults = .standard) {
         self.preferences = preferences
+        modesEnabled = (preferences.object(forKey: Self.modesEnabledKey) as? Bool) ?? true
         if let data = preferences.data(forKey: Self.storageKey) {
             do { configuration = try JSONDecoder().decode(DesktopWorkspaceConfiguration.self, from: data) }
             catch {
@@ -145,7 +164,7 @@ final class DesktopWorkspaceManager: ObservableObject {
     }
 
     func scheduleEnvironmentCheck() {
-        guard started else { return }
+        guard started, modesEnabled else { return }
         environmentWork?.cancel()
         let work = DispatchWorkItem { [weak self] in self?.evaluateEnvironment() }
         environmentWork = work
@@ -174,13 +193,14 @@ final class DesktopWorkspaceManager: ObservableObject {
     }
 
     func resumeAutomation() {
+        guard modesEnabled else { return }
         automation.resume()
         manualHold = false
         scheduleEnvironmentCheck()
     }
 
     func apply(_ id: UUID, manually: Bool = true) {
-        guard !applying, let mode = configuration.modes.first(where: { $0.id == id }) else { return }
+        guard modesEnabled, !applying, let mode = configuration.modes.first(where: { $0.id == id }) else { return }
         if manually { automation.holdManually(); manualHold = true }
         applying = true
         issues = []

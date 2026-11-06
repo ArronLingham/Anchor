@@ -1154,6 +1154,7 @@ struct SettingsView: View {
             SettingsSearchEntry(tab: .devices, title: "Show AirPods listening mode changes", keywords: ["airpods", "listening", "mode", "changes", "devices"], highlightID: SettingsTab.devices.highlightID(for: "Show AirPods listening mode changes")),
             SettingsSearchEntry(tab: .lockScreen, title: "Enable album art parallax", keywords: ["album", "art", "parallax", "lock screen"], highlightID: SettingsTab.lockScreen.highlightID(for: "Enable album art parallax")),
             SettingsSearchEntry(tab: .media, title: "Customize the lock screen player", keywords: ["customize", "lock", "screen", "player", "media"], highlightID: SettingsTab.media.highlightID(for: "Customize the lock screen player")),
+            SettingsSearchEntry(tab: .workspaceModes, title: "Enable Workspace Modes", keywords: ["workspace", "modes", "workspace modes"], highlightID: SettingsTab.workspaceModes.highlightID(for: "Enable Workspace Modes")),
         ]
 
     private func isTabVisible(_ tab: SettingsTab) -> Bool {

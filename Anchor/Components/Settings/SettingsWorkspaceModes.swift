@@ -8,7 +8,14 @@ struct SettingsWorkspaceModes: View {
 
     var body: some View {
         Section {
+            Toggle("Enable Workspace Modes", isOn: $manager.modesEnabled)
+                .settingsHighlight(id: highlightID("Enable Workspace Modes"))
+            Text("Disabling stops mode switching and cancels any mode being applied. Saved modes and docks are kept.")
+                .font(.caption).foregroundStyle(.secondary)
+        }
+        Section {
             Toggle("Automatically switch modes", isOn: $manager.configuration.automationEnabled)
+                .disabled(!manager.modesEnabled)
                 .settingsHighlight(id: highlightID("Automatically switch modes"))
                 .onChange(of: manager.configuration.automationEnabled) { _, enabled in
                     if enabled { manager.resumeAutomation() }
@@ -70,7 +77,7 @@ private struct WorkspaceModeEditor: View {
                         Text(manager.applying ? "Applying…" : "Apply Mode")
                     }
                 }
-                    .disabled(manager.applying).buttonStyle(.borderedProminent)
+                    .disabled(manager.applying || !manager.modesEnabled).buttonStyle(.borderedProminent)
                 if manager.applying { Button("Stop") { manager.cancelApply() } }
                 Button("Capture Current Apps & Layout") { manager.captureLayout(for: mode.id) }.disabled(manager.applying)
             }
@@ -238,10 +245,10 @@ struct WorkspaceModesMenu: View {
                 manager.apply(mode.id)
             } label: {
                 Label(mode.name + (manager.activeModeID == mode.id ? " ✓" : ""), systemImage: mode.symbol)
-            }.disabled(manager.applying)
+            }.disabled(manager.applying || !manager.modesEnabled)
         }
         Divider()
-        if manager.manualHold && manager.configuration.automationEnabled {
+        if manager.modesEnabled && manager.manualHold && manager.configuration.automationEnabled {
             Button("Resume Automatic Switching") { manager.resumeAutomation() }
         }
         if manager.applying { Button("Stop Applying Mode") { manager.cancelApply() } }
