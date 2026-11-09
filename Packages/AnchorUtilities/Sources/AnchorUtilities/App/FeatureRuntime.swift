@@ -503,6 +503,7 @@ final class FeatureRuntime: ObservableObject {
         .monitorNetwork: { FeatureRuntime.syncMonitor() },
         .monitorDisk: { FeatureRuntime.syncMonitor() },
         .monitorPower: { FeatureRuntime.syncMonitor() },
+        .connectedDevices: { SystemMonitor.shared.planDidChange() },
         .fanControl: {
             SystemMonitor.shared.planDidChange()
             let defaults = UtilityPreferences.standard

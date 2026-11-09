@@ -5,6 +5,48 @@ import XCTest
 
 final class SystemToolsTests: XCTestCase {
     @MainActor
+    func testConnectedDeviceDemandResyncsWithoutStoppingOtherMetrics() {
+        let domain = "Anchor.monitor-device-test." + UUID().uuidString
+        let defaults = UserDefaults(suiteName: domain)!
+        defer { defaults.removePersistentDomain(forName: domain) }
+        defaults.set(true, forKey: AppFeature.connectedDevices.availabilityKey)
+        let monitor = SystemMonitor(preferences: defaults, observePower: false)
+        monitor.setMenuPanelNeeds(SystemMonitorPanelNeeds(connectedDevices: true))
+        XCTAssertTrue(monitor.hasScheduledSampling)
+        XCTAssertTrue(monitor.requestedSamplingKinds(defaults: defaults).contains("connectedDevices"))
+
+        defaults.set(false, forKey: AppFeature.connectedDevices.availabilityKey)
+        monitor.planDidChange()
+        XCTAssertFalse(monitor.hasScheduledSampling, "The last disabled metric must stop sampling")
+        defaults.set(true, forKey: AppFeature.connectedDevices.availabilityKey)
+        monitor.planDidChange()
+        XCTAssertTrue(monitor.hasScheduledSampling, "A visible device panel must resume")
+
+        defaults.set(true, forKey: AppFeature.monitorCPU.availabilityKey)
+        monitor.setMenuPanelNeeds(SystemMonitorPanelNeeds(cpu: true, connectedDevices: true))
+        defaults.set(false, forKey: AppFeature.connectedDevices.availabilityKey)
+        monitor.planDidChange()
+        XCTAssertTrue(monitor.hasScheduledSampling, "CPU still needs the shared timer")
+        XCTAssertEqual(monitor.requestedSamplingKinds(defaults: defaults), ["cpu"])
+        monitor.setMenuPanelNeeds(.none)
+        XCTAssertFalse(monitor.hasScheduledSampling)
+
+        defaults.set(true, forKey: DefaultsKey.monitorBackgroundSampling)
+        defaults.set(true, forKey: DefaultsKey.menuBarConnectedDevices)
+        defaults.set(true, forKey: AppFeature.connectedDevices.availabilityKey)
+        monitor.setMenuBarActive(true)
+        XCTAssertTrue(monitor.hasScheduledSampling, "A pinned device metric must sample")
+        defaults.set(false, forKey: AppFeature.connectedDevices.availabilityKey)
+        monitor.planDidChange()
+        XCTAssertFalse(monitor.hasScheduledSampling)
+        defaults.set(true, forKey: AppFeature.connectedDevices.availabilityKey)
+        monitor.planDidChange()
+        XCTAssertTrue(monitor.hasScheduledSampling, "The saved pin must resume without being recreated")
+        monitor.setMenuBarActive(false)
+        XCTAssertFalse(monitor.hasScheduledSampling)
+    }
+
+    @MainActor
     func testBackgroundSamplingRestartsAndKeepsVisibleConsumers() {
         let domain = "Anchor.monitor-lifecycle-test." + UUID().uuidString
         let defaults = UserDefaults(suiteName: domain)!
