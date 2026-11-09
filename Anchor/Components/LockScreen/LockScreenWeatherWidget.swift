@@ -520,10 +520,9 @@ struct LockScreenWeatherWidget: View {
 			minuteTicker.setMinuteAlignedEnabled(lockScreenShowCalendarEvent)
 			currentTime = Date()
 			calendarRowVisible = shouldShowCalendarRow
-
+			calendarManager.refreshAuthorizationStatus()
 			Task {
-				await calendarManager.checkCalendarAuthorization()
-				await calendarManager.checkReminderAuthorization()
+				guard Defaults[.lockScreenShowCalendarEvent], calendarManager.hasCalendarAccess else { return }
 				await calendarManager.updateLockScreenEvents(force: true)
 			}
 
@@ -536,13 +535,22 @@ struct LockScreenWeatherWidget: View {
 			minuteTicker.setMinuteAlignedEnabled(enabled)
 		}
 		.onChange(of: lockScreenCalendarEventLookaheadWindow) { _, _ in
-			Task { await calendarManager.updateLockScreenEvents(force: true) }
+			Task {
+				guard Defaults[.lockScreenShowCalendarEvent], calendarManager.hasCalendarAccess else { return }
+				await calendarManager.updateLockScreenEvents(force: true)
+			}
 		}
 		.onChange(of: lockScreenCalendarSelectionMode) { _, _ in
-			Task { await calendarManager.updateLockScreenEvents(force: true) }
+			Task {
+				guard Defaults[.lockScreenShowCalendarEvent], calendarManager.hasCalendarAccess else { return }
+				await calendarManager.updateLockScreenEvents(force: true)
+			}
 		}
 		.onChange(of: lockScreenSelectedCalendarIDs) { _, _ in
-			Task { await calendarManager.updateLockScreenEvents(force: true) }
+			Task {
+				guard Defaults[.lockScreenShowCalendarEvent], calendarManager.hasCalendarAccess else { return }
+				await calendarManager.updateLockScreenEvents(force: true)
+			}
 		}
 		.onDisappear { minuteTicker.stop() }
 		.onChange(of: currentCalendarEventID) { _, _ in

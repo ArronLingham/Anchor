@@ -557,6 +557,12 @@ struct LockScreenSettings: View {
                 }
                 .settingsHighlight(id: highlightID("Show next calendar event"))
 
+                if lockScreenShowCalendarEvent && !calendarManager.hasCalendarAccess {
+                    Text("Allow Calendar access in Settings → Calendar to see events here.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
                 LabeledContent("Show events within the next") {
                     HStack {
                         Spacer(minLength: 0)
@@ -700,7 +706,10 @@ struct LockScreenSettings: View {
                 Text("Collect the latest crash report to share with the developer when reporting lock screen or overlay issues.")
             }
         }
-        .onAppear(perform: enforceLockScreenGlassConsistency)
+        .onAppear {
+            enforceLockScreenGlassConsistency()
+            calendarManager.refreshAuthorizationStatus()
+        }
         .onChange(of: lockScreenGlassStyle) { _, _ in enforceLockScreenGlassConsistency() }
         .onChange(of: lockScreenGlassCustomizationMode) { _, _ in enforceLockScreenGlassConsistency() }
         .navigationTitle("Lock Screen")

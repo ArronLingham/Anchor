@@ -11,6 +11,14 @@ INFO_PLIST = ROOT / "Anchor" / "Info.plist"
 
 
 class PrivacyConfigurationTests(unittest.TestCase):
+    def test_lock_screen_weather_does_not_request_calendar_access(self):
+        # The widget and its preview may appear without a user asking to
+        # connect Calendar or Reminders. Permission requests belong to the
+        # explicit controls in Calendar and Integrations settings.
+        source = (ROOT / "Anchor" / "Components" / "LockScreen" / "LockScreenWeatherWidget.swift").read_text()
+        self.assertNotIn("checkCalendarAuthorization(", source)
+        self.assertNotIn("checkReminderAuthorization(", source)
+
     def test_microphone_capture_is_explicitly_entitled(self):
         # Dictation records through AVAudioEngine. Camera was entitled here
         # until Phase 1 removed the webcam subsystem; audio-input is now the
