@@ -286,6 +286,7 @@ swift test --package-path Packages/AnchorUtilities
 bash tests/run_todo_storage_tests.sh
 bash tests/run_icon_cache_tests.sh
 bash tests/run_media_resource_tests.sh
+bash tests/run_camera_mirror_tests.sh
 bash tests/run_utility_ownership_tests.sh
 bash tests/run_settingssearch_tests.sh
 bash tests/run_settingssections_tests.sh

@@ -58,7 +58,7 @@ final class CameraMirrorManager: NSObject, ObservableObject {
     private var cancellables = Set<AnyCancellable>()
     private var started = false
     private var wantsSession = false
-    private var sessionGeneration: UInt64 = 0
+    private let sessionGate = CameraMirrorSessionGate()
     private let sessionQueue = DispatchQueue(label: "com.anchor.camera-mirror.session", qos: .userInitiated)
 
     private override init() { super.init() }
@@ -67,9 +67,14 @@ final class CameraMirrorManager: NSObject, ObservableObject {
         guard !started else { return }
         started = true
 
-        Defaults.publisher(.enableCameraMirror)
-            .sink { [weak self] _ in
-                Task { @MainActor in self?.sync() }
+        Defaults.publisher(.enableCameraMirror, options: [])
+            .sink { [weak self] change in
+                guard !change.newValue else { return }
+                if Thread.isMainThread {
+                    MainActor.assumeIsolated { self?.stopSession() }
+                } else {
+                    Task { @MainActor in self?.stopSession() }
+                }
             }
             .store(in: &cancellables)
 
@@ -85,10 +90,8 @@ final class CameraMirrorManager: NSObject, ObservableObject {
                 }
             }
             .store(in: &cancellables)
-    }
 
-    private func sync() {
-        Defaults[.enableCameraMirror] ? () : stopSession()
+        if !Defaults[.enableCameraMirror] { stopSession() }
     }
 
     /// The cameras attached right now.
@@ -109,10 +112,9 @@ final class CameraMirrorManager: NSObject, ObservableObject {
     ///
     /// Called when the preview appears, never at launch.
     func startSession() {
-        guard !wantsSession else { return }
+        guard Defaults[.enableCameraMirror], !wantsSession else { return }
         wantsSession = true
-        sessionGeneration &+= 1
-        let generation = sessionGeneration
+        let generation = sessionGate.begin()
         failure = nil
 
         switch AVCaptureDevice.authorizationStatus(for: .video) {
@@ -121,7 +123,8 @@ final class CameraMirrorManager: NSObject, ObservableObject {
         case .notDetermined:
             AVCaptureDevice.requestAccess(for: .video) { [weak self] granted in
                 Task { @MainActor in
-                    guard let self, self.wantsSession, self.sessionGeneration == generation else { return }
+                    guard let self, Defaults[.enableCameraMirror], self.wantsSession,
+                          self.sessionGate.isCurrent(generation) else { return }
                     granted ? self.buildSession(generation: generation)
                             : (self.failure = "Camera access was declined.")
                 }
@@ -134,7 +137,8 @@ final class CameraMirrorManager: NSObject, ObservableObject {
     }
 
     private func buildSession(generation: UInt64) {
-        guard wantsSession, sessionGeneration == generation, session == nil else { return }
+        guard Defaults[.enableCameraMirror], wantsSession,
+              sessionGate.isCurrent(generation), session == nil else { return }
         refreshDevices()
         let preferred = Defaults[.cameraMirrorDeviceID]
         let device = availableCameras.first { $0.uniqueID == preferred }
@@ -170,10 +174,13 @@ final class CameraMirrorManager: NSObject, ObservableObject {
 
         // startRunning blocks; off the main thread or the notch stutters when
         // the mirror opens.
+        let gate = sessionGate
         sessionQueue.async { [weak self] in
+            guard gate.isCurrent(generation) else { return }
             session.startRunning()
             Task { @MainActor [weak self] in
-                guard let self, self.wantsSession, self.sessionGeneration == generation,
+                guard let self, Defaults[.enableCameraMirror], self.wantsSession,
+                      self.sessionGate.isCurrent(generation),
                       self.session === session else { return }
                 self.isRunning = session.isRunning
             }
@@ -183,7 +190,7 @@ final class CameraMirrorManager: NSObject, ObservableObject {
     /// Tears the session down completely.
     func stopSession() {
         wantsSession = false
-        sessionGeneration &+= 1
+        sessionGate.invalidate()
         guard let session else {
             isRunning = false
             return

@@ -176,6 +176,14 @@ class AnchorViewCoordinator: ObservableObject {
             }
             .store(in: &cancellables)
 
+        Defaults.publisher(.enableCameraMirror)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] change in
+                guard !change.newValue, self?.currentView == .cameraMirror else { return }
+                self?.currentView = .home
+            }
+            .store(in: &cancellables)
+
         Defaults.publisher(.enableMinimalisticUI)
             .receive(on: DispatchQueue.main)
             .sink { [weak self] change in
