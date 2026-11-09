@@ -403,7 +403,10 @@ enum CommandBarCatalog {
                 trouble: canUseHistory ? nil
                     : .needsSetup(featureTitle: clipboard.title, page: .clipboard),
                 confirmationPrompt: String(format: clipboard.clearRecentConfirmFormat, recentIDs.count),
-                run: { _ in ClipboardHistoryService.shared.clearRecent(recentIDs) }))
+                run: { _ in
+                    guard AppFeature.clipboardHistory.isAvailable else { return }
+                    ClipboardHistoryService.shared.clearRecent(recentIDs)
+                }))
         }
         if AppFeature.textSnippets.isAvailable {
             entries.append(CommandBarEntry(

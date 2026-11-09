@@ -214,6 +214,30 @@ private final class TimedFeatureEngine {
 }
 
 extension FeatureResourceTests {
+    func testClipboardClearPreservesPinnedAndRecopiedItems() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appendingPathComponent("history.json")
+        let removed = ClipboardHistoryEntry(text: "confirmed")
+        let pinned = ClipboardHistoryEntry(text: "pinned", pinnedAt: Date())
+        let recopied = ClipboardHistoryEntry(text: "recopied")
+        let later = ClipboardHistoryEntry(text: "later")
+        try JSONEncoder().encode([removed, pinned, recopied, later]).write(to: url)
+        let domain = "Anchor.clipboard-clear-test." + UUID().uuidString
+        let preferences = UserDefaults(suiteName: domain)!
+        defer { preferences.removePersistentDomain(forName: domain) }
+        let service = ClipboardHistoryService(historyURL: url, preferences: preferences)
+
+        var confirmed = service.recentEntriesSnapshot
+        confirmed[recopied.id] = recopied.copiedAt.addingTimeInterval(-1)
+        confirmed.removeValue(forKey: later.id)
+        service.clearRecent(confirmed)
+
+        XCTAssertEqual(Set(service.entries.map(\.id)), Set([pinned.id, recopied.id, later.id]))
+        service.flushBeforeTermination()
+    }
+
     func testDisablingClipboardPreservesEditsAfterDeferredSavesDrain() throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)

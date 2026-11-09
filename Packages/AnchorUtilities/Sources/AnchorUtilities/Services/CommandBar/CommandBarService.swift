@@ -161,6 +161,9 @@ final class CommandBarService: ObservableObject {
     /// Counts choices, so the memory can order its own entries without a clock.
     private var queryMemoryStep = 0
     private var entriesByID: [String: CommandBarEntry] = [:]
+    // Keep the displayed clipboard confirmation and its captured items together
+    // even if an unrelated change rebuilds the catalog while it is open.
+    private var pendingClipboardClear: CommandBarEntry?
     private var normalizedByID: [String: (title: String, keywords: String)] = [:]
     private var entriesByStableKey: [String: CommandBarEntry] = [:]
     private var presentationLifecycle = CommandBarPresentationLifecycle()
@@ -554,6 +557,7 @@ final class CommandBarService: ObservableObject {
     }
 
     func hide() {
+        pendingClipboardClear = nil
         // Cleared first, so the island closing under the bar does not close it again.
         let presented = presentation
         presentation = .window
@@ -1211,6 +1215,10 @@ final class CommandBarService: ObservableObject {
     /// an open bar stop offering a feature that is no longer there.
     func noteHubChange() {
         guard AppFeature.commandBar.isAvailable else { return }
+        if !AppFeature.clipboardHistory.isAvailable,
+           case .confirm(let id) = mode, id == "action.clipboardClearRecent" {
+            stepBack()
+        }
         rebuildCatalog()
         rebuildRunningEntries()
         if isVisible { refreshResults() }
@@ -2000,7 +2008,10 @@ final class CommandBarService: ObservableObject {
     /// otherwise: the clipboard and the calculator build rows that never enter
     /// the index, and ⌘K on one of those used to open an empty list.
     func entry(withID id: String) -> CommandBarEntry? {
-        entriesByID[id] ?? rows.first { $0.id == id }
+        if case .confirm = mode, let pendingClipboardClear, pendingClipboardClear.id == id {
+            return pendingClipboardClear
+        }
+        return entriesByID[id] ?? rows.first { $0.id == id }
     }
 
     /// Which letters of a row's title the query literally matched. Empty while
@@ -2653,6 +2664,9 @@ final class CommandBarService: ObservableObject {
 
     private func run(_ entry: CommandBarEntry) {
         uninstallFinderRequestID = nil
+        if entry.id == "action.clipboardClearRecent", !AppFeature.clipboardHistory.isAvailable {
+            return
+        }
         if case .needsSetup(_, let page) = entry.trouble {
             hide()
             SettingsRouter.shared.page = page
@@ -2665,6 +2679,7 @@ final class CommandBarService: ObservableObject {
         }
         if entry.confirmationPrompt != nil {
             savedQuery = query
+            pendingClipboardClear = entry.id == "action.clipboardClearRecent" ? entry : nil
             mode = .confirm(entryID: entry.id)
             refreshPanelLayout()
             return
@@ -2709,6 +2724,7 @@ final class CommandBarService: ObservableObject {
                 leaveActions()
             }
         case .argument, .confirm:
+            pendingClipboardClear = nil
             mode = .search
             query = savedQuery
             refreshResults()
