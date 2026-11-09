@@ -136,6 +136,7 @@ final class SystemMonitor: ObservableObject {
 
     @Published private(set) var snapshot = SystemSnapshot()
 
+    private let preferences: UserDefaults
     private let queue = DispatchQueue(label: "com.vorssaint.utils.system-monitor", qos: .utility)
     private var timer: Timer?
     private var intervalSeconds = 2
@@ -219,7 +220,8 @@ final class SystemMonitor: ObservableObject {
     private var batteryHistory: MetricHistory
     private var powerSourceRunLoopSource: CFRunLoopSource?
 
-    private init() {
+    init(preferences: UserDefaults = UtilityPreferences.standard, observePower: Bool = true) {
+        self.preferences = preferences
         cpuHistory = MetricHistory(capacity: historyCapacity)
         gpuHistory = MetricHistory(capacity: historyCapacity)
         memoryHistory = MetricHistory(capacity: historyCapacity)
@@ -230,7 +232,7 @@ final class SystemMonitor: ObservableObject {
         diskWriteHistory = MetricHistory(capacity: historyCapacity)
         powerHistory = MetricHistory(capacity: historyCapacity)
         batteryHistory = MetricHistory(capacity: historyCapacity)
-        if PowerSampler.hasInternalBattery {
+        if observePower && PowerSampler.hasInternalBattery {
             installPowerSourceObserver()
         }
     }
@@ -253,7 +255,7 @@ final class SystemMonitor: ObservableObject {
             let monitor = Unmanaged<SystemMonitor>.fromOpaque(context).takeUnretainedValue()
             DispatchQueue.main.async {
                 guard monitor.shouldRun,
-                      monitor.currentPlan(defaults: UtilityPreferences.standard).needPower else { return }
+                      monitor.currentPlan(defaults: monitor.preferences).needPower else { return }
                 monitor.refresh()
             }
         }, context)?.takeRetainedValue()
@@ -338,7 +340,7 @@ final class SystemMonitor: ObservableObject {
                 }
                 return
             }
-            let defaults = UtilityPreferences.standard
+            let defaults = preferences
             let previousNeeds = menuPanelNeeds
             let neededGPUBefore = currentPlan(defaults: defaults).needGPUUsage
             menuPanelNeeds = needs
@@ -367,7 +369,7 @@ final class SystemMonitor: ObservableObject {
             guard let self else { return }
             let until = ProcessInfo.processInfo.systemUptime + max(0.1, duration)
             suppressGPUReadsUntil = max(suppressGPUReadsUntil, until)
-            if shouldSample(), currentPlan(defaults: UtilityPreferences.standard).needGPUUsage {
+            if shouldSample(), currentPlan(defaults: preferences).needGPUUsage {
                 scheduleDeferredGPURefreshIfNeeded()
             }
         }
@@ -417,9 +419,12 @@ final class SystemMonitor: ObservableObject {
     private func resyncIfPlanChanged() {
         syncPeripheralBatterySampling()
         guard shouldSample() else { stopTimerIfIdle(); return }
-        let plan = currentPlan(defaults: UtilityPreferences.standard)
-        guard plan != lastSyncedPlan else { return }
+        let plan = currentPlan(defaults: preferences)
+        let planChanged = plan != lastSyncedPlan
+        let timerStopped = timer == nil
+        guard planChanged || timerStopped else { return }
         syncTimerCadence(plan: plan)
+        if timerStopped { ensureTimer() }
         refresh()
     }
 
@@ -438,7 +443,7 @@ final class SystemMonitor: ObservableObject {
             intervalSeconds = clamped
             // Strides are derived from the interval, so the wake cadence must
             // resync before the timer is rebuilt on the new base interval.
-            syncTimerCadence(plan: currentPlan(defaults: UtilityPreferences.standard))
+            syncTimerCadence(plan: currentPlan(defaults: preferences))
             if timer != nil { restartTimer() }
         }
     }
@@ -455,7 +460,7 @@ final class SystemMonitor: ObservableObject {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.9) { [weak self] in
             guard let self,
                   self.shouldRun,
-                  self.currentPlan(defaults: UtilityPreferences.standard).needGPUUsage else { return }
+                  self.currentPlan(defaults: self.preferences).needGPUUsage else { return }
             self.refresh()
         }
     }
@@ -483,10 +488,10 @@ final class SystemMonitor: ObservableObject {
         }
     }
 
-    private var shouldRun: Bool { foregroundVisible || (UtilityPreferences.standard.bool(forKey: DefaultsKey.monitorBackgroundSampling) && (notchAccessoryMonitoring || menuBarActive || alertsActive)) }
+    private var shouldRun: Bool { foregroundVisible || (preferences.bool(forKey: DefaultsKey.monitorBackgroundSampling) && (notchAccessoryMonitoring || menuBarActive || alertsActive)) }
 
-    private func shouldSample(defaults: UserDefaults = UtilityPreferences.standard) -> Bool {
-        shouldRun && currentPlan(defaults: defaults).any
+    private func shouldSample() -> Bool {
+        shouldRun && currentPlan(defaults: preferences).any
     }
 
     private struct SamplingPlan: Equatable {
@@ -660,13 +665,13 @@ final class SystemMonitor: ObservableObject {
     }
 
     private func syncPeripheralBatterySampling() {
-        peripheralBatterySampler.setEnabled(shouldRun && currentPlan(defaults: UtilityPreferences.standard).needPeripheralBattery)
+        peripheralBatterySampler.setEnabled(shouldRun && currentPlan(defaults: preferences).needPeripheralBattery)
     }
 
     private func ensureTimer() {
         syncPeripheralBatterySampling()
         guard shouldSample() else { return }
-        syncTimerCadence(plan: currentPlan(defaults: UtilityPreferences.standard))
+        syncTimerCadence(plan: currentPlan(defaults: preferences))
         guard timer == nil else { return }
         startTimer()
     }
@@ -744,7 +749,7 @@ final class SystemMonitor: ObservableObject {
             DispatchQueue.main.async { [weak self] in self?.refresh(suppressImmediateGPU: suppressImmediateGPU) }
             return
         }
-        let defaults = UtilityPreferences.standard
+        let defaults = preferences
         let plan = currentPlan(defaults: defaults)
         syncPeripheralBatterySampling()
         guard shouldRun, plan.any else {

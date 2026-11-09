@@ -5,6 +5,61 @@ import XCTest
 
 final class SystemToolsTests: XCTestCase {
     @MainActor
+    func testBackgroundSamplingRestartsAndKeepsVisibleConsumers() {
+        let domain = "Anchor.monitor-lifecycle-test." + UUID().uuidString
+        let defaults = UserDefaults(suiteName: domain)!
+        defer { defaults.removePersistentDomain(forName: domain) }
+        defaults.set(true, forKey: AppFeature.monitorCPU.availabilityKey)
+        defaults.set(true, forKey: DefaultsKey.menuBarCPU)
+        defaults.set(false, forKey: DefaultsKey.monitorBackgroundSampling)
+        let monitor = SystemMonitor(preferences: defaults, observePower: false)
+
+        monitor.setMenuBarActive(true)
+        XCTAssertFalse(monitor.hasScheduledSampling)
+        defaults.set(true, forKey: DefaultsKey.monitorBackgroundSampling)
+        monitor.planDidChange()
+        XCTAssertTrue(monitor.hasScheduledSampling, "Enabling background work must start the timer")
+        defaults.set(false, forKey: DefaultsKey.monitorBackgroundSampling)
+        monitor.planDidChange()
+        XCTAssertFalse(monitor.hasScheduledSampling)
+        defaults.set(true, forKey: DefaultsKey.monitorBackgroundSampling)
+        monitor.planDidChange()
+        XCTAssertTrue(monitor.hasScheduledSampling, "An unchanged previous plan must also restart")
+
+        let visibleClient = UUID()
+        monitor.acquireAnchorStats(visibleClient)
+        defaults.set(false, forKey: DefaultsKey.monitorBackgroundSampling)
+        monitor.planDidChange()
+        XCTAssertTrue(monitor.hasScheduledSampling, "A visible consumer still needs the shared timer")
+        monitor.releaseAnchorStats(visibleClient)
+        XCTAssertFalse(monitor.hasScheduledSampling)
+
+        defaults.set(true, forKey: DefaultsKey.monitorBackgroundSampling)
+        monitor.planDidChange()
+        defaults.set(false, forKey: AppFeature.monitorCPU.availabilityKey)
+        monitor.planDidChange()
+        XCTAssertFalse(monitor.hasScheduledSampling, "The last disabled metric must stop the timer")
+        defaults.set(true, forKey: AppFeature.monitorCPU.availabilityKey)
+        monitor.planDidChange()
+        XCTAssertTrue(monitor.hasScheduledSampling, "Re-enabling the metric must restart sampling")
+        monitor.setMenuBarActive(false)
+        XCTAssertFalse(monitor.hasScheduledSampling)
+
+        defaults.set(false, forKey: DefaultsKey.menuBarCPU)
+        defaults.set(true, forKey: DefaultsKey.monitorAlertCPU)
+        monitor.setAlertsActive(true)
+        XCTAssertTrue(monitor.hasScheduledSampling)
+        defaults.set(false, forKey: DefaultsKey.monitorBackgroundSampling)
+        monitor.planDidChange()
+        XCTAssertFalse(monitor.hasScheduledSampling)
+        defaults.set(true, forKey: DefaultsKey.monitorBackgroundSampling)
+        monitor.planDidChange()
+        XCTAssertTrue(monitor.hasScheduledSampling, "An alert also resumes its background timer")
+        monitor.setAlertsActive(false)
+        XCTAssertFalse(monitor.hasScheduledSampling)
+    }
+
+    @MainActor
     func testSharedMonitorStopsAfterLastVisibleConsumerAndIgnoresHiddenPins() {
         let monitor = SystemMonitor.shared
         let defaults = UserDefaults(suiteName: "Anchor.SystemToolsTests.\(UUID())")!
