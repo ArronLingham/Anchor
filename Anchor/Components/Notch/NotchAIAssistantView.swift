@@ -9,15 +9,21 @@ import SwiftUI
 import AnchorUtilities
 import ScreenCaptureKit
 import CoreGraphics
+import Defaults
 
 struct NotchAIAssistantView: View {
     @ObservedObject private var manager = AIAssistantManager.shared
+    @Default(.enableAIAssistant) private var enabled
     @State private var draft = ""
     @FocusState private var isComposerFocused: Bool
 
     var body: some View {
         VStack(spacing: 6) {
-            if !manager.hasAPIKey {
+            if !enabled {
+                Text("AI Assistant is off.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else if !manager.hasAPIKey {
                 missingKey
             } else {
                 transcript
@@ -133,15 +139,18 @@ struct NotchAIAssistantView: View {
         }
     }
 
-    private func captureScreen() async -> Data? {
+    private func captureScreen(session: UInt64) async -> Data? {
         do {
+            guard manager.isCurrentSession(session) else { return nil }
             let content = try await SCShareableContent.current
+            guard manager.isCurrentSession(session) else { return nil }
             guard let display = content.displays.first else { return nil }
             let filter = SCContentFilter(display: display, excludingApplications: [], exceptingWindows: [])
             let config = SCStreamConfiguration()
             config.width = display.width
             config.height = display.height
             let image = try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: config)
+            guard manager.isCurrentSession(session) else { return nil }
             let bitmap = NSBitmapImageRep(cgImage: image)
             return bitmap.representation(using: .jpeg, properties: [.compressionFactor: 0.6])
         } catch {
@@ -150,17 +159,18 @@ struct NotchAIAssistantView: View {
     }
 
     private func sendWithScreenshot() {
+        guard let session = manager.currentSession() else { return }
         let text = draft
-        draft = ""
         Task {
-            let img = await captureScreen()
-            await manager.send(text, screenshot: img)
+            let img = await captureScreen(session: session)
+            guard manager.isCurrentSession(session) else { return }
+            if manager.send(text, screenshot: img, session: session), draft == text { draft = "" }
         }
     }
 
     private func sendText() {
+        guard let session = manager.currentSession() else { return }
         let text = draft
-        draft = ""
-        Task { await manager.send(text) }
+        if manager.send(text, session: session) { draft = "" }
     }
 }

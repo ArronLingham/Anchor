@@ -23,7 +23,14 @@ final class AIAssistantManager: ObservableObject {
 
     private var cancellables = Set<AnyCancellable>()
     private var started = false
+    private var loadedHistory = false
+    private let session = AIAssistantSession()
+    private var sendTask: Task<Void, Never>?
+    private var sendID: UUID?
+    private var sendSession: UInt64?
     private var keyCheckRevision = 0
+    private var keyCheckSession: UInt64?
+    private var savedKeySession: UInt64?
     @Published private var authorizedKeys: [AIProvider: [String]] = [:]
     private var keyReadTasks: [AIProvider: Task<AIAssistantCredential.ReadResult, Never>] = [:]
     private var keyVersions: [AIProvider: Int] = [:]
@@ -33,30 +40,95 @@ final class AIAssistantManager: ObservableObject {
         Defaults.observe(.aiProvider) { [weak self] _ in
             self?.checkKey()
         }.tieToLifetime(of: self)
+        let session = self.session
+        Defaults.publisher(.enableAIAssistant, options: [])
+            .sink { [weak self] change in
+                if !change.newValue { session.invalidate() }
+                if Thread.isMainThread {
+                    MainActor.assumeIsolated {
+                        if change.newValue { self?.enableSession() }
+                        else { self?.disableSession() }
+                    }
+                } else {
+                    Task { @MainActor in
+                        if change.newValue { self?.enableSession() }
+                        else { self?.disableSession() }
+                    }
+                }
+            }
+            .store(in: &cancellables)
+    }
+
+    func currentSession() -> UInt64? {
+        let token = session.token()
+        guard Defaults[.enableAIAssistant], session.allows(token, enabled: true) else { return nil }
+        return token
+    }
+
+    func isCurrentSession(_ token: UInt64) -> Bool {
+        session.allows(token, enabled: Defaults[.enableAIAssistant])
+    }
+
+    private func disableSession() {
+        if let sendSession, !session.allows(sendSession, enabled: true) {
+            sendTask?.cancel()
+            sendTask = nil
+            sendID = nil
+            self.sendSession = nil
+            isSending = false
+        }
+        if let modelSession, !session.allows(modelSession, enabled: true) {
+            modelRequest?.cancel()
+            modelRequest = nil
+            self.modelSession = nil
+            isLoadingModels = false
+        }
+        if let keyCheckSession, !session.allows(keyCheckSession, enabled: true) {
+            keyCheckRevision += 1
+            self.keyCheckSession = nil
+            isCheckingKeys = false
+        }
+        if let savedKeySession, !session.allows(savedKeySession, enabled: true) {
+            self.savedKeySession = nil
+            isLoadingSavedKeys = false
+        }
     }
 
     func start() {
         guard !started else { return }
         started = true
+        enableSession()
+    }
+
+    private func enableSession() {
+        guard started, Defaults[.enableAIAssistant] else { return }
+        if !loadedHistory {
+            loadHistory()
+            loadedHistory = true
+        }
         checkKey()
-        loadHistory()
     }
 
     private func checkKey() {
+        guard let token = currentSession() else { return }
         let provider = Defaults[.aiProvider]
         keyCheckRevision += 1
         let revision = keyCheckRevision
         if let cached = authorizedKeys[provider] {
+            keyCheckSession = nil
             hasAPIKey = !cached.isEmpty
             isCheckingKeys = false
             return
         }
+        keyCheckSession = token
         isCheckingKeys = true
         Task { [weak self] in
             guard let self else { return }
-            let keys = await self.loadKeysIfNeeded(for: provider)
+            let keys = await self.loadKeysIfNeeded(for: provider, session: token)
             guard self.keyCheckRevision == revision,
+                  self.isCurrentSession(token),
                   Defaults[.aiProvider] == provider else { return }
+            self.keyCheckSession = nil
             self.hasAPIKey = !keys.isEmpty
             self.isCheckingKeys = false
         }
@@ -68,7 +140,8 @@ final class AIAssistantManager: ObservableObject {
 
     func needsSavedKeyAccess(for provider: AIProvider) -> Bool { keyAccessRequired.contains(provider) }
 
-    private func loadKeysIfNeeded(for provider: AIProvider) async -> [String] {
+    private func loadKeysIfNeeded(for provider: AIProvider, session token: UInt64) async -> [String] {
+        guard isCurrentSession(token) else { return [] }
         if let cached = authorizedKeys[provider] { return cached }
         let version = keyVersions[provider, default: 0]
         let task = keyReadTasks[provider] ?? Task.detached(priority: .utility) {
@@ -77,6 +150,7 @@ final class AIAssistantManager: ObservableObject {
         keyReadTasks[provider] = task
         let result = await task.value
         keyReadTasks[provider] = nil
+        guard isCurrentSession(token) else { return [] }
         if keyVersions[provider, default: 0] == version {
             authorizedKeys[provider] = result.keys
             if result.requiresAuthorization { keyAccessRequired.insert(provider) }
@@ -88,20 +162,23 @@ final class AIAssistantManager: ObservableObject {
     /// Only an explicit Settings action may ask macOS for saved-key access.
     /// The system dialog never blocks the app's main run loop.
     func loadSavedKeys() {
-        guard !isLoadingSavedKeys else { return }
+        guard let token = currentSession(), !isLoadingSavedKeys else { return }
         let provider = Defaults[.aiProvider]
         keyCheckRevision += 1
         let revision = keyCheckRevision
         keyVersions[provider, default: 0] += 1
         let version = keyVersions[provider, default: 0]
+        savedKeySession = token
         isLoadingSavedKeys = true
         Task { [weak self] in
             let result = await Task.detached(priority: .userInitiated) {
                 AIAssistantCredential.readResult(provider: provider, allowAuthentication: true)
             }.value
             guard let self else { return }
+            guard self.savedKeySession == token else { return }
+            self.savedKeySession = nil
             self.isLoadingSavedKeys = false
-            guard self.keyCheckRevision == revision,
+            guard self.isCurrentSession(token), self.keyCheckRevision == revision,
                   self.keyVersions[provider, default: 0] == version else { return }
             if result.requiresAuthorization { self.keyAccessRequired.insert(provider) }
             else {
@@ -146,6 +223,7 @@ final class AIAssistantManager: ObservableObject {
     @Published private(set) var isLoadingModels = false
     @Published private(set) var modelListError: String?
     private var modelRequest: Task<Void, Never>?
+    private var modelSession: UInt64?
     private var modelListProvider: AIProvider?
 
     /// Asks the provider which models it will serve.
@@ -155,16 +233,18 @@ final class AIAssistantManager: ObservableObject {
     /// symptom was the assistant failing with an error the picker could not
     /// help you fix.
     func refreshModels() {
+        guard let token = currentSession() else { return }
         let provider = Defaults[.aiProvider]
         modelRequest?.cancel()
+        modelSession = token
         if modelListProvider != provider { availableModels = [] }
         modelListProvider = provider
         isLoadingModels = true
         modelListError = nil
         modelRequest = Task { [weak self] in
             guard let self else { return }
-            let keys = await self.loadKeysIfNeeded(for: provider)
-            guard !Task.isCancelled, Defaults[.aiProvider] == provider else { return }
+            let keys = await self.loadKeysIfNeeded(for: provider, session: token)
+            guard !Task.isCancelled, self.isCurrentSession(token), Defaults[.aiProvider] == provider else { return }
             guard let key = keys.first, !key.isEmpty else {
                 self.isLoadingModels = false
                 self.availableModels = []
@@ -178,9 +258,10 @@ final class AIAssistantManager: ObservableObject {
                 return
             }
             do {
+                guard !Task.isCancelled, self.isCurrentSession(token) else { return }
                 let (data, response) = try await URLSession.shared.data(for: request)
                 let models = AIProtocol.parseModelList(provider: provider, data: data)
-                guard !Task.isCancelled, Defaults[.aiProvider] == provider else { return }
+                guard !Task.isCancelled, self.isCurrentSession(token), Defaults[.aiProvider] == provider else { return }
                 self.isLoadingModels = false
                 if models.isEmpty {
                     let code = (response as? HTTPURLResponse)?.statusCode ?? 0
@@ -200,7 +281,7 @@ final class AIAssistantManager: ObservableObject {
                     }
                 }
             } catch {
-                guard !Task.isCancelled, Defaults[.aiProvider] == provider else { return }
+                guard !Task.isCancelled, self.isCurrentSession(token), Defaults[.aiProvider] == provider else { return }
                 self.isLoadingModels = false
                 self.modelListError = error.localizedDescription
             }
@@ -212,27 +293,48 @@ final class AIAssistantManager: ObservableObject {
         persistHistory()
     }
 
-    func send(_ text: String, screenshot: Data? = nil) async {
+    @discardableResult
+    func send(_ text: String, screenshot: Data? = nil, session token: UInt64) -> Bool {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         let isTextEmpty = trimmed.isEmpty
-        guard (!isTextEmpty || screenshot != nil), !isSending else { return }
+        guard isCurrentSession(token), (!isTextEmpty || screenshot != nil), !isSending else { return false }
+        let id = UUID()
+        sendID = id
+        sendSession = token
         isSending = true
         lastError = nil
-        defer { isSending = false }
+        // Keep an accepted message even if the feature is disabled while the
+        // saved-key lookup or network request is still pending.
+        messages.append(AIMessage(role: .user, text: trimmed, imageData: screenshot))
+        persistHistory()
+        sendTask = Task { [weak self] in
+            guard let self else { return }
+            defer {
+                if self.sendID == id {
+                    self.sendID = nil
+                    self.sendSession = nil
+                    self.sendTask = nil
+                    self.isSending = false
+                }
+            }
+            await self.performSend(session: token)
+        }
+        return true
+    }
 
+    private func performSend(session token: UInt64) async {
+        guard !Task.isCancelled, isCurrentSession(token) else { return }
         let provider = Defaults[.aiProvider]
         let model = Defaults[.aiModel]
         let instruction = Defaults[.aiSystemInstruction]
-        let availableKeys = await loadKeysIfNeeded(for: provider)
+        let availableKeys = await loadKeysIfNeeded(for: provider, session: token)
+        guard !Task.isCancelled, isCurrentSession(token) else { return }
         guard !availableKeys.isEmpty else {
             lastError = needsSavedKeyAccess(for: provider)
                 ? "Load your saved keys in Settings first."
                 : "Add a \(provider.rawValue) API key in Settings first."
             return
         }
-
-        messages.append(AIMessage(role: .user, text: trimmed, imageData: screenshot))
-        persistHistory()
 
         let history = AIProtocol.trimmed(messages, limit: Defaults[.aiHistoryTurns])
         
@@ -247,6 +349,7 @@ final class AIAssistantManager: ObservableObject {
         var success = false
         var exhausted: [String] = []
         for (offset, key) in ordered.enumerated() {
+            guard !Task.isCancelled, isCurrentSession(token) else { return }
             guard let request = AIProtocol.buildRequest(
                 provider: provider,
                 model: model,
@@ -259,7 +362,9 @@ final class AIAssistantManager: ObservableObject {
             }
 
             do {
+                guard !Task.isCancelled, isCurrentSession(token) else { return }
                 let (data, response) = try await URLSession.shared.data(for: request)
+                guard !Task.isCancelled, isCurrentSession(token) else { return }
                 if let http = response as? HTTPURLResponse {
                     // Quota, and a rejected key, both mean "not this one" —
                     // advance rather than give up. Returning on 401/403 was the
@@ -291,6 +396,7 @@ final class AIAssistantManager: ObservableObject {
                     break
                 }
             } catch {
+                guard !Task.isCancelled, isCurrentSession(token) else { return }
                 lastError = error.localizedDescription
                 break
             }
