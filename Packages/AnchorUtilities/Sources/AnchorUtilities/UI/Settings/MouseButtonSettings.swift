@@ -71,14 +71,7 @@ struct MouseButtonShortcutsSection: View {
                 Toggle(text.spacesEnableLabel, isOn: $spacesEnabled)
                     .labelsHidden()
                     .onChange(of: spacesEnabled) { _, on in
-                        if !on {
-                            stopSpacesCapture()
-                            // The row is gone while this switch is off, so a kept
-                            // binding could only act invisibly: it would refuse
-                            // the button to shortcut capture, then come back dead
-                            // under a shortcut recorded meanwhile.
-                            spacesButton = 0
-                        }
+                        if !on { stopSpacesCapture() }
                         MouseButtonShortcutService.shared.syncWithPreferences()
                         if on, !permissions.accessibility {
                             permissions.requestAccessibility()
@@ -238,20 +231,25 @@ struct MouseButtonShortcutsSection: View {
                 handleSpacesCapture(seen)
             }
         } else if spacesButton != 0 {
-            HStack(spacing: 8) {
-                Text(MouseButtonShortcutSupport.buttonName(for: Int64(spacesButton), strings: text))
-                Spacer()
-                Button {
-                    spacesButton = 0
-                    MouseButtonShortcutService.shared.syncWithPreferences()
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .foregroundStyle(.secondary)
-                        .frame(width: 22, height: 22)
+            VStack(alignment: .leading, spacing: 5) {
+                HStack(spacing: 8) {
+                    Text(MouseButtonShortcutSupport.buttonName(for: Int64(spacesButton), strings: text))
+                    Spacer()
+                    Button {
+                        spacesButton = 0
+                        MouseButtonShortcutService.shared.syncWithPreferences()
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundStyle(.secondary)
+                            .frame(width: 22, height: 22)
+                    }
+                    .buttonStyle(.plain)
+                    .help(text.removeButton)
+                    .accessibilityLabel(text.removeButton)
                 }
-                .buttonStyle(.plain)
-                .help(text.removeButton)
-                .accessibilityLabel(text.removeButton)
+                if let conflict = spacesBindingConflict {
+                    Text(conflict).font(.caption).foregroundStyle(.orange)
+                }
             }
         } else {
             Button {
@@ -260,6 +258,14 @@ struct MouseButtonShortcutsSection: View {
                 Label(text.spacesPickButton, systemImage: "plus")
             }
         }
+    }
+
+    private var spacesBindingConflict: String? {
+        let button = Int64(spacesButton)
+        if !MouseSpacesGestureSupport.canBind(button) { return text.spacesCaptureUnsupported }
+        if RadialMenuSupport.claimsMouseButton(button) { return text.captureWheel }
+        if enabled && mappings[button] != nil { return text.spacesCaptureExists }
+        return nil
     }
 
     /// Whether the system still has a combination registered for any of the

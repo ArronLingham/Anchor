@@ -36,6 +36,18 @@ final class NativeBehaviorTests: XCTestCase {
     func testWindowFocusHistory() {
         verify { suite in WindowFocusHistoryTests.run { suite.expect($0, $1) } }
     }
+    func testDormantSpacesBindingDoesNotClaimAConflictingButton() {
+        let storedButton: Int64 = 3
+        func bound(_ enabled: Bool, _ shortcut: Bool, _ wheel: Bool) -> Int64? {
+            MouseSpacesGestureSupport.boundButton(isAvailable: true, isEnabled: enabled,
+                button: storedButton, hasShortcut: { _ in shortcut }, claimedByWheel: { _ in wheel })
+        }
+        XCTAssertNil(bound(false, false, false))
+        XCTAssertEqual(bound(true, false, false), storedButton)
+        XCTAssertNil(bound(true, true, false))
+        XCTAssertNil(bound(true, false, true))
+        XCTAssertEqual(bound(true, false, false), storedButton)
+    }
     func testRecordingExportWithSyntheticAudioCutsBlurAndGIF() {
         verify(RecorderExportRenderingTests.run)
     }
