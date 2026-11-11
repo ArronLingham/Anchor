@@ -320,6 +320,12 @@ final class FeatureRuntime: ObservableObject {
             if !feature.isAvailable, let reason = disableBlockedReason(feature) {
                 UtilityPreferences.standard.set(true, forKey: feature.availabilityKey)
                 UtilityWorkspace.shared.reportFeatureNotice(reason)
+                if feature == .cleaner {
+                    // Child switches may have changed while Cleaner briefly
+                    // appeared off; apply their current state after restoring it.
+                    UtilityWorkspace.shared.prepareOwnership()
+                    serviceBindings[feature]?()
+                }
                 continue
             }
             UtilityWorkspace.shared.prepareOwnership()

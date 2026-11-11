@@ -215,6 +215,54 @@ private final class TimedFeatureEngine {
 
 extension FeatureResourceTests {
     @MainActor
+    func testRestoredCleanerReconcilesChildPreferencesDuringCleanup() throws {
+        let domain = UtilityPreferences.domainName
+        guard domain != "com.arronlingham.Anchor.utilities",
+              domain != "com.arronlingham.Anchor.dev.utilities" else {
+            throw XCTSkip("This test must not change an installed app's preferences")
+        }
+        let defaults = UtilityPreferences.standard
+        let keys = AppFeature.allCases.map(\.availabilityKey)
+            + [DefaultsKey.whatsAppDownloadsEnabled, "Anchor.integrationPrepared.v1"]
+        let saved = keys.map { ($0, defaults.object(forKey: $0)) }
+        defer {
+            for (key, value) in saved {
+                if let value { defaults.set(value, forKey: key) } else { defaults.removeObject(forKey: key) }
+            }
+        }
+        defaults.set(true, forKey: "Anchor.integrationPrepared.v1")
+        for feature in AppFeature.allCases { defaults.set(false, forKey: feature.availabilityKey) }
+        defaults.set(true, forKey: AppFeature.cleaner.availabilityKey)
+        defaults.set(true, forKey: DefaultsKey.whatsAppDownloadsEnabled)
+
+        let started = expectation(description: "cleanup started")
+        let finished = expectation(description: "cleanup finished")
+        let resumed = expectation(description: "restored Cleaner reconciled")
+        let resume = DispatchSemaphore(value: 0)
+        defer { resume.signal() }
+        let manager = WhatsAppDownloadManager.shared
+        manager.reset()
+        XCTAssertTrue(manager.performCleanup(work: {
+            started.fulfill()
+            resume.wait()
+        }, finish: { _ in finished.fulfill() }))
+        wait(for: [started], timeout: 2)
+        let runtime = FeatureRuntime(bindings: [.cleaner: {
+            XCTAssertTrue(AppFeature.cleaner.isAvailable)
+            XCTAssertFalse(WhatsAppDownloadSupport.isEnabled)
+            resumed.fulfill()
+        }])
+        defaults.set(false, forKey: DefaultsKey.whatsAppDownloadsEnabled)
+        defaults.set(false, forKey: AppFeature.cleaner.availabilityKey)
+        runtime.reconcileAvailability()
+        XCTAssertTrue(AppFeature.cleaner.isAvailable, "An active cleanup must keep Cleaner enabled")
+        wait(for: [resumed], timeout: 1)
+        resume.signal()
+        wait(for: [finished], timeout: 2)
+        manager.reset()
+    }
+
+    @MainActor
     func testWhatsAppPreferenceObserverSeesExternalWrite() throws {
         let domain = "Anchor.whatsapp-external-test." + UUID().uuidString
         let defaults = UserDefaults(suiteName: domain)!
