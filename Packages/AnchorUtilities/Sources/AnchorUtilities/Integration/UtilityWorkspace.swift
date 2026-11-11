@@ -41,6 +41,7 @@ public final class UtilityWorkspace: ObservableObject {
     public var controlOwners: Set<String> { lastOwners }
     private var subscriptions = Set<AnyCancellable>()
     private var preferenceUpdate: DispatchWorkItem?
+    private var whatsAppPreferenceObserver: WhatsAppPreferenceObserver?
 
     private init() {
         UtilityPreferences.register()
@@ -158,6 +159,9 @@ public final class UtilityWorkspace: ObservableObject {
                                              object: UtilityPreferences.standard)
             .sink { [weak self] _ in self?.schedulePreferenceUpdate() }
             .store(in: &subscriptions)
+        whatsAppPreferenceObserver = WhatsAppPreferenceObserver(defaults: UtilityPreferences.standard) { [weak self] key, enabled in
+            self?.reconcileWhatsAppPreference(key, enabled: enabled)
+        }
         FeatureRuntime.shared.syncAtLaunch()
         KeepAwakeManager.shared.$isActive.dropFirst().sink { [weak self] _ in
             self?.host.syncStatusItems()
@@ -175,6 +179,50 @@ public final class UtilityWorkspace: ObservableObject {
         }
         preferenceUpdate = work
         DispatchQueue.main.async(execute: work)
+    }
+
+    private func reconcileWhatsAppPreference(_ key: String, enabled: Bool) {
+        // Cleaner availability is reconciled separately by the feature runtime.
+        guard AppFeature.cleaner.isAvailable else { return }
+        switch key {
+        case DefaultsKey.whatsAppDownloadsEnabled:
+            if enabled {
+                WhatsAppDownloadScheduler.shared.syncWithPreferences()
+                WhatsAppDownloadOrganizer.shared.syncWithPreferences()
+                // A queued off event may have cancelled the review's scan
+                // after a quick re-enable. Restore it only while that review
+                // is visible and the switch is still on.
+                let manager = WhatsAppDownloadManager.shared
+                if WhatsAppDownloadSupport.isEnabled, manager.reviewVisible, manager.phase == .idle {
+                    manager.scan()
+                }
+            } else {
+                WhatsAppDownloadScheduler.shared.stop()
+                WhatsAppDownloadOrganizer.shared.stop()
+                WhatsAppDownloadManager.shared.reset()
+            }
+        case DefaultsKey.whatsAppDownloadsAutomaticEnabled:
+            if enabled { WhatsAppDownloadScheduler.shared.syncWithPreferences() }
+            else { WhatsAppDownloadScheduler.shared.stop() }
+        case DefaultsKey.whatsAppOrganizerEnabled:
+            if enabled { WhatsAppDownloadOrganizer.shared.syncWithPreferences() }
+            else { WhatsAppDownloadOrganizer.shared.stop() }
+        case DefaultsKey.whatsAppDownloadsAccessConfirmed:
+            if enabled {
+                WhatsAppDownloadScheduler.shared.syncWithPreferences()
+                WhatsAppDownloadOrganizer.shared.syncWithPreferences()
+                let manager = WhatsAppDownloadManager.shared
+                if WhatsAppDownloadSupport.isEnabled, manager.reviewVisible, manager.phase == .idle {
+                    manager.scan()
+                }
+            } else {
+                WhatsAppDownloadScheduler.shared.stop()
+                WhatsAppDownloadOrganizer.shared.stop()
+                let manager = WhatsAppDownloadManager.shared
+                if manager.phase == .scanning { manager.reset() }
+            }
+        default: break
+        }
     }
 
     /// Runs before a replacement engine starts, including settings edits made

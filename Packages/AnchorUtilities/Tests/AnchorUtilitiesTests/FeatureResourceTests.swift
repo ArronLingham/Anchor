@@ -215,6 +215,54 @@ private final class TimedFeatureEngine {
 
 extension FeatureResourceTests {
     @MainActor
+    func testWhatsAppPreferenceObserverSeesExternalWrite() throws {
+        let domain = "Anchor.whatsapp-external-test." + UUID().uuidString
+        let defaults = UserDefaults(suiteName: domain)!
+        defer { defaults.removePersistentDomain(forName: domain) }
+        let changed = expectation(description: "external switch change delivered")
+        var observer: WhatsAppPreferenceObserver? = WhatsAppPreferenceObserver(defaults: defaults) { key, value in
+            if key == DefaultsKey.whatsAppDownloadsEnabled, value { changed.fulfill() }
+        }
+        XCTAssertNotNil(observer)
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/defaults")
+        process.arguments = ["write", domain, DefaultsKey.whatsAppDownloadsEnabled, "-bool", "YES"]
+        try process.run()
+        process.waitUntilExit()
+        XCTAssertEqual(process.terminationStatus, 0)
+        wait(for: [changed], timeout: 5)
+        observer = nil
+    }
+
+    @MainActor
+    func testWhatsAppPreferenceObserverKeepsRapidTransitions() {
+        let domain = "Anchor.whatsapp-observer-test." + UUID().uuidString
+        let defaults = UserDefaults(suiteName: domain)!
+        defer { defaults.removePersistentDomain(forName: domain) }
+        let changed = expectation(description: "each transition delivered")
+        changed.expectedFulfillmentCount = 5
+        var events: [(String, Bool)] = []
+        var observer: WhatsAppPreferenceObserver? = WhatsAppPreferenceObserver(defaults: defaults) { key, value in
+            events.append((key, value))
+            changed.fulfill()
+        }
+        XCTAssertNotNil(observer)
+        defaults.set(true, forKey: DefaultsKey.whatsAppDownloadsEnabled)
+        defaults.set(false, forKey: DefaultsKey.whatsAppDownloadsEnabled)
+        defaults.set(true, forKey: DefaultsKey.whatsAppDownloadsEnabled)
+        defaults.set(true, forKey: DefaultsKey.whatsAppDownloadsAutomaticEnabled)
+        defaults.set(false, forKey: DefaultsKey.whatsAppDownloadsAutomaticEnabled)
+        wait(for: [changed], timeout: 2)
+        XCTAssertEqual(events.map(\.0), [DefaultsKey.whatsAppDownloadsEnabled,
+                                         DefaultsKey.whatsAppDownloadsEnabled,
+                                         DefaultsKey.whatsAppDownloadsEnabled,
+                                         DefaultsKey.whatsAppDownloadsAutomaticEnabled,
+                                         DefaultsKey.whatsAppDownloadsAutomaticEnabled])
+        XCTAssertEqual(events.map(\.1), [true, false, true, true, false])
+        observer = nil
+    }
+
+    @MainActor
     func testResetCancelsScanAndNewScanCanFinish() throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
