@@ -87,7 +87,7 @@ final class WhatsAppDownloadOrganizer: ObservableObject {
     private var timer: Timer?
     private var operationToken = UUID()
 
-    private init() {}
+    init() {}
 
     static func destinationURL(defaults: UserDefaults = UtilityPreferences.standard,
                                downloadsURL: URL? = nil) -> URL? {
@@ -117,7 +117,7 @@ final class WhatsAppDownloadOrganizer: ObservableObject {
               UtilityPreferences.standard.bool(forKey: DefaultsKey.whatsAppOrganizerEnabled),
               UtilityPreferences.standard.bool(forKey: DefaultsKey.whatsAppDownloadsAccessConfirmed),
               let root = downloadsURL else {
-            phase = .idle
+            if !isBusy { phase = .idle }
             return
         }
         startMonitoring(root: root)
@@ -125,9 +125,32 @@ final class WhatsAppDownloadOrganizer: ObservableObject {
     }
 
     func stop() {
-        operationToken = UUID()
         stopMonitoring()
+        // A file operation cannot be cancelled safely after it starts. Keep
+        // its token and busy state until its result and undo data are saved.
+        guard !isBusy else { return }
+        operationToken = UUID()
         phase = .idle
+    }
+
+    /// The worker owns a transaction until its main-thread completion records
+    /// the outcome, even if monitoring was stopped in the meantime.
+    @discardableResult
+    func performMutation<Result>(phase: Phase, work: @escaping () -> Result,
+                                 finish: @escaping (Result) -> Void) -> Bool {
+        guard !isBusy, phase == .organizing || phase == .undoing else { return false }
+        let token = UUID()
+        operationToken = token
+        self.phase = phase
+        queue.async { [weak self] in
+            let result = work()
+            DispatchQueue.main.async { [weak self] in
+                guard let self, self.operationToken == token else { return }
+                finish(result)
+                if self.operationToken == token, self.isBusy { self.phase = .idle }
+            }
+        }
+        return true
     }
 
     @discardableResult
@@ -153,32 +176,28 @@ final class WhatsAppDownloadOrganizer: ObservableObject {
     }
 
     func undoLastRun(transactionID: UUID? = nil) {
-        guard !isBusy else { return }
+        guard AppFeature.cleaner.isAvailable, WhatsAppDownloadSupport.isEnabled, !isBusy else { return }
         let transactions = Self.validUndoTransactions()
         let transaction = transactionID.flatMap { id in
             transactions.first { $0.id == id }
         } ?? (transactionID == nil ? transactions.last : nil)
         guard let transaction,
               Self.recordsAllowUndo(transaction, current: Self.loadRecords()) else { return }
-        let token = UUID()
-        operationToken = token
-        phase = .undoing
-        queue.async { [weak self] in
-            let failed = Self.performUndo(transaction)
-            DispatchQueue.main.async { [weak self] in
-                guard let self, self.operationToken == token else { return }
-                if failed == 0 {
-                    Self.saveRecords(Self.recordsAfterUndo(
-                        transaction, current: Self.loadRecords()))
-                    Self.saveUndoTransactions(
-                        transactions.filter { $0.id != transaction.id })
-                    self.phase = .done(moved: 0, duplicates: 0, failed: 0)
-                } else {
-                    self.phase = .failed
-                }
-                WhatsAppDownloadManager.shared.scan()
-                self.schedule(after: 2)
+        performMutation(phase: .undoing, work: { Self.performUndo(transaction) }) { [weak self] failed in
+            guard let self else { return }
+            if failed == 0 {
+                Self.saveRecords(Self.recordsAfterUndo(
+                    transaction, current: Self.loadRecords()))
+                Self.saveUndoTransactions(
+                    transactions.filter { $0.id != transaction.id })
+                self.phase = .done(moved: 0, duplicates: 0, failed: 0)
+            } else {
+                self.phase = .failed
             }
+            if AppFeature.cleaner.isAvailable && WhatsAppDownloadSupport.isEnabled {
+                WhatsAppDownloadManager.shared.scan()
+            }
+            self.schedule(after: 2)
         }
     }
 
@@ -211,8 +230,9 @@ final class WhatsAppDownloadOrganizer: ObservableObject {
     }
 
     private func schedule(after delay: TimeInterval) {
-        guard WhatsAppDownloadSupport.isEnabled,
-              UtilityPreferences.standard.bool(forKey: DefaultsKey.whatsAppOrganizerEnabled) else { return }
+        guard AppFeature.cleaner.isAvailable, WhatsAppDownloadSupport.isEnabled,
+              UtilityPreferences.standard.bool(forKey: DefaultsKey.whatsAppOrganizerEnabled),
+              UtilityPreferences.standard.bool(forKey: DefaultsKey.whatsAppDownloadsAccessConfirmed) else { return }
         let date = Date().addingTimeInterval(max(1, delay))
         if let nextCheck, nextCheck <= date { return }
         timer?.invalidate()
@@ -229,6 +249,9 @@ final class WhatsAppDownloadOrganizer: ObservableObject {
     }
 
     private func schedule(at date: Date?) {
+        guard AppFeature.cleaner.isAvailable, WhatsAppDownloadSupport.isEnabled,
+              UtilityPreferences.standard.bool(forKey: DefaultsKey.whatsAppOrganizerEnabled),
+              UtilityPreferences.standard.bool(forKey: DefaultsKey.whatsAppDownloadsAccessConfirmed) else { return }
         guard let date else {
             nextCheck = nil
             phase = .waiting
@@ -251,6 +274,7 @@ final class WhatsAppDownloadOrganizer: ObservableObject {
         guard AppFeature.cleaner.isAvailable,
               WhatsAppDownloadSupport.isEnabled,
               UtilityPreferences.standard.bool(forKey: DefaultsKey.whatsAppOrganizerEnabled),
+              UtilityPreferences.standard.bool(forKey: DefaultsKey.whatsAppDownloadsAccessConfirmed),
               let root = downloadsURL,
               let settings = settings(root: root) else {
             phase = .idle
@@ -263,45 +287,41 @@ final class WhatsAppDownloadOrganizer: ObservableObject {
             return
         }
 
-        let token = UUID()
-        operationToken = token
-        phase = .organizing
-        queue.async { [weak self] in
-            let result = Self.organize(root: root, settings: settings)
-            DispatchQueue.main.async { [weak self] in
-                guard let self, self.operationToken == token else { return }
-                Self.saveRecords(result.records)
-                if let undo = result.undo {
-                    var transactions = Self.validUndoTransactions()
-                    transactions.append(undo)
-                    Self.saveUndoTransactions(Array(transactions.suffix(20)))
-                }
-                let defaults = UtilityPreferences.standard
-                defaults.set(Date().timeIntervalSince1970,
-                             forKey: DefaultsKey.whatsAppOrganizerLastRun)
-                defaults.set(result.moved, forKey: DefaultsKey.whatsAppOrganizerLastMoved)
-                defaults.set(result.duplicates,
-                             forKey: DefaultsKey.whatsAppOrganizerLastDuplicates)
-                defaults.set(result.failed, forKey: DefaultsKey.whatsAppOrganizerLastFailed)
-                self.phase = .done(moved: result.moved,
-                                   duplicates: result.duplicates,
-                                   failed: result.failed)
-                if result.moved + result.duplicates > 0,
-                   defaults.bool(forKey: DefaultsKey.whatsAppDownloadsNotify) {
-                    let strings = WhatsAppOrganizerStrings.localized(L10n.shared.language)
-                    let body = String(format: strings.notificationFormat,
-                                      result.moved, result.duplicates, result.failed)
-                    if let undo = result.undo {
-                        Notifier.postWhatsAppOrganization(
-                            title: strings.notificationTitle, body: body,
-                            undoTitle: strings.undo, transactionID: undo.id)
-                    } else {
-                        Notifier.post(title: strings.notificationTitle, body: body)
-                    }
-                }
-                if manager.reviewVisible { manager.scan() }
-                self.schedule(at: result.nextEligible)
+        performMutation(phase: .organizing, work: { Self.organize(root: root, settings: settings) }) { [weak self] result in
+            guard let self else { return }
+            Self.saveRecords(result.records)
+            if let undo = result.undo {
+                var transactions = Self.validUndoTransactions()
+                transactions.append(undo)
+                Self.saveUndoTransactions(Array(transactions.suffix(20)))
             }
+            let defaults = UtilityPreferences.standard
+            defaults.set(Date().timeIntervalSince1970,
+                         forKey: DefaultsKey.whatsAppOrganizerLastRun)
+            defaults.set(result.moved, forKey: DefaultsKey.whatsAppOrganizerLastMoved)
+            defaults.set(result.duplicates,
+                         forKey: DefaultsKey.whatsAppOrganizerLastDuplicates)
+            defaults.set(result.failed, forKey: DefaultsKey.whatsAppOrganizerLastFailed)
+            self.phase = .done(moved: result.moved,
+                               duplicates: result.duplicates,
+                               failed: result.failed)
+            if AppFeature.cleaner.isAvailable, WhatsAppDownloadSupport.isEnabled,
+               result.moved + result.duplicates > 0,
+               defaults.bool(forKey: DefaultsKey.whatsAppDownloadsNotify) {
+                let strings = WhatsAppOrganizerStrings.localized(L10n.shared.language)
+                let body = String(format: strings.notificationFormat,
+                                  result.moved, result.duplicates, result.failed)
+                if let undo = result.undo {
+                    Notifier.postWhatsAppOrganization(
+                        title: strings.notificationTitle, body: body,
+                        undoTitle: strings.undo, transactionID: undo.id)
+                } else {
+                    Notifier.post(title: strings.notificationTitle, body: body)
+                }
+            }
+            if AppFeature.cleaner.isAvailable, WhatsAppDownloadSupport.isEnabled,
+               manager.reviewVisible { manager.scan() }
+            self.schedule(at: result.nextEligible)
         }
     }
 

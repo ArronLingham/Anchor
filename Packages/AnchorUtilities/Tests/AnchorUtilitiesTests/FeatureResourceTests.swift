@@ -214,6 +214,51 @@ private final class TimedFeatureEngine {
 }
 
 extension FeatureResourceTests {
+    @MainActor
+    func testOrganizerStopKeepsMoveAndUndoCompletions() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let original = directory.appendingPathComponent("original.txt")
+        let moved = directory.appendingPathComponent("moved.txt")
+        try Data("fixture".utf8).write(to: original)
+
+        for (phase, source, destination) in [(WhatsAppDownloadOrganizer.Phase.organizing, original, moved),
+                                             (.undoing, moved, original)] {
+            let organizer = WhatsAppDownloadOrganizer()
+            let started = expectation(description: "worker started")
+            let completed = expectation(description: "transaction recorded")
+            let resume = DispatchSemaphore(value: 0)
+            defer { resume.signal() }
+            let journal = directory.appendingPathComponent("journal-\(UUID().uuidString)")
+            let accepted = organizer.performMutation(phase: phase, work: { () -> Bool in
+                started.fulfill()
+                resume.wait()
+                do {
+                    try FileManager.default.moveItem(at: source, to: destination)
+                    return true
+                } catch { return false }
+            }, finish: { success in
+                XCTAssertTrue(success)
+                do { try Data("recorded".utf8).write(to: journal) }
+                catch { XCTFail("Could not write transaction record: \(error)") }
+                completed.fulfill()
+            })
+            XCTAssertTrue(accepted)
+            wait(for: [started], timeout: 2)
+            organizer.stop()
+            organizer.stop()
+            XCTAssertTrue(organizer.isBusy, "Stopping monitoring must not abandon an active transaction")
+            XCTAssertFalse(organizer.performMutation(phase: phase, work: { () }, finish: { _ in }),
+                           "A second operation must not overlap the first")
+            resume.signal()
+            wait(for: [completed], timeout: 2)
+            XCTAssertFalse(organizer.isBusy)
+            XCTAssertTrue(FileManager.default.fileExists(atPath: destination.path))
+            XCTAssertEqual(try Data(contentsOf: journal), Data("recorded".utf8))
+        }
+    }
+
     func testCaptureDisablementProtectsWorkWithoutBlockingOtherOwners() {
         XCTAssertNotNil(CaptureDisablementGuard.reason(for: .screenshot, screenshotEditor: true))
         XCTAssertNil(CaptureDisablementGuard.reason(for: .screenRecorder, screenshotEditor: true))
