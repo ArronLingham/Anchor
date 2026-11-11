@@ -154,6 +154,8 @@ final class FeatureRuntime: ObservableObject {
             return "Finish removing the app before disabling the Uninstaller."
         case .cleaner where JunkCleaner.existing?.phase == .cleaning:
             return "Finish the cleanup before disabling the Cleaner."
+        case .cleaner where WhatsAppDownloadManager.shared.phase == .cleaning || WhatsAppDownloadOrganizer.shared.isBusy:
+            return "Finish the WhatsApp file operation before disabling the Cleaner."
         case .spacesOrder where NativeSpacesOrder.shared.isApplying:
             return "Wait for the Spaces setting to finish changing before disabling it."
         case .scratchpad:

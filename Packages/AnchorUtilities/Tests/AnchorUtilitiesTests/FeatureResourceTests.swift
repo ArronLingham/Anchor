@@ -215,6 +215,51 @@ private final class TimedFeatureEngine {
 
 extension FeatureResourceTests {
     @MainActor
+    func testCleanupResetKeepsActiveCompletionAndBlocksOverlap() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let source = directory.appendingPathComponent("source.txt")
+        let destination = directory.appendingPathComponent("moved.txt")
+        try Data("fixture".utf8).write(to: source)
+        let domain = "Anchor.cleanup-transaction-test." + UUID().uuidString
+        let defaults = UserDefaults(suiteName: domain)!
+        defer { defaults.removePersistentDomain(forName: domain) }
+        let manager = WhatsAppDownloadManager(preferences: defaults)
+        let started = expectation(description: "cleanup started")
+        let completed = expectation(description: "cleanup result recorded")
+        let resume = DispatchSemaphore(value: 0)
+        defer { resume.signal() }
+        let accepted = manager.performCleanup(work: { () -> Bool in
+            started.fulfill()
+            resume.wait()
+            do {
+                try FileManager.default.moveItem(at: source, to: destination)
+                return true
+            } catch { return false }
+        }, finish: { success in
+            XCTAssertTrue(success)
+            manager.recordCleanup(moved: 1, bytes: 7, failed: 0, automatic: true)
+            completed.fulfill()
+        })
+        XCTAssertTrue(accepted)
+        wait(for: [started], timeout: 2)
+        manager.reset()
+        manager.reset()
+        XCTAssertEqual(manager.phase, .cleaning)
+        XCTAssertFalse(manager.performCleanup(work: { () }, finish: { _ in }))
+        manager.scan() // A scan cannot replace an active cleanup.
+        XCTAssertEqual(manager.phase, .cleaning)
+        resume.signal()
+        wait(for: [completed], timeout: 2)
+        XCTAssertEqual(manager.phase, .idle)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: destination.path))
+        XCTAssertEqual(defaults.integer(forKey: DefaultsKey.whatsAppDownloadsLastCleanupCount), 1)
+        XCTAssertEqual(defaults.integer(forKey: DefaultsKey.whatsAppDownloadsLastCleanupBytes), 7)
+        XCTAssertGreaterThan(defaults.double(forKey: DefaultsKey.whatsAppDownloadsLastAutoRun), 0)
+    }
+
+    @MainActor
     func testOrganizerStopKeepsMoveAndUndoCompletions() throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)

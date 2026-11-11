@@ -47,9 +47,12 @@ final class WhatsAppDownloadManager: ObservableObject {
 
     private let queue = DispatchQueue(label: "com.vorssaint.whatsapp-downloads",
                                       qos: .userInitiated)
+    private let preferences: UserDefaults
     private var operationToken = UUID()
 
-    private init() {}
+    init(preferences: UserDefaults = UtilityPreferences.standard) {
+        self.preferences = preferences
+    }
 
     var selectedCount: Int { candidates.filter(\.include).count }
     var selectedBytes: Int64 { candidates.filter(\.include).reduce(0) { $0 + $1.size } }
@@ -64,6 +67,9 @@ final class WhatsAppDownloadManager: ObservableObject {
     }
 
     func reset() {
+        // A cleanup may already be moving files. Keep its token and state
+        // until the result is recorded rather than losing the completion.
+        guard phase != .cleaning else { return }
         operationToken = UUID()
         candidates = []
         phase = .idle
@@ -189,15 +195,35 @@ final class WhatsAppDownloadManager: ObservableObject {
         NSWorkspace.shared.activateFileViewerSelecting([candidate.url])
     }
 
-    func cleanSelected(automatic: Bool) {
-        let chosen = candidates.filter(\.include)
-        guard !chosen.isEmpty, downloadsURL != nil else { return }
-        phase = .cleaning
+    /// Serializes one cleanup through its result-recording completion.
+    @discardableResult
+    func performCleanup<Result>(work: @escaping () -> Result,
+                                finish: @escaping (Result) -> Void) -> Bool {
+        guard phase != .cleaning, phase != .scanning else { return false }
         let token = UUID()
         operationToken = token
+        phase = .cleaning
+        queue.async { [weak self] in
+            let result = work()
+            DispatchQueue.main.async { [weak self] in
+                guard let self, self.operationToken == token else { return }
+                finish(result)
+                if self.operationToken == token, self.phase == .cleaning { self.phase = .idle }
+            }
+        }
+        return true
+    }
+
+    func cleanSelected(automatic: Bool) {
+        let defaults = UtilityPreferences.standard
+        let chosen = candidates.filter(\.include)
+        guard AppFeature.cleaner.isAvailable, WhatsAppDownloadSupport.isEnabled,
+              defaults.bool(forKey: DefaultsKey.whatsAppDownloadsAccessConfirmed),
+              !automatic || defaults.bool(forKey: DefaultsKey.whatsAppDownloadsAutomaticEnabled),
+              !chosen.isEmpty, downloadsURL != nil else { return }
         let settings = Self.settingsSnapshot()
 
-        queue.async { [weak self] in
+        performCleanup(work: { () -> (Set<String>, Int64, Int) in
             var movedIDs = Set<String>()
             var movedBytes: Int64 = 0
             var failed = 0
@@ -222,15 +248,15 @@ final class WhatsAppDownloadManager: ObservableObject {
                     failed += 1
                 }
             }
-
-            DispatchQueue.main.async { [weak self] in
-                guard let self, self.operationToken == token else { return }
-                self.candidates.removeAll { movedIDs.contains($0.id) }
-                self.recordCleanup(moved: movedIDs.count, bytes: movedBytes,
-                                   failed: failed, automatic: automatic)
-                self.phase = .done(moved: movedIDs.count, bytes: movedBytes, failed: failed)
-            }
-        }
+            return (movedIDs, movedBytes, failed)
+        }, finish: { [weak self] result in
+            guard let self else { return }
+            let (movedIDs, movedBytes, failed) = result
+            self.candidates.removeAll { movedIDs.contains($0.id) }
+            self.recordCleanup(moved: movedIDs.count, bytes: movedBytes,
+                               failed: failed, automatic: automatic)
+            self.phase = .done(moved: movedIDs.count, bytes: movedBytes, failed: failed)
+        })
     }
 
     /// Records a successful scheduled pass that had nothing eligible. This is
@@ -240,13 +266,15 @@ final class WhatsAppDownloadManager: ObservableObject {
         phase = .done(moved: 0, bytes: 0, failed: 0)
     }
 
-    private func recordCleanup(moved: Int, bytes: Int64, failed: Int, automatic: Bool) {
-        let defaults = UtilityPreferences.standard
-        defaults.set(Date().timeIntervalSince1970, forKey: DefaultsKey.whatsAppDownloadsLastCleanup)
+    func recordCleanup(moved: Int, bytes: Int64, failed: Int, automatic: Bool) {
+        let defaults = preferences
+        let finishedAt = Date().timeIntervalSince1970
+        defaults.set(finishedAt, forKey: DefaultsKey.whatsAppDownloadsLastCleanup)
         defaults.set(moved, forKey: DefaultsKey.whatsAppDownloadsLastCleanupCount)
         defaults.set(bytes, forKey: DefaultsKey.whatsAppDownloadsLastCleanupBytes)
         defaults.set(failed, forKey: DefaultsKey.whatsAppDownloadsLastCleanupFailed)
         defaults.set(automatic, forKey: DefaultsKey.whatsAppDownloadsLastCleanupAutomatic)
+        if automatic { defaults.set(finishedAt, forKey: DefaultsKey.whatsAppDownloadsLastAutoRun) }
     }
 
     private struct SettingsSnapshot {

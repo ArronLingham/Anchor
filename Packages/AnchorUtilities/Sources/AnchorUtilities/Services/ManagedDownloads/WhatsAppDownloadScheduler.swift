@@ -17,8 +17,16 @@ final class WhatsAppDownloadScheduler: ObservableObject {
     private var wakeObserver: NSObjectProtocol?
     private var clockObservers: [NSObjectProtocol] = []
     private var runObserver: AnyCancellable?
+    private var generation = 0
 
     private init() {}
+
+    private var isEnabled: Bool {
+        let defaults = UtilityPreferences.standard
+        return AppFeature.cleaner.isAvailable && WhatsAppDownloadSupport.isEnabled
+            && defaults.bool(forKey: DefaultsKey.whatsAppDownloadsAutomaticEnabled)
+            && defaults.bool(forKey: DefaultsKey.whatsAppDownloadsAccessConfirmed)
+    }
 
     func syncWithPreferences() {
         UtilityWorkspace.shared.prepareOwnership()
@@ -40,6 +48,7 @@ final class WhatsAppDownloadScheduler: ObservableObject {
     }
 
     func stop() {
+        generation &+= 1
         timer?.invalidate()
         timer = nil
         if let wakeObserver {
@@ -88,9 +97,12 @@ final class WhatsAppDownloadScheduler: ObservableObject {
     }
 
     private func schedule(at date: Date) {
+        guard isEnabled else { return }
         timer?.invalidate()
+        let scheduledGeneration = generation
         let timer = Timer(fire: date, interval: 0, repeats: false) { [weak self] _ in
-            self?.runAutomaticCleanup()
+            guard let self, self.generation == scheduledGeneration else { return }
+            self.runAutomaticCleanup()
         }
         timer.tolerance = 10
         RunLoop.main.add(timer, forMode: .common)
@@ -99,6 +111,8 @@ final class WhatsAppDownloadScheduler: ObservableObject {
     }
 
     private func runAutomaticCleanup() {
+        guard isEnabled else { stop(); return }
+        let runGeneration = generation
         let manager = WhatsAppDownloadManager.shared
         let organizer = WhatsAppDownloadOrganizer.shared
         let userIsReviewing = manager.phase == .results && manager.reviewVisible
@@ -116,6 +130,8 @@ final class WhatsAppDownloadScheduler: ObservableObject {
             .receive(on: DispatchQueue.main)
             .sink { [weak self] phase in
                 guard let self else { return }
+                guard self.generation == runGeneration else { return }
+                guard self.isEnabled else { self.stop(); return }
                 switch phase {
                 case .results:
                     // The person may have opened the review while the pass's

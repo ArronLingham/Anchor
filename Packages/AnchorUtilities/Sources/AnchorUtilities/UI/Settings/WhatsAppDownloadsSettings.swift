@@ -99,6 +99,12 @@ struct WhatsAppDownloadsSettings: View {
     private var introductionSection: some View {
         Section {
             Toggle(text.title, isOn: $enabled)
+                .disabled(manager.phase == .cleaning || organizer.isBusy)
+            if manager.phase == .cleaning || organizer.isBusy {
+                Text("Finish the current file operation before disabling this tool.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
             Text(organizerEnabled ? organizerText.privacyNote : text.intro)
                 .font(.callout)
             HStack(spacing: 8) {
