@@ -215,6 +215,44 @@ private final class TimedFeatureEngine {
 
 extension FeatureResourceTests {
     @MainActor
+    func testResetCancelsScanAndNewScanCanFinish() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let files = ["first", "second"].map { directory.appendingPathComponent($0) }
+        for file in files { try Data("fixture".utf8).write(to: file) }
+        let manager = WhatsAppDownloadManager()
+        let started = expectation(description: "first scan entered classification")
+        let nextFinished = expectation(description: "new scan finished")
+        let resume = DispatchSemaphore(value: 0)
+        defer { resume.signal() }
+        XCTAssertTrue(manager.performScan(work: { cancellation -> [String]? in
+            var visited: [String] = []
+            let result = cancellation.compactMap(files) { file -> String? in
+                visited.append(file.lastPathComponent)
+                if visited.count == 1 {
+                    started.fulfill()
+                    resume.wait()
+                }
+                return try? String(contentsOf: file, encoding: .utf8)
+            }
+            XCTAssertNil(result)
+            XCTAssertEqual(visited, ["first"], "Cancellation must stop later file classification")
+            return result
+        }, finish: { _ in XCTFail("A cancelled scan must not publish results") }))
+        wait(for: [started], timeout: 2)
+        manager.reset()
+        XCTAssertEqual(manager.phase, .idle)
+        XCTAssertTrue(manager.performScan(work: { _ in 42 }, finish: { result in
+            XCTAssertEqual(result, 42)
+            nextFinished.fulfill()
+        }))
+        resume.signal()
+        wait(for: [nextFinished], timeout: 2)
+        XCTAssertEqual(manager.phase, .idle)
+    }
+
+    @MainActor
     func testCleanupResetKeepsActiveCompletionAndBlocksOverlap() throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)

@@ -4,6 +4,31 @@
 import AppKit
 import Foundation
 
+/// A scan checks this between filesystem operations; cancelling never touches files.
+final class WhatsAppScanCancellation {
+    private let lock = NSLock()
+    private var cancelled = false
+
+    var isCancelled: Bool {
+        lock.lock(); defer { lock.unlock() }
+        return cancelled
+    }
+
+    func cancel() {
+        lock.lock(); defer { lock.unlock() }
+        cancelled = true
+    }
+
+    func compactMap<Input, Output>(_ items: [Input], transform: (Input) -> Output?) -> [Output]? {
+        var result: [Output] = []
+        for item in items {
+            guard !isCancelled else { return nil }
+            if let value = transform(item) { result.append(value) }
+        }
+        return isCancelled ? nil : result
+    }
+}
+
 /// Scans only the top level of Downloads, surfaces files that macOS itself
 /// attributes to WhatsApp, and moves reviewed/eligible items to the Trash.
 /// It never reads file contents or reaches into WhatsApp's container.
@@ -49,6 +74,7 @@ final class WhatsAppDownloadManager: ObservableObject {
                                       qos: .userInitiated)
     private let preferences: UserDefaults
     private var operationToken = UUID()
+    private var scanCancellation: WhatsAppScanCancellation?
 
     init(preferences: UserDefaults = UtilityPreferences.standard) {
         self.preferences = preferences
@@ -70,6 +96,8 @@ final class WhatsAppDownloadManager: ObservableObject {
         // A cleanup may already be moving files. Keep its token and state
         // until the result is recorded rather than losing the completion.
         guard phase != .cleaning else { return }
+        scanCancellation?.cancel()
+        scanCancellation = nil
         operationToken = UUID()
         candidates = []
         phase = .idle
@@ -79,6 +107,30 @@ final class WhatsAppDownloadManager: ObservableObject {
         reviewVisible = visible
     }
 
+    /// Cancelling a scan invalidates its result and stops classification at
+    /// the next filesystem boundary; it does not interrupt a syscall in flight.
+    @discardableResult
+    func performScan<Result>(work: @escaping (WhatsAppScanCancellation) -> Result?,
+                             finish: @escaping (Result) -> Void) -> Bool {
+        guard phase != .scanning, phase != .cleaning else { return false }
+        let token = UUID()
+        let cancellation = WhatsAppScanCancellation()
+        operationToken = token
+        scanCancellation = cancellation
+        phase = .scanning
+        queue.async { [weak self] in
+            guard !cancellation.isCancelled, let result = work(cancellation),
+                  !cancellation.isCancelled else { return }
+            DispatchQueue.main.async { [weak self] in
+                guard let self, self.operationToken == token, !cancellation.isCancelled else { return }
+                self.scanCancellation = nil
+                finish(result)
+                if self.operationToken == token, self.phase == .scanning { self.phase = .idle }
+            }
+        }
+        return true
+    }
+
     func scan() {
         guard phase != .scanning, phase != .cleaning else { return }
         guard let root = downloadsURL else {
@@ -86,66 +138,62 @@ final class WhatsAppDownloadManager: ObservableObject {
             phase = .failed
             return
         }
-
-        let token = UUID()
-        operationToken = token
         candidates = []
-        phase = .scanning
-
         let settings = Self.settingsSnapshot()
         let excluded = Set(UtilityPreferences.standard.stringArray(
             forKey: DefaultsKey.whatsAppDownloadsExclusions) ?? [])
 
-        queue.async { [weak self] in
-            let result: Result<[Candidate], Error>
+        performScan(work: { cancellation -> Result<[Candidate], Error>? in
             do {
+                guard !cancellation.isCancelled else { return nil }
                 let sourceURLs = try FileManager.default.contentsOfDirectory(
                     at: root,
                     includingPropertiesForKeys: Array(Self.resourceKeys),
                     options: [.skipsSubdirectoryDescendants, .skipsHiddenFiles])
+                guard !cancellation.isCancelled else { return nil }
                 var locations = sourceURLs.map { ($0, root, false, false) }
                 for path in WhatsAppDownloadOrganizer.managedDestinationPaths() {
+                    guard !cancellation.isCancelled else { return nil }
                     let url = URL(fileURLWithPath: path).standardizedFileURL
                     if !WhatsAppDownloadSupport.isDirectChild(url, of: root) {
                         // Organized files stay reviewable by hand but are
-                        // never trashed automatically: the person filed them
-                        // away to keep them, and the page only promises the
-                        // automation watches the top level of Downloads.
+                        // never trashed automatically.
                         locations.append((url, url.deletingLastPathComponent(), false, true))
                     }
                 }
                 let now = Date()
-                let found = locations.compactMap { url, managedRoot, recursive, organized in
-                    Self.candidate(at: url, root: managedRoot,
-                                   allowsDescendants: recursive, organized: organized,
-                                   settings: settings, excluded: excluded, now: now)
-                }.sorted {
+                guard let found = cancellation.compactMap(locations, transform: { item in
+                    let (url, managedRoot, recursive, organized) = item
+                    return Self.candidate(at: url, root: managedRoot,
+                                          allowsDescendants: recursive, organized: organized,
+                                          settings: settings, excluded: excluded, now: now)
+                }) else { return nil }
+                guard !cancellation.isCancelled else { return nil }
+                let sorted = found.sorted {
                     if $0.downloadedAt != $1.downloadedAt { return $0.downloadedAt > $1.downloadedAt }
                     return $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
                 }
-                result = .success(found)
+                return .success(sorted)
             } catch {
-                result = .failure(error)
+                return cancellation.isCancelled ? nil : .failure(error)
             }
-
-            DispatchQueue.main.async { [weak self] in
-                guard let self, self.operationToken == token else { return }
-                switch result {
-                case let .success(found):
-                    UtilityPreferences.standard.set(true,
-                                              forKey: DefaultsKey.whatsAppDownloadsAccessConfirmed)
-                    self.accessStatus = .available
-                    self.candidates = found
-                    self.phase = .results
-                case .failure:
-                    UtilityPreferences.standard.set(false,
-                                              forKey: DefaultsKey.whatsAppDownloadsAccessConfirmed)
-                    self.accessStatus = .denied
-                    self.candidates = []
-                    self.phase = .failed
-                }
+        }, finish: { [weak self] result in
+            guard let self else { return }
+            switch result {
+            case let .success(found):
+                UtilityPreferences.standard.set(true,
+                                          forKey: DefaultsKey.whatsAppDownloadsAccessConfirmed)
+                self.accessStatus = .available
+                self.candidates = found
+                self.phase = .results
+            case .failure:
+                UtilityPreferences.standard.set(false,
+                                          forKey: DefaultsKey.whatsAppDownloadsAccessConfirmed)
+                self.accessStatus = .denied
+                self.candidates = []
+                self.phase = .failed
             }
-        }
+        })
     }
 
     func setInclude(_ include: Bool, for id: String) {
