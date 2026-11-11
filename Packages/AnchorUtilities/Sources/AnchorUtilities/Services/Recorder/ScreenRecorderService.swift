@@ -325,6 +325,13 @@ final class ScreenRecorderService: ObservableObject {
         WindowActivationPolicy.release()
     }
 
+    func hasOpenEditors(ownedBy owner: AppFeature) -> Bool {
+        editors.contains { editor in
+            let isMediaEditor = mediaOwnedEditorIDs.contains(ObjectIdentifier(editor))
+            return owner == .mediaTools ? isMediaEditor : owner == .screenRecorder && !isMediaEditor
+        }
+    }
+
     func closeEditors(ownedBy owner: AppFeature) {
         guard owner == .mediaTools else { return }
         let targets = editors.filter { mediaOwnedEditorIDs.contains(ObjectIdentifier($0)) }

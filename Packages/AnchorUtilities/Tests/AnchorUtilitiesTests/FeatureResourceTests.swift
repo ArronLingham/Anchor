@@ -214,6 +214,19 @@ private final class TimedFeatureEngine {
 }
 
 extension FeatureResourceTests {
+    func testCaptureDisablementProtectsWorkWithoutBlockingOtherOwners() {
+        XCTAssertNotNil(CaptureDisablementGuard.reason(for: .screenshot, screenshotEditor: true))
+        XCTAssertNil(CaptureDisablementGuard.reason(for: .screenRecorder, screenshotEditor: true))
+        XCTAssertNotNil(CaptureDisablementGuard.reason(for: .screenRecorder, recorderEditor: true))
+        XCTAssertNotNil(CaptureDisablementGuard.reason(for: .screenRecorder, recording: true))
+        XCTAssertNil(CaptureDisablementGuard.reason(for: .mediaTools, recorderEditor: true, recording: true))
+        XCTAssertNotNil(CaptureDisablementGuard.reason(for: .mediaTools, mediaEditor: true))
+        XCTAssertNil(CaptureDisablementGuard.reason(for: .screenRecorder, mediaEditor: true))
+        XCTAssertNil(CaptureDisablementGuard.reason(for: .screenshot))
+        XCTAssertNil(CaptureDisablementGuard.reason(for: .screenRecorder))
+        XCTAssertNil(CaptureDisablementGuard.reason(for: .mediaTools))
+    }
+
     func testClipboardClearPreservesPinnedAndRecopiedItems() throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)

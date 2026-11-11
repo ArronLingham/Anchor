@@ -3,6 +3,26 @@
 
 import AppKit
 
+/// Keep each feature available until its own open capture work is resolved.
+enum CaptureDisablementGuard {
+    static func reason(for feature: AppFeature, screenshotEditor: Bool = false,
+                       recorderEditor: Bool = false, mediaEditor: Bool = false,
+                       recording: Bool = false) -> String? {
+        switch feature {
+        case .screenshot where screenshotEditor:
+            return "Save or close the open screenshot editor before disabling Screenshot."
+        case .screenRecorder where recording:
+            return "Finish or cancel the recording before disabling Screen Recorder."
+        case .screenRecorder where recorderEditor:
+            return "Save or close the open recording editor before disabling Screen Recorder."
+        case .mediaTools where mediaEditor:
+            return "Save or close the open media recording editor before disabling Media Tools."
+        default:
+            return nil
+        }
+    }
+}
+
 /// Bridges the pure feature catalog to the live singletons. Every binding is
 /// a closure, so merely mentioning a feature never instantiates its service:
 /// a service only comes to life when its binding runs, and syncAtLaunch skips
@@ -112,6 +132,19 @@ final class FeatureRuntime: ObservableObject {
     /// Preserve an in-progress package transaction or an unsaved document.
     /// This is a visible refusal to turn off, never a false Off indicator.
     private func disableBlockedReason(_ feature: AppFeature) -> String? {
+        switch feature {
+        case .screenshot, .screenRecorder, .mediaTools:
+            let recorder = ScreenRecorderService.existing
+            if let reason = CaptureDisablementGuard.reason(
+                for: feature,
+                screenshotEditor: ScreenshotService.existing?.hasOpenEditors == true,
+                recorderEditor: recorder?.hasOpenEditors(ownedBy: .screenRecorder) == true,
+                mediaEditor: recorder?.hasOpenEditors(ownedBy: .mediaTools) == true,
+                recording: recorder?.hasActiveCapture == true) {
+                return reason
+            }
+        default: break
+        }
         switch feature {
         case .homebrew where HomebrewManager.existing?.operation != nil:
             return "Finish or cancel the package operation before disabling Homebrew."

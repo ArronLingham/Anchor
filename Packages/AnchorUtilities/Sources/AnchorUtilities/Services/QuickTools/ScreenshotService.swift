@@ -38,6 +38,7 @@ final class ScreenshotService: ObservableObject {
     private var session: ScreenshotSelectionController?
     private var preview: ScreenshotQuickPreviewController?
     private var editors: [ScreenshotEditorController] = []
+    var hasOpenEditors: Bool { !editors.isEmpty }
     private var countdown: DispatchWorkItem?
     private var countdownRemaining = 0
     private var countdownMode: CaptureMode = .standard
