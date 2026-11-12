@@ -82,6 +82,12 @@ final class WhatsAppDownloadScheduler: ObservableObject {
                 forKey: DefaultsKey.whatsAppDownloadsAutomaticEnabled),
               UtilityPreferences.standard.bool(
                 forKey: DefaultsKey.whatsAppDownloadsAccessConfirmed) else { return }
+        guard !WhatsAppDownloadOrganizer.shared.hasPendingPartialUndo else {
+            timer?.invalidate()
+            timer = nil
+            nextFire = nil
+            return
+        }
         let now = Date()
         let lastStamp = UtilityPreferences.standard.double(
             forKey: DefaultsKey.whatsAppDownloadsLastAutoRun)
@@ -115,6 +121,12 @@ final class WhatsAppDownloadScheduler: ObservableObject {
         let runGeneration = generation
         let manager = WhatsAppDownloadManager.shared
         let organizer = WhatsAppDownloadOrganizer.shared
+        guard !organizer.hasPendingPartialUndo else {
+            timer?.invalidate()
+            timer = nil
+            nextFire = nil
+            return
+        }
         let userIsReviewing = manager.phase == .results && manager.reviewVisible
         guard runObserver == nil,
               !organizer.isBusy,
@@ -134,6 +146,11 @@ final class WhatsAppDownloadScheduler: ObservableObject {
                 guard self.isEnabled else { self.stop(); return }
                 switch phase {
                 case .results:
+                    guard !organizer.isBusy, !organizer.hasPendingPartialUndo else {
+                        self.runObserver = nil
+                        self.scheduleNext()
+                        return
+                    }
                     // The person may have opened the review while the pass's
                     // scan was in flight; automation must never rewrite their
                     // checkboxes or clean under their eyes. Step aside and

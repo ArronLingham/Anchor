@@ -214,6 +214,163 @@ private final class TimedFeatureEngine {
 }
 
 extension FeatureResourceTests {
+    func testReplacementUndoWaitsForItsDependentMove() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let replacement = directory.appendingPathComponent("replacement")
+        let backup = directory.appendingPathComponent("backup")
+        let source = directory.appendingPathComponent("source")
+        try Data("new".utf8).write(to: replacement)
+        try Data("old".utf8).write(to: backup)
+        try Data("conflict".utf8).write(to: source)
+        let actions: [WhatsAppDownloadOrganizer.UndoTransaction.Action] = [
+            .init(kind: .move, currentPath: replacement.path, restorePath: source.path),
+            .init(kind: .move, currentPath: backup.path, restorePath: replacement.path),
+        ]
+        let transaction = WhatsAppDownloadOrganizer.UndoTransaction(
+            id: UUID(), actions: actions, recordsBefore: [], recordsAfter: [], createdAt: Date())
+        let blocked = WhatsAppDownloadOrganizer.performUndo(transaction)
+        XCTAssertEqual(blocked.completed, 0)
+        XCTAssertEqual(blocked.remaining, actions)
+        XCTAssertEqual(try Data(contentsOf: replacement), Data("new".utf8))
+        XCTAssertEqual(try Data(contentsOf: backup), Data("old".utf8))
+
+        try FileManager.default.removeItem(at: source)
+        let retry = WhatsAppDownloadOrganizer.performUndo(transaction)
+        XCTAssertTrue(retry.remaining.isEmpty)
+        XCTAssertEqual(try Data(contentsOf: source), Data("new".utf8))
+        XCTAssertEqual(try Data(contentsOf: replacement), Data("old".utf8))
+    }
+
+    func testCrossVolumeUndoDoesNotRepeatCompletedTrashStep() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let managed = directory.appendingPathComponent("managed")
+        let backup = directory.appendingPathComponent("backup")
+        let restored = directory.appendingPathComponent("restored")
+        let fakeTrash = directory.appendingPathComponent("fake-trash")
+        try Data("managed copy".utf8).write(to: managed)
+        try Data("original".utf8).write(to: backup)
+        try Data("conflict".utf8).write(to: restored)
+        let actions: [WhatsAppDownloadOrganizer.UndoTransaction.Action] = [
+            .init(kind: .trash, currentPath: managed.path, restorePath: nil),
+            .init(kind: .move, currentPath: backup.path, restorePath: restored.path),
+        ]
+        var transaction = WhatsAppDownloadOrganizer.UndoTransaction(
+            id: UUID(), actions: actions, recordsBefore: [], recordsAfter: [], createdAt: Date())
+        let progress = WhatsAppDownloadOrganizer.performUndo(transaction) { url in
+            try FileManager.default.moveItem(at: url, to: fakeTrash)
+        }
+        XCTAssertEqual(progress.completed, 1)
+        XCTAssertEqual(progress.remaining, [actions[1]])
+        XCTAssertEqual(try Data(contentsOf: fakeTrash), Data("managed copy".utf8))
+        XCTAssertEqual(try Data(contentsOf: backup), Data("original".utf8))
+
+        transaction.actions = progress.remaining
+        transaction.partial = true
+        try FileManager.default.removeItem(at: restored)
+        let retry = WhatsAppDownloadOrganizer.performUndo(transaction) { _ in
+            XCTFail("A completed Trash step must not be repeated")
+        }
+        XCTAssertTrue(retry.remaining.isEmpty)
+        XCTAssertEqual(try Data(contentsOf: restored), Data("original".utf8))
+        XCTAssertEqual(try Data(contentsOf: fakeTrash), Data("managed copy".utf8))
+    }
+
+    func testPartialUndoRetainsOrderedStepsAcrossPersistenceAndRetry() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let sources = (0..<3).map { directory.appendingPathComponent("source-\($0)") }
+        let destinations = (0..<3).map { directory.appendingPathComponent("restore-\($0)") }
+        for source in sources { try Data("fixture".utf8).write(to: source) }
+        try Data("conflict".utf8).write(to: destinations[1])
+        let actions = zip(sources, destinations).map {
+            WhatsAppDownloadOrganizer.UndoTransaction.Action(kind: .move,
+                                                              currentPath: $0.path,
+                                                              restorePath: $1.path)
+        }
+        let oldDate = Date().addingTimeInterval(-9 * 86_400)
+        let before = WhatsAppDownloadOrganizer.Record(digest: "before", destinationPath: "/fixture/managed",
+                                                       originalName: "before", size: 1, organizedAt: oldDate)
+        let after = WhatsAppDownloadOrganizer.Record(digest: "after", destinationPath: "/fixture/managed",
+                                                      originalName: "after", size: 2, organizedAt: oldDate)
+        let unrelated = WhatsAppDownloadOrganizer.Record(digest: "other", destinationPath: "/fixture/other",
+                                                          originalName: "other", size: 3, organizedAt: oldDate)
+        let transaction = WhatsAppDownloadOrganizer.UndoTransaction(
+            id: UUID(), actions: actions, recordsBefore: [before, unrelated],
+            recordsAfter: [after, unrelated], createdAt: oldDate)
+        let legacyData = try JSONEncoder().encode(transaction)
+        let legacy = try JSONDecoder().decode(WhatsAppDownloadOrganizer.UndoTransaction.self, from: legacyData)
+        XCTAssertNil(legacy.partial, "Older undo records without a partial marker must still decode")
+        try Data("first conflict".utf8).write(to: destinations[0])
+        let noProgress = WhatsAppDownloadOrganizer.performUndo(transaction)
+        XCTAssertEqual(noProgress.completed, 0)
+        XCTAssertEqual(noProgress.remaining, actions)
+        try FileManager.default.removeItem(at: destinations[0])
+        let progress = WhatsAppDownloadOrganizer.performUndo(transaction)
+        XCTAssertEqual(progress.completed, 1)
+        XCTAssertEqual(progress.remaining, Array(actions.dropFirst()))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: destinations[0].path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: sources[1].path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: sources[2].path),
+                      "Later dependent actions must not run after a failure")
+
+        let domain = "Anchor.partial-undo-test." + UUID().uuidString
+        let defaults = UserDefaults(suiteName: domain)!
+        defer { defaults.removePersistentDomain(forName: domain) }
+        WhatsAppDownloadOrganizer.saveRecords([after, unrelated], defaults: defaults)
+        WhatsAppDownloadOrganizer.saveUndoTransactions([transaction], defaults: defaults)
+        XCTAssertEqual(WhatsAppDownloadOrganizer.commitUndoProgress(
+            transaction, transactions: [transaction], progress: noProgress, defaults: defaults), .failed)
+        XCTAssertNil(WhatsAppDownloadOrganizer.loadUndoTransactions(defaults: defaults).first?.partial)
+        XCTAssertEqual(WhatsAppDownloadOrganizer.commitUndoProgress(
+            transaction, transactions: [transaction], progress: progress, defaults: defaults), .partial)
+        let restored = try XCTUnwrap(WhatsAppDownloadOrganizer.loadUndoTransactions(defaults: defaults).first)
+        XCTAssertEqual(restored.actions, progress.remaining)
+        XCTAssertTrue(restored.partial == true)
+        XCTAssertEqual(WhatsAppDownloadOrganizer.loadRecords(defaults: defaults), [after, unrelated])
+        XCTAssertTrue(WhatsAppDownloadOrganizer.recordsAllowUndo(restored, current: [after, unrelated]))
+        XCTAssertFalse(WhatsAppDownloadOrganizer.recordsAllowUndo(restored, current: [before, unrelated]),
+                       "A later conflicting record change must not be overwritten")
+        let discardDomain = domain + ".discard"
+        let discardDefaults = UserDefaults(suiteName: discardDomain)!
+        defer { discardDefaults.removePersistentDomain(forName: discardDomain) }
+        let otherUndo = WhatsAppDownloadOrganizer.UndoTransaction(
+            id: UUID(), actions: [], recordsBefore: [], recordsAfter: [], createdAt: oldDate.addingTimeInterval(60))
+        var otherPartial = otherUndo
+        otherPartial.partial = true
+        WhatsAppDownloadOrganizer.saveRecords([after, unrelated], defaults: discardDefaults)
+        WhatsAppDownloadOrganizer.saveUndoTransactions([restored, otherUndo, otherPartial], defaults: discardDefaults)
+        XCTAssertFalse(WhatsAppDownloadOrganizer.discardPartialUndoTransaction(id: otherPartial.id, defaults: discardDefaults),
+                       "A confirmation must not discard a different pending entry")
+        XCTAssertTrue(WhatsAppDownloadOrganizer.discardPartialUndoTransaction(id: restored.id, defaults: discardDefaults))
+        XCTAssertEqual(WhatsAppDownloadOrganizer.loadUndoTransactions(defaults: discardDefaults).map(\.id),
+                       [otherUndo.id, otherPartial.id], "Discard must preserve unrelated undo history")
+        XCTAssertEqual(WhatsAppDownloadOrganizer.loadRecords(defaults: discardDefaults), [after, unrelated],
+                       "Discard must not remove managed-file records")
+        XCTAssertFalse(WhatsAppDownloadOrganizer.discardPartialUndoTransaction(id: restored.id, defaults: discardDefaults))
+        XCTAssertTrue(WhatsAppDownloadOrganizer.discardPartialUndoTransaction(id: otherPartial.id, defaults: discardDefaults))
+        XCTAssertEqual(WhatsAppDownloadOrganizer.loadUndoTransactions(defaults: discardDefaults).map(\.id), [otherUndo.id])
+        XCTAssertEqual(WhatsAppDownloadOrganizer.validUndoTransactions([restored]).count, 1,
+                       "A partial undo must not expire while it remains unresolved")
+        XCTAssertTrue(WhatsAppDownloadOrganizer.validUndoTransactions([transaction]).isEmpty)
+
+        try FileManager.default.removeItem(at: destinations[1])
+        let retry = WhatsAppDownloadOrganizer.performUndo(restored)
+        XCTAssertTrue(retry.remaining.isEmpty)
+        XCTAssertEqual(retry.completed, 2)
+        XCTAssertEqual(WhatsAppDownloadOrganizer.commitUndoProgress(
+            restored, transactions: [restored], progress: retry, defaults: defaults), .complete)
+        XCTAssertTrue(WhatsAppDownloadOrganizer.loadUndoTransactions(defaults: defaults).isEmpty)
+        XCTAssertEqual(Set(WhatsAppDownloadOrganizer.loadRecords(defaults: defaults).map(\.digest)),
+                       Set(["before", "other"]))
+        for destination in destinations { XCTAssertTrue(FileManager.default.fileExists(atPath: destination.path)) }
+        for source in sources { XCTAssertFalse(FileManager.default.fileExists(atPath: source.path)) }
+    }
+
     @MainActor
     func testRestoredCleanerReconcilesChildPreferencesDuringCleanup() throws {
         let domain = UtilityPreferences.domainName

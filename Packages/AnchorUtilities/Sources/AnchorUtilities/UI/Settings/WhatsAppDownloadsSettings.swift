@@ -34,6 +34,8 @@ struct WhatsAppDownloadsSettings: View {
     @State private var waitingToEnable = false
     @State private var showingExistingChoice = false
     @State private var showingInvalidDestination = false
+    @State private var showingDiscardPartialUndo = false
+    @State private var pendingDiscardUndoID: UUID?
     @State private var showingOrganizerFileTypes = false
 
     private var text: WhatsAppDownloadStrings {
@@ -93,6 +95,15 @@ struct WhatsAppDownloadsSettings: View {
         }
         .alert(organizerText.invalidDestination, isPresented: $showingInvalidDestination) {
             Button("OK", role: .cancel) {}
+        }
+        .alert("Keep files where they are?", isPresented: $showingDiscardPartialUndo) {
+            Button("Keep Files and Stop Undo", role: .destructive) {
+                if let id = pendingDiscardUndoID { organizer.discardPendingPartialUndo(id: id) }
+                pendingDiscardUndoID = nil
+            }
+            Button("Cancel", role: .cancel) { pendingDiscardUndoID = nil }
+        } message: {
+            Text("The remaining undo steps will be discarded. No files are moved now; enabled automatic rules may move them later.")
         }
     }
 
@@ -299,11 +310,18 @@ struct WhatsAppDownloadsSettings: View {
                 HStack {
                     Button(organizerText.organizeNow) { organizer.runNow() }
                         .buttonStyle(.borderedProminent)
-                        .disabled(organizer.isBusy)
+                        .disabled(organizer.isBusy || organizer.hasPendingPartialUndo)
                     if organizer.isBusy { ProgressView().controlSize(.small) }
                     Spacer()
                     Button(organizerText.undo) { organizer.undoLastRun() }
-                        .disabled(!organizer.canUndo || organizer.isBusy)
+                        .disabled(!organizer.canUndo || organizer.isBusy || manager.phase == .scanning || manager.phase == .cleaning)
+                }
+                if organizer.hasPendingPartialUndo {
+                    Button("Keep Files and Stop Undo") {
+                        pendingDiscardUndoID = organizer.pendingPartialUndoID
+                        showingDiscardPartialUndo = pendingDiscardUndoID != nil
+                    }
+                        .disabled(organizer.isBusy)
                 }
                 organizerStatus
                 Text(organizerText.privacyNote)
@@ -351,30 +369,36 @@ struct WhatsAppDownloadsSettings: View {
 
     @ViewBuilder
     private var organizerStatus: some View {
-        switch organizer.phase {
-        case .organizing, .undoing:
-            Text(organizerText.working)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        case let .done(moved, duplicates, failed):
-            Text(String(format: organizerText.resultFormat, moved, duplicates, failed))
-                .font(.caption)
-                .foregroundStyle(failed == 0 ? Color.green : Color.orange)
-        case .failed:
-            Text(String(format: organizerText.resultFormat, 0, 0, 1))
+        if organizer.hasPendingPartialUndo && !organizer.isBusy {
+            Text("Undo stopped before all files were restored. Check the remaining files and retry Undo, or keep the files in their current locations.")
                 .font(.caption)
                 .foregroundStyle(.orange)
-        case .idle, .waiting:
-            if organizerLastRun > 0 {
-                Text(String(format: organizerText.lastRunFormat,
-                            Self.activityDate.string(from: Date(timeIntervalSince1970: organizerLastRun)),
-                            organizerLastMoved, organizerLastDuplicates, organizerLastFailed))
+        } else {
+            switch organizer.phase {
+            case .organizing, .undoing:
+                Text(organizerText.working)
                     .font(.caption)
                     .foregroundStyle(.secondary)
-            } else {
-                Text(organizerText.neverRun)
+            case let .done(moved, duplicates, failed):
+                Text(String(format: organizerText.resultFormat, moved, duplicates, failed))
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(failed == 0 ? Color.green : Color.orange)
+            case .failed:
+                Text(String(format: organizerText.resultFormat, 0, 0, 1))
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+            case .idle, .waiting:
+                if organizerLastRun > 0 {
+                    Text(String(format: organizerText.lastRunFormat,
+                                Self.activityDate.string(from: Date(timeIntervalSince1970: organizerLastRun)),
+                                organizerLastMoved, organizerLastDuplicates, organizerLastFailed))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else {
+                    Text(organizerText.neverRun)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
         }
     }
@@ -559,7 +583,14 @@ struct WhatsAppDownloadsSettings: View {
                     manager.cleanSelected(automatic: false)
                 }
                 .buttonStyle(.borderedProminent)
-                .disabled(manager.selectedCount == 0)
+                .disabled(manager.selectedCount == 0 || organizer.hasPendingPartialUndo || organizer.isBusy)
+            }
+            if organizer.hasPendingPartialUndo {
+                Text(organizerEnabled
+                     ? "Finish or discard the unfinished organizer undo before cleaning files."
+                     : "Turn on the organizer to resolve its unfinished undo before cleaning files.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
         }
     }

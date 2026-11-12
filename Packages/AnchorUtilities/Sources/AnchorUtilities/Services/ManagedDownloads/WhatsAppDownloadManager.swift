@@ -268,6 +268,8 @@ final class WhatsAppDownloadManager: ObservableObject {
         guard AppFeature.cleaner.isAvailable, WhatsAppDownloadSupport.isEnabled,
               defaults.bool(forKey: DefaultsKey.whatsAppDownloadsAccessConfirmed),
               !automatic || defaults.bool(forKey: DefaultsKey.whatsAppDownloadsAutomaticEnabled),
+              !WhatsAppDownloadOrganizer.shared.hasPendingPartialUndo,
+              !WhatsAppDownloadOrganizer.shared.isBusy,
               !chosen.isEmpty, downloadsURL != nil else { return }
         let settings = Self.settingsSnapshot()
 

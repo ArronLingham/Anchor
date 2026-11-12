@@ -32,19 +32,20 @@ final class WhatsAppDownloadOrganizer: ObservableObject {
         let organizedAt: Date
     }
 
-    private struct UndoTransaction: Codable {
+    struct UndoTransaction: Codable {
         enum ActionKind: String, Codable { case move, trash }
-        struct Action: Codable {
+        struct Action: Codable, Equatable {
             let kind: ActionKind
             let currentPath: String
             let restorePath: String?
         }
 
         let id: UUID
-        let actions: [Action]
+        var actions: [Action]
         let recordsBefore: [Record]
         let recordsAfter: [Record]
         let createdAt: Date
+        var partial: Bool? = nil
     }
 
     private struct SourceFile {
@@ -75,10 +76,14 @@ final class WhatsAppDownloadOrganizer: ObservableObject {
 
     @Published private(set) var phase: Phase = .idle
     @Published private(set) var nextCheck: Date?
+    @Published private(set) var hasPendingPartialUndo: Bool
 
     var isBusy: Bool { phase == .organizing || phase == .undoing }
     var canUndo: Bool {
         Self.validUndoTransactions().last != nil
+    }
+    var pendingPartialUndoID: UUID? {
+        Self.validUndoTransactions().first(where: { $0.partial == true })?.id
     }
 
     private let queue = DispatchQueue(label: "com.vorssaint.whatsapp-organizer",
@@ -87,7 +92,9 @@ final class WhatsAppDownloadOrganizer: ObservableObject {
     private var timer: Timer?
     private var operationToken = UUID()
 
-    init() {}
+    init() {
+        hasPendingPartialUndo = Self.validUndoTransactions().contains { $0.partial == true }
+    }
 
     static func destinationURL(defaults: UserDefaults = UtilityPreferences.standard,
                                downloadsURL: URL? = nil) -> URL? {
@@ -118,6 +125,10 @@ final class WhatsAppDownloadOrganizer: ObservableObject {
               UtilityPreferences.standard.bool(forKey: DefaultsKey.whatsAppDownloadsAccessConfirmed),
               let root = downloadsURL else {
             if !isBusy { phase = .idle }
+            return
+        }
+        guard !hasPendingPartialUndo else {
+            if !isBusy { phase = .failed }
             return
         }
         startMonitoring(root: root)
@@ -177,21 +188,30 @@ final class WhatsAppDownloadOrganizer: ObservableObject {
 
     func undoLastRun(transactionID: UUID? = nil) {
         guard AppFeature.cleaner.isAvailable, WhatsAppDownloadSupport.isEnabled, !isBusy else { return }
+        let manager = WhatsAppDownloadManager.shared
+        guard manager.phase != .scanning, manager.phase != .cleaning else { return }
         let transactions = Self.validUndoTransactions()
-        let transaction = transactionID.flatMap { id in
+        let pending = transactions.first { $0.partial == true }
+        if let pending, let transactionID, pending.id != transactionID { return }
+        let transaction = pending ?? (transactionID.flatMap { id in
             transactions.first { $0.id == id }
-        } ?? (transactionID == nil ? transactions.last : nil)
+        } ?? (transactionID == nil ? transactions.last : nil))
         guard let transaction,
               Self.recordsAllowUndo(transaction, current: Self.loadRecords()) else { return }
-        performMutation(phase: .undoing, work: { Self.performUndo(transaction) }) { [weak self] failed in
+        performMutation(phase: .undoing, work: { Self.performUndo(transaction) }) { [weak self] progress in
             guard let self else { return }
-            if failed == 0 {
-                Self.saveRecords(Self.recordsAfterUndo(
-                    transaction, current: Self.loadRecords()))
-                Self.saveUndoTransactions(
-                    transactions.filter { $0.id != transaction.id })
+            switch Self.commitUndoProgress(transaction, transactions: transactions, progress: progress) {
+            case .complete:
+                self.hasPendingPartialUndo = transactions.contains { $0.id != transaction.id && $0.partial == true }
                 self.phase = .done(moved: 0, duplicates: 0, failed: 0)
-            } else {
+                self.syncWithPreferences()
+                WhatsAppDownloadScheduler.shared.syncWithPreferences()
+            case .partial:
+                self.hasPendingPartialUndo = true
+                self.stopMonitoring()
+                WhatsAppDownloadScheduler.shared.syncWithPreferences()
+                self.phase = .failed
+            case .failed:
                 self.phase = .failed
             }
             if AppFeature.cleaner.isAvailable && WhatsAppDownloadSupport.isEnabled {
@@ -199,6 +219,17 @@ final class WhatsAppDownloadOrganizer: ObservableObject {
             }
             self.schedule(after: 2)
         }
+    }
+
+    /// Discards only the unfinished undo record after explicit user consent.
+    /// Files and managed-file records stay as they are.
+    func discardPendingPartialUndo(id: UUID) {
+        guard !isBusy else { return }
+        guard pendingPartialUndoID == id, Self.discardPartialUndoTransaction(id: id) else { return }
+        hasPendingPartialUndo = Self.validUndoTransactions().contains { $0.partial == true }
+        phase = .idle
+        syncWithPreferences()
+        WhatsAppDownloadScheduler.shared.syncWithPreferences()
     }
 
     private var downloadsURL: URL? {
@@ -232,7 +263,8 @@ final class WhatsAppDownloadOrganizer: ObservableObject {
     private func schedule(after delay: TimeInterval) {
         guard AppFeature.cleaner.isAvailable, WhatsAppDownloadSupport.isEnabled,
               UtilityPreferences.standard.bool(forKey: DefaultsKey.whatsAppOrganizerEnabled),
-              UtilityPreferences.standard.bool(forKey: DefaultsKey.whatsAppDownloadsAccessConfirmed) else { return }
+              UtilityPreferences.standard.bool(forKey: DefaultsKey.whatsAppDownloadsAccessConfirmed),
+              !hasPendingPartialUndo else { return }
         let date = Date().addingTimeInterval(max(1, delay))
         if let nextCheck, nextCheck <= date { return }
         timer?.invalidate()
@@ -251,7 +283,8 @@ final class WhatsAppDownloadOrganizer: ObservableObject {
     private func schedule(at date: Date?) {
         guard AppFeature.cleaner.isAvailable, WhatsAppDownloadSupport.isEnabled,
               UtilityPreferences.standard.bool(forKey: DefaultsKey.whatsAppOrganizerEnabled),
-              UtilityPreferences.standard.bool(forKey: DefaultsKey.whatsAppDownloadsAccessConfirmed) else { return }
+              UtilityPreferences.standard.bool(forKey: DefaultsKey.whatsAppDownloadsAccessConfirmed),
+              !hasPendingPartialUndo else { return }
         guard let date else {
             nextCheck = nil
             phase = .waiting
@@ -271,6 +304,7 @@ final class WhatsAppDownloadOrganizer: ObservableObject {
             schedule(after: 60)
             return
         }
+        guard !hasPendingPartialUndo else { phase = .failed; return }
         guard AppFeature.cleaner.isAvailable,
               WhatsAppDownloadSupport.isEnabled,
               UtilityPreferences.standard.bool(forKey: DefaultsKey.whatsAppOrganizerEnabled),
@@ -633,35 +667,39 @@ final class WhatsAppDownloadOrganizer: ObservableObject {
             && abs(modified.timeIntervalSince(source.modifiedAt)) < 0.001
     }
 
-    private static func loadRecords() -> [Record] {
-        guard let data = UtilityPreferences.standard.data(forKey: DefaultsKey.whatsAppOrganizerRecords),
+    static func loadRecords(defaults: UserDefaults = UtilityPreferences.standard) -> [Record] {
+        guard let data = defaults.data(forKey: DefaultsKey.whatsAppOrganizerRecords),
               !data.isEmpty else { return [] }
         return (try? JSONDecoder().decode([Record].self, from: data)) ?? []
     }
 
-    private static func saveRecords(_ records: [Record]) {
+    static func saveRecords(_ records: [Record], defaults: UserDefaults = UtilityPreferences.standard) {
         let data = (try? JSONEncoder().encode(records)) ?? Data()
-        UtilityPreferences.standard.set(data, forKey: DefaultsKey.whatsAppOrganizerRecords)
+        defaults.set(data, forKey: DefaultsKey.whatsAppOrganizerRecords)
     }
 
-    private static func loadUndoTransactions() -> [UndoTransaction] {
-        guard let data = UtilityPreferences.standard.data(
+    static func loadUndoTransactions(defaults: UserDefaults = UtilityPreferences.standard) -> [UndoTransaction] {
+        guard let data = defaults.data(
             forKey: DefaultsKey.whatsAppOrganizerUndoTransaction),
               !data.isEmpty else { return [] }
         return (try? JSONDecoder().decode([UndoTransaction].self, from: data)) ?? []
     }
 
-    private static func validUndoTransactions(now: Date = Date()) -> [UndoTransaction] {
-        loadUndoTransactions()
-            .filter { WhatsAppDownloadSupport.organizerUndoIsValid(
+    static func validUndoTransactions(_ transactions: [UndoTransaction], now: Date = Date()) -> [UndoTransaction] {
+        transactions
+            .filter { $0.partial == true || WhatsAppDownloadSupport.organizerUndoIsValid(
                 createdAt: $0.createdAt, now: now) }
             .sorted { $0.createdAt < $1.createdAt }
     }
 
-    private static func saveUndoTransactions(_ transactions: [UndoTransaction]) {
+    private static func validUndoTransactions(now: Date = Date()) -> [UndoTransaction] {
+        validUndoTransactions(loadUndoTransactions(), now: now)
+    }
+
+    static func saveUndoTransactions(_ transactions: [UndoTransaction],
+                                     defaults: UserDefaults = UtilityPreferences.standard) {
         let data = (try? JSONEncoder().encode(transactions)) ?? Data()
-        UtilityPreferences.standard.set(data,
-                                  forKey: DefaultsKey.whatsAppOrganizerUndoTransaction)
+        defaults.set(data, forKey: DefaultsKey.whatsAppOrganizerUndoTransaction)
     }
 
     private static func recordMap(_ records: [Record]) -> [String: Record] {
@@ -675,8 +713,17 @@ final class WhatsAppDownloadOrganizer: ObservableObject {
         return Set(before.keys).union(after.keys).filter { before[$0] != after[$0] }
     }
 
-    private static func recordsAllowUndo(_ transaction: UndoTransaction,
-                                         current: [Record]) -> Bool {
+    @discardableResult
+    static func discardPartialUndoTransaction(id: UUID,
+                                              defaults: UserDefaults = UtilityPreferences.standard) -> Bool {
+        let transactions = loadUndoTransactions(defaults: defaults)
+        guard validUndoTransactions(transactions).first(where: { $0.partial == true })?.id == id else { return false }
+        saveUndoTransactions(transactions.filter { !($0.id == id && $0.partial == true) }, defaults: defaults)
+        return true
+    }
+
+    static func recordsAllowUndo(_ transaction: UndoTransaction,
+                                 current: [Record]) -> Bool {
         let expected = recordMap(transaction.recordsAfter)
         let current = recordMap(current)
         return affectedRecordPaths(transaction).allSatisfy { current[$0] == expected[$0] }
@@ -692,37 +739,57 @@ final class WhatsAppDownloadOrganizer: ObservableObject {
         return result.values.sorted { $0.organizedAt < $1.organizedAt }
     }
 
-    private static func performUndo(_ transaction: UndoTransaction) -> Int {
+    struct UndoProgress {
+        let completed: Int
+        let remaining: [UndoTransaction.Action]
+    }
+
+    enum UndoCommitOutcome: Equatable { case complete, partial, failed }
+
+    static func commitUndoProgress(_ transaction: UndoTransaction,
+                                   transactions: [UndoTransaction], progress: UndoProgress,
+                                   defaults: UserDefaults = UtilityPreferences.standard) -> UndoCommitOutcome {
+        if progress.remaining.isEmpty {
+            saveRecords(recordsAfterUndo(transaction, current: loadRecords(defaults: defaults)), defaults: defaults)
+            saveUndoTransactions(transactions.filter { $0.id != transaction.id }, defaults: defaults)
+            return .complete
+        }
+        guard progress.completed > 0 || transaction.partial == true else { return .failed }
+        var partial = transaction
+        partial.actions = progress.remaining
+        partial.partial = true
+        saveUndoTransactions(transactions.map { $0.id == partial.id ? partial : $0 }, defaults: defaults)
+        return .partial
+    }
+
+    static func performUndo(_ transaction: UndoTransaction,
+                            moveToTrash: (URL) throws -> Void = { _ = try trash($0) }) -> UndoProgress {
         let fm = FileManager.default
-        var failed = 0
-        for action in transaction.actions {
+        for (index, action) in transaction.actions.enumerated() {
             let current = URL(fileURLWithPath: action.currentPath)
             guard fm.fileExists(atPath: current.path) else {
-                failed += 1
-                continue
+                return UndoProgress(completed: index, remaining: Array(transaction.actions[index...]))
             }
             do {
                 switch action.kind {
                 case .move:
                     guard let restorePath = action.restorePath else {
-                        failed += 1
-                        continue
+                        return UndoProgress(completed: index, remaining: Array(transaction.actions[index...]))
                     }
                     let restore = URL(fileURLWithPath: restorePath)
                     guard !fm.fileExists(atPath: restore.path) else {
-                        failed += 1
-                        continue
+                        return UndoProgress(completed: index, remaining: Array(transaction.actions[index...]))
                     }
                     try fm.createDirectory(at: restore.deletingLastPathComponent(),
                                            withIntermediateDirectories: true)
                     try fm.moveItem(at: current, to: restore)
                 case .trash:
-                    _ = try trash(current)
+                    try moveToTrash(current)
                 }
             } catch {
-                failed += 1
+                return UndoProgress(completed: index, remaining: Array(transaction.actions[index...]))
             }
         }
-        return failed
+        return UndoProgress(completed: transaction.actions.count, remaining: [])
     }
 }
