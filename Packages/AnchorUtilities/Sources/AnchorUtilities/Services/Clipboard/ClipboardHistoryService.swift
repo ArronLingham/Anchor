@@ -1222,7 +1222,8 @@ final class ClipboardHistoryService: ObservableObject {
     // MARK: - Shortcut
 
     func syncHotkey() {
-        let wanted = UtilityPreferences.standard.bool(forKey: DefaultsKey.clipboardHistoryEnabled)
+        let wanted = AppFeature.clipboardHistory.isAvailable
+            && UtilityPreferences.standard.bool(forKey: DefaultsKey.clipboardHistoryEnabled)
             && UtilityPreferences.standard.bool(forKey: DefaultsKey.clipboardHistoryShortcutEnabled)
         wanted ? registerHotkey() : unregisterHotkey()
     }

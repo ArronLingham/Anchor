@@ -650,6 +650,33 @@ extension FeatureResourceTests {
         XCTAssertNil(CaptureDisablementGuard.reason(for: .mediaTools))
     }
 
+    func testClipboardSettingsOnlyLoadsHistoryWhileAvailable() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appendingPathComponent("history.json")
+        let entry = ClipboardHistoryEntry(text: "Saved fixture")
+        let original = try JSONEncoder().encode([entry])
+        try original.write(to: url)
+        let domain = "Anchor.clipboard-settings-test." + UUID().uuidString
+        let preferences = UserDefaults(suiteName: domain)!
+        defer { preferences.removePersistentDomain(forName: domain) }
+        var constructions = 0
+        let observation = ClipboardHistorySettingsObservation(available: false) {
+            constructions += 1
+            return ClipboardHistoryService(historyURL: url, preferences: preferences)
+        }
+        XCTAssertNil(observation.history)
+        XCTAssertEqual(constructions, 0)
+        observation.synchronize(available: true)
+        XCTAssertEqual(observation.history?.entries.map(\.id), [entry.id])
+        observation.synchronize(available: true)
+        XCTAssertEqual(constructions, 1)
+        observation.synchronize(available: false)
+        XCTAssertNil(observation.history)
+        XCTAssertEqual(try Data(contentsOf: url), original)
+    }
+
     func testClipboardClearPreservesPinnedAndRecopiedItems() throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)

@@ -2,11 +2,38 @@
 // Copyright (C) 2026 Vorssaint
 
 import SwiftUI
+import Combine
+
+final class ClipboardHistorySettingsObservation: ObservableObject {
+    @Published private(set) var history: ClipboardHistoryService?
+    private let makeHistory: () -> ClipboardHistoryService
+    private var updates: AnyCancellable?
+
+    init(available: Bool = AppFeature.clipboardHistory.isAvailable,
+         makeHistory: @escaping () -> ClipboardHistoryService = { ClipboardHistoryService.shared }) {
+        self.makeHistory = makeHistory
+        synchronize(available: available)
+    }
+
+    func synchronize(available: Bool) {
+        guard available else {
+            updates = nil
+            history = nil
+            return
+        }
+        guard history == nil else { return }
+        let service = makeHistory()
+        updates = service.objectWillChange.sink { [weak self] _ in
+            self?.objectWillChange.send()
+        }
+        history = service
+    }
+}
 
 struct ClipboardSettings: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var features = FeatureRuntime.shared
-    @ObservedObject private var history = ClipboardHistoryService.shared
+    @StateObject private var historyObservation = ClipboardHistorySettingsObservation()
     @ObservedObject private var pastePlain = PastePlainService.shared
     @ObservedObject private var permissions = Permissions.shared
     @State private var clearingIDs: [UUID: Date]?
@@ -35,11 +62,11 @@ struct ClipboardSettings: View {
 
     var body: some View {
         Form {
-            if AppFeature.clipboardHistory.isAvailable {
+            if AppFeature.clipboardHistory.isAvailable, let history = historyObservation.history {
                 Section {
                     Toggle(text.enable, isOn: $enabled)
                         .onChange(of: enabled) { _, _ in
-                            ClipboardHistoryService.shared.syncWithPreferences()
+                            if AppFeature.clipboardHistory.isAvailable { history.syncWithPreferences() }
                         }
                     Text(text.caption)
                         .font(.caption)
@@ -55,7 +82,7 @@ struct ClipboardSettings: View {
                 }
                 .settingsFormSectionAnchor(.clipboardHistory)
 
-                clipboardShortcutSection
+                clipboardShortcutSection(history: history)
                 clipboardMenuBarPreviewSection
 
                 Section {
@@ -87,6 +114,9 @@ struct ClipboardSettings: View {
                     Toggle(text.showInPanel, isOn: $showInPanel)
                 }
 
+            }
+
+            if AppFeature.clipboardHistory.isAvailable {
                 clipboardAutoClearSection
             }
 
@@ -132,20 +162,27 @@ struct ClipboardSettings: View {
                 .settingsFormSectionAnchor(.pastePlain)
             }
 
-            if AppFeature.clipboardHistory.isAvailable {
-                clipboardStatsSection
+            if AppFeature.clipboardHistory.isAvailable, let history = historyObservation.history {
+                clipboardStatsSection(history: history)
             }
         }
         .formStyle(.grouped)
         .onAppear {
+            historyObservation.synchronize(available: AppFeature.clipboardHistory.isAvailable)
             limit = Defaults.sanitizedClipboardHistoryLimit(limit)
             autoClearDelay = Defaults.sanitizedClipboardAutoClearDelay(autoClearDelay)
             menuBarPreviewLength = Defaults.sanitizedClipboardMenuBarPreviewLength(menuBarPreviewLength)
         }
+        .onChange(of: features.revision) { _, _ in
+            historyObservation.synchronize(available: AppFeature.clipboardHistory.isAvailable)
+            if !AppFeature.clipboardHistory.isAvailable { clearingIDs = nil }
+        }
         .onChange(of: limit) { _, value in
             let sanitized = Defaults.sanitizedClipboardHistoryLimit(value)
             if sanitized != value { limit = sanitized }
-            ClipboardHistoryService.shared.trimToLimit()
+            if AppFeature.clipboardHistory.isAvailable {
+                historyObservation.history?.trimToLimit()
+            }
         }
         // No syncWithPreferences() here, unlike the auto-clear toggles: the
         // running poll reads this value from UserDefaults on every tick, so a
@@ -162,17 +199,17 @@ struct ClipboardSettings: View {
     }
 
     @ViewBuilder
-    private var clipboardShortcutSection: some View {
+    private func clipboardShortcutSection(history: ClipboardHistoryService) -> some View {
         Section(text.shortcut) {
             Toggle(text.shortcut, isOn: $shortcutEnabled)
                 .onChange(of: shortcutEnabled) { _, _ in
-                    ClipboardHistoryService.shared.syncHotkey()
+                    if AppFeature.clipboardHistory.isAvailable { history.syncHotkey() }
                 }
                 .disabled(!enabled)
             ShortcutPreferenceRow(role: .clipboard,
                                   isEnabled: enabled && shortcutEnabled,
                                   additionalConflict: WindowLayoutService.shared.shortcutConflictTitle) {
-                ClipboardHistoryService.shared.syncHotkey()
+                if AppFeature.clipboardHistory.isAvailable { history.syncHotkey() }
             }
             if enabled, shortcutEnabled, history.shortcutRegistrationFailed {
                 Text(l10n.s.shortcutUnavailable)
@@ -238,7 +275,7 @@ struct ClipboardSettings: View {
             HStack {
                 Toggle(text.autoClearEnable, isOn: $autoClearOnDelay)
                     .onChange(of: autoClearOnDelay) { _, _ in
-                        ClipboardAutoClearService.shared.syncWithPreferences()
+                        if AppFeature.clipboardHistory.isAvailable { ClipboardAutoClearService.shared.syncWithPreferences() }
                     }
                 TextField("", value: $autoClearDelay, formatter: Self.delayFieldFormatter)
                     .textFieldStyle(.roundedBorder)
@@ -250,15 +287,15 @@ struct ClipboardSettings: View {
             .fixedSize(horizontal: false, vertical: true)
             Toggle(text.autoClearOnSleep, isOn: $autoClearOnSleep)
                 .onChange(of: autoClearOnSleep) { _, _ in
-                    ClipboardAutoClearService.shared.syncWithPreferences()
+                    if AppFeature.clipboardHistory.isAvailable { ClipboardAutoClearService.shared.syncWithPreferences() }
                 }
             Toggle(text.autoClearOnDisplaySleep, isOn: $autoClearOnDisplaySleep)
                 .onChange(of: autoClearOnDisplaySleep) { _, _ in
-                    ClipboardAutoClearService.shared.syncWithPreferences()
+                    if AppFeature.clipboardHistory.isAvailable { ClipboardAutoClearService.shared.syncWithPreferences() }
                 }
             Toggle(text.autoClearOnScreenLock, isOn: $autoClearOnScreenLock)
                 .onChange(of: autoClearOnScreenLock) { _, _ in
-                    ClipboardAutoClearService.shared.syncWithPreferences()
+                    if AppFeature.clipboardHistory.isAvailable { ClipboardAutoClearService.shared.syncWithPreferences() }
                 }
             Text(text.autoClearCaption)
                 .font(.caption)
@@ -275,7 +312,7 @@ struct ClipboardSettings: View {
         return formatter
     }()
 
-    private var clipboardStatsSection: some View {
+    private func clipboardStatsSection(history: ClipboardHistoryService) -> some View {
             Section {
                 HStack {
                     Text("\(history.pinnedEntries.count)")
