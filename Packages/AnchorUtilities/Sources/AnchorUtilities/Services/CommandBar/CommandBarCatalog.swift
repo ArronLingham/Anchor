@@ -387,7 +387,7 @@ enum CommandBarCatalog {
                 shortcut: keepsHistory ? roleShortcut(.clipboard) : nil,
                 trouble: canUseHistory ? nil
                     : .needsSetup(featureTitle: clipboard.title, page: .clipboard),
-                run: { _ in afterBeat(0.1) { ClipboardHistoryService.shared.showHistoryWindow() } }))
+                run: { _ in ClipboardHistoryService.schedulePresentation(after: 0.1) }))
             // Counted when the bar lists it: a copy made before confirming is kept.
             let recentIDs = ClipboardHistoryService.shared.recentEntriesSnapshot
             entries.append(CommandBarEntry(

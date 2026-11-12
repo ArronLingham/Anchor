@@ -35,7 +35,7 @@ final class AppDelegate: NSObject, NSWindowDelegate, UNUserNotificationCenterDel
             controller.onLeftClick = { [weak self] in self?.showPanel() }
             controller.onRightClick = { [weak self] _ in self?.showPanel() }
             controller.onMetricClick = { [weak self] metric, _ in self?.showPanel(metric: metric.detailKind) }
-            controller.onClipboardPreviewClick = { ClipboardHistoryService.shared.showHistoryWindow() }
+            controller.onClipboardPreviewClick = { ClipboardHistoryService.showIfAvailable() }
             statusController = controller
         } else if !wanted, statusController != nil {
             statusController = nil

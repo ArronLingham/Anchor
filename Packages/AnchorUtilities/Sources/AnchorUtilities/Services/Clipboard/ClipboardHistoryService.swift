@@ -22,6 +22,37 @@ final class ClipboardHistoryService: ObservableObject {
     private static let serviceSlot = FeatureServiceSlot<ClipboardHistoryService>([.clipboardHistory], make: { ClipboardHistoryService() }, onDisable: { $0.releaseResources() })
     static var shared: ClipboardHistoryService { serviceSlot.value }
     static var existing: ClipboardHistoryService? { serviceSlot.existing }
+    private static let presentationGate = ClipboardPresentationGate()
+
+    static func noteAvailabilityChange() {
+        presentationGate.update(available: AppFeature.clipboardHistory.isAvailable)
+    }
+
+    static func showIfAvailable(preferNotch: Bool = true) {
+        guard AppFeature.clipboardHistory.isAvailable else { return }
+        shared.showHistoryWindow(preferNotch: preferNotch)
+    }
+
+    static func availabilityTicket() -> UUID? {
+        presentationGate.capture(currentlyAvailable: AppFeature.clipboardHistory.isAvailable)
+    }
+
+    static func acceptsAvailabilityTicket(_ ticket: UUID) -> Bool {
+        presentationGate.accepts(ticket, currentlyAvailable: AppFeature.clipboardHistory.isAvailable)
+    }
+
+    static func presentationRequest(preferNotch: Bool = true) -> (() -> Void)? {
+        guard let ticket = availabilityTicket() else { return nil }
+        return {
+            guard acceptsAvailabilityTicket(ticket) else { return }
+            showIfAvailable(preferNotch: preferNotch)
+        }
+    }
+
+    static func schedulePresentation(after delay: TimeInterval) {
+        guard let request = presentationRequest() else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: request)
+    }
 
     private var memoryUnloaded = false
     private var retentionGeneration = UUID()
@@ -1214,8 +1245,17 @@ final class ClipboardHistoryService: ObservableObject {
                 }
                 guard id.signature == 0x5655_434C, id.id == 3
                 else { return OSStatus(eventNotHandledErr) }
+                guard let ticket = ClipboardHistoryService.presentationGate.capture(currentlyAvailable: AppFeature.clipboardHistory.isAvailable) else {
+                    return noErr
+                }
                 let service = Unmanaged<ClipboardHistoryService>.fromOpaque(userData).takeUnretainedValue()
-                DispatchQueue.main.async { service.toggleHistoryWindow() }
+                DispatchQueue.main.async {
+                    let defaults = UtilityPreferences.standard
+                    guard ClipboardHistoryService.presentationGate.accepts(ticket, currentlyAvailable: AppFeature.clipboardHistory.isAvailable),
+                          defaults.bool(forKey: DefaultsKey.clipboardHistoryEnabled),
+                          defaults.bool(forKey: DefaultsKey.clipboardHistoryShortcutEnabled) else { return }
+                    service.toggleHistoryWindow()
+                }
                 return noErr
             }, 1, &spec, Unmanaged.passUnretained(self).toOpaque(), &hotKeyHandler)
         }
@@ -1271,6 +1311,7 @@ final class ClipboardHistoryService: ObservableObject {
     }
 
     func toggleHistoryWindow() {
+        guard AppFeature.clipboardHistory.isAvailable else { return }
         if NotchSupport.routesClipboardWindow(), NotchService.shared.showClipboard(toggle: true) { return }
         if panel?.isVisible == true {
             hideHistoryWindow()
@@ -1280,6 +1321,7 @@ final class ClipboardHistoryService: ObservableObject {
     }
 
     func showHistoryWindow(preferNotch: Bool = true) {
+        guard AppFeature.clipboardHistory.isAvailable else { return }
         if preferNotch, NotchSupport.routesClipboardWindow(), NotchService.shared.showClipboard() { return }
         let panel = ensurePanel()
         rememberPasteTarget()

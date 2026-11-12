@@ -5,6 +5,33 @@ import AppKit
 import Carbon.HIToolbox
 import SwiftUI
 
+/// Tickets for queued history presentations. This holds no clipboard data and
+/// does not construct the history service while it is unavailable.
+final class ClipboardPresentationGate {
+    private let lock = NSLock()
+    private var available: Bool?
+    private var generation = UUID()
+
+    func update(available: Bool) {
+        lock.lock(); defer { lock.unlock() }
+        guard self.available != available else { return }
+        self.available = available
+        generation = UUID()
+    }
+
+    func capture(currentlyAvailable: Bool) -> UUID? {
+        lock.lock(); defer { lock.unlock() }
+        guard currentlyAvailable, available != false else { return nil }
+        if available == nil { available = true }
+        return generation
+    }
+
+    func accepts(_ ticket: UUID, currentlyAvailable: Bool) -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        return currentlyAvailable && available != false && generation == ticket
+    }
+}
+
 /// How the history window shows its entries: a list in a window that keeps
 /// the size the user gives it, or a shelf of cards along the bottom of the
 /// screen.

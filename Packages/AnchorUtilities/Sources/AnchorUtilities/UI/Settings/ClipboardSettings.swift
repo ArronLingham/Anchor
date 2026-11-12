@@ -190,7 +190,7 @@ struct ClipboardSettings: View {
             }
             .pickerStyle(.segmented)
             Button {
-                ClipboardHistoryService.shared.showHistoryWindow()
+                ClipboardHistoryService.showIfAvailable()
             } label: {
                 Label(text.shortcut, systemImage: "doc.on.clipboard")
             }

@@ -214,6 +214,48 @@ private final class TimedFeatureEngine {
 }
 
 extension FeatureResourceTests {
+    func testDisabledClipboardPresentationDoesNotLoadHistory() throws {
+        let domain = UtilityPreferences.domainName
+        guard domain != "com.arronlingham.Anchor.utilities",
+              domain != "com.arronlingham.Anchor.dev.utilities" else {
+            throw XCTSkip("This test must not change an installed app's preferences")
+        }
+        guard ClipboardHistoryService.existing == nil else {
+            throw XCTSkip("History was already loaded in this test process")
+        }
+        let defaults = UtilityPreferences.standard
+        let key = AppFeature.clipboardHistory.availabilityKey
+        let old = defaults.persistentDomain(forName: domain)?[key]
+        defer {
+            if let old { defaults.set(old, forKey: key) } else { defaults.removeObject(forKey: key) }
+            ClipboardHistoryService.noteAvailabilityChange()
+        }
+        defaults.set(false, forKey: key)
+        ClipboardHistoryService.noteAvailabilityChange()
+        XCTAssertNil(ClipboardHistoryService.presentationRequest())
+        ClipboardHistoryService.showIfAvailable()
+        ClipboardHistoryService.schedulePresentation(after: 0)
+        XCTAssertNil(ClipboardHistoryService.existing, "An off feature must not construct the history service")
+    }
+
+    func testClipboardPresentationTicketsRejectDisabledAndPriorSessions() throws {
+        let gate = ClipboardPresentationGate()
+        XCTAssertNil(gate.capture(currentlyAvailable: false))
+        let first = try XCTUnwrap(gate.capture(currentlyAvailable: true))
+        gate.update(available: true)
+        XCTAssertTrue(gate.accepts(first, currentlyAvailable: true))
+        gate.update(available: true)
+        XCTAssertTrue(gate.accepts(first, currentlyAvailable: true), "Unchanged availability must not cancel a request")
+        gate.update(available: false)
+        XCTAssertFalse(gate.accepts(first, currentlyAvailable: false))
+        XCTAssertNil(gate.capture(currentlyAvailable: false))
+        gate.update(available: true)
+        XCTAssertFalse(gate.accepts(first, currentlyAvailable: true), "A previous enable session must stay invalid")
+        let next = try XCTUnwrap(gate.capture(currentlyAvailable: true))
+        XCTAssertTrue(gate.accepts(next, currentlyAvailable: true))
+        XCTAssertFalse(gate.accepts(next, currentlyAvailable: false), "Current availability is checked at execution")
+    }
+
     func testReplacementUndoWaitsForItsDependentMove() throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)

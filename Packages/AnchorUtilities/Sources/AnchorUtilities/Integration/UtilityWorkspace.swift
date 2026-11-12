@@ -433,7 +433,7 @@ public final class UtilityWorkspace: ObservableObject {
         case .scratchpad: ScratchpadService.shared.show()
         case .keepAwake: KeepAwakeManager.shared.toggle()
         case .micMute: MicMuteService.shared.toggle()
-        case .clipboardHistory: ClipboardHistoryService.shared.showHistoryWindow()
+        case .clipboardHistory: ClipboardHistoryService.showIfAvailable()
         case .shelf: ShelfService.shared.toggle()
         case .cleaningMode: CleaningModeManager.shared.activate()
         default: showFeature(id)

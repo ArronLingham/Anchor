@@ -53,19 +53,23 @@ struct NotchClipboardView: View {
                     pinnedOnly.toggle()
                 }
                 NotchIconButton(symbol: "trash", title: text.clearRecent) {
+                    guard let ticket = ClipboardHistoryService.availabilityTicket() else { return }
                     let ids = history.recentEntriesSnapshot
                     DispatchQueue.main.async {
+                        guard ClipboardHistoryService.acceptsAvailabilityTicket(ticket) else { return }
                         guard NSAlert.confirmAboveIsland(String(format: text.clearRecentConfirmFormat, ids.count),
                                                          message: text.clearRecentConfirmMessage,
                                                          action: text.clearRecent, destructive: true,
                                                          cancel: text.cancel) else { return }
+                        guard ClipboardHistoryService.acceptsAvailabilityTicket(ticket) else { return }
                         history.clearRecent(ids)
                         copiedID = nil
                     }
                 }
                 .disabled(history.recentEntries.isEmpty)
                 NotchIconButton(symbol: "arrow.up.forward.app", title: text.title) {
-                    service.perform { history.showHistoryWindow(preferNotch: false) }
+                    guard let request = ClipboardHistoryService.presentationRequest(preferNotch: false) else { return }
+                    service.perform(request)
                 }
             }
             .padding(.horizontal, 12)

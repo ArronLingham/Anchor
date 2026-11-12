@@ -324,9 +324,7 @@ final class QuickLauncherService: ObservableObject {
             }
         case .clipboard:
             hide()
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                ClipboardHistoryService.shared.showHistoryWindow()
-            }
+            ClipboardHistoryService.schedulePresentation(after: 0.1)
         case .cleaning:
             hide()
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
