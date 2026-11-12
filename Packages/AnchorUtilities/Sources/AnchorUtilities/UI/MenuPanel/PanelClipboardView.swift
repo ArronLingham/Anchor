@@ -13,7 +13,7 @@ struct PanelClipboardView: View {
     /// Counts copies, so the list also follows an entry copied again while
     /// it still carries the tick.
     @State private var copyCount = 0
-    @State private var clearingIDs: [UUID: Date]?
+    @State private var clearingRequest: ClipboardClearRecentRequest?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.notchPresentation) private var inNotch
 
@@ -24,15 +24,18 @@ struct PanelClipboardView: View {
     }
 
     /// The alert would hang from the island as a sheet; there it asks on its own.
-    private func confirmClearAboveIsland(_ ids: [UUID: Date]) {
+    private func confirmClearAboveIsland(_ request: ClipboardClearRecentRequest) {
         let text = text
         DispatchQueue.main.async {
-            guard NSAlert.confirmAboveIsland(String(format: text.clearRecentConfirmFormat, ids.count),
+            guard ClipboardHistoryService.acceptsAvailabilityTicket(request.ticket),
+                  NSAlert.confirmAboveIsland(String(format: text.clearRecentConfirmFormat, request.entryIDs.count),
                                              message: text.clearRecentConfirmMessage,
                                              action: text.clearRecent, destructive: true,
                                              cancel: text.cancel) else { return }
-            history.clearRecent(ids)
-            copiedID = nil
+            request.performIfCurrent(accepts: ClipboardHistoryService.acceptsAvailabilityTicket) { ids in
+                history.clearRecent(ids)
+                copiedID = nil
+            }
         }
     }
 
@@ -97,8 +100,8 @@ struct PanelClipboardView: View {
                     .font(.system(size: 11))
                     .disabled(history.entries.isEmpty)
                 Button {
-                    let ids = history.recentEntriesSnapshot
-                    if inNotch { confirmClearAboveIsland(ids) } else { clearingIDs = ids }
+                    guard let request = ClipboardClearRecentRequest.capture(history.recentEntriesSnapshot) else { return }
+                    if inNotch { confirmClearAboveIsland(request) } else { clearingRequest = request }
                 } label: {
                     Image(systemName: "trash")
                         .font(.system(size: 11, weight: .semibold))
@@ -108,7 +111,7 @@ struct PanelClipboardView: View {
                 .controlSize(.mini)
                 .help(text.clearRecent)
                 .disabled(history.recentEntries.isEmpty)
-                .modifier(ClipboardClearRecentConfirmation(entryIDs: $clearingIDs))
+                .modifier(ClipboardClearRecentConfirmation(request: $clearingRequest))
                 Button {
                     history.showHistoryWindow()
                 } label: {

@@ -9,7 +9,7 @@ struct ClipboardQuickPanelView: View {
     @FocusState private var searchFocused: Bool
     @State private var previewSelection = QuickPreviewSelection()
     @State private var previewIsEditing = false
-    @State private var clearingIDs: [UUID: Date]?
+    @State private var clearingRequest: ClipboardClearRecentRequest?
 
     private var text: ClipboardFeatureStrings {
         FeatureStrings.clipboard(l10n.language)
@@ -300,12 +300,12 @@ struct ClipboardQuickPanelView: View {
                 }
             } else {
                 Button {
-                    clearingIDs = history.recentEntriesSnapshot
+                    clearingRequest = ClipboardClearRecentRequest.capture(history.recentEntriesSnapshot)
                 } label: {
                     Label(text.clearRecent, systemImage: "trash")
                 }
                 .disabled(history.recentEntries.isEmpty)
-                .modifier(ClipboardClearRecentConfirmation(entryIDs: $clearingIDs))
+                .modifier(ClipboardClearRecentConfirmation(request: $clearingRequest))
             }
             Spacer()
             HStack(spacing: 5) {

@@ -677,6 +677,23 @@ extension FeatureResourceTests {
         XCTAssertEqual(try Data(contentsOf: url), original)
     }
 
+    func testClipboardClearConfirmationRejectsPriorAvailabilitySession() throws {
+        let gate = ClipboardPresentationGate()
+        gate.update(available: true)
+        let ticket = try XCTUnwrap(gate.capture(currentlyAvailable: true))
+        let entry = ClipboardHistoryEntry(text: "Fixture")
+        let request = ClipboardClearRecentRequest(entryIDs: [entry.id: entry.copiedAt], ticket: ticket)
+        var cleared: [UUID: Date]?
+        let accept = { (ticket: UUID) in gate.accepts(ticket, currentlyAvailable: true) }
+        request.performIfCurrent(accepts: accept) { cleared = $0 }
+        XCTAssertEqual(cleared, request.entryIDs)
+        cleared = nil
+        gate.update(available: false)
+        gate.update(available: true)
+        request.performIfCurrent(accepts: accept) { cleared = $0 }
+        XCTAssertNil(cleared, "An old confirmation must not clear a new session's history")
+    }
+
     func testClipboardClearPreservesPinnedAndRecopiedItems() throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)

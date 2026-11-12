@@ -36,7 +36,7 @@ struct ClipboardSettings: View {
     @StateObject private var historyObservation = ClipboardHistorySettingsObservation()
     @ObservedObject private var pastePlain = PastePlainService.shared
     @ObservedObject private var permissions = Permissions.shared
-    @State private var clearingIDs: [UUID: Date]?
+    @State private var clearingRequest: ClipboardClearRecentRequest?
     @AppStorage(DefaultsKey.pastePlainEnabled, store: UtilityPreferences.standard) private var pastePlainEnabled = false
     @AppStorage(DefaultsKey.clipboardHistoryEnabled, store: UtilityPreferences.standard) private var enabled = false
     @AppStorage(DefaultsKey.clipboardHistoryLimit, store: UtilityPreferences.standard) private var limit = 50
@@ -175,7 +175,7 @@ struct ClipboardSettings: View {
         }
         .onChange(of: features.revision) { _, _ in
             historyObservation.synchronize(available: AppFeature.clipboardHistory.isAvailable)
-            if !AppFeature.clipboardHistory.isAvailable { clearingIDs = nil }
+            if !AppFeature.clipboardHistory.isAvailable { clearingRequest = nil }
         }
         .onChange(of: limit) { _, value in
             let sanitized = Defaults.sanitizedClipboardHistoryLimit(value)
@@ -325,10 +325,10 @@ struct ClipboardSettings: View {
                         .foregroundStyle(.secondary)
                     Spacer()
                     Button(text.clearRecent) {
-                        clearingIDs = history.recentEntriesSnapshot
+                        clearingRequest = ClipboardClearRecentRequest.capture(history.recentEntriesSnapshot)
                     }
                     .disabled(history.recentEntries.isEmpty)
-                    .modifier(ClipboardClearRecentConfirmation(entryIDs: $clearingIDs))
+                    .modifier(ClipboardClearRecentConfirmation(request: $clearingRequest))
                 }
             }
     }
