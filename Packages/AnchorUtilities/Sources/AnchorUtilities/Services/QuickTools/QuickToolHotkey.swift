@@ -18,6 +18,8 @@ final class QuickToolHotkey {
     /// hears about this hotkey coming and going.
     private var claimedKey: String?
     var onPress: (() -> Void)?
+    /// Captures feature-specific state before a Carbon callback is queued.
+    var capturePress: (() -> (() -> Void)?)?
 
     init(id: UInt32) {
         hotKeyID = id
@@ -87,7 +89,11 @@ final class QuickToolHotkey {
             guard id.signature == 0x5655_5154,
                   let instance = QuickToolHotkey.instances[id.id]
             else { return OSStatus(eventNotHandledErr) }
-            DispatchQueue.main.async { instance.onPress?() }
+            if let capturePress = instance.capturePress {
+                if let action = capturePress() { DispatchQueue.main.async(execute: action) }
+            } else {
+                DispatchQueue.main.async { instance.onPress?() }
+            }
             return noErr
         }, 1, &spec, nil, &sharedHandler)
     }

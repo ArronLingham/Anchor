@@ -22,12 +22,14 @@ final class TransientPaste {
     /// taking a snapshot or changing the clipboard. It shares the modifier
     /// wait and shortcut handoff used by a temporary text paste.
     @discardableResult
-    func pasteCurrentContents(willPostShortcut: (() -> Void)? = nil,
+    func pasteCurrentContents(shouldPost: @escaping () -> Bool = { true },
+                              willPostShortcut: (() -> Void)? = nil,
                               didPostShortcut: (() -> Void)? = nil,
                               didFail: (() -> Void)? = nil) -> Bool {
         guard Thread.isMainThread, !isPerforming else { return false }
         isPerforming = true
         Self.postPasteWhenModifiersReleased(attempt: 0,
+                                            shouldPost: shouldPost,
                                             willPost: willPostShortcut,
                                             didPost: didPostShortcut,
                                             didFail: didFail) {
@@ -38,6 +40,7 @@ final class TransientPaste {
 
     @discardableResult
     func paste(_ text: String,
+               shouldPost: @escaping () -> Bool = { true },
                willPostShortcut: (() -> Void)? = nil,
                didPostShortcut: (() -> Void)? = nil,
                didFail: (() -> Void)? = nil) -> Bool {
@@ -89,6 +92,7 @@ final class TransientPaste {
                 self.pendingRestore = (snapshot, changeCount)
                 Self.postPasteWhenModifiersReleased(
                     attempt: 0,
+                    shouldPost: shouldPost,
                     willPost: willPostShortcut,
                     didPost: didPostShortcut,
                     didFail: didFail
@@ -139,16 +143,35 @@ final class TransientPaste {
         return snapshot
     }
 
-    private static func postPasteWhenModifiersReleased(attempt: Int,
-                                                       willPost: (() -> Void)?,
-                                                       didPost: (() -> Void)?,
-                                                       didFail: (() -> Void)?,
-                                                       completion: @escaping () -> Void) {
-        let held = CGEventSource.flagsState(.combinedSessionState)
-            .intersection([.maskCommand, .maskAlternate, .maskShift, .maskControl])
-        if held.isEmpty || attempt >= 100 {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.06) {
-                postPasteShortcut(willPost: willPost) { succeeded in
+    static func postPasteWhenModifiersReleased(attempt: Int,
+                                               shouldPost: @escaping () -> Bool,
+                                               willPost: (() -> Void)?,
+                                               didPost: (() -> Void)?,
+                                               didFail: (() -> Void)?,
+                                               modifiersHeld: @escaping () -> Bool = {
+                                                   !CGEventSource.flagsState(.combinedSessionState)
+                                                       .intersection([.maskCommand, .maskAlternate, .maskShift, .maskControl]).isEmpty
+                                               },
+                                               schedule: @escaping (TimeInterval, @escaping () -> Void) -> Void = { delay, work in
+                                                   DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
+                                               },
+                                               post: @escaping ((() -> Void)?, @escaping (Bool) -> Void) -> Void = { willPost, completion in
+                                                   postPasteShortcut(willPost: willPost, completion: completion)
+                                               },
+                                               completion: @escaping () -> Void) {
+        guard shouldPost() else {
+            didFail?()
+            completion()
+            return
+        }
+        if !modifiersHeld() || attempt >= 100 {
+            schedule(0.06) {
+                guard shouldPost() else {
+                    didFail?()
+                    completion()
+                    return
+                }
+                post(willPost) { succeeded in
                     if succeeded {
                         didPost?()
                     } else {
@@ -159,11 +182,15 @@ final class TransientPaste {
             }
             return
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.015) {
+        schedule(0.015) {
             postPasteWhenModifiersReleased(attempt: attempt + 1,
+                                           shouldPost: shouldPost,
                                            willPost: willPost,
                                            didPost: didPost,
                                            didFail: didFail,
+                                           modifiersHeld: modifiersHeld,
+                                           schedule: schedule,
+                                           post: post,
                                            completion: completion)
         }
     }

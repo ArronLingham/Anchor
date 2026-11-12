@@ -455,7 +455,9 @@ enum CommandBarCatalog {
                 icon: .symbol("doc.plaintext"),
                 shortcut: roleShortcut(.pastePlain),
                 trouble: accessibilityTrouble(),
-                run: { _ in afterBeat { PastePlainService.shared.performPastePlain() } }))
+                run: { _ in
+                    if let request = PastePlainService.commandRequest() { afterBeat { request() } }
+                }))
         }
         if AppFeature.cleaningMode.isAvailable {
             entries.append(CommandBarEntry(

@@ -11,6 +11,24 @@ import UniformTypeIdentifiers
 /// the synthesized ⌘V.
 final class PastePlainService: ObservableObject {
     static let shared = PastePlainService()
+    private static let availabilityGate = ClipboardPresentationGate()
+
+    static func commandRequest() -> (() -> Void)? {
+        guard let ticket = availabilityGate.capture(currentlyAvailable: AppFeature.pastePlain.isAvailable) else { return nil }
+        return {
+            guard accepts(ticket) else { return }
+            shared.performPastePlain(ticket: ticket)
+        }
+    }
+
+    private static func accepts(_ ticket: UUID) -> Bool {
+        availabilityGate.accepts(ticket, currentlyAvailable: AppFeature.pastePlain.isAvailable)
+    }
+
+    static func canPaste(ticket: UUID, target: pid_t,
+                         accepts: (UUID) -> Bool, frontmost: () -> pid_t?) -> Bool {
+        accepts(ticket) && frontmost() == target
+    }
 
     @Published private(set) var shortcutRegistrationFailed = false
 
@@ -21,11 +39,20 @@ final class PastePlainService: ObservableObject {
     private var promptedForAccessibility = false
 
     private init() {
-        hotkey.onPress = { [weak self] in self?.performPastePlain() }
+        hotkey.capturePress = { [weak self] in
+            guard UtilityPreferences.standard.bool(forKey: DefaultsKey.pastePlainEnabled),
+                  let ticket = Self.availabilityGate.capture(currentlyAvailable: AppFeature.pastePlain.isAvailable),
+                  let target = NSWorkspace.shared.frontmostApplication?.processIdentifier else { return nil }
+            return { [weak self] in
+                guard UtilityPreferences.standard.bool(forKey: DefaultsKey.pastePlainEnabled) else { return }
+                self?.performPastePlain(ticket: ticket, target: target)
+            }
+        }
     }
 
     func syncWithPreferences() {
         UtilityWorkspace.shared.prepareOwnership()
+        Self.availabilityGate.update(available: AppFeature.pastePlain.isAvailable)
         let enabled = AppFeature.pastePlain.isAvailable
             && UtilityPreferences.standard.bool(forKey: DefaultsKey.pastePlainEnabled)
         let shortcut = GlobalShortcut.saved(for: DefaultsKey.pastePlainShortcut,
@@ -35,10 +62,19 @@ final class PastePlainService: ObservableObject {
     }
 
     func suspend() {
+        Self.availabilityGate.update(available: false)
         hotkey.unregister()
     }
 
-    func performPastePlain() {
+    private func performPastePlain(ticket: UUID, target originalTarget: pid_t? = nil) {
+        guard Self.accepts(ticket),
+              let target = originalTarget ?? NSWorkspace.shared.frontmostApplication?.processIdentifier else { return }
+        let canPaste = {
+            Self.canPaste(ticket: ticket, target: target, accepts: Self.accepts) {
+                NSWorkspace.shared.frontmostApplication?.processIdentifier
+            }
+        }
+        guard canPaste() else { return }
         // Without Accessibility the synthesized ⌘V can never be posted: say so
         // (system prompt once, a beep after) instead of silently swallowing the
         // shortcut, which reads as "the feature does nothing" (issue #186).
@@ -54,11 +90,13 @@ final class PastePlainService: ObservableObject {
         // Promised content renders when read, so a busy source app would hold
         // the main thread here; the lane answers back on main when it can.
         GeneralPasteboardAccess.shared.async({ Self.plainText(from: .general) }) { [weak self] plain in
-            self?.pastePlain(plain?.isEmpty == false ? plain : nil)
+            guard canPaste() else { return }
+            self?.pastePlain(plain?.isEmpty == false ? plain : nil, canPaste: canPaste)
         }
     }
 
-    private func pastePlain(_ plain: String?) {
+    private func pastePlain(_ plain: String?, canPaste: @escaping () -> Bool) {
+        guard canPaste() else { return }
         // An app that ships its own matching-style paste does this better
         // than any synthesized ⌘V: the destination decides the typing
         // attributes (a stripped string pasted normally can leave the
@@ -67,7 +105,8 @@ final class PastePlainService: ObservableObject {
         // later pastes, and held modifier keys don't matter to a menu
         // press. The strip-and-restore dance below stays as the fallback
         // for every app without that command.
-        if plain != nil, pressNativeMatchStyleItem() { return }
+        if plain != nil, pressNativeMatchStyleItem(canPaste: canPaste) { return }
+        guard canPaste() else { return }
 
         var releaseHotkey = false
         let willPostShortcut = { [weak self] in
@@ -81,12 +120,12 @@ final class PastePlainService: ObservableObject {
             if releaseHotkey { self?.syncWithPreferences() }
         }
         if let plain {
-            _ = TransientPaste.shared.paste(plain, willPostShortcut: willPostShortcut,
+            _ = TransientPaste.shared.paste(plain, shouldPost: canPaste, willPostShortcut: willPostShortcut,
                                            didPostShortcut: didPostShortcut)
         } else {
             // A global ⌘V registration already consumed the original press.
             // Forward the paste without reading or replacing media payloads.
-            _ = TransientPaste.shared.pasteCurrentContents(willPostShortcut: willPostShortcut,
+            _ = TransientPaste.shared.pasteCurrentContents(shouldPost: canPaste, willPostShortcut: willPostShortcut,
                                                           didPostShortcut: didPostShortcut)
         }
     }
@@ -102,7 +141,7 @@ final class PastePlainService: ObservableObject {
     /// the synthesized fallback covers it if they do.
     private var noMatchStyleItem: [pid_t: Bool] = [:]
 
-    private func pressNativeMatchStyleItem() -> Bool {
+    private func pressNativeMatchStyleItem(canPaste: () -> Bool) -> Bool {
         guard let app = NSWorkspace.shared.frontmostApplication else { return false }
         let pid = app.processIdentifier
         if noMatchStyleItem[pid] == true { return false }
@@ -119,6 +158,7 @@ final class PastePlainService: ObservableObject {
             if noMatchStyleItem.count > 64 { noMatchStyleItem.removeAll() }
             return false
         }
+        guard canPaste() else { return false }
         return AXUIElementPerformAction(item, kAXPressAction as CFString) == .success
     }
 

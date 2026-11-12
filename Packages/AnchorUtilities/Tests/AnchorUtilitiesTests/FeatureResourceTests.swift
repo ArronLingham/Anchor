@@ -677,6 +677,54 @@ extension FeatureResourceTests {
         XCTAssertEqual(try Data(contentsOf: url), original)
     }
 
+    func testPastePlainRejectsOldSessionAndChangedTarget() throws {
+        let gate = ClipboardPresentationGate()
+        gate.update(available: true)
+        let ticket = try XCTUnwrap(gate.capture(currentlyAvailable: true))
+        let accept = { (ticket: UUID) in gate.accepts(ticket, currentlyAvailable: true) }
+        XCTAssertTrue(PastePlainService.canPaste(ticket: ticket, target: 10, accepts: accept, frontmost: { 10 }))
+        XCTAssertFalse(PastePlainService.canPaste(ticket: ticket, target: 10, accepts: accept, frontmost: { 11 }))
+        gate.update(available: false)
+        gate.update(available: true)
+        XCTAssertFalse(PastePlainService.canPaste(ticket: ticket, target: 10, accepts: accept, frontmost: { 10 }))
+    }
+
+    func testTransientPasteCancellationFinishesCleanupWithoutPosting() throws {
+        var allowed = true
+        var scheduled: (() -> Void)?
+        var posted = false
+        var failed = false
+        var cleanedUp = false
+        TransientPaste.postPasteWhenModifiersReleased(
+            attempt: 0, shouldPost: { allowed }, willPost: nil, didPost: nil,
+            didFail: { failed = true }, modifiersHeld: { false },
+            schedule: { _, work in scheduled = work },
+            post: { _, _ in posted = true },
+            completion: { cleanedUp = true })
+        allowed = false
+        try XCTUnwrap(scheduled)()
+        XCTAssertFalse(posted)
+        XCTAssertTrue(failed)
+        XCTAssertTrue(cleanedUp, "The temporary clipboard must still be scheduled for restoration")
+    }
+
+    func testTransientPastePostsAndCompletesWhenAllowed() throws {
+        var scheduled: (() -> Void)?
+        var willPost = false
+        var didPost = false
+        var completed = false
+        TransientPaste.postPasteWhenModifiersReleased(
+            attempt: 0, shouldPost: { true }, willPost: { willPost = true },
+            didPost: { didPost = true }, didFail: { XCTFail("Unexpected failure") },
+            modifiersHeld: { false }, schedule: { _, work in scheduled = work },
+            post: { before, finish in before?(); finish(true) },
+            completion: { completed = true })
+        try XCTUnwrap(scheduled)()
+        XCTAssertTrue(willPost)
+        XCTAssertTrue(didPost)
+        XCTAssertTrue(completed)
+    }
+
     func testClipboardClearConfirmationRejectsPriorAvailabilitySession() throws {
         let gate = ClipboardPresentationGate()
         gate.update(available: true)
