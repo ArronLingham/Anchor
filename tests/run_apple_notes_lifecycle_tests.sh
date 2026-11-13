@@ -7,6 +7,7 @@ cat > "$work/Defaults.swift" <<'SWIFT'
 @_exported import Combine
 import Foundation
 public enum Defaults {
+    public protocol Serializable: Codable {}
     public struct Key<Value> {
         public let name: String
         public let defaultValue: Value
@@ -40,3 +41,14 @@ swiftc -I "$work" -L "$work" -lDefaults -Xlinker -rpath -Xlinker "$work" \
   Anchor/Models/ProductivityWorkflows.swift Anchor/Managers/Productivity/AppleNotesSyncManager.swift \
   tests/AppleNotesSyncLifecycleTests.swift -o "$work/check"
 "$work/check"
+
+python3 - "$work/NoteItem.swift" <<'PYMODEL'
+from pathlib import Path
+import sys
+source = Path("Anchor/Models/Constants.swift").read_text()
+model = source[source.index("struct NoteItem:"):source.index("enum ColorExtractionMode:")]
+Path(sys.argv[1]).write_text("import Foundation\nimport SwiftUI\nimport Defaults\n" + model)
+PYMODEL
+swiftc -I "$work" -L "$work" -lDefaults -Xlinker -rpath -Xlinker "$work" \
+  "$work/NoteItem.swift" tests/AppleNotesModelMigrationTests.swift -o "$work/model-check"
+"$work/model-check"

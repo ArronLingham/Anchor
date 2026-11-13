@@ -123,7 +123,7 @@ struct NotesSettingsView: View {
                 } header: {
                     Text("Apple Notes")
                 } footer: {
-                    Text("Two-way sync with the macOS Notes app. Notes created in Anchor appear in the \(AppleNotesSyncManager.syncFolderName) folder in Notes, and your existing Apple Notes are imported into the notch. Grant Automation permission for Notes when prompted.")
+                    Text("Notes created in Anchor appear in the \(AppleNotesSyncManager.syncFolderName) folder in Apple Notes, and existing Apple Notes can be imported. Changes to linked notes stay in Anchor until they can be sent without risking Apple Notes formatting or attachments. Grant Automation permission for Notes when prompted.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }

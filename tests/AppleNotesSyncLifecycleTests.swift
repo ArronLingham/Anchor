@@ -11,6 +11,7 @@ struct NoteItem: Identifiable, Equatable {
     var colorIndex: Int
     var isPinned = false
     var appleNotesId: String?
+    var pendingAppleNotesEdit = false
 }
 
 extension Defaults.Key where Value == [NoteItem] {
@@ -121,6 +122,62 @@ struct AppleNotesSyncLifecycleTests {
         check(scripts.filter { $0.contains("make new note at folder") }.count == 1, "off after first creation prevents a second creation")
         check(Defaults[.savedNotes].last?.appleNotesId == nil, "unstarted creation leaves the second note unlinked")
         Defaults[.enableNotes] = true
+        var linked = note
+        linked.appleNotesId = "rich-note-id"
+        Defaults[.savedNotes] = [linked]
+        scripts = []
+        AppleScriptHelper.handler = { script in
+            scripts.append(script)
+            return NSAppleEventDescriptor(string: "")
+        }
+        let protectedPush = await AppleNotesSyncManager.shared.pushNote(linked)
+        check(protectedPush == nil, "linked remote note is not overwritten by a plain-text edit")
+        check(scripts.isEmpty, "protecting linked content sends no update script")
+        check(Defaults[.savedNotes] == [linked], "blocked remote update preserves local note")
+        check(AppleNotesSyncManager.shared.lastError != nil, "blocked remote update reports its limitation")
+        scripts = []
+        AppleScriptHelper.handler = { script in
+            scripts.append(script)
+            let remote = ["rich-note-id", "Remote", "1", "2", "Remote text", ""].joined(separator: "\u{241F}")
+            return NSAppleEventDescriptor(string: remote)
+        }
+        let protectedSync = await AppleNotesSyncManager.shared.sync(localNotes: [linked])
+        check(protectedSync == nil, "sync does not overwrite a linked remote body")
+        check(scripts.count == 1 && scripts[0].contains("plaintext of n"), "sync only reads the remote note")
+        check(Defaults[.savedNotes] == [linked], "blocked sync preserves the local edit and link")
+        check(AppleNotesSyncManager.shared.lastError != nil, "blocked sync reports its limitation")
+
+        linked.pendingAppleNotesEdit = true
+        linked.content = "unsent local edit"
+        Defaults[.savedNotes] = [linked]
+        scripts = []
+        AppleScriptHelper.handler = { script in
+            scripts.append(script)
+            let remote = ["rich-note-id", "Remote", "1", "9999999999", "New remote text", ""].joined(separator: "\u{241F}")
+            return NSAppleEventDescriptor(string: remote)
+        }
+        let conflictingSync = await AppleNotesSyncManager.shared.sync(localNotes: [linked])
+        check(conflictingSync == nil, "newer remote data cannot replace a pending local edit")
+        check(Defaults[.savedNotes] == [linked], "pending local edit and link remain intact")
+        check(AppleNotesSyncManager.shared.lastError != nil, "pending local edit reports its protection")
+
+        var creating = note
+        creating.id = UUID()
+        Defaults[.savedNotes] = [creating]
+        AppleScriptHelper.handler = { script in
+            if script.contains("make new note at folder") {
+                var edited = creating
+                edited.content = "edited during creation"
+                Defaults[.savedNotes] = [edited]
+                return NSAppleEventDescriptor(string: "created-note-id")
+            }
+            return NSAppleEventDescriptor(string: "")
+        }
+        _ = await AppleNotesSyncManager.shared.pushNote(creating)
+        check(Defaults[.savedNotes].first?.appleNotesId == "created-note-id", "creation remembers the acknowledged remote ID")
+        check(Defaults[.savedNotes].first?.pendingAppleNotesEdit == true, "edit during creation stays marked as unsent")
+        check(Defaults[.savedNotes].first?.content == "edited during creation", "edit during creation survives")
+
         Defaults[.savedNotes] = []
         AppleScriptHelper.handler = { _ in NSAppleEventDescriptor(string: "") }
         let completed = await AppleNotesSyncManager.shared.sync(localNotes: [])

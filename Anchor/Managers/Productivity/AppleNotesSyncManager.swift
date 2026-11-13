@@ -26,12 +26,15 @@ import AppKit
 
 enum AppleNotesSyncError: LocalizedError {
     case automationDenied
+    case remoteContentRequiresProtection
     case scriptFailed(String)
 
     var errorDescription: String? {
         switch self {
         case .automationDenied:
             return String(localized: "Allow Anchor to control Notes in System Settings → Privacy & Security → Automation.")
+        case .remoteContentRequiresProtection:
+            return String(localized: "Changes to linked notes are saved in Anchor but cannot yet be sent to Apple Notes without risking formatting or attachments.")
         case .scriptFailed(let message):
             return message
         }
@@ -104,11 +107,14 @@ final class AppleNotesSyncManager: ObservableObject {
 
     /// A successful remote creation must remain linked even if disablement or
     /// a later failure stops the rest of this sync.
-    private func rememberRemoteID(_ id: String, for localID: UUID) {
+    private func rememberRemoteID(_ id: String, for original: NoteItem) {
         var notes = Defaults[.savedNotes]
-        guard let index = notes.firstIndex(where: { $0.id == localID }),
+        guard let index = notes.firstIndex(where: { $0.id == original.id }),
               notes[index].appleNotesId == nil else { return }
         notes[index].appleNotesId = id
+        if notes[index].title != original.title || notes[index].content != original.content {
+            notes[index].pendingAppleNotesEdit = true
+        }
         Defaults[.savedNotes] = notes
     }
 
@@ -156,7 +162,7 @@ final class AppleNotesSyncManager: ObservableObject {
                 return note
             } else {
                 let newId = try await createRemoteNote(note, ticket: ticket)
-                rememberRemoteID(newId, for: note.id)
+                rememberRemoteID(newId, for: note)
                 var updated = note
                 updated.appleNotesId = newId
                 return updated
@@ -188,6 +194,9 @@ final class AppleNotesSyncManager: ObservableObject {
 
         for index in notes.indices {
             try checkSyncAllowed(ticket)
+            if notes[index].appleNotesId != nil, notes[index].pendingAppleNotesEdit {
+                throw AppleNotesSyncError.remoteContentRequiresProtection
+            }
             guard let appleNotesId = notes[index].appleNotesId,
                   let remote = remoteById[appleNotesId] else { continue }
 
@@ -242,7 +251,7 @@ final class AppleNotesSyncManager: ObservableObject {
             try checkSyncAllowed(ticket)
             guard isCurrentLocalNote(updated[index]) else { continue }
             let newId = try await createRemoteNote(updated[index], ticket: ticket)
-            rememberRemoteID(newId, for: updated[index].id)
+            rememberRemoteID(newId, for: updated[index])
             updated[index].appleNotesId = newId
         }
         return updated
@@ -378,19 +387,12 @@ final class AppleNotesSyncManager: ObservableObject {
     }
 
     private func updateRemoteNote(id: String, note: NoteItem) async throws {
-        let title = appleScriptEscape(sanitizedTitle(note.title))
-        let body = appleScriptEscape(htmlBody(for: note))
-        let escapedId = appleScriptEscape(id)
-
-        let script = """
-        tell application "Notes"
-            set targetNote to first note whose id is "\(escapedId)"
-            set name of targetNote to "\(title)"
-            set body of targetNote to "\(body)"
-        end tell
-        """
-
-        try await runScriptVoid(script)
+        // Anchor imports plaintext only. Replacing an existing Apple Notes
+        // body would discard formatting, attachments, and other content that
+        // is not represented in NoteItem, even for notes originally made here.
+        // Keep local edits and report the limitation until a lossless bridge or
+        // an explicit, per-note conversion workflow is available.
+        throw AppleNotesSyncError.remoteContentRequiresProtection
     }
 
     private func deleteRemoteNote(id: String) async throws {

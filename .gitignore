@@ -88,6 +88,7 @@ __pycache__/
 !/tests/AIAssistantCredentialTests.swift
 !/tests/AIAssistantSessionTests.swift
 !/tests/AppleNotesSyncLifecycleTests.swift
+!/tests/AppleNotesModelMigrationTests.swift
 !/tests/AppIconCacheTests.swift
 !/tests/ApplicationDirectoryMonitorTests.swift
 !/tests/CameraMirrorSessionGateTests.swift

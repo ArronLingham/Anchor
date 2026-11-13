@@ -540,10 +540,12 @@ struct NoteItem: Codable, Identifiable, Defaults.Serializable, Hashable {
     var isPinned: Bool = false
     var imageFileName: String? = nil // Store filename instead of raw data
     var appleNotesId: String? = nil
+    /// A local text edit that has not been safely applied to Apple Notes.
+    var pendingAppleNotesEdit: Bool = false
     
     // Internal property for migration
     private enum CodingKeys: String, CodingKey {
-        case id, title, content, creationDate, modificationDate, colorIndex, isPinned, imageFileName, imageData, appleNotesId
+        case id, title, content, creationDate, modificationDate, colorIndex, isPinned, imageFileName, imageData, appleNotesId, pendingAppleNotesEdit
     }
     
     init(
@@ -555,7 +557,8 @@ struct NoteItem: Codable, Identifiable, Defaults.Serializable, Hashable {
         colorIndex: Int,
         isPinned: Bool = false,
         imageFileName: String? = nil,
-        appleNotesId: String? = nil
+        appleNotesId: String? = nil,
+        pendingAppleNotesEdit: Bool = false
     ) {
         self.id = id
         self.title = title
@@ -566,6 +569,7 @@ struct NoteItem: Codable, Identifiable, Defaults.Serializable, Hashable {
         self.isPinned = isPinned
         self.imageFileName = imageFileName
         self.appleNotesId = appleNotesId
+        self.pendingAppleNotesEdit = pendingAppleNotesEdit
     }
     
     init(from decoder: Decoder) throws {
@@ -578,6 +582,7 @@ struct NoteItem: Codable, Identifiable, Defaults.Serializable, Hashable {
         colorIndex = try container.decode(Int.self, forKey: .colorIndex)
         isPinned = try container.decode(Bool.self, forKey: .isPinned)
         appleNotesId = try container.decodeIfPresent(String.self, forKey: .appleNotesId)
+        pendingAppleNotesEdit = try container.decodeIfPresent(Bool.self, forKey: .pendingAppleNotesEdit) ?? false
         
         // Migration logic: if imageData exists but imageFileName doesn't, save it to disk
         if let data = try container.decodeIfPresent(Data.self, forKey: .imageData) {
@@ -601,6 +606,7 @@ struct NoteItem: Codable, Identifiable, Defaults.Serializable, Hashable {
         try container.encode(isPinned, forKey: .isPinned)
         try container.encode(imageFileName, forKey: .imageFileName)
         try container.encodeIfPresent(appleNotesId, forKey: .appleNotesId)
+        try container.encode(pendingAppleNotesEdit, forKey: .pendingAppleNotesEdit)
     }
     
     static let colors: [Color] = [.yellow, .blue, .red, .green, .purple, .orange]

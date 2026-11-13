@@ -255,6 +255,10 @@ struct NotchNotesView: View {
                 try? FileManager.default.removeItem(at: oldFileURL)
             }
 
+            if notes[index].appleNotesId != nil,
+               (notes[index].title != editorTitle || notes[index].content != editorContent) {
+                notes[index].pendingAppleNotesEdit = true
+            }
             notes[index].title = editorTitle
             notes[index].content = editorContent
             notes[index].imageFileName = fileName
@@ -387,7 +391,8 @@ struct NotchNotesView: View {
             if let updated = await appleNotesSync.pushNote(note, session: session),
                let appleNotesId = updated.appleNotesId {
                 var notes = savedNotes
-                if let index = notes.firstIndex(where: { $0.id == noteId }) {
+                if let index = notes.firstIndex(where: { $0.id == noteId }),
+                   notes[index].appleNotesId == nil {
                     notes[index].appleNotesId = appleNotesId
                     savedNotes = notes
                 }
