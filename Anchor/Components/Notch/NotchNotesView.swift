@@ -370,9 +370,11 @@ struct NotchNotesView: View {
 
     private func syncWithAppleNotes() {
         guard AppleNotesSyncManager.permitsNewWork else { return }
+        let baseline = savedNotes
         Task {
-            if let merged = await appleNotesSync.sync(localNotes: savedNotes) {
-                savedNotes = merged
+            if let merged = await appleNotesSync.sync(localNotes: baseline),
+               AppleNotesSyncManager.permitsNewWork {
+                savedNotes = AppleNotesSnapshotReconciliation.merge(baseline: baseline, result: merged, current: savedNotes)
             }
         }
     }

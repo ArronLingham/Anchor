@@ -75,6 +75,25 @@ final class AppleNotesSyncManager: ObservableObject {
                                             syncEnabled: Defaults[.enableAppleNotesSync])
     }
 
+    private static func checkSyncAllowed() throws {
+        try Task.checkCancellation()
+        guard permitsNewWork else { throw CancellationError() }
+    }
+
+    /// A successful remote creation must remain linked even if disablement or
+    /// a later failure stops the rest of this sync.
+    private func rememberRemoteID(_ id: String, for localID: UUID) {
+        var notes = Defaults[.savedNotes]
+        guard let index = notes.firstIndex(where: { $0.id == localID }),
+              notes[index].appleNotesId == nil else { return }
+        notes[index].appleNotesId = id
+        Defaults[.savedNotes] = notes
+    }
+
+    private func isCurrentLocalNote(_ note: NoteItem) -> Bool {
+        Defaults[.savedNotes].first(where: { $0.id == note.id }) == note
+    }
+
     func requestSync(localNotes: [NoteItem]) {
         guard Self.permitsNewWork else { return }
         syncTask?.cancel()
@@ -95,10 +114,14 @@ final class AppleNotesSyncManager: ObservableObject {
 
         do {
             let remoteNotes = try await fetchRemoteNotes()
+            try Self.checkSyncAllowed()
             var merged = try await merge(localNotes: localNotes, remoteNotes: remoteNotes)
             merged = try await pushUnlinkedLocalNotes(merged)
+            try Self.checkSyncAllowed()
             Defaults[.appleNotesLastSyncDate] = Date()
             return merged
+        } catch is CancellationError {
+            return nil
         } catch {
             lastError = error.localizedDescription
             return nil
@@ -106,7 +129,7 @@ final class AppleNotesSyncManager: ObservableObject {
     }
 
     func pushNote(_ note: NoteItem) async -> NoteItem? {
-        guard Self.permitsNewWork else { return nil }
+        guard Self.permitsNewWork, isCurrentLocalNote(note) else { return nil }
 
         do {
             if let appleNotesId = note.appleNotesId {
@@ -114,10 +137,13 @@ final class AppleNotesSyncManager: ObservableObject {
                 return note
             } else {
                 let newId = try await createRemoteNote(note)
+                rememberRemoteID(newId, for: note.id)
                 var updated = note
                 updated.appleNotesId = newId
                 return updated
             }
+        } catch is CancellationError {
+            return nil
         } catch {
             lastError = error.localizedDescription
             return nil
@@ -142,6 +168,7 @@ final class AppleNotesSyncManager: ObservableObject {
         var linkedRemoteIds = Set<String>()
 
         for index in notes.indices {
+            try Self.checkSyncAllowed()
             guard let appleNotesId = notes[index].appleNotesId,
                   let remote = remoteById[appleNotesId] else { continue }
 
@@ -149,12 +176,14 @@ final class AppleNotesSyncManager: ObservableObject {
 
             if remote.modificationDate > notes[index].modificationDate {
                 applyRemote(remote, to: &notes[index])
-            } else if notes[index].modificationDate > remote.modificationDate {
+            } else if notes[index].modificationDate > remote.modificationDate,
+                      isCurrentLocalNote(notes[index]) {
                 try await updateRemoteNote(id: appleNotesId, note: notes[index])
             }
         }
 
         for remote in remoteNotes where !linkedRemoteIds.contains(remote.id) {
+            try Self.checkSyncAllowed()
             if let atollId = remote.atollId,
                let index = notes.firstIndex(where: { $0.id == atollId }) {
                 linkedRemoteIds.insert(remote.id)
@@ -191,7 +220,10 @@ final class AppleNotesSyncManager: ObservableObject {
     private func pushUnlinkedLocalNotes(_ notes: [NoteItem]) async throws -> [NoteItem] {
         var updated = notes
         for index in updated.indices where updated[index].appleNotesId == nil {
+            try Self.checkSyncAllowed()
+            guard isCurrentLocalNote(updated[index]) else { continue }
             let newId = try await createRemoteNote(updated[index])
+            rememberRemoteID(newId, for: updated[index].id)
             updated[index].appleNotesId = newId
         }
         return updated
@@ -310,6 +342,8 @@ final class AppleNotesSyncManager: ObservableObject {
 
     private func createRemoteNote(_ note: NoteItem) async throws -> String {
         try await ensureSyncFolderExists()
+        try Self.checkSyncAllowed()
+        guard isCurrentLocalNote(note) else { throw CancellationError() }
 
         let title = appleScriptEscape(sanitizedTitle(note.title))
         let body = appleScriptEscape(htmlBody(for: note))

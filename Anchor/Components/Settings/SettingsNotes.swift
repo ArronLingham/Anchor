@@ -87,8 +87,10 @@ struct NotesSettingsView: View {
                         Button {
                             Task {
                                 let notes = Defaults[.savedNotes]
-                                if let merged = await appleNotesSync.sync(localNotes: notes) {
-                                    Defaults[.savedNotes] = merged
+                                if let merged = await appleNotesSync.sync(localNotes: notes),
+                                   AppleNotesSyncManager.permitsNewWork {
+                                    Defaults[.savedNotes] = AppleNotesSnapshotReconciliation.merge(
+                                        baseline: notes, result: merged, current: Defaults[.savedNotes])
                                 }
                             }
                         } label: {

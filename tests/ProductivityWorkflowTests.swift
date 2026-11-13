@@ -14,6 +14,19 @@ struct ProductivityWorkflowTests {
         check(!AppleNotesSyncPolicy.permitsNewWork(notesEnabled: false, syncEnabled: true), "notes off blocks new Apple Notes work while retaining the sync preference")
         check(!AppleNotesSyncPolicy.permitsNewWork(notesEnabled: true, syncEnabled: false), "sync off blocks Apple Notes work while leaving notes available")
         check(AppleNotesSyncPolicy.permitsNewWork(notesEnabled: true, syncEnabled: true), "both controls enable Apple Notes work")
+        struct NoteFixture: Identifiable, Equatable {
+            let id: Int
+            var body: String
+            var remoteID: String? = nil
+        }
+        let baseline = [NoteFixture(id: 1, body: "original"), NoteFixture(id: 2, body: "deleted locally"), NoteFixture(id: 3, body: "unchanged")]
+        let syncResult = [NoteFixture(id: 1, body: "remote edit"), NoteFixture(id: 2, body: "remote edit"), NoteFixture(id: 3, body: "updated"), NoteFixture(id: 4, body: "imported")]
+        let current = [NoteFixture(id: 1, body: "local edit", remoteID: "acknowledged"), NoteFixture(id: 3, body: "unchanged"), NoteFixture(id: 5, body: "new local")]
+        let reconciled = AppleNotesSnapshotReconciliation.merge(baseline: baseline, result: syncResult, current: current)
+        check(reconciled.first(where: { $0.id == 1 }) == current[0], "sync preserves a newer local edit and an acknowledged remote link")
+        check(!reconciled.contains(where: { $0.id == 2 }), "sync does not resurrect a note deleted locally during the fetch")
+        check(reconciled.first(where: { $0.id == 3 })?.body == "updated", "unchanged local notes receive remote updates")
+        check(reconciled.contains(where: { $0.id == 4 }) && reconciled.contains(where: { $0.id == 5 }), "sync keeps both newly imported and newly created local notes")
         let search = AnchorQuicklink(title: "Search", keyword: "g", target: "https://example.com/search?q={query}")
         check(search.validationError == nil, "search template is valid")
         let query = "café + swift & sort=private#fragment"

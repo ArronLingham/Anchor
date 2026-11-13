@@ -1,5 +1,25 @@
 import Foundation
 
+enum AppleNotesSnapshotReconciliation {
+    /// Apply a sync result only where the local record still matches the
+    /// snapshot it started with. Keep edits and deletions made during sync.
+    static func merge<Item: Identifiable & Equatable>(baseline: [Item], result: [Item], current: [Item]) -> [Item] where Item.ID: Hashable {
+        let baselineByID = Dictionary(baseline.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        let resultByID = Dictionary(result.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        let currentIDs = Set(current.map(\.id))
+        var merged: [Item] = []
+        for item in current {
+            guard let old = baselineByID[item.id] else { merged.append(item); continue }
+            if item != old { merged.append(item); continue }
+            if let updated = resultByID[item.id] { merged.append(updated) }
+        }
+        for item in result where baselineByID[item.id] == nil && !currentIDs.contains(item.id) {
+            merged.append(item)
+        }
+        return merged
+    }
+}
+
 enum AppleNotesSyncPolicy {
     static func permitsNewWork(notesEnabled: Bool, syncEnabled: Bool) -> Bool {
         notesEnabled && syncEnabled

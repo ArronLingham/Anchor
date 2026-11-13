@@ -87,6 +87,7 @@ __pycache__/
 /tests/*
 !/tests/AIAssistantCredentialTests.swift
 !/tests/AIAssistantSessionTests.swift
+!/tests/AppleNotesSyncLifecycleTests.swift
 !/tests/AppIconCacheTests.swift
 !/tests/ApplicationDirectoryMonitorTests.swift
 !/tests/CameraMirrorSessionGateTests.swift
@@ -119,6 +120,7 @@ __pycache__/
 !/tests/run_media_resource_tests.sh
 !/tests/run_notch_click_tests.sh
 !/tests/run_productivity_workflow_tests.sh
+!/tests/run_apple_notes_lifecycle_tests.sh
 !/tests/run_settingsbinding_tests.sh
 !/tests/run_settingssearch_tests.sh
 !/tests/run_settingssections_tests.sh
