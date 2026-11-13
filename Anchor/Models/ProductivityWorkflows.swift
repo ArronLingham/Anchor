@@ -1,5 +1,11 @@
 import Foundation
 
+enum AppleNotesSyncPolicy {
+    static func permitsNewWork(notesEnabled: Bool, syncEnabled: Bool) -> Bool {
+        notesEnabled && syncEnabled
+    }
+}
+
 /// Value types shared by the native controls and standalone regression harness.
 struct AnchorQuicklink: Identifiable, Codable, Equatable {
     var id = UUID()

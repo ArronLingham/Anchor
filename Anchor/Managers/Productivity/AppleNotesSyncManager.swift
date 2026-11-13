@@ -70,8 +70,13 @@ final class AppleNotesSyncManager: ObservableObject {
 
     private init() {}
 
+    static var permitsNewWork: Bool {
+        AppleNotesSyncPolicy.permitsNewWork(notesEnabled: Defaults[.enableNotes],
+                                            syncEnabled: Defaults[.enableAppleNotesSync])
+    }
+
     func requestSync(localNotes: [NoteItem]) {
-        guard Defaults[.enableAppleNotesSync] else { return }
+        guard Self.permitsNewWork else { return }
         syncTask?.cancel()
         syncTask = Task { [weak self] in
             guard let self else { return }
@@ -81,7 +86,7 @@ final class AppleNotesSyncManager: ObservableObject {
 
     @discardableResult
     func sync(localNotes: [NoteItem]) async -> [NoteItem]? {
-        guard Defaults[.enableAppleNotesSync] else { return nil }
+        guard Self.permitsNewWork else { return nil }
         guard !isSyncing else { return nil }
 
         isSyncing = true
@@ -101,7 +106,7 @@ final class AppleNotesSyncManager: ObservableObject {
     }
 
     func pushNote(_ note: NoteItem) async -> NoteItem? {
-        guard Defaults[.enableAppleNotesSync] else { return nil }
+        guard Self.permitsNewWork else { return nil }
 
         do {
             if let appleNotesId = note.appleNotesId {
@@ -120,7 +125,7 @@ final class AppleNotesSyncManager: ObservableObject {
     }
 
     func deleteRemoteNote(appleNotesId: String) async {
-        guard Defaults[.enableAppleNotesSync] else { return }
+        guard Self.permitsNewWork else { return }
 
         do {
             try await deleteRemoteNote(id: appleNotesId)

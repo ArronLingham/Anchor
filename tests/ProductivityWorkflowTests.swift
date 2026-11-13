@@ -11,6 +11,9 @@ struct ProductivityWorkflowTests {
     }
 
     static func main() throws {
+        check(!AppleNotesSyncPolicy.permitsNewWork(notesEnabled: false, syncEnabled: true), "notes off blocks new Apple Notes work while retaining the sync preference")
+        check(!AppleNotesSyncPolicy.permitsNewWork(notesEnabled: true, syncEnabled: false), "sync off blocks Apple Notes work while leaving notes available")
+        check(AppleNotesSyncPolicy.permitsNewWork(notesEnabled: true, syncEnabled: true), "both controls enable Apple Notes work")
         let search = AnchorQuicklink(title: "Search", keyword: "g", target: "https://example.com/search?q={query}")
         check(search.validationError == nil, "search template is valid")
         let query = "café + swift & sort=private#fragment"

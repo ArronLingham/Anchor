@@ -131,7 +131,11 @@ struct NotchNotesView: View {
         .onChange(of: clipboardDisplayMode) { _, _ in
             updateLayoutState()
         }
-        .onChange(of: enableNotes) { _, _ in
+        .onChange(of: enableNotes) { _, isEnabled in
+            if !isEnabled {
+                autoSaveTask?.cancel()
+                if isEditingNewNote || selectedNoteId != nil { persistNote() }
+            }
             updateLayoutState()
         }
         .onChange(of: editorContent) { _, _ in
@@ -365,7 +369,7 @@ struct NotchNotesView: View {
     }
 
     private func syncWithAppleNotes() {
-        guard enableAppleNotesSync else { return }
+        guard AppleNotesSyncManager.permitsNewWork else { return }
         Task {
             if let merged = await appleNotesSync.sync(localNotes: savedNotes) {
                 savedNotes = merged
@@ -374,7 +378,7 @@ struct NotchNotesView: View {
     }
 
     private func pushNoteToAppleNotes(noteId: UUID) {
-        guard enableAppleNotesSync,
+        guard AppleNotesSyncManager.permitsNewWork,
               let note = savedNotes.first(where: { $0.id == noteId }) else { return }
 
         Task {
@@ -390,7 +394,7 @@ struct NotchNotesView: View {
     }
 
     private func deleteRemoteNoteIfNeeded(_ note: NoteItem) {
-        guard enableAppleNotesSync, let appleNotesId = note.appleNotesId else { return }
+        guard AppleNotesSyncManager.permitsNewWork, let appleNotesId = note.appleNotesId else { return }
         Task {
             await appleNotesSync.deleteRemoteNote(appleNotesId: appleNotesId)
         }
