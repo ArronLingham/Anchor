@@ -85,12 +85,13 @@ struct NotesSettingsView: View {
 
                     if enableAppleNotesSync {
                         Button {
+                            guard let session = appleNotesSync.captureSession() else { return }
+                            let notes = Defaults[.savedNotes]
                             Task {
-                                let notes = Defaults[.savedNotes]
-                                if let merged = await appleNotesSync.sync(localNotes: notes),
-                                   AppleNotesSyncManager.permitsNewWork {
+                                if let merged = await appleNotesSync.sync(localNotes: notes, session: session),
+                                   appleNotesSync.acceptsSession(merged.session) {
                                     Defaults[.savedNotes] = AppleNotesSnapshotReconciliation.merge(
-                                        baseline: notes, result: merged, current: Defaults[.savedNotes])
+                                        baseline: notes, result: merged.notes, current: Defaults[.savedNotes])
                                 }
                             }
                         } label: {

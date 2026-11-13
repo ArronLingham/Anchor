@@ -1,5 +1,25 @@
 import Foundation
 
+final class AppleNotesSyncGeneration {
+    private let lock = NSLock()
+    private var current = UUID()
+
+    func capture() -> UUID {
+        lock.lock(); defer { lock.unlock() }
+        return current
+    }
+
+    func invalidate() {
+        lock.lock(); defer { lock.unlock() }
+        current = UUID()
+    }
+
+    func accepts(_ ticket: UUID) -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        return current == ticket
+    }
+}
+
 enum AppleNotesSnapshotReconciliation {
     /// Apply a sync result only where the local record still matches the
     /// snapshot it started with. Keep edits and deletions made during sync.

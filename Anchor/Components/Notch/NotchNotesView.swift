@@ -369,22 +369,22 @@ struct NotchNotesView: View {
     }
 
     private func syncWithAppleNotes() {
-        guard AppleNotesSyncManager.permitsNewWork else { return }
+        guard let session = appleNotesSync.captureSession() else { return }
         let baseline = savedNotes
         Task {
-            if let merged = await appleNotesSync.sync(localNotes: baseline),
-               AppleNotesSyncManager.permitsNewWork {
-                savedNotes = AppleNotesSnapshotReconciliation.merge(baseline: baseline, result: merged, current: savedNotes)
+            if let merged = await appleNotesSync.sync(localNotes: baseline, session: session),
+               appleNotesSync.acceptsSession(merged.session) {
+                savedNotes = AppleNotesSnapshotReconciliation.merge(baseline: baseline, result: merged.notes, current: savedNotes)
             }
         }
     }
 
     private func pushNoteToAppleNotes(noteId: UUID) {
-        guard AppleNotesSyncManager.permitsNewWork,
+        guard let session = appleNotesSync.captureSession(),
               let note = savedNotes.first(where: { $0.id == noteId }) else { return }
 
         Task {
-            if let updated = await appleNotesSync.pushNote(note),
+            if let updated = await appleNotesSync.pushNote(note, session: session),
                let appleNotesId = updated.appleNotesId {
                 var notes = savedNotes
                 if let index = notes.firstIndex(where: { $0.id == noteId }) {
@@ -396,9 +396,9 @@ struct NotchNotesView: View {
     }
 
     private func deleteRemoteNoteIfNeeded(_ note: NoteItem) {
-        guard AppleNotesSyncManager.permitsNewWork, let appleNotesId = note.appleNotesId else { return }
+        guard let session = appleNotesSync.captureSession(), let appleNotesId = note.appleNotesId else { return }
         Task {
-            await appleNotesSync.deleteRemoteNote(appleNotesId: appleNotesId)
+            await appleNotesSync.deleteRemoteNote(appleNotesId: appleNotesId, session: session)
         }
     }
 

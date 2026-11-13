@@ -40,6 +40,19 @@ struct AppleNotesSyncLifecycleTests {
         let note = NoteItem(title: "Fixture", content: "local", creationDate: Date(), modificationDate: Date(), colorIndex: 0)
         Defaults[.savedNotes] = [note]
         var scripts: [String] = []
+        let queuedSession = AppleNotesSyncManager.shared.captureSession()!
+        Defaults[.enableNotes] = false
+        Defaults[.enableNotes] = true
+        AppleScriptHelper.handler = { script in
+            scripts.append(script)
+            return NSAppleEventDescriptor(string: "")
+        }
+        let queuedSync = await AppleNotesSyncManager.shared.sync(localNotes: [note], session: queuedSession)
+        let queuedPush = await AppleNotesSyncManager.shared.pushNote(note, session: queuedSession)
+        await AppleNotesSyncManager.shared.deleteRemoteNote(appleNotesId: "fixture", session: queuedSession)
+        check(queuedSync == nil && queuedPush == nil, "queued work from a prior session is rejected")
+        check(scripts.isEmpty, "queued sync, push and delete start no scripts after off and on")
+
         AppleScriptHelper.handler = { script in
             scripts.append(script)
             Defaults[.enableNotes] = false
@@ -49,6 +62,18 @@ struct AppleNotesSyncLifecycleTests {
         check(stoppedAfterFetch == nil, "off during fetch returns no snapshot")
         check(scripts.count == 1, "off during fetch starts no later remote operation")
         check(Defaults[.savedNotes] == [note], "off during fetch preserves local data")
+
+        Defaults[.enableNotes] = true
+        scripts = []
+        AppleScriptHelper.handler = { script in
+            scripts.append(script)
+            Defaults[.enableNotes] = false
+            Defaults[.enableNotes] = true
+            return NSAppleEventDescriptor(string: "")
+        }
+        let staleSession = await AppleNotesSyncManager.shared.sync(localNotes: [note])
+        check(staleSession == nil, "off and on during fetch invalidates the earlier session")
+        check(scripts.count == 1, "old session starts no write after re-enable")
 
         Defaults[.enableNotes] = true
         scripts = []
@@ -95,6 +120,17 @@ struct AppleNotesSyncLifecycleTests {
         check(Defaults[.savedNotes].first?.content == "local", "acknowledging creation preserves local content")
         check(scripts.filter { $0.contains("make new note at folder") }.count == 1, "off after first creation prevents a second creation")
         check(Defaults[.savedNotes].last?.appleNotesId == nil, "unstarted creation leaves the second note unlinked")
+        Defaults[.enableNotes] = true
+        Defaults[.savedNotes] = []
+        AppleScriptHelper.handler = { _ in NSAppleEventDescriptor(string: "") }
+        let completed = await AppleNotesSyncManager.shared.sync(localNotes: [])
+        check(completed != nil, "enabled empty sync completes")
+        if let completed {
+            check(AppleNotesSyncManager.shared.acceptsSession(completed.session), "completed session initially accepted")
+            Defaults[.enableAppleNotesSync] = false
+            Defaults[.enableAppleNotesSync] = true
+            check(!AppleNotesSyncManager.shared.acceptsSession(completed.session), "old result rejected after sync off and on")
+        }
         print("Apple Notes lifecycle: \(failures == 0 ? "passed" : "failed")")
         if failures != 0 { exit(1) }
     }

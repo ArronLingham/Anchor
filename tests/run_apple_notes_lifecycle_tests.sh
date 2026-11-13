@@ -12,10 +12,22 @@ public enum Defaults {
         public let defaultValue: Value
         public init(_ name: String, default value: Value) { self.name = name; self.defaultValue = value }
     }
+    public protocol Observation: AnyObject {}
+    public final class Token: Observation {}
+    public enum ObservationOption { case initial }
     private static var values: [String: Any] = [:]
+    private static var observers: [String: [() -> Void]] = [:]
     public static subscript<Value>(key: Key<Value>) -> Value {
         get { values[key.name] as? Value ?? key.defaultValue }
-        set { values[key.name] = newValue }
+        set {
+            values[key.name] = newValue
+            observers[key.name, default: []].forEach { $0() }
+        }
+    }
+    public static func observe<Value>(_ key: Key<Value>, options: Set<ObservationOption>,
+                                      handler: @escaping (Value) -> Void) -> some Observation {
+        observers[key.name, default: []].append { handler(self[key]) }
+        return Token()
     }
 }
 extension Defaults.Key where Value == Bool {
