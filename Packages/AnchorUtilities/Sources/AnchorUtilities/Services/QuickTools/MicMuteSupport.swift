@@ -38,6 +38,25 @@ enum MicMuteSupport {
         return fallbackVolume
     }
 
+    static func needsRecoveryAtLaunch(featureAvailable: Bool, recorded: [String]?) -> Bool {
+        !featureAvailable && !(recorded ?? []).isEmpty
+    }
+
+    static func hasUntrackedActiveMute(active: Bool, recorded: [String]?) -> Bool {
+        active && recorded == nil
+    }
+
+    static func needsDeviceListeners(featureAvailable: Bool, wantsMute: Bool, hasClaims: Bool) -> Bool {
+        (featureAvailable && wantsMute) || hasClaims
+    }
+
+    /// Automatic recovery must never infer ownership from a missing legacy record.
+    /// The old all-device fallback is reserved for an explicit user unmute.
+    static func claimsForSweep(recorded: [String]?, muted: Bool, explicitUnmute: Bool) -> [String]? {
+        if !muted && !explicitUnmute { return recorded ?? [] }
+        return recorded
+    }
+
     /// Which devices an unmute has to touch. Normally only the ones this app
     /// muted, so a microphone the user silenced in System Settings stays
     /// silenced. With no record at all (settings restored onto another Mac, or

@@ -8,6 +8,91 @@ final class FeatureResourceTests: XCTestCase {
         var running = true
     }
 
+    func testMicrophoneRecoveryTargetsOnlyRecordedDevicesWhileDisabled() {
+        var claims = ["disconnected"]
+        var muted = ["user-muted": true, "disconnected": true]
+        XCTAssertTrue(MicMuteSupport.needsRecoveryAtLaunch(featureAvailable: false, recorded: claims))
+        XCTAssertFalse(MicMuteSupport.needsRecoveryAtLaunch(featureAvailable: true, recorded: claims))
+        XCTAssertFalse(MicMuteSupport.needsRecoveryAtLaunch(featureAvailable: false, recorded: []))
+        XCTAssertTrue(MicMuteSupport.needsDeviceListeners(featureAvailable: false, wantsMute: false, hasClaims: true))
+        let firstPresent = ["user-muted"]
+        let firstTargets = MicMuteSupport.restoreTargets(recorded: claims, present: firstPresent)
+        XCTAssertTrue(firstTargets.isEmpty)
+        claims = MicMuteSupport.absentClaims(recorded: claims, present: firstPresent)
+        XCTAssertEqual(claims, ["disconnected"])
+        let reconnected = ["user-muted", "disconnected"]
+        let targets = MicMuteSupport.restoreTargets(recorded: claims, present: reconnected)
+        for target in targets { muted[target] = false }
+        claims = MicMuteSupport.absentClaims(recorded: claims, present: reconnected)
+        XCTAssertEqual(muted["user-muted"], true, "A device muted by the user must remain muted")
+        XCTAssertEqual(muted["disconnected"], false)
+        XCTAssertTrue(claims.isEmpty)
+        XCTAssertFalse(MicMuteSupport.needsDeviceListeners(featureAvailable: false, wantsMute: false, hasClaims: false))
+        XCTAssertFalse(MicMuteSupport.needsDeviceListeners(featureAvailable: false, wantsMute: true, hasClaims: false))
+    }
+
+    func testMicrophoneRestoreRetainsFailedClaimsAndRetriesOnlyOwnedDevices() {
+        let switchMic = MicMuteService.InputDevice(id: 1, uid: "switch")
+        let volumeMic = MicMuteService.InputDevice(id: 2, uid: "volume")
+        let userMic = MicMuteService.InputDevice(id: 3, uid: "user")
+        let returningMic = MicMuteService.InputDevice(id: 4, uid: "away")
+        var switches: [UInt32: UInt32] = [1: 1, 3: 1, 4: 1]
+        var volumes: [UInt32: Float] = [2: 0]
+        var failVolume = true
+        var writes: [UInt32] = []
+        var restoredChannels: [String: Double] = [:]
+        let backend = MicMuteService.RestoreBackend(
+            muteSwitch: { switches[$0] },
+            setMute: { muted, id in
+                writes.append(id)
+                switches[id] = muted ? 1 : 0
+                return true
+            },
+            volume: { volumes[$0] },
+            setVolume: { level, id, channels in
+                writes.append(id)
+                guard !failVolume else { return false }
+                volumes[id] = level
+                restoredChannels = channels
+                return true
+            })
+        let initial = MicMuteService.unmute(
+            [switchMic, volumeMic, userMic], savedVolumes: ["volume": 0.42],
+            savedChannelVolumes: ["volume": ["1": 0.3, "2": 0.5]],
+            mutedDevices: ["switch", "volume", "away"], legacyVolume: 0.75, backend: backend)
+        XCTAssertTrue(initial.applied)
+        XCTAssertTrue(initial.failed)
+        XCTAssertEqual(Set(initial.mutedDevices), Set(["volume", "away"]))
+        XCTAssertEqual(initial.savedVolumes["volume"], 0.42)
+        XCTAssertEqual(switches[3], 1, "The user's unrelated mute must never be changed")
+        XCTAssertFalse(writes.contains(3))
+
+        failVolume = false
+        let retried = MicMuteService.unmute(
+            [switchMic, volumeMic, userMic, returningMic], savedVolumes: initial.savedVolumes,
+            savedChannelVolumes: initial.savedChannelVolumes, mutedDevices: initial.mutedDevices,
+            legacyVolume: 0.75, backend: backend)
+        XCTAssertTrue(retried.applied)
+        XCTAssertFalse(retried.failed)
+        XCTAssertTrue(retried.mutedDevices.isEmpty)
+        XCTAssertEqual(volumes[2]!, 0.42, accuracy: 0.0001)
+        XCTAssertEqual(restoredChannels, ["1": 0.3, "2": 0.5])
+        XCTAssertEqual(switches[4], 0)
+        XCTAssertEqual(switches[3], 1)
+        XCTAssertFalse(writes.contains(3))
+    }
+
+    func testAutomaticMicrophoneRecoveryNeverInfersLegacyOwnership() {
+        XCTAssertTrue(MicMuteSupport.hasUntrackedActiveMute(active: true, recorded: nil))
+        XCTAssertFalse(MicMuteSupport.hasUntrackedActiveMute(active: true, recorded: []))
+        let automatic = MicMuteSupport.claimsForSweep(recorded: nil, muted: false, explicitUnmute: false)
+        XCTAssertEqual(automatic, [])
+        XCTAssertTrue(MicMuteSupport.restoreTargets(recorded: automatic, present: ["user-muted"]).isEmpty)
+        let explicit = MicMuteSupport.claimsForSweep(recorded: nil, muted: false, explicitUnmute: true)
+        XCTAssertNil(explicit, "Explicit legacy unmute retains its existing fallback")
+        XCTAssertEqual(MicMuteSupport.restoreTargets(recorded: explicit, present: ["mic"]), ["mic"])
+    }
+
     func testColdClipboardHistoryStaysUnloadedForAutoClearAndShortcutCapture() throws {
         guard ClipboardHistoryService.existing == nil, ShelfService.existing == nil, AppSwitcher.existing == nil,
               SoundOutputSwitcher.existing == nil, WindowLayoutService.existing == nil else {

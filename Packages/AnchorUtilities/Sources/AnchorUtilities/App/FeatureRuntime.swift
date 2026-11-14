@@ -295,6 +295,9 @@ final class FeatureRuntime: ObservableObject {
     /// Launch path: replaces the old unconditional sync block. Only available
     /// features get their binding run, so nothing else even instantiates.
     func syncAtLaunch() {
+        // Recovery is independent of feature availability: a disconnected
+        // microphone previously muted by Anchor still needs its level back.
+        MicMuteService.recoverAtLaunchIfNeeded()
         appliedAvailability = Set(AppFeature.allCases.filter(\.isAvailable))
         for feature in AppFeature.allCases where feature.isAvailable {
             if serviceBindings[feature] != nil { loadedThisSession.insert(feature) }
