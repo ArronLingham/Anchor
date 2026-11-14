@@ -30,6 +30,13 @@ enum MicMuteSupport {
         return volume > 0.01
     }
 
+    /// Individual channels may deliberately be silent even when the device
+    /// as a whole is not. Preserve zero rather than replacing it with the
+    /// device's fallback level when restoring the channel balance.
+    static func shouldSaveChannelVolume(_ volume: Float) -> Bool {
+        volume.isFinite && (0...1).contains(volume)
+    }
+
     static func volumeToRestore(uid: String,
                                 saved: [String: Double],
                                 legacy: Double) -> Float {

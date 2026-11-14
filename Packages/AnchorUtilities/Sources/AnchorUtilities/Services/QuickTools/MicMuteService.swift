@@ -600,7 +600,7 @@ final class MicMuteService: ObservableObject {
             var volume = Float(0)
             var size = UInt32(MemoryLayout<Float>.size)
             if AudioObjectGetPropertyData(device, &address, 0, nil, &size, &volume) == noErr,
-               MicMuteSupport.shouldSaveVolume(volume) {
+               MicMuteSupport.shouldSaveChannelVolume(volume) {
                 levels[String(address.mElement)] = Double(volume)
             }
         }

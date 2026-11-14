@@ -3,6 +3,16 @@ import XCTest
 @testable import AnchorUtilities
 
 final class FeatureResourceTests: XCTestCase {
+    func testMicrophoneSavedChannelsIncludeDeliberateSilence() {
+        XCTAssertTrue(MicMuteSupport.shouldSaveChannelVolume(0))
+        XCTAssertTrue(MicMuteSupport.shouldSaveChannelVolume(0.5))
+        XCTAssertTrue(MicMuteSupport.shouldSaveChannelVolume(1))
+        XCTAssertFalse(MicMuteSupport.shouldSaveChannelVolume(-0.1))
+        XCTAssertFalse(MicMuteSupport.shouldSaveChannelVolume(1.1))
+        XCTAssertFalse(MicMuteSupport.shouldSaveChannelVolume(.nan))
+        XCTAssertFalse(MicMuteSupport.shouldSaveChannelVolume(.infinity))
+    }
+
     private final class Engine {
         var memory = Data(count: 4 * 1024 * 1024)
         var running = true
@@ -58,7 +68,7 @@ final class FeatureResourceTests: XCTestCase {
             })
         let initial = MicMuteService.unmute(
             [switchMic, volumeMic, userMic], savedVolumes: ["volume": 0.42],
-            savedChannelVolumes: ["volume": ["1": 0.3, "2": 0.5]],
+            savedChannelVolumes: ["volume": ["1": 0, "2": 0.5]],
             mutedDevices: ["switch", "volume", "away"], legacyVolume: 0.75, backend: backend)
         XCTAssertTrue(initial.applied)
         XCTAssertTrue(initial.failed)
@@ -76,7 +86,7 @@ final class FeatureResourceTests: XCTestCase {
         XCTAssertFalse(retried.failed)
         XCTAssertTrue(retried.mutedDevices.isEmpty)
         XCTAssertEqual(volumes[2]!, 0.42, accuracy: 0.0001)
-        XCTAssertEqual(restoredChannels, ["1": 0.3, "2": 0.5])
+        XCTAssertEqual(restoredChannels, ["1": 0, "2": 0.5])
         XCTAssertEqual(switches[4], 0)
         XCTAssertEqual(switches[3], 1)
         XCTAssertFalse(writes.contains(3))
