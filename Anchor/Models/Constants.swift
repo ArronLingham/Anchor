@@ -1390,6 +1390,11 @@ extension Defaults.Keys {
     /// How many commits to make per day. Spread across the window when
     /// randomised, otherwise a few minutes apart from the scheduled time.
     static let gitDailyCommitCount = Key<Int>("gitDailyCommitCount", default: 1)
+    static let gitDailyCommitRandomCount = Key<Bool>("gitDailyCommitRandomCount", default: false)
+    static let gitDailyCommitMinimumCount = Key<Int>("gitDailyCommitMinimumCount", default: 1)
+    static let gitDailyCommitMaximumCount = Key<Int>("gitDailyCommitMaximumCount", default: 3)
+    /// Stable per-install seed, used to keep a day's random target consistent across launches.
+    static let gitDailyCommitCountSeed = Key<Int>("gitDailyCommitCountSeed", default: 0)
     /// How many of today's commits have already been made — reset each day.
     static let gitDailyCommitDoneToday = Key<Int>("gitDailyCommitDoneToday", default: 0)
 

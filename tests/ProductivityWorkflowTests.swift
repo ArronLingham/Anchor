@@ -27,6 +27,28 @@ struct ProductivityWorkflowTests {
         check(!reconciled.contains(where: { $0.id == 2 }), "sync does not resurrect a note deleted locally during the fetch")
         check(reconciled.first(where: { $0.id == 3 })?.body == "updated", "unchanged local notes receive remote updates")
         check(reconciled.contains(where: { $0.id == 4 }) && reconciled.contains(where: { $0.id == 5 }), "sync keeps both newly imported and newly created local notes")
+        var utc = Calendar(identifier: .gregorian)
+        utc.timeZone = TimeZone(secondsFromGMT: 0)!
+        let day = utc.date(from: DateComponents(year: 2026, month: 11, day: 14, hour: 7))!
+        let firstDraw = DailyCommitCountPolicy.draw(day: day, seed: 12345, minimum: 2, maximum: 5, calendar: utc)
+        let sameDay = day.addingTimeInterval(12 * 3600)
+        check(firstDraw == DailyCommitCountPolicy.draw(day: sameDay, seed: 12345, minimum: 2, maximum: 5, calendar: utc), "random daily count stays stable throughout a day")
+        check((2...5).contains(firstDraw), "random daily count is within the inclusive range")
+        var otherZone = utc
+        otherZone.timeZone = TimeZone(secondsFromGMT: -5 * 3600)!
+        check(firstDraw == DailyCommitCountPolicy.draw(day: day, seed: 12345, minimum: 2, maximum: 5, calendar: otherZone), "the same local date has the same target after a time zone change")
+        check(DailyCommitCountPolicy.draw(day: day, seed: 12345, minimum: 7, maximum: 7, calendar: utc) == 7, "equal bounds select exactly that count")
+        check(DailyCommitCountPolicy.bounds(8, 3) == 3...8, "reversed bounds are normalized")
+        check(DailyCommitCountPolicy.bounds(Int.min, Int.max) == 0...(Int.max - 1), "invalid extreme bounds are safely limited")
+        check(DailyCommitCountPolicy.draw(day: day, seed: 12345, minimum: 0, maximum: 0, calendar: utc) == 0, "zero bounds select a day without commits")
+        let draws = Set((0..<30).map { DailyCommitCountPolicy.draw(day: day.addingTimeInterval(Double($0) * 86400), seed: 12345, minimum: 2, maximum: 5, calendar: utc) })
+        check(draws == Set(2...5), "the seeded daily draw reaches both inclusive bounds")
+        check(DailyCommitCountPolicy.respectingSpacing(day, lastRun: day, calendar: utc) == day.addingTimeInterval(60), "overdue slots are spaced after the last run")
+        let runGate = DailyCommitRunGate()
+        check(runGate.begin() && !runGate.begin(), "concurrent commit runs cannot claim the same slot")
+        runGate.end()
+        check(runGate.begin(), "a completed run releases the next slot")
+        runGate.end()
         let search = AnchorQuicklink(title: "Search", keyword: "g", target: "https://example.com/search?q={query}")
         check(search.validationError == nil, "search template is valid")
         let query = "café + swift & sort=private#fragment"

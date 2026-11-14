@@ -92,6 +92,7 @@ __pycache__/
 !/tests/AppIconCacheTests.swift
 !/tests/ApplicationDirectoryMonitorTests.swift
 !/tests/CameraMirrorSessionGateTests.swift
+!/tests/DailyCommitScheduleTests.swift
 !/tests/ConcentricCornerTests.swift
 !/tests/ExternalPillPolicyTests.swift
 !/tests/FullscreenLayoutTests.swift
@@ -122,6 +123,7 @@ __pycache__/
 !/tests/run_notch_click_tests.sh
 !/tests/run_productivity_workflow_tests.sh
 !/tests/run_apple_notes_lifecycle_tests.sh
+!/tests/run_daily_commit_schedule_tests.sh
 !/tests/run_settingsbinding_tests.sh
 !/tests/run_settingssearch_tests.sh
 !/tests/run_settingssections_tests.sh

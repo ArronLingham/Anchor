@@ -68,6 +68,8 @@ final class GitCommitManager: ObservableObject {
     private var timer: DispatchSourceTimer?
     private var cancellables = Set<AnyCancellable>()
     private var started = false
+    nonisolated private static let runGate = DailyCommitRunGate()
+    nonisolated private static let seedLock = NSLock()
 
     private init() {
         lastRunAt = Defaults[.gitDailyCommitLastRun]
@@ -81,7 +83,10 @@ final class GitCommitManager: ObservableObject {
         started = true
 
         Defaults.publisher(
-            keys: .gitDailyCommitEnabled, .gitDailyCommitHour, .gitDailyCommitMinute
+            keys: .gitDailyCommitEnabled, .gitDailyCommitHour, .gitDailyCommitMinute,
+            .gitDailyCommitCount, .gitDailyCommitRandomCount, .gitDailyCommitMinimumCount,
+            .gitDailyCommitMaximumCount, .gitDailyCommitRandomTime,
+            .gitDailyCommitWindowStartHour, .gitDailyCommitWindowEndHour, .gitDailyCommitRepos
         )
         .sink { [weak self] _ in
             Task { @MainActor in self?.reschedule() }
@@ -112,7 +117,8 @@ final class GitCommitManager: ObservableObject {
         timer = nil
         nextRunAt = nil
 
-        guard Defaults[.gitDailyCommitEnabled] else { return }
+        guard Defaults[.gitDailyCommitEnabled], !Defaults[.gitDailyCommitRepos].isEmpty,
+              !Self.runGate.isActive else { return }
         guard let next = nextFireDate(after: Date()) else { return }
 
         nextRunAt = next
@@ -150,10 +156,14 @@ final class GitCommitManager: ObservableObject {
     /// - **Randomised** — a time drawn inside the window. Drawn once per slot
     ///   rather than re-rolled on every reschedule, or the target would move
     ///   every time anything touched the settings.
-    private func nextFireDate(after date: Date) -> Date? {
+    func nextFireDate(after date: Date) -> Date? {
         let calendar = Calendar.current
-        let perDay = max(1, Defaults[.gitDailyCommitCount])
-        let doneToday = commitsDoneToday()
+        if Defaults[.gitDailyCommitRandomCount],
+           DailyCommitCountPolicy.bounds(Defaults[.gitDailyCommitMinimumCount], Defaults[.gitDailyCommitMaximumCount]).upperBound == 0 {
+            return nil
+        }
+        let perDay = Self.dailyTarget(on: date)
+        let doneToday = commitsDone(on: date)
 
         guard doneToday < perDay else {
             // Everything for today is done; the next one is tomorrow's first.
@@ -176,12 +186,12 @@ final class GitCommitManager: ObservableObject {
         components.hour = Defaults[.gitDailyCommitHour]
         components.minute = Defaults[.gitDailyCommitMinute]
         components.second = 0
-        return calendar.nextDate(
-            after: date, matching: components, matchingPolicy: .nextTime)
+        return calendar.date(bySettingHour: components.hour!, minute: components.minute!,
+                             second: 0, of: calendar.startOfDay(for: date))
     }
 
     /// The `index`-th of `count` slots on the day containing `reference`,
-    /// or nil when that slot has already passed.
+    /// even if it has passed, so the caller can catch up.
     private func slot(index: Int, of count: Int, on reference: Date) -> Date? {
         let calendar = Calendar.current
         let day = calendar.startOfDay(for: reference)
@@ -202,12 +212,18 @@ final class GitCommitManager: ObservableObject {
         }
 
         let candidate = day.addingTimeInterval(offset)
-        return candidate > reference ? candidate : nil
+        return DailyCommitCountPolicy.respectingSpacing(candidate, lastRun: Defaults[.gitDailyCommitLastRun])
     }
 
     private func firstSlot(on day: Date) -> Date? {
-        let perDay = max(1, Defaults[.gitDailyCommitCount])
-        return slot(index: 0, of: perDay, on: day.addingTimeInterval(-1))
+        let perDay = Self.dailyTarget(on: day)
+        // Wake after midnight to choose the next day when that day's target is zero.
+        if perDay == 0 { return Calendar.current.startOfDay(for: day).addingTimeInterval(1) }
+        if perDay == 1 && !Defaults[.gitDailyCommitRandomTime] {
+            return Calendar.current.date(bySettingHour: Defaults[.gitDailyCommitHour],
+                                         minute: Defaults[.gitDailyCommitMinute], second: 0, of: day)
+        }
+        return slot(index: 0, of: perDay, on: day)
     }
 
     /// Seconds from midnight for the start and end of the allowed window.
@@ -232,16 +248,14 @@ final class GitCommitManager: ObservableObject {
     /// anything rescheduled, so the commit time would drift all day and could
     /// be skipped entirely by landing behind `now` each time.
     private func deterministicJitter(day: Date, index: Int) -> Int {
-        var hasher = Hasher()
-        hasher.combine(Int(day.timeIntervalSince1970))
-        hasher.combine(index)
-        return abs(hasher.finalize()) % 1000
+        Int(DailyCommitCountPolicy.stableValue(day: day, seed: UInt64(Self.installSeed()),
+                                               salt: UInt64(index)) % 1000)
     }
 
     /// How many commits have already happened today.
-    private func commitsDoneToday() -> Int {
+    private func commitsDone(on date: Date) -> Int {
         guard let last = Defaults[.gitDailyCommitLastRun],
-              Calendar.current.isDateInToday(last)
+              Calendar.current.isDate(last, inSameDayAs: date)
         else { return 0 }
         return Defaults[.gitDailyCommitDoneToday]
     }
@@ -253,17 +267,16 @@ final class GitCommitManager: ObservableObject {
     /// so a randomised or multi-commit day catches up correctly after the Mac
     /// has been asleep or the app was not running.
     func catchUpIfNeeded() {
-        guard Defaults[.gitDailyCommitEnabled] else { return }
+        guard Defaults[.gitDailyCommitEnabled], !Defaults[.gitDailyCommitRepos].isEmpty else { return }
         guard !Self.quotaUsedForToday() else { return }
 
-        let calendar = Calendar.current
-        let day = calendar.startOfDay(for: Date())
-        let (start, _) = window()
-        let earliest = day.addingTimeInterval(start)
-        guard earliest <= Date() else { return }
+        let now = Date()
+        guard let due = nextFireDate(after: now), due <= now else { return }
 
         Task.detached { [weak self] in
-            await self?.performRun(trigger: "catch-up")
+            guard let self else { return }
+            await self.performRun(trigger: "catch-up")
+            await self.reschedule()
         }
     }
 
@@ -273,10 +286,29 @@ final class GitCommitManager: ObservableObject {
     /// from a background task and only publishes afterwards, so the published
     /// value can lag. Defaults is the authority.
     nonisolated static func quotaUsedForToday() -> Bool {
+        let target = dailyTarget(on: Date())
+        if target == 0 { return true }
         guard let last = Defaults[.gitDailyCommitLastRun],
               Calendar.current.isDateInToday(last)
         else { return false }
-        return Defaults[.gitDailyCommitDoneToday] >= max(1, Defaults[.gitDailyCommitCount])
+        return Defaults[.gitDailyCommitDoneToday] >= target
+    }
+
+    nonisolated static func dailyTarget(on date: Date) -> Int {
+        guard Defaults[.gitDailyCommitRandomCount] else { return max(1, Defaults[.gitDailyCommitCount]) }
+        return DailyCommitCountPolicy.draw(day: date, seed: UInt64(installSeed()),
+                                           minimum: Defaults[.gitDailyCommitMinimumCount],
+                                           maximum: Defaults[.gitDailyCommitMaximumCount])
+    }
+
+    nonisolated private static func installSeed() -> Int {
+        seedLock.withLock {
+            let saved = Defaults[.gitDailyCommitCountSeed]
+            if saved > 0 { return saved }
+            let created = Int.random(in: 1...(Int.max - 1))
+            Defaults[.gitDailyCommitCountSeed] = created
+            return created
+        }
     }
 
     var hasRunToday: Bool { Self.quotaUsedForToday() }
@@ -301,12 +333,12 @@ final class GitCommitManager: ObservableObject {
     /// to the main actor to publish what happened. The commit itself therefore
     /// does not depend on the main actor being free.
     nonisolated func performRun(trigger: String, force: Bool = false) async {
-        // Re-entry is prevented by the day stamp below rather than by a lock:
-        // the counter is written to Defaults the moment the work finishes, so a
-        // caller that would exceed today's quota returns here.
-        if !force, Self.quotaUsedForToday() {
-            return
-        }
+        // Serialize automatic and manual requests before checking the quota;
+        // multiple queued callbacks must not run the same slot concurrently.
+        guard Self.runGate.begin() else { return }
+        defer { Self.runGate.end() }
+        guard force || Defaults[.gitDailyCommitEnabled] else { return }
+        if !force, Self.quotaUsedForToday() { return }
 
         let repos = Defaults[.gitDailyCommitRepos]
         guard !repos.isEmpty else {
@@ -360,6 +392,7 @@ final class GitCommitManager: ObservableObject {
     /// Main-actor entry point for the settings pane's "Commit Now" button.
     func run(trigger: String, force: Bool = false) async {
         await performRun(trigger: trigger, force: force)
+        if started { reschedule() }
     }
 
     private nonisolated func commit(in path: String) async -> RunRecord {

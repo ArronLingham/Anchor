@@ -1,5 +1,67 @@
 import Foundation
 
+enum DailyCommitCountPolicy {
+    static func bounds(_ first: Int, _ second: Int) -> ClosedRange<Int> {
+        let lower = max(0, min(Int.max - 1, min(first, second)))
+        let upper = max(lower, min(Int.max - 1, max(first, second)))
+        return lower...upper
+    }
+
+    /// SplitMix64 gives a stable draw for an installation and local day;
+    /// Swift's Hasher is intentionally randomized on every process launch.
+    static func draw(day: Date, seed: UInt64, minimum: Int, maximum: Int,
+                     calendar: Calendar = .current) -> Int {
+        let limits = bounds(minimum, maximum)
+        let value = stableValue(day: day, seed: seed, salt: 0, calendar: calendar)
+        let width = UInt64(limits.upperBound - limits.lowerBound) + 1
+        return limits.lowerBound + Int(value % width)
+    }
+
+    static func respectingSpacing(_ candidate: Date, lastRun: Date?, calendar: Calendar = .current) -> Date {
+        guard let lastRun, calendar.isDate(candidate, inSameDayAs: lastRun) else { return candidate }
+        return max(candidate, lastRun.addingTimeInterval(60))
+    }
+
+    static func stableValue(day: Date, seed: UInt64, salt: UInt64,
+                            calendar: Calendar = .current) -> UInt64 {
+        let components = calendar.dateComponents([.era, .year, .month, .day], from: day)
+        // Use the local calendar date, not midnight's absolute timestamp, so
+        // traveling between time zones on the same date does not redraw it.
+        let dayNumber = Int64(components.era ?? 0) &* 1_000_000_000
+            &+ Int64(components.year ?? 0) &* 512
+            &+ Int64(components.month ?? 0) &* 32
+            &+ Int64(components.day ?? 0)
+        var value = UInt64(bitPattern: dayNumber) ^ seed ^ salt
+        value &+= 0x9E3779B97F4A7C15
+        value = (value ^ (value >> 30)) &* 0xBF58476D1CE4E5B9
+        value = (value ^ (value >> 27)) &* 0x94D049BB133111EB
+        value ^= value >> 31
+        return value
+    }
+}
+
+final class DailyCommitRunGate {
+    private let lock = NSLock()
+    private var active = false
+
+    func begin() -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        guard !active else { return false }
+        active = true
+        return true
+    }
+
+    func end() {
+        lock.lock(); defer { lock.unlock() }
+        active = false
+    }
+
+    var isActive: Bool {
+        lock.lock(); defer { lock.unlock() }
+        return active
+    }
+}
+
 final class AppleNotesSyncGeneration {
     private let lock = NSLock()
     private var current = UUID()

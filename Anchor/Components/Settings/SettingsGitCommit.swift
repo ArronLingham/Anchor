@@ -236,41 +236,40 @@ struct GitCommitScheduleSection: View {
     @Default(.gitDailyCommitWindowStartHour) private var windowStart
     @Default(.gitDailyCommitWindowEndHour) private var windowEnd
     @Default(.gitDailyCommitCount) private var commitCount
-    @State private var countText = ""
-    @FocusState private var editingCount: Bool
+    @Default(.gitDailyCommitRandomCount) private var randomCount
+    @Default(.gitDailyCommitMinimumCount) private var minimumCount
+    @Default(.gitDailyCommitMaximumCount) private var maximumCount
 
     let highlightID: (String) -> String
 
     var body: some View {
         Section("Schedule") {
-            Stepper(value: $commitCount, in: 1...(Int.max - 1)) {
-                LabeledContent("Commits per day") {
-                    TextField("Commits per day", text: $countText)
-                        .labelsHidden()
-                        .focused($editingCount)
-                        .multilineTextAlignment(.trailing)
-                        .monospacedDigit()
-                        .frame(width: 90)
-                        .onAppear { countText = String(commitCount) }
-                        .onChange(of: countText) { _, input in
-                            let digits = String(input.filter { $0.isASCII && $0.isNumber })
-                            if input != digits { countText = digits }
-                            if let value = Int(digits), value > 0, value < Int.max {
-                                commitCount = value
-                            }
-                        }
-                        .onSubmit { countText = String(commitCount) }
-                        .onChange(of: editingCount) { _, focused in
-                            if !focused { countText = String(commitCount) }
-                        }
-                        .onChange(of: commitCount) { _, value in
-                            if Int(countText) != value { countText = String(value) }
-                        }
-                }
+            Toggle("Random number of commits", isOn: $randomCount)
+                .disabled(!enabled)
+                .settingsHighlight(id: highlightID("Random number of commits"))
+                .settingsInfo("Choose a minimum and maximum. Anchor picks an inclusive daily target that stays the same throughout the day. A minimum of zero allows days with no commits.")
+
+            if randomCount {
+                DailyCommitCountField(title: "Minimum commits per day", value: $minimumCount, lowerBound: 0)
+                    .disabled(!enabled)
+                    .settingsHighlight(id: highlightID("Minimum commits per day"))
+                    .onChange(of: minimumCount) { _, value in
+                        if value > maximumCount { maximumCount = value }
+                    }
+                DailyCommitCountField(title: "Maximum commits per day", value: $maximumCount, lowerBound: 0)
+                    .disabled(!enabled)
+                    .settingsHighlight(id: highlightID("Maximum commits per day"))
+                    .onChange(of: maximumCount) { _, value in
+                        if value < minimumCount { minimumCount = value }
+                    }
+            } else {
+                DailyCommitCountField(title: "Commits per day", value: $commitCount)
+                    .disabled(!enabled)
+                    .settingsHighlight(id: highlightID("Commits per day"))
             }
-            .disabled(!enabled)
-            .settingsHighlight(id: highlightID("Commits per day"))
-            .settingsInfo("More than one is spread evenly through the window rather than fired together.")
+            Text("More than one is spread through the window rather than fired together.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
 
             Toggle("Commit at a random time", isOn: $randomTime)
                 .disabled(!enabled)
@@ -308,5 +307,40 @@ struct GitCommitScheduleSection: View {
         components.minute = 0
         let date = Calendar.current.date(from: components) ?? Date()
         return date.formatted(date: .omitted, time: .shortened)
+    }
+}
+
+/// A positive integer count with direct entry and the existing stepper controls.
+private struct DailyCommitCountField: View {
+    let title: String
+    @Binding var value: Int
+    var lowerBound: Int = 1
+    @State private var text = ""
+    @FocusState private var editing: Bool
+
+    var body: some View {
+        Stepper(value: $value, in: lowerBound...(Int.max - 1)) {
+            LabeledContent(title) {
+                TextField(title, text: $text)
+                    .labelsHidden()
+                    .focused($editing)
+                    .multilineTextAlignment(.trailing)
+                    .monospacedDigit()
+                    .frame(width: 90)
+                    .onAppear { text = String(value) }
+                    .onChange(of: text) { _, input in
+                        let digits = String(input.filter { $0.isASCII && $0.isNumber })
+                        if input != digits { text = digits }
+                        if let number = Int(digits), number >= lowerBound, number < Int.max { value = number }
+                    }
+                    .onSubmit { text = String(value) }
+                    .onChange(of: editing) { _, focused in
+                        if !focused { text = String(value) }
+                    }
+                    .onChange(of: value) { _, number in
+                        if Int(text) != number { text = String(number) }
+                    }
+            }
+        }
     }
 }
