@@ -46,6 +46,18 @@ struct DailyCommitScheduleTests {
         Defaults[.gitDailyCommitDoneToday] = 1
         let catchUp = GitCommitManager.shared.nextFireDate(after: lateToday)!
         check(catchUp >= lateToday.addingTimeInterval(60), "overdue remaining slots do not fire immediately together")
+        let midday = calendar.startOfDay(for: now).addingTimeInterval(12 * 3600)
+        Defaults[.gitDailyCommitRandomCount] = false
+        Defaults[.gitDailyCommitCount] = 25
+        Defaults[.gitDailyCommitRandomTime] = true
+        Defaults[.gitDailyCommitWindowStartHour] = 9
+        Defaults[.gitDailyCommitWindowEndHour] = 22
+        Defaults[.gitDailyCommitLastRun] = midday
+        Defaults[.gitDailyCommitDoneToday] = 1
+        let spreadNext = GitCommitManager.shared.nextFireDate(after: midday)!
+        check(spreadNext > midday.addingTimeInterval(60), "missed slots are spread instead of creating a restart burst")
+        check(spreadNext < calendar.startOfDay(for: midday).addingTimeInterval(22 * 3600), "catch-up stays within the configured window")
+        Defaults[.gitDailyCommitRandomTime] = false
         Defaults[.gitDailyCommitLastRun] = now
         Defaults[.gitDailyCommitRandomCount] = false
         Defaults[.gitDailyCommitCount] = 1

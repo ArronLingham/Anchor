@@ -174,12 +174,18 @@ final class GitCommitManager: ObservableObject {
         }
 
         if Defaults[.gitDailyCommitRandomTime] || perDay > 1 {
-            return slot(index: doneToday, of: perDay, on: date) ?? {
-                guard let tomorrow = calendar.date(
-                    byAdding: .day, value: 1, to: calendar.startOfDay(for: date))
-                else { return nil }
-                return firstSlot(on: tomorrow)
-            }()
+            if let scheduled = slot(index: doneToday, of: perDay, on: date) {
+                if scheduled > date || doneToday == 0 { return scheduled }
+                let end = calendar.startOfDay(for: date).addingTimeInterval(window().1)
+                if let next = DailyCommitCountPolicy.nextCatchUp(after: date, end: end,
+                                                                 remaining: perDay - doneToday) {
+                    return next
+                }
+            }
+            guard let tomorrow = calendar.date(
+                byAdding: .day, value: 1, to: calendar.startOfDay(for: date))
+            else { return nil }
+            return firstSlot(on: tomorrow)
         }
 
         var components = DateComponents()
@@ -212,7 +218,7 @@ final class GitCommitManager: ObservableObject {
         }
 
         let candidate = day.addingTimeInterval(offset)
-        return DailyCommitCountPolicy.respectingSpacing(candidate, lastRun: Defaults[.gitDailyCommitLastRun])
+        return candidate
     }
 
     private func firstSlot(on day: Date) -> Date? {
@@ -257,7 +263,7 @@ final class GitCommitManager: ObservableObject {
         guard let last = Defaults[.gitDailyCommitLastRun],
               Calendar.current.isDate(last, inSameDayAs: date)
         else { return 0 }
-        return Defaults[.gitDailyCommitDoneToday]
+        return max(0, Defaults[.gitDailyCommitDoneToday])
     }
 
     /// Runs now when a commit for today is still outstanding and its time has

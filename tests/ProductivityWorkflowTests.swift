@@ -43,7 +43,10 @@ struct ProductivityWorkflowTests {
         check(DailyCommitCountPolicy.draw(day: day, seed: 12345, minimum: 0, maximum: 0, calendar: utc) == 0, "zero bounds select a day without commits")
         let draws = Set((0..<30).map { DailyCommitCountPolicy.draw(day: day.addingTimeInterval(Double($0) * 86400), seed: 12345, minimum: 2, maximum: 5, calendar: utc) })
         check(draws == Set(2...5), "the seeded daily draw reaches both inclusive bounds")
-        check(DailyCommitCountPolicy.respectingSpacing(day, lastRun: day, calendar: utc) == day.addingTimeInterval(60), "overdue slots are spaced after the last run")
+        let windowEnd = day.addingTimeInterval(10 * 3600)
+        let spread = DailyCommitCountPolicy.nextCatchUp(after: day, end: windowEnd, remaining: 24)!
+        check(spread.timeIntervalSince(day) > 60 && spread < windowEnd, "overdue work is spread through the remaining window")
+        check(DailyCommitCountPolicy.nextCatchUp(after: windowEnd, end: windowEnd, remaining: 1) == nil, "no catch-up is scheduled after the window")
         let runGate = DailyCommitRunGate()
         check(runGate.begin() && !runGate.begin(), "concurrent commit runs cannot claim the same slot")
         runGate.end()

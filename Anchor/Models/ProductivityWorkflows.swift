@@ -17,9 +17,14 @@ enum DailyCommitCountPolicy {
         return limits.lowerBound + Int(value % width)
     }
 
-    static func respectingSpacing(_ candidate: Date, lastRun: Date?, calendar: Calendar = .current) -> Date {
-        guard let lastRun, calendar.isDate(candidate, inSameDayAs: lastRun) else { return candidate }
-        return max(candidate, lastRun.addingTimeInterval(60))
+    /// Spread remaining overdue work over the rest of the window instead of
+    /// producing a burst when the app resumes after being asleep.
+    static func nextCatchUp(after now: Date, end: Date, remaining: Int) -> Date? {
+        let timeLeft = end.timeIntervalSince(now)
+        guard remaining > 0, timeLeft > 60 else { return nil }
+        let spacing = max(60, timeLeft / (Double(remaining) + 1))
+        let next = now.addingTimeInterval(spacing)
+        return next < end ? next : nil
     }
 
     static func stableValue(day: Date, seed: UInt64, salt: UInt64,
