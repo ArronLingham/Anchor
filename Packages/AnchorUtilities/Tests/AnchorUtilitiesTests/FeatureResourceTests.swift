@@ -65,7 +65,8 @@ final class FeatureResourceTests: XCTestCase {
                 volumes[id] = level
                 restoredChannels = channels
                 return true
-            })
+            },
+            volumeRestoreVerified: { _, channels in restoredChannels == channels })
         let initial = MicMuteService.unmute(
             [switchMic, volumeMic, userMic], savedVolumes: ["volume": 0.42],
             savedChannelVolumes: ["volume": ["1": 0, "2": 0.5]],
@@ -90,6 +91,40 @@ final class FeatureResourceTests: XCTestCase {
         XCTAssertEqual(switches[4], 0)
         XCTAssertEqual(switches[3], 1)
         XCTAssertFalse(writes.contains(3))
+    }
+
+    func testMicrophonePartialChannelRestoreRetainsSavedLevels() {
+        let mic = MicMuteService.InputDevice(id: 1, uid: "owned")
+        var firstVolume: Float = 0
+        var channels = ["1": 0.0, "2": 0.0]
+        var writes = 0
+        let backend = MicMuteService.RestoreBackend(
+            muteSwitch: { _ in .unavailable }, setMute: { _, _ in false },
+            volume: { _ in firstVolume },
+            setVolume: { _, _, _ in
+                writes += 1
+                firstVolume = 0.4
+                channels["1"] = 0.4
+                return true // A driver reports success despite channel 2 failing.
+            },
+            volumeRestoreVerified: { _, expected in channels == expected })
+        let initial = MicMuteService.unmute(
+            [mic], savedVolumes: ["owned": 0.4],
+            savedChannelVolumes: ["owned": ["1": 0.4, "2": 0.6]],
+            mutedDevices: ["owned"], legacyVolume: 0, backend: backend)
+        XCTAssertEqual(initial.mutedDevices, ["owned"])
+        XCTAssertEqual(initial.savedChannelVolumes["owned"], ["1": 0.4, "2": 0.6])
+        XCTAssertTrue(initial.failed)
+        let retried = MicMuteService.unmute(
+            [mic], savedVolumes: initial.savedVolumes, savedChannelVolumes: initial.savedChannelVolumes,
+            mutedDevices: initial.mutedDevices, legacyVolume: 0, backend: backend)
+        XCTAssertEqual(retried.mutedDevices, ["owned"])
+        XCTAssertEqual(writes, 1, "Do not overwrite an audible level that may have been changed by the user")
+        channels["2"] = 0.6
+        let verified = MicMuteService.unmute(
+            [mic], savedVolumes: retried.savedVolumes, savedChannelVolumes: retried.savedChannelVolumes,
+            mutedDevices: retried.mutedDevices, legacyVolume: 0, backend: backend)
+        XCTAssertTrue(verified.mutedDevices.isEmpty)
     }
 
     func testMicrophoneMuteKeepsUnconfirmedWritesAndSkipsUnknownOwnership() {
@@ -119,7 +154,8 @@ final class FeatureResourceTests: XCTestCase {
             muteSwitch: { _ in state },
             setMute: { _, _ in writes += 1; state = .unreadable; return false },
             volume: { _ in 0.5 },
-            setVolume: { _, _, _ in XCTFail("Do not infer switch state from volume"); return true })
+            setVolume: { _, _, _ in XCTFail("Do not infer switch state from volume"); return true },
+            volumeRestoreVerified: { _, _ in XCTFail("Do not infer switch state from volume"); return false })
         let first = MicMuteService.unmute([mic], savedVolumes: [:], savedChannelVolumes: [:],
                                           mutedDevices: ["owned"], legacyVolume: 0, backend: backend)
         XCTAssertEqual(first.mutedDevices, ["owned"])

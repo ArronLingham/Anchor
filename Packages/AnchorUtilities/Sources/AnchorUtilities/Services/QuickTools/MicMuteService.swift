@@ -297,7 +297,7 @@ final class MicMuteService: ObservableObject {
     }
 
     private static var pendingRecoveryNotice: String {
-        String(localized: "Anchor still needs to restore one or more microphones it muted. Reconnect them so Anchor can retry.")
+        String(localized: "Anchor could not confirm the restored levels for one or more microphones. Check their input levels and reconnect them if needed.")
     }
 
     private static func reportUnknownLegacyRecovery() {
@@ -366,13 +366,15 @@ final class MicMuteService: ObservableObject {
         let setMute: (Bool, AudioDeviceID) -> Bool
         let volume: (AudioDeviceID) -> Float?
         let setVolume: (Float, AudioDeviceID, [String: Double]) -> Bool
+        let volumeRestoreVerified: (AudioDeviceID, [String: Double]) -> Bool
     }
 
     private static let hardwareRestore = RestoreBackend(
         muteSwitch: { muteSwitchState(of: $0) },
         setMute: { if case .confirmed = setMuteSwitch($0, of: $1) { return true }; return false },
         volume: { inputVolume(of: $0) },
-        setVolume: { setInputVolume($0, of: $1, channels: $2) })
+        setVolume: { setInputVolume($0, of: $1, channels: $2) },
+        volumeRestoreVerified: { volumeRestoreVerified(of: $0, channels: $1) })
 
     private static let hardwareMute = MuteBackend(
         muteSwitch: { muteSwitchState(of: $0) },
@@ -520,7 +522,15 @@ final class MicMuteService: ObservableObject {
                 continue
             }
             guard volume <= 0.01 else {
-                // Already audible: the level has nothing left to restore.
+                // A previous partial write can make the first element audible
+                // while leaving another channel unrestored. Never discard its
+                // saved levels merely because this one element is nonzero.
+                let channels = savedChannelVolumes[device.uid] ?? [:]
+                if !channels.isEmpty && !backend.volumeRestoreVerified(device.id, channels) {
+                    outcome.mutedDevices.append(device.uid)
+                    outcome.failed = true
+                    continue
+                }
                 outcome.savedVolumes.removeValue(forKey: device.uid)
                 outcome.savedChannelVolumes.removeValue(forKey: device.uid)
                 continue
@@ -531,7 +541,9 @@ final class MicMuteService: ObservableObject {
                                                          legacy: legacyVolume)
             // A channel with no level of its own, as after a mute from before
             // channels were saved, takes the main level back.
-            if backend.setVolume(restore, device.id, savedChannelVolumes[device.uid] ?? [:]) {
+            let channels = savedChannelVolumes[device.uid] ?? [:]
+            if backend.setVolume(restore, device.id, channels),
+               backend.volumeRestoreVerified(device.id, channels) {
                 outcome.applied = true
                 outcome.savedVolumes.removeValue(forKey: device.uid)
                 outcome.savedChannelVolumes.removeValue(forKey: device.uid)
@@ -672,6 +684,34 @@ final class MicMuteService: ObservableObject {
             }
         }
         return levels
+    }
+
+    /// Verify every recorded channel, and the master when one exists. A
+    /// missing or unreadable property is not evidence of a completed restore.
+    private static func volumeRestoreVerified(of device: AudioDeviceID, channels: [String: Double]) -> Bool {
+        let addresses = volumeAddresses()
+        for (element, expected) in channels {
+            guard let address = addresses.first(where: { String($0.mElement) == element }),
+                  let actual = volumeValue(of: device, at: address),
+                  abs(Double(actual) - expected) <= 0.01 else { return false }
+        }
+        var master = addresses[0]
+        if AudioObjectHasProperty(device, &master) {
+            guard let value = volumeValue(of: device, at: master), value > 0.01 else { return false }
+        } else if channels.isEmpty {
+            guard let value = inputVolume(of: device), value > 0.01 else { return false }
+        }
+        return true
+    }
+
+    private static func volumeValue(of device: AudioDeviceID, at property: AudioObjectPropertyAddress) -> Float? {
+        var address = property
+        guard AudioObjectHasProperty(device, &address) else { return nil }
+        var value = Float(0)
+        var size = UInt32(MemoryLayout<Float>.size)
+        guard AudioObjectGetPropertyData(device, &address, 0, nil, &size, &value) == noErr,
+              value.isFinite else { return nil }
+        return value
     }
 
     /// Writes the main level and channels 1 and 2, each channel taking its
