@@ -37,6 +37,14 @@ enum MicMuteSupport {
         volume.isFinite && (0...1).contains(volume)
     }
 
+    static func volumeRestoreMayWrite(elements: [(UInt32, Float?)], channels: [String: Double]) -> Bool {
+        guard !elements.isEmpty else { return false }
+        return elements.allSatisfy { element, value in
+            (element == 0 || channels[String(element)] != nil) &&
+                (value.map { $0.isFinite && $0 >= 0 && $0 <= 0.01 } ?? false)
+        }
+    }
+
     static func volumeToRestore(uid: String,
                                 saved: [String: Double],
                                 legacy: Double) -> Float {

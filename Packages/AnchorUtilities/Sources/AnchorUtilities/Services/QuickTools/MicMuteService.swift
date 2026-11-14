@@ -367,6 +367,7 @@ final class MicMuteService: ObservableObject {
         let volume: (AudioDeviceID) -> Float?
         let setVolume: (Float, AudioDeviceID, [String: Double]) -> Bool
         let volumeRestoreVerified: (AudioDeviceID, [String: Double]) -> Bool
+        let volumeRestoreMayWrite: (AudioDeviceID, [String: Double]) -> Bool
     }
 
     private static let hardwareRestore = RestoreBackend(
@@ -374,7 +375,8 @@ final class MicMuteService: ObservableObject {
         setMute: { if case .confirmed = setMuteSwitch($0, of: $1) { return true }; return false },
         volume: { inputVolume(of: $0) },
         setVolume: { setInputVolume($0, of: $1, channels: $2) },
-        volumeRestoreVerified: { volumeRestoreVerified(of: $0, channels: $1) })
+        volumeRestoreVerified: { volumeRestoreVerified(of: $0, channels: $1) },
+        volumeRestoreMayWrite: { volumeRestoreMayWrite(of: $0, channels: $1) })
 
     private static let hardwareMute = MuteBackend(
         muteSwitch: { muteSwitchState(of: $0) },
@@ -504,6 +506,13 @@ final class MicMuteService: ObservableObject {
                 continue
             }
             if switchState == .value(1) {
+                // A volume-based claim does not establish ownership of a mute
+                // switch another person or app may have set in the meantime.
+                if savedVolumes[device.uid] != nil || !(savedChannelVolumes[device.uid] ?? [:]).isEmpty {
+                    outcome.mutedDevices.append(device.uid)
+                    outcome.failed = true
+                    continue
+                }
                 attempted = true
                 if backend.setMute(false, device.id) {
                     outcome.applied = true
@@ -535,13 +544,20 @@ final class MicMuteService: ObservableObject {
                 outcome.savedChannelVolumes.removeValue(forKey: device.uid)
                 continue
             }
+            let channels = savedChannelVolumes[device.uid] ?? [:]
+            guard backend.volumeRestoreMayWrite(device.id, channels) else {
+                // Another element is audible or unreadable. A master write
+                // can also change channels, so preserve the whole device.
+                outcome.mutedDevices.append(device.uid)
+                outcome.failed = true
+                continue
+            }
             attempted = true
             let restore = MicMuteSupport.volumeToRestore(uid: device.uid,
                                                          saved: savedVolumes,
                                                          legacy: legacyVolume)
-            // A channel with no level of its own, as after a mute from before
-            // channels were saved, takes the main level back.
-            let channels = savedChannelVolumes[device.uid] ?? [:]
+            // The preflight has verified that every exposed channel has a
+            // saved level; a master-only device can use the legacy fallback.
             if backend.setVolume(restore, device.id, channels),
                backend.volumeRestoreVerified(device.id, channels) {
                 outcome.applied = true
@@ -712,6 +728,16 @@ final class MicMuteService: ObservableObject {
         guard AudioObjectGetPropertyData(device, &address, 0, nil, &size, &value) == noErr,
               value.isFinite else { return nil }
         return value
+    }
+
+    /// The master and channels may be linked by the driver. Do not write any
+    /// of them if another exposed element is audible or cannot be read.
+    private static func volumeRestoreMayWrite(of device: AudioDeviceID, channels: [String: Double]) -> Bool {
+        var elements: [(UInt32, Float?)] = []
+        for var address in volumeAddresses() where AudioObjectHasProperty(device, &address) {
+            elements.append((address.mElement, volumeValue(of: device, at: address)))
+        }
+        return MicMuteSupport.volumeRestoreMayWrite(elements: elements, channels: channels)
     }
 
     /// Writes the main level and channels 1 and 2, each channel taking its

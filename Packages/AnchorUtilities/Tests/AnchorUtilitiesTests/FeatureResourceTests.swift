@@ -66,7 +66,8 @@ final class FeatureResourceTests: XCTestCase {
                 restoredChannels = channels
                 return true
             },
-            volumeRestoreVerified: { _, channels in restoredChannels == channels })
+            volumeRestoreVerified: { _, channels in restoredChannels == channels },
+            volumeRestoreMayWrite: { _, _ in true })
         let initial = MicMuteService.unmute(
             [switchMic, volumeMic, userMic], savedVolumes: ["volume": 0.42],
             savedChannelVolumes: ["volume": ["1": 0, "2": 0.5]],
@@ -107,7 +108,8 @@ final class FeatureResourceTests: XCTestCase {
                 channels["1"] = 0.4
                 return true // A driver reports success despite channel 2 failing.
             },
-            volumeRestoreVerified: { _, expected in channels == expected })
+            volumeRestoreVerified: { _, expected in channels == expected },
+            volumeRestoreMayWrite: { _, _ in channels.values.allSatisfy { $0 <= 0.01 } })
         let initial = MicMuteService.unmute(
             [mic], savedVolumes: ["owned": 0.4],
             savedChannelVolumes: ["owned": ["1": 0.4, "2": 0.6]],
@@ -125,6 +127,34 @@ final class FeatureResourceTests: XCTestCase {
             [mic], savedVolumes: retried.savedVolumes, savedChannelVolumes: retried.savedChannelVolumes,
             mutedDevices: retried.mutedDevices, legacyVolume: 0, backend: backend)
         XCTAssertTrue(verified.mutedDevices.isEmpty)
+    }
+
+    func testMicrophoneRestoreDoesNotOverwriteOtherChannelOrUserMute() {
+        let saved = ["1": 0.5, "2": 0.6]
+        XCTAssertTrue(MicMuteSupport.volumeRestoreMayWrite(elements: [(0, 0), (1, 0), (2, 0)], channels: saved))
+        XCTAssertFalse(MicMuteSupport.volumeRestoreMayWrite(elements: [(0, 0), (1, 0), (2, 0.4)], channels: saved))
+        XCTAssertFalse(MicMuteSupport.volumeRestoreMayWrite(elements: [(1, 0), (2, nil)], channels: saved))
+        XCTAssertFalse(MicMuteSupport.volumeRestoreMayWrite(elements: [(1, 0), (2, 0)], channels: ["1": 0.5]))
+        XCTAssertFalse(MicMuteSupport.volumeRestoreMayWrite(elements: [], channels: saved))
+        let channelMic = MicMuteService.InputDevice(id: 1, uid: "channel")
+        let switchMic = MicMuteService.InputDevice(id: 2, uid: "switch")
+        var volumeWrites = 0
+        var switchWrites = 0
+        let backend = MicMuteService.RestoreBackend(
+            muteSwitch: { $0 == 2 ? .value(1) : .unavailable },
+            setMute: { _, _ in switchWrites += 1; return true },
+            volume: { _ in 0 },
+            setVolume: { _, _, _ in volumeWrites += 1; return true },
+            volumeRestoreVerified: { _, _ in false },
+            volumeRestoreMayWrite: { _, _ in false })
+        let result = MicMuteService.unmute(
+            [channelMic, switchMic], savedVolumes: ["channel": 0.5, "switch": 0.5],
+            savedChannelVolumes: ["channel": ["1": 0.5, "2": 0.6]],
+            mutedDevices: ["channel", "switch"], legacyVolume: 0, backend: backend)
+        XCTAssertEqual(Set(result.mutedDevices), Set(["channel", "switch"]))
+        XCTAssertEqual(volumeWrites, 0)
+        XCTAssertEqual(switchWrites, 0)
+        XCTAssertTrue(result.failed)
     }
 
     func testMicrophoneMuteKeepsUnconfirmedWritesAndSkipsUnknownOwnership() {
@@ -155,7 +185,8 @@ final class FeatureResourceTests: XCTestCase {
             setMute: { _, _ in writes += 1; state = .unreadable; return false },
             volume: { _ in 0.5 },
             setVolume: { _, _, _ in XCTFail("Do not infer switch state from volume"); return true },
-            volumeRestoreVerified: { _, _ in XCTFail("Do not infer switch state from volume"); return false })
+            volumeRestoreVerified: { _, _ in XCTFail("Do not infer switch state from volume"); return false },
+            volumeRestoreMayWrite: { _, _ in XCTFail("Do not infer switch state from volume"); return false })
         let first = MicMuteService.unmute([mic], savedVolumes: [:], savedChannelVolumes: [:],
                                           mutedDevices: ["owned"], legacyVolume: 0, backend: backend)
         XCTAssertEqual(first.mutedDevices, ["owned"])
