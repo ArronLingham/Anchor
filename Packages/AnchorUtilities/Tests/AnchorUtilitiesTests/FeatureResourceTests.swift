@@ -52,7 +52,7 @@ final class FeatureResourceTests: XCTestCase {
         var writes: [UInt32] = []
         var restoredChannels: [String: Double] = [:]
         let backend = MicMuteService.RestoreBackend(
-            muteSwitch: { switches[$0] },
+            muteSwitch: { switches[$0].map { .value($0) } ?? .unavailable },
             setMute: { muted, id in
                 writes.append(id)
                 switches[id] = muted ? 1 : 0
@@ -90,6 +90,35 @@ final class FeatureResourceTests: XCTestCase {
         XCTAssertEqual(switches[4], 0)
         XCTAssertEqual(switches[3], 1)
         XCTAssertFalse(writes.contains(3))
+    }
+
+    func testMicrophoneRestoreRetainsClaimWhenMuteSwitchIsUnreadable() {
+        let mic = MicMuteService.InputDevice(id: 1, uid: "owned")
+        var state = MicMuteService.MuteSwitchState.value(1)
+        var writes = 0
+        let backend = MicMuteService.RestoreBackend(
+            muteSwitch: { _ in state },
+            setMute: { _, _ in writes += 1; state = .unreadable; return false },
+            volume: { _ in 0.5 },
+            setVolume: { _, _, _ in XCTFail("Do not infer switch state from volume"); return true })
+        let first = MicMuteService.unmute([mic], savedVolumes: [:], savedChannelVolumes: [:],
+                                          mutedDevices: ["owned"], legacyVolume: 0, backend: backend)
+        XCTAssertEqual(first.mutedDevices, ["owned"])
+        XCTAssertTrue(first.failed)
+        let unreadable = MicMuteService.unmute([mic], savedVolumes: first.savedVolumes,
+                                               savedChannelVolumes: first.savedChannelVolumes,
+                                               mutedDevices: first.mutedDevices, legacyVolume: 0,
+                                               backend: backend)
+        XCTAssertEqual(unreadable.mutedDevices, ["owned"])
+        XCTAssertTrue(unreadable.failed)
+        XCTAssertEqual(writes, 1)
+        state = .value(0)
+        let recovered = MicMuteService.unmute([mic], savedVolumes: unreadable.savedVolumes,
+                                              savedChannelVolumes: unreadable.savedChannelVolumes,
+                                              mutedDevices: unreadable.mutedDevices, legacyVolume: 0,
+                                              backend: backend)
+        XCTAssertTrue(recovered.mutedDevices.isEmpty)
+        XCTAssertFalse(recovered.failed)
     }
 
     func testAutomaticMicrophoneRecoveryNeverInfersLegacyOwnership() {

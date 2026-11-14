@@ -335,16 +335,22 @@ final class MicMuteService: ObservableObject {
         var failed = false
     }
 
+    enum MuteSwitchState: Equatable {
+        case unavailable
+        case unreadable
+        case value(UInt32)
+    }
+
     struct RestoreBackend {
-        let muteSwitch: (AudioDeviceID) -> UInt32?
+        let muteSwitch: (AudioDeviceID) -> MuteSwitchState
         let setMute: (Bool, AudioDeviceID) -> Bool
         let volume: (AudioDeviceID) -> Float?
         let setVolume: (Float, AudioDeviceID, [String: Double]) -> Bool
     }
 
     private static let hardwareRestore = RestoreBackend(
-        muteSwitch: { muteSwitchValue(of: $0) },
-        setMute: { setMuteSwitch($0, of: $1) },
+        muteSwitch: { muteSwitchState(of: $0) },
+        setMute: { setMuteSwitch($0, of: $1, requireReadback: true) },
         volume: { inputVolume(of: $0) },
         setVolume: { setInputVolume($0, of: $1, channels: $2) })
 
@@ -440,7 +446,13 @@ final class MicMuteService: ObservableObject {
             // A saved level only leaves once the device really opened: a
             // restore that failed keeps the claim and the level, so the next
             // attempt still knows the device is this app's to release.
-            if backend.muteSwitch(device.id) == 1 {
+            let switchState = backend.muteSwitch(device.id)
+            if switchState == .unreadable {
+                outcome.mutedDevices.append(device.uid)
+                outcome.failed = true
+                continue
+            }
+            if switchState == .value(1) {
                 attempted = true
                 if backend.setMute(false, device.id) {
                     outcome.applied = true
@@ -543,20 +555,28 @@ final class MicMuteService: ObservableObject {
                                    mElement: kAudioObjectPropertyElementMain)
     }
 
-    private static func muteSwitchValue(of device: AudioDeviceID) -> UInt32? {
+    private static func muteSwitchState(of device: AudioDeviceID) -> MuteSwitchState {
         var address = muteAddress()
-        guard AudioObjectHasProperty(device, &address) else { return nil }
+        guard AudioObjectHasProperty(device, &address) else { return .unavailable }
         var value: UInt32 = 0
         var size = UInt32(MemoryLayout<UInt32>.size)
-        guard AudioObjectGetPropertyData(device, &address, 0, nil, &size, &value) == noErr else { return nil }
+        guard AudioObjectGetPropertyData(device, &address, 0, nil, &size, &value) == noErr,
+              value <= 1 else { return .unreadable }
+        return .value(value)
+    }
+
+    private static func muteSwitchValue(of device: AudioDeviceID) -> UInt32? {
+        guard case let .value(value) = muteSwitchState(of: device) else { return nil }
         return value
     }
 
     /// The device's own mute switch, when it has one that can be written. Some
     /// drivers answer a write with success and keep their own value, so the
-    /// switch only counts when the device reads back the way it was asked to;
-    /// otherwise the caller still has the volume to fall back on.
-    private static func setMuteSwitch(_ muted: Bool, of device: AudioDeviceID) -> Bool {
+    /// restore only counts when it reads back the requested value. The mute
+    /// path retains its older behavior when a readback is unavailable; its
+    /// ownership of an unconfirmed write needs separate recovery handling.
+    private static func setMuteSwitch(_ muted: Bool, of device: AudioDeviceID,
+                                      requireReadback: Bool = false) -> Bool {
         var address = muteAddress()
         var settable = DarwinBoolean(false)
         guard AudioObjectHasProperty(device, &address),
@@ -565,7 +585,7 @@ final class MicMuteService: ObservableObject {
         var value: UInt32 = muted ? 1 : 0
         guard AudioObjectSetPropertyData(device, &address, 0, nil,
                                          UInt32(MemoryLayout<UInt32>.size), &value) == noErr else { return false }
-        guard let readBack = muteSwitchValue(of: device) else { return true }
+        guard let readBack = muteSwitchValue(of: device) else { return !requireReadback }
         return readBack == value
     }
 
