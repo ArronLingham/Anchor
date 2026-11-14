@@ -259,6 +259,10 @@ final class MicMuteService: ObservableObject {
             inputVolumeLock.withLock { inputVolumeBlocked = isMuted }
             syncListeners()
             reportPendingRecoveryIfNeeded(muted: muted)
+            if announce && outcome.failed {
+                QuickToolHUD.show(icon: "exclamationmark.triangle",
+                                  message: muted ? L10n.shared.s.micMutePartialHUD : L10n.shared.s.micUnmutePartialHUD)
+            }
             return
         }
         if isMuted != muted { isMuted = muted }
@@ -341,6 +345,22 @@ final class MicMuteService: ObservableObject {
         case value(UInt32)
     }
 
+    enum MuteSwitchWriteResult {
+        case confirmed
+        case unconfirmed
+        case failed
+    }
+
+    struct MuteBackend {
+        let muteSwitch: (AudioDeviceID) -> MuteSwitchState
+        let setMute: (Bool, AudioDeviceID) -> MuteSwitchWriteResult
+        let isSilenced: (AudioDeviceID) -> Bool
+        let volume: (AudioDeviceID) -> Float?
+        let channels: (AudioDeviceID) -> [String: Double]
+        let setVolume: (Float, AudioDeviceID) -> Bool
+        let isActiveNonAggregate: (AudioDeviceID) -> Bool
+    }
+
     struct RestoreBackend {
         let muteSwitch: (AudioDeviceID) -> MuteSwitchState
         let setMute: (Bool, AudioDeviceID) -> Bool
@@ -350,9 +370,24 @@ final class MicMuteService: ObservableObject {
 
     private static let hardwareRestore = RestoreBackend(
         muteSwitch: { muteSwitchState(of: $0) },
-        setMute: { setMuteSwitch($0, of: $1, requireReadback: true) },
+        setMute: { if case .confirmed = setMuteSwitch($0, of: $1) { return true }; return false },
         volume: { inputVolume(of: $0) },
         setVolume: { setInputVolume($0, of: $1, channels: $2) })
+
+    private static let hardwareMute = MuteBackend(
+        muteSwitch: { muteSwitchState(of: $0) },
+        setMute: { setMuteSwitch($0, of: $1) },
+        isSilenced: { isSilenced($0) },
+        volume: { inputVolume(of: $0) },
+        channels: { channelVolumes(of: $0) },
+        setVolume: { setInputVolume($0, of: $1) },
+        isActiveNonAggregate: { device in
+            var transport: UInt32 = 0
+            var running: UInt32 = 0
+            read(device, kAudioDevicePropertyTransportType, &transport)
+            read(device, kAudioDevicePropertyDeviceIsRunningSomewhere, &running)
+            return transport != kAudioDeviceTransportTypeAggregate && running != 0
+        })
 
     /// Runs on `halQueue`. Every CoreAudio call of a sweep happens here.
     private static func applyToDevices(muted: Bool,
@@ -369,15 +404,15 @@ final class MicMuteService: ObservableObject {
         }
         return muted
             ? mute(devices, savedVolumes: savedVolumes, savedChannelVolumes: savedChannelVolumes,
-                   mutedDevices: mutedDevices)
+                   mutedDevices: mutedDevices, backend: hardwareMute)
             : unmute(devices, savedVolumes: savedVolumes, savedChannelVolumes: savedChannelVolumes,
                      mutedDevices: mutedDevices, legacyVolume: legacyVolume, backend: hardwareRestore)
     }
 
-    private static func mute(_ devices: [InputDevice],
+    static func mute(_ devices: [InputDevice],
                              savedVolumes: [String: Double],
                              savedChannelVolumes: [String: [String: Double]],
-                             mutedDevices: [String]?) -> MuteOutcome {
+                             mutedDevices: [String]?, backend: MuteBackend) -> MuteOutcome {
         var outcome = MuteOutcome(applied: false,
                                   savedVolumes: savedVolumes,
                                   savedChannelVolumes: savedChannelVolumes,
@@ -388,28 +423,46 @@ final class MicMuteService: ObservableObject {
             // Already silent: a microphone the user muted themselves is left
             // alone, so unmuting later never opens something this app did not
             // close. One this app already muted keeps its owner.
-            if isSilenced(device.id) {
+            let switchState = backend.muteSwitch(device.id)
+            if switchState == .unreadable {
+                if owned.contains(device.uid) { outcome.mutedDevices.append(device.uid) }
+                outcome.failed = true
+                continue
+            }
+            if switchState == .value(1) || backend.isSilenced(device.id) {
                 outcome.applied = true
                 if owned.contains(device.uid) { outcome.mutedDevices.append(device.uid) }
                 continue
             }
-            if setMuteSwitch(true, of: device.id) {
-                outcome.applied = true
-                outcome.mutedDevices.append(device.uid)
-                continue
+            if switchState == .value(0) {
+                switch backend.setMute(true, device.id) {
+                case .confirmed:
+                    outcome.applied = true
+                    outcome.mutedDevices.append(device.uid)
+                    continue
+                case .unconfirmed:
+                    // It may have changed after we observed it unmuted. Keep
+                    // ownership until recovery can determine its state.
+                    outcome.applied = true
+                    outcome.failed = true
+                    outcome.mutedDevices.append(device.uid)
+                    continue
+                case .failed:
+                    break
+                }
             }
             // No mute switch, or a device that keeps its own: use the input
             // volume, remembering the level.
-            let volume = inputVolume(of: device.id)
+            let volume = backend.volume(device.id)
             if MicMuteSupport.shouldSaveVolume(volume), let volume {
                 outcome.savedVolumes[device.uid] = Double(volume)
             }
-            let channels = channelVolumes(of: device.id)
+            let channels = backend.channels(device.id)
             if !channels.isEmpty { outcome.savedChannelVolumes[device.uid] = channels }
             // Claimed only when the device really went quiet: a driver that
             // takes the write and keeps its level must not be recorded as
             // muted, or the unmute would raise a microphone it never lowered.
-            if setInputVolume(0, of: device.id), isSilenced(device.id) {
+            if backend.setVolume(0, device.id), backend.isSilenced(device.id) {
                 outcome.applied = true
                 outcome.mutedDevices.append(device.uid)
             } else {
@@ -418,11 +471,7 @@ final class MicMuteService: ObservableObject {
                 // Only a microphone some app records from is left open. An aggregate
                 // has no switch or level of its own; the microphones under it are
                 // swept and reported on their own.
-                var transport: UInt32 = 0
-                var running: UInt32 = 0
-                read(device.id, kAudioDevicePropertyTransportType, &transport)
-                read(device.id, kAudioDevicePropertyDeviceIsRunningSomewhere, &running)
-                if transport != kAudioDeviceTransportTypeAggregate, running != 0 { outcome.failed = true }
+                if backend.isActiveNonAggregate(device.id) { outcome.failed = true }
             }
         }
         return outcome
@@ -571,22 +620,20 @@ final class MicMuteService: ObservableObject {
     }
 
     /// The device's own mute switch, when it has one that can be written. Some
-    /// drivers answer a write with success and keep their own value, so the
-    /// restore only counts when it reads back the requested value. The mute
-    /// path retains its older behavior when a readback is unavailable; its
-    /// ownership of an unconfirmed write needs separate recovery handling.
-    private static func setMuteSwitch(_ muted: Bool, of device: AudioDeviceID,
-                                      requireReadback: Bool = false) -> Bool {
+    /// drivers answer a write with success and keep their own value. If the
+    /// result cannot be read, the caller must retain a recovery claim because
+    /// even a failed write may have changed the device.
+    private static func setMuteSwitch(_ muted: Bool, of device: AudioDeviceID) -> MuteSwitchWriteResult {
         var address = muteAddress()
         var settable = DarwinBoolean(false)
         guard AudioObjectHasProperty(device, &address),
               AudioObjectIsPropertySettable(device, &address, &settable) == noErr,
-              settable.boolValue else { return false }
+              settable.boolValue else { return .failed }
         var value: UInt32 = muted ? 1 : 0
-        guard AudioObjectSetPropertyData(device, &address, 0, nil,
-                                         UInt32(MemoryLayout<UInt32>.size), &value) == noErr else { return false }
-        guard let readBack = muteSwitchValue(of: device) else { return !requireReadback }
-        return readBack == value
+        _ = AudioObjectSetPropertyData(device, &address, 0, nil,
+                                       UInt32(MemoryLayout<UInt32>.size), &value)
+        guard let readBack = muteSwitchValue(of: device) else { return .unconfirmed }
+        return readBack == value ? .confirmed : .failed
     }
 
     private static func volumeAddresses() -> [AudioObjectPropertyAddress] {

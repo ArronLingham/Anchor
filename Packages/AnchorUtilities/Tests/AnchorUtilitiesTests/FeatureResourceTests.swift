@@ -92,6 +92,25 @@ final class FeatureResourceTests: XCTestCase {
         XCTAssertFalse(writes.contains(3))
     }
 
+    func testMicrophoneMuteKeepsUnconfirmedWritesAndSkipsUnknownOwnership() {
+        let alreadyMuted = MicMuteService.InputDevice(id: 1, uid: "user")
+        let unreadable = MicMuteService.InputDevice(id: 2, uid: "unknown")
+        let uncertain = MicMuteService.InputDevice(id: 3, uid: "uncertain")
+        var writes: [UInt32] = []
+        let backend = MicMuteService.MuteBackend(
+            muteSwitch: { id in id == 1 ? .value(1) : (id == 2 ? .unreadable : .value(0)) },
+            setMute: { _, id in writes.append(id); return .unconfirmed },
+            isSilenced: { _ in false }, volume: { _ in 0.5 }, channels: { _ in [:] },
+            setVolume: { _, _ in XCTFail("Do not fall back after an uncertain switch write"); return true },
+            isActiveNonAggregate: { _ in true })
+        let result = MicMuteService.mute([alreadyMuted, unreadable, uncertain], savedVolumes: [:],
+                                          savedChannelVolumes: [:], mutedDevices: [], backend: backend)
+        XCTAssertEqual(writes, [3])
+        XCTAssertEqual(result.mutedDevices, ["uncertain"])
+        XCTAssertTrue(result.applied)
+        XCTAssertTrue(result.failed)
+    }
+
     func testMicrophoneRestoreRetainsClaimWhenMuteSwitchIsUnreadable() {
         let mic = MicMuteService.InputDevice(id: 1, uid: "owned")
         var state = MicMuteService.MuteSwitchState.value(1)
