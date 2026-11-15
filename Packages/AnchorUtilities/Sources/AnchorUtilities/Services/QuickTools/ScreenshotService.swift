@@ -39,6 +39,11 @@ final class ScreenshotService: ObservableObject {
     private var preview: ScreenshotQuickPreviewController?
     private var editors: [ScreenshotEditorController] = []
     var hasOpenEditors: Bool { !editors.isEmpty }
+    var hasOpenPreview: Bool { preview != nil }
+    var hasInFlightCaptureWork: Bool {
+        session?.captureInProgress == true || directCaptureTask != nil || scrollingTask != nil
+            || autoCopyTask != nil || !autoShelfTasks.isEmpty
+    }
     private var countdown: DispatchWorkItem?
     private var countdownRemaining = 0
     private var countdownMode: CaptureMode = .standard
@@ -821,6 +826,9 @@ final class ScreenshotService: ObservableObject {
         let generation = autoCopyGeneration
         let pasteboardChangeCount = NSPasteboard.general.changeCount
         autoCopyTask = Task { @MainActor [weak self] in
+            defer {
+                if let self, self.autoCopyGeneration == generation { self.autoCopyTask = nil }
+            }
             let output = await Task.detached(priority: .userInitiated) {
                 guard let export = Self.flatten(capture, downscaleTo1x: downscale) else {
                     return nil as (URL, ScreenshotEditorController.ClipboardPayload)?
@@ -850,7 +858,6 @@ final class ScreenshotService: ObservableObject {
                 return
             }
             ScreenshotSupport.pruneCopiedFiles(in: folder, preserving: output.0)
-            self.autoCopyTask = nil
         }
     }
 

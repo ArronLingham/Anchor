@@ -76,6 +76,7 @@ final class ScreenshotSelectionController {
     }
     fileprivate let requiresDraggedRegion: Bool
     private var finished = false
+    private(set) var captureInProgress = false
     /// Read by the overlays so a late event finds a session that is over.
     fileprivate var isOver: Bool { finished }
     fileprivate var spaceIsDown = false
@@ -178,7 +179,8 @@ final class ScreenshotSelectionController {
          mode: Mode = .image,
          supportsScrollingCapture: Bool = false,
          requiresDraggedRegion: Bool = false,
-         screenCaptureOptions: ScreenCaptureSelectionOptions? = nil) {
+         screenCaptureOptions: ScreenCaptureSelectionOptions? = nil,
+         defaults: UserDefaults = UtilityPreferences.standard) {
         self.freeze = freeze
         self.includePointer = includePointer
         self.showLastRegion = showLastRegion
@@ -189,7 +191,6 @@ final class ScreenshotSelectionController {
         self.supportsScrollingCapture = supportsScrollingCapture
         self.requiresDraggedRegion = requiresDraggedRegion
         self.screenCaptureOptions = screenCaptureOptions
-        let defaults = UtilityPreferences.standard
         self.loupeZoom = ScreenshotSupport.captureLoupeInitialZoom(
             rememberLast: defaults.bool(forKey: DefaultsKey.screenshotLoupeRememberZoom),
             defaultZoom: CGFloat(defaults.double(forKey: DefaultsKey.screenshotLoupeDefaultZoom)),
@@ -620,7 +621,8 @@ final class ScreenshotSelectionController {
     /// The surfaces stop answering the pointer the instant a picture starts
     /// being taken. They are either about to leave the screen or already gone,
     /// and the rest of the gesture must not begin a second capture.
-    private func markCapturePending() {
+    func markCapturePending() {
+        if !finished { captureInProgress = true }
         panels.forEach { $0.overlayView.isCapturePending = true }
     }
 
@@ -829,6 +831,7 @@ final class ScreenshotSelectionController {
     private func finish(_ outcome: Outcome) {
         guard !finished else { return }
         finished = true
+        captureInProgress = false
         Self.isSessionOnScreen = false
         if Self.activeSession === self { Self.activeSession = nil }
         screenCaptureOptions?.onSelectionChange = nil

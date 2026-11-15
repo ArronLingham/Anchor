@@ -5,12 +5,25 @@ import AppKit
 
 /// Keep each feature available until its own open capture work is resolved.
 enum CaptureDisablementGuard {
+    static func sharedCaptureReason(for feature: AppFeature, sharedCapture: Bool, enabling: Bool) -> String? {
+        guard sharedCapture, [.screenshot, .screenRecorder, .colorPicker, .screenOCR].contains(feature) else { return nil }
+        return enabling
+            ? "Wait for the current capture to finish before enabling this feature."
+            : "Wait for the current capture to finish before disabling this feature."
+    }
+
     static func reason(for feature: AppFeature, screenshotEditor: Bool = false,
                        recorderEditor: Bool = false, mediaEditor: Bool = false,
-                       recording: Bool = false) -> String? {
+                       recording: Bool = false, screenshotPreview: Bool = false,
+                       screenshotWork: Bool = false, sharedCapture: Bool = false) -> String? {
+        if let reason = sharedCaptureReason(for: feature, sharedCapture: sharedCapture, enabling: false) { return reason }
         switch feature {
         case .screenshot where screenshotEditor:
             return "Save or close the open screenshot editor before disabling Screenshot."
+        case .screenshot where screenshotPreview:
+            return "Save or close the screenshot preview before disabling Screenshot."
+        case .screenshot where screenshotWork:
+            return "Wait for the screenshot to finish processing before disabling Screenshot."
         case .screenRecorder where recording:
             return "Finish or cancel the recording before disabling Screen Recorder."
         case .screenRecorder where recorderEditor:
@@ -122,6 +135,11 @@ final class FeatureRuntime: ObservableObject {
     /// protected write transaction, so Off never discards unsaved work.
     private func mayFlip(_ feature: AppFeature, to available: Bool) -> Bool {
         guard feature.isAvailable != available else { return false }
+        if available, let reason = CaptureDisablementGuard.sharedCaptureReason(
+            for: feature, sharedCapture: ScreenCaptureService.existing?.hasCommittedCapture == true, enabling: true) {
+            UtilityWorkspace.shared.reportFeatureNotice(reason)
+            return false
+        }
         if !available, let reason = disableBlockedReason(feature) {
             UtilityWorkspace.shared.reportFeatureNotice(reason)
             return false
@@ -133,14 +151,17 @@ final class FeatureRuntime: ObservableObject {
     /// This is a visible refusal to turn off, never a false Off indicator.
     private func disableBlockedReason(_ feature: AppFeature) -> String? {
         switch feature {
-        case .screenshot, .screenRecorder, .mediaTools:
+        case .screenshot, .screenRecorder, .mediaTools, .colorPicker, .screenOCR:
             let recorder = ScreenRecorderService.existing
             if let reason = CaptureDisablementGuard.reason(
                 for: feature,
                 screenshotEditor: ScreenshotService.existing?.hasOpenEditors == true,
                 recorderEditor: recorder?.hasOpenEditors(ownedBy: .screenRecorder) == true,
                 mediaEditor: recorder?.hasOpenEditors(ownedBy: .mediaTools) == true,
-                recording: recorder?.hasActiveCapture == true) {
+                recording: recorder?.hasActiveCapture == true,
+                screenshotPreview: ScreenshotService.existing?.hasOpenPreview == true,
+                screenshotWork: ScreenshotService.existing?.hasInFlightCaptureWork == true,
+                sharedCapture: ScreenCaptureService.existing?.hasCommittedCapture == true) {
                 return reason
             }
         default: break
@@ -320,6 +341,12 @@ final class FeatureRuntime: ObservableObject {
         let changed = appliedAvailability.symmetricDifference(current)
         guard !changed.isEmpty else { return }
         for feature in AppFeature.allCases where changed.contains(feature) {
+            if feature.isAvailable, let reason = CaptureDisablementGuard.sharedCaptureReason(
+                for: feature, sharedCapture: ScreenCaptureService.existing?.hasCommittedCapture == true, enabling: true) {
+                UtilityPreferences.standard.set(false, forKey: feature.availabilityKey)
+                UtilityWorkspace.shared.reportFeatureNotice(reason)
+                continue
+            }
             if !feature.isAvailable, let reason = disableBlockedReason(feature) {
                 UtilityPreferences.standard.set(true, forKey: feature.availabilityKey)
                 UtilityWorkspace.shared.reportFeatureNotice(reason)

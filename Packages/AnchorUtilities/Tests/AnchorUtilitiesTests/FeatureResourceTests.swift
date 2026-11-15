@@ -1217,6 +1217,17 @@ extension FeatureResourceTests {
 
     func testCaptureDisablementProtectsWorkWithoutBlockingOtherOwners() {
         XCTAssertNotNil(CaptureDisablementGuard.reason(for: .screenshot, screenshotEditor: true))
+        XCTAssertNotNil(CaptureDisablementGuard.reason(for: .screenshot, screenshotPreview: true))
+        XCTAssertNotNil(CaptureDisablementGuard.reason(for: .screenshot, screenshotWork: true))
+        XCTAssertNil(CaptureDisablementGuard.reason(for: .mediaTools, screenshotPreview: true, screenshotWork: true))
+        XCTAssertNil(CaptureDisablementGuard.reason(for: .screenOCR, screenshotEditor: true, screenshotWork: true))
+        XCTAssertNil(CaptureDisablementGuard.reason(for: .colorPicker, screenshotPreview: true))
+        for feature: AppFeature in [.screenshot, .screenRecorder, .colorPicker, .screenOCR] {
+            XCTAssertNotNil(CaptureDisablementGuard.reason(for: feature, sharedCapture: true))
+            XCTAssertNotNil(CaptureDisablementGuard.sharedCaptureReason(for: feature, sharedCapture: true, enabling: true))
+        }
+        XCTAssertNil(CaptureDisablementGuard.reason(for: .mediaTools, sharedCapture: true))
+        XCTAssertNil(CaptureDisablementGuard.sharedCaptureReason(for: .mediaTools, sharedCapture: true, enabling: true))
         XCTAssertNil(CaptureDisablementGuard.reason(for: .screenRecorder, screenshotEditor: true))
         XCTAssertNotNil(CaptureDisablementGuard.reason(for: .screenRecorder, recorderEditor: true))
         XCTAssertNotNil(CaptureDisablementGuard.reason(for: .screenRecorder, recording: true))
@@ -1226,6 +1237,20 @@ extension FeatureResourceTests {
         XCTAssertNil(CaptureDisablementGuard.reason(for: .screenshot))
         XCTAssertNil(CaptureDisablementGuard.reason(for: .screenRecorder))
         XCTAssertNil(CaptureDisablementGuard.reason(for: .mediaTools))
+    }
+
+    func testConfirmedSelectionIsProtectedWithoutOpeningCaptureUI() throws {
+        let suite = "anchor.test.capture-guard.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let controller = ScreenshotSelectionController(freeze: false, includePointer: false,
+                                                       showLastRegion: false, defaults: defaults)
+        XCTAssertFalse(ScreenCaptureService.hasCommittedCapture(nil))
+        XCTAssertFalse(ScreenCaptureService.hasCommittedCapture(controller))
+        controller.markCapturePending()
+        XCTAssertTrue(ScreenCaptureService.hasCommittedCapture(controller))
+        XCTAssertNotNil(CaptureDisablementGuard.reason(for: .screenOCR,
+                                                        sharedCapture: ScreenCaptureService.hasCommittedCapture(controller)))
     }
 
     func testClipboardSettingsOnlyLoadsHistoryWhileAvailable() throws {

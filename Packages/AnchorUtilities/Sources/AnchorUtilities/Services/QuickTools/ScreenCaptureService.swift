@@ -65,6 +65,12 @@ final class ScreenCaptureService: ObservableObject {
     private var countdownTools: [ScreenCaptureTool]?
     private var countdownRemaining = 0
 
+    /// A confirmed selection must finish before a tool-set change cancels it.
+    var hasCommittedCapture: Bool { Self.hasCommittedCapture(selection) }
+    static func hasCommittedCapture(_ selection: ScreenshotSelectionController?) -> Bool {
+        selection?.captureInProgress == true
+    }
+
     var protectedWindowIDs: Set<CGWindowID> {
         selection?.protectedWindowIDs ?? []
     }
