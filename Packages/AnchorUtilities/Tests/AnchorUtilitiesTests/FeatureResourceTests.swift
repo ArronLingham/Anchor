@@ -1,9 +1,35 @@
 import Foundation
 import CoreGraphics
+import ImageIO
 import XCTest
 @testable import AnchorUtilities
 
 final class FeatureResourceTests: XCTestCase {
+    func testScreenshotLastCaptureIdentityIsStoredWithTheImage() throws {
+        let context = try XCTUnwrap(CGContext(data: nil, width: 4, height: 4,
+                                              bitsPerComponent: 8, bytesPerRow: 0,
+                                              space: CGColorSpaceCreateDeviceRGB(),
+                                              bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+        let image = try XCTUnwrap(context.makeImage())
+        let firstID = UUID(), secondID = UUID()
+        func read(_ data: Data) throws -> ScreenshotLastCaptureStore.Record {
+            let source = try XCTUnwrap(CGImageSourceCreateWithData(data as CFData, nil))
+            return try XCTUnwrap(ScreenshotLastCaptureStore.decode(source))
+        }
+        let first = try XCTUnwrap(ScreenshotRenderer.pngData(from: image, scale: 2, historyID: firstID))
+        let second = try XCTUnwrap(ScreenshotRenderer.pngData(from: image, scale: 2, historyID: secondID))
+        XCTAssertNotEqual(first, second, "Identical pixels must not identify different captures as the same one")
+        let decoded = try read(first)
+        XCTAssertEqual(decoded.historyID, firstID)
+        XCTAssertEqual(decoded.capture.image.width, 4)
+        XCTAssertEqual(decoded.capture.scale, 2, accuracy: 0.01)
+        XCTAssertEqual(try read(second).historyID, secondID)
+        let legacy = try XCTUnwrap(ScreenshotRenderer.pngData(from: image, scale: 1))
+        let legacyRecord = try read(legacy)
+        XCTAssertNil(legacyRecord.historyID, "Older last-capture files must not be guessed into history")
+        XCTAssertEqual(legacyRecord.capture.image.height, 4)
+    }
+
     func testScreenshotEditorWaitsForHistoryDiscardAndAllowsRetry() throws {
         let context = try XCTUnwrap(CGContext(data: nil, width: 4, height: 4,
                                               bitsPerComponent: 8, bytesPerRow: 0,

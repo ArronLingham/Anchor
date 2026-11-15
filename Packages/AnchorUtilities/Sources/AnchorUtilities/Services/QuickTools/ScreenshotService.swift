@@ -102,8 +102,6 @@ final class ScreenshotService: ObservableObject {
     /// Names the latest capture itself. Turning the shortcut off renews
     /// `latestCaptureID` but not this, so a later Discard still finds it.
     private var latestCaptureToken = UUID()
-    /// The in-memory token only identifies history created in this process.
-    private var latestHistoryID: UUID?
     /// Set once the latest capture went through an editor or was discarded:
     /// the stored original is then no longer what the person kept. The store
     /// keeps the same answer for the next launch.
@@ -662,10 +660,9 @@ final class ScreenshotService: ObservableObject {
     private func beginLatestCapture(_ capture: ScreenshotSelectionController.Capture) {
         invalidateLatestCaptureUploads()
         latestCaptureToken = UUID()
-        latestHistoryID = latestCaptureToken
         latestCaptureWithheld = false
         if ScreenshotSharingSupport.retainsLatestCapture() {
-            ScreenshotLastCaptureStore.save(capture)
+            ScreenshotLastCaptureStore.save(capture, historyID: latestCaptureToken)
         }
     }
 
@@ -891,14 +888,14 @@ final class ScreenshotService: ObservableObject {
             copyUploadedLink(record, captureID: latestCaptureID)
             return
         }
-        guard let capture = ScreenshotLastCaptureStore.load() else {
+        guard let record = ScreenshotLastCaptureStore.load() else {
             QuickToolHUD.show(icon: "camera.viewfinder", message: strings.lastCaptureMissing)
             return
         }
         let captureID = latestCaptureID
         uploadingCaptureID = captureID
         QuickToolHUD.show(icon: "link", message: strings.sharingHUD)
-        shareDirect(capture, duration: .saved()) { [weak self] record in
+        shareDirect(record.capture, duration: .saved()) { [weak self] record in
             if self?.uploadingCaptureID == captureID { self?.uploadingCaptureID = nil }
             guard let record else { return }
             guard let self,
@@ -937,7 +934,7 @@ final class ScreenshotService: ObservableObject {
     }
 
     private func openLastCapture() {
-        guard let capture = ScreenshotLastCaptureStore.load() else {
+        guard let record = ScreenshotLastCaptureStore.load() else {
             QuickToolHUD.show(icon: "camera.viewfinder", message: strings.lastCaptureMissing)
             return
         }
@@ -946,8 +943,8 @@ final class ScreenshotService: ObservableObject {
         // Editing the latest capture takes its raw copy off the Shelf, as
         // Edit in its preview does.
         unshelve(latestCaptureToken)
-        openEditor(with: capture, historyID: latestHistoryID,
-                   historyCaptureToken: latestHistoryID)
+        openEditor(with: record.capture, historyID: record.historyID,
+                   historyCaptureToken: record.historyID)
     }
 
     private func openClipboardImage() {
@@ -1361,12 +1358,16 @@ final class ScreenshotService: ObservableObject {
 /// One discardable PNG on disk keeps this shortcut useful across launches
 /// without holding a full-resolution screenshot in memory while the app rests.
 enum ScreenshotLastCaptureStore {
+    struct Record {
+        let capture: ScreenshotSelectionController.Capture
+        let historyID: UUID?
+    }
     private static let writeQueue = DispatchQueue(
         label: "com.vorssaint.utils.latest-screenshot",
         qos: .utility)
     private static let stateLock = NSLock()
     private static var generation = 0
-    private static var pendingCapture: ScreenshotSelectionController.Capture?
+    private static var pendingCapture: Record?
 
     private static var fileURL: URL? {
         guard let base = FileManager.default.urls(for: .cachesDirectory,
@@ -1396,19 +1397,19 @@ enum ScreenshotLastCaptureStore {
         FileManager.default.createFile(atPath: withheldURL.path, contents: nil)
     }
 
-    static func save(_ capture: ScreenshotSelectionController.Capture) {
+    static func save(_ capture: ScreenshotSelectionController.Capture, historyID: UUID) {
         guard let fileURL else { return }
         // A new capture starts out as the one the person kept.
         if let withheldURL { try? FileManager.default.removeItem(at: withheldURL) }
         stateLock.lock()
         generation += 1
         let operation = generation
-        pendingCapture = capture
+        pendingCapture = Record(capture: capture, historyID: historyID)
         stateLock.unlock()
 
         writeQueue.async {
             guard let data = ScreenshotRenderer.pngData(
-                from: capture.image, scale: capture.scale)
+                from: capture.image, scale: capture.scale, historyID: historyID)
             else {
                 finish(operation, fileURL: fileURL, removeFile: true)
                 return
@@ -1430,7 +1431,7 @@ enum ScreenshotLastCaptureStore {
         }
     }
 
-    static func load() -> ScreenshotSelectionController.Capture? {
+    static func load() -> Record? {
         stateLock.lock()
         let pending = pendingCapture
         stateLock.unlock()
@@ -1438,14 +1439,26 @@ enum ScreenshotLastCaptureStore {
 
         guard let fileURL else { return nil }
         let sourceOptions = [kCGImageSourceShouldCache: false] as CFDictionary
-        guard let source = CGImageSourceCreateWithURL(fileURL as CFURL, sourceOptions),
-              let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as NSDictionary?,
+        guard let source = CGImageSourceCreateWithURL(fileURL as CFURL, sourceOptions) else { return nil }
+        return decode(source)
+    }
+
+    static func decode(_ source: CGImageSource) -> Record? {
+        guard let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as NSDictionary?,
               let dpi = properties[kCGImagePropertyDPIWidth] as? NSNumber,
               let scale = ScreenshotSupport.captureScale(fromDPI: dpi.doubleValue)
         else { return nil }
         let imageOptions = [kCGImageSourceShouldCacheImmediately: true] as CFDictionary
         guard let image = CGImageSourceCreateImageAtIndex(source, 0, imageOptions) else { return nil }
-        return ScreenshotSelectionController.Capture(image: image, scale: scale, anchorRect: .zero)
+        let capture = ScreenshotSelectionController.Capture(image: image, scale: scale, anchorRect: .zero)
+        let png = properties[kCGImagePropertyPNGDictionary] as? NSDictionary
+        let description = png?[kCGImagePropertyPNGDescription] as? String
+        let prefix = ScreenshotRenderer.lastCaptureIDPrefix
+        let historyID = description.flatMap { value -> UUID? in
+            guard value.hasPrefix(prefix) else { return nil }
+            return UUID(uuidString: String(value.dropFirst(prefix.count)))
+        }
+        return Record(capture: capture, historyID: historyID)
     }
 
     static func clear() {

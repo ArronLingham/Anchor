@@ -1091,16 +1091,23 @@ enum ScreenshotRenderer {
 
     /// PNG carrying the picture's pixels per point as standard DPI, the same
     /// convention the system screenshot tool writes and the store reads back.
-    static func pngData(from image: CGImage, scale: CGFloat) -> Data? {
+    static let lastCaptureIDPrefix = "com.arronlingham.Anchor.capture:"
+
+    static func pngData(from image: CGImage, scale: CGFloat, historyID: UUID? = nil) -> Data? {
         let data = NSMutableData()
         guard let destination = CGImageDestinationCreateWithData(
             data, UTType.png.identifier as CFString, 1, nil)
         else { return nil }
-        let properties = [
+        var properties: [CFString: Any] = [
             kCGImagePropertyDPIWidth: Double(scale) * 72,
             kCGImagePropertyDPIHeight: Double(scale) * 72,
-        ] as CFDictionary
-        CGImageDestinationAddImage(destination, image, properties)
+        ]
+        if let historyID {
+            properties[kCGImagePropertyPNGDictionary] = [
+                kCGImagePropertyPNGDescription: lastCaptureIDPrefix + historyID.uuidString
+            ] as CFDictionary
+        }
+        CGImageDestinationAddImage(destination, image, properties as CFDictionary)
         guard CGImageDestinationFinalize(destination) else { return nil }
         return data as Data
     }
