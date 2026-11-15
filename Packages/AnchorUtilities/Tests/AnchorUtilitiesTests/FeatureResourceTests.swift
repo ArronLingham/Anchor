@@ -4,6 +4,31 @@ import XCTest
 @testable import AnchorUtilities
 
 final class FeatureResourceTests: XCTestCase {
+    func testScreenshotEditorWaitsForHistoryDiscardAndAllowsRetry() throws {
+        let context = try XCTUnwrap(CGContext(data: nil, width: 4, height: 4,
+                                              bitsPerComponent: 8, bytesPerRow: 0,
+                                              space: CGColorSpaceCreateDeviceRGB(),
+                                              bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+        let capture = ScreenshotSelectionController.Capture(image: try XCTUnwrap(context.makeImage()),
+                                                            scale: 1, anchorRect: .zero)
+        let editor = ScreenshotEditorController(capture: capture)
+        var completions: [(Bool) -> Void] = []
+        editor.discardHistory = { completions.append($0) }
+        editor.discardAndClose()
+        XCTAssertTrue(editor.model.discardInProgress)
+        XCTAssertFalse(editor.explicitlyResolved)
+        editor.discardAndClose()
+        XCTAssertEqual(completions.count, 1)
+        completions.removeFirst()(false)
+        XCTAssertFalse(editor.model.discardInProgress)
+        XCTAssertFalse(editor.explicitlyResolved)
+        editor.discardAndClose()
+        XCTAssertTrue(editor.model.discardInProgress)
+        completions.removeFirst()(true)
+        XCTAssertFalse(editor.model.discardInProgress)
+        XCTAssertTrue(editor.explicitlyResolved)
+    }
+
     func testScreenshotDiscardRetryDoesNotReopenAfterSuccess() {
         let recovery = ScreenshotDiscardRecovery()
         recovery.begin()

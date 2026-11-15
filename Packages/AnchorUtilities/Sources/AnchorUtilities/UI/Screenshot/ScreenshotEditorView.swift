@@ -67,6 +67,14 @@ struct ScreenshotEditorView: View {
             }
         }
         .ignoresSafeArea()
+        .disabled(model.discardInProgress)
+        .overlay {
+            if model.discardInProgress {
+                ProgressView()
+                    .controlSize(.large)
+                    .accessibilityLabel("Discarding screenshot")
+            }
+        }
         .animation(.spring(response: 0.28, dampingFraction: 0.86), value: model.tool)
         .animation(.easeOut(duration: 0.16), value: model.annotationShadowsEnabled)
         .animation(.spring(response: 0.28, dampingFraction: 0.86), value: model.backdropStyle)

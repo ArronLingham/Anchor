@@ -157,6 +157,7 @@ final class ScreenshotEditorModel: ObservableObject, BackdropEditing {
     @Published private(set) var canRedo = false
     /// True while there is work that never left the app: closing then asks.
     @Published private(set) var isDirty = false
+    @Published var discardInProgress = false
 
     let scale: CGFloat
     /// Sampled mosaics of the base image, one per blur level in use.
@@ -1224,6 +1225,12 @@ final class ScreenshotEditorController: NSObject, NSWindowDelegate {
     private var scrollMonitor: Any?
     private var pointerMonitor: Any?
     private var recoverySaveRequired = false
+    private var discardInProgress: Bool {
+        get { model.discardInProgress }
+        set { model.discardInProgress = newValue }
+    }
+    private var shareGeneration = UUID()
+    var discardHistory: ((@escaping (Bool) -> Void) -> Void)?
     private(set) var explicitlyResolved = false
 
     /// The history copy failed, so this editor holds the remaining image.
@@ -1298,13 +1305,30 @@ final class ScreenshotEditorController: NSObject, NSWindowDelegate {
     }
 
     func close() {
+        guard !discardInProgress else { return }
         window?.close()
     }
 
     /// Closes without the discard confirmation used by the titlebar button.
     func discardAndClose() {
-        explicitlyResolved = true
-        window?.close()
+        guard !discardInProgress else { return }
+        shareGeneration = UUID()
+        guard let discardHistory else {
+            explicitlyResolved = true
+            window?.close()
+            return
+        }
+        discardInProgress = true
+        discardHistory { [weak self] success in
+            guard let self else { return }
+            self.discardInProgress = false
+            if success {
+                self.explicitlyResolved = true
+                self.window?.close()
+            } else {
+                self.requireRecoverySave()
+            }
+        }
     }
 
     // MARK: Keyboard
@@ -1352,6 +1376,7 @@ final class ScreenshotEditorController: NSObject, NSWindowDelegate {
     }
 
     private func handleKey(_ event: NSEvent) -> Bool {
+        if discardInProgress { return true }
         let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
         let key = Int(event.keyCode)
         if ScreenshotSupport.editorIgnoresRepeatedOutputKey(
@@ -1439,6 +1464,8 @@ final class ScreenshotEditorController: NSObject, NSWindowDelegate {
     /// the editor. The view presents the owner controls after it succeeds.
     func share(duration: ScreenshotShareDuration,
                completion: @escaping (ScreenshotShareRecord?) -> Void) {
+        guard !discardInProgress else { completion(nil); return }
+        let generation = shareGeneration
         guard let export = model.exportImage() else {
             QuickToolHUD.show(icon: "link", message: strings.shareFailedHUD)
             completion(nil)
@@ -1459,7 +1486,7 @@ final class ScreenshotEditorController: NSObject, NSWindowDelegate {
             }
             // Rendering may outlive the editor or the feature. Recheck before
             // transmitting the capture, not only when the server answers.
-            guard self.window != nil,
+            guard self.window != nil, !self.discardInProgress, self.shareGeneration == generation,
                   AppFeature.screenshot.isAvailable,
                   UtilityPreferences.standard.bool(forKey: DefaultsKey.screenshotSharingEnabled) else {
                 completion(nil)
@@ -1468,7 +1495,7 @@ final class ScreenshotEditorController: NSObject, NSWindowDelegate {
             do {
                 let record = try await ScreenshotShareService.shared.createLink(
                     pngData: data, duration: duration)
-                guard self.window != nil,
+                guard self.window != nil, !self.discardInProgress, self.shareGeneration == generation,
                       AppFeature.screenshot.isAvailable,
                       UtilityPreferences.standard.bool(forKey: DefaultsKey.screenshotSharingEnabled) else {
                     try? await ScreenshotShareService.shared.delete(record)
@@ -1488,6 +1515,7 @@ final class ScreenshotEditorController: NSObject, NSWindowDelegate {
     /// The edited image as it would be saved, in a temporary file for the
     /// system share sheet.
     func shareFile() -> URL? {
+        guard !discardInProgress else { return nil }
         guard let export = model.exportImage() else { return nil }
         return ScreenshotService.temporaryExportFile(image: export.image, scale: export.scale,
                                                      strings: strings)
@@ -1496,6 +1524,7 @@ final class ScreenshotEditorController: NSObject, NSWindowDelegate {
     /// Every final output closes the editor: the capture leaves the app
     /// and the window's job is done, so nothing lingers to tidy up.
     func copyToClipboard() {
+        guard !discardInProgress else { return }
         guard let export = model.exportImage() else { return }
         guard Self.copyImage(export, fileNamePrefix: strings.fileNamePrefix) else {
             NSSound.beep()
@@ -1579,6 +1608,7 @@ final class ScreenshotEditorController: NSObject, NSWindowDelegate {
     }
 
     func save() {
+        guard !discardInProgress else { return }
         guard let export = model.exportImage(),
               let data = ScreenshotRenderer.pngData(from: export.image, scale: export.scale)
         else { return }
@@ -1601,13 +1631,14 @@ final class ScreenshotEditorController: NSObject, NSWindowDelegate {
     }
 
     func saveAs() {
+        guard !discardInProgress else { return }
         guard let window else { return }
         let panel = NSSavePanel()
         panel.allowedContentTypes = [.png]
         panel.nameFieldStringValue = ScreenshotSupport.fileName(
             prefix: strings.fileNamePrefix, date: Date())
         panel.beginSheetModal(for: window) { [weak self] response in
-            guard let self, response == .OK, let url = panel.url else { return }
+            guard let self, !self.discardInProgress, response == .OK, let url = panel.url else { return }
             guard let export = self.model.exportImage(),
                   let data = ScreenshotRenderer.pngData(from: export.image, scale: export.scale)
             else { return }
@@ -1625,6 +1656,7 @@ final class ScreenshotEditorController: NSObject, NSWindowDelegate {
     /// The edited image goes to the shelf as a file named like a saved
     /// capture, and the editor closes as it does after Save.
     func addToShelf() {
+        guard !discardInProgress else { return }
         guard let export = model.exportImage(),
               let data = ScreenshotRenderer.pngData(from: export.image, scale: export.scale)
         else { return }
@@ -1641,6 +1673,7 @@ final class ScreenshotEditorController: NSObject, NSWindowDelegate {
 
     /// Pinning snapshots the current export and leaves the editor open.
     func pin() {
+        guard !discardInProgress else { return }
         guard let export = model.exportImage(withBackdrop: false) else { return }
         ScreenshotPinController.shared.pin(image: export.image, scale: export.scale)
         model.markExported()
@@ -1667,18 +1700,23 @@ final class ScreenshotEditorController: NSObject, NSWindowDelegate {
     // MARK: NSWindowDelegate
 
     func windowShouldClose(_ sender: NSWindow) -> Bool {
+        guard !discardInProgress else { return false }
         guard model.isDirty || recoverySaveRequired else { return true }
         let alert = NSAlert()
         alert.messageText = strings.discardTitle
-        alert.informativeText = recoverySaveRequired
-            ? "This screenshot still needs saving or copying. Closing will discard it from the editor."
-            : strings.discardMessage
+        if discardHistory != nil {
+            alert.informativeText = "Discarding removes this screenshot from recent captures. Separately saved files remain."
+        } else {
+            alert.informativeText = recoverySaveRequired
+                ? "This screenshot still needs saving or copying. Closing will discard it from the editor."
+                : strings.discardMessage
+        }
         alert.addButton(withTitle: strings.discardConfirm)
         alert.addButton(withTitle: strings.cancel)
         alert.alertStyle = .warning
         let discard = alert.runModal() == .alertFirstButtonReturn
-        if discard { explicitlyResolved = true }
-        return discard
+        if discard { discardAndClose() }
+        return false
     }
 
     func windowWillClose(_ notification: Notification) {

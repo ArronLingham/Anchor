@@ -102,6 +102,8 @@ final class ScreenshotService: ObservableObject {
     /// Names the latest capture itself. Turning the shortcut off renews
     /// `latestCaptureID` but not this, so a later Discard still finds it.
     private var latestCaptureToken = UUID()
+    /// The in-memory token only identifies history created in this process.
+    private var latestHistoryID: UUID?
     /// Set once the latest capture went through an editor or was discarded:
     /// the stored original is then no longer what the person kept. The store
     /// keeps the same answer for the next launch.
@@ -569,7 +571,7 @@ final class ScreenshotService: ObservableObject {
         if defaultAction == .edit {
             // The editor decides what is kept. Its Add to Shelf puts the
             // finished picture there, so the raw capture is not shelved too.
-            historyWrites.associate(token, editor: openEditor(with: capture))
+            historyWrites.associate(token, editor: openEditor(with: capture, historyID: token, historyCaptureToken: token))
             return
         }
         let result = runDefaultAction(defaultAction, capture: capture)
@@ -596,7 +598,8 @@ final class ScreenshotService: ObservableObject {
                 editor.requireRecoverySave()
             } else {
                 if previewCaptureToken == token { preview?.close() }
-                let editor = openEditor(with: write.capture, withholdsLatest: token == latestCaptureToken)
+                let editor = openEditor(with: write.capture, withholdsLatest: token == latestCaptureToken,
+                                        historyID: token, historyCaptureToken: token)
                 editor.requireRecoverySave()
             }
         }
@@ -627,11 +630,12 @@ final class ScreenshotService: ObservableObject {
     /// The editor decides what is kept, and its Add to Shelf puts the
     /// finished picture there, so the raw capture leaves the Shelf as it
     /// does when captures open straight in the editor.
-    private func editFromPreview(_ capture: ScreenshotSelectionController.Capture, latestCapture: UUID?,
+    private func editFromPreview(_ capture: ScreenshotSelectionController.Capture, latestCapture: UUID?, historyID: UUID,
                                  recoveryRequired: Bool = false) {
         unshelve(latestCapture)
         let editor = openEditor(with: capture,
-                                withholdsLatest: latestCapture == nil || latestCapture == latestCaptureToken)
+                                withholdsLatest: historyID == latestCaptureToken,
+                                historyID: historyID, historyCaptureToken: latestCapture)
         let failedHistory = latestCapture.map { historyWrites.associate($0, editor: editor) } ?? false
         if failedHistory || recoveryRequired {
             editor.requireRecoverySave()
@@ -658,6 +662,7 @@ final class ScreenshotService: ObservableObject {
     private func beginLatestCapture(_ capture: ScreenshotSelectionController.Capture) {
         invalidateLatestCaptureUploads()
         latestCaptureToken = UUID()
+        latestHistoryID = latestCaptureToken
         latestCaptureWithheld = false
         if ScreenshotSharingSupport.retainsLatestCapture() {
             ScreenshotLastCaptureStore.save(capture)
@@ -730,7 +735,8 @@ final class ScreenshotService: ObservableObject {
                         QuickToolHUD.show(icon: "exclamationmark.triangle", message: "Could not remove screenshot from history")
                         NSSound.beep()
                         if openRecovery {
-                            let editor = self.openEditor(with: capture, withholdsLatest: latestCapture != nil && latestCapture == self.latestCaptureToken)
+                            let editor = self.openEditor(with: capture, withholdsLatest: latestCapture != nil && latestCapture == self.latestCaptureToken,
+                                                         historyID: historyID, historyCaptureToken: latestCapture)
                             editor.requireRecoverySave()
                         }
                     }
@@ -746,7 +752,7 @@ final class ScreenshotService: ObservableObject {
                 switch action {
                 case .edit:
                     defer { self.pendingPreviewEdits.remove(editID) }
-                    self.editFromPreview(capture, latestCapture: latestCapture,
+                    self.editFromPreview(capture, latestCapture: latestCapture, historyID: historyID,
                                          recoveryRequired: editNeedsRecovery)
                     return [.edit]
                 case .pin:
@@ -790,7 +796,8 @@ final class ScreenshotService: ObservableObject {
                 self?.previewCaptureToken = nil
                 self?.previewPresentationID = nil
                 if recovery.takeForClose(), let self {
-                    let editor = self.openEditor(with: capture, withholdsLatest: latestCapture != nil && latestCapture == self.latestCaptureToken)
+                    let editor = self.openEditor(with: capture, withholdsLatest: latestCapture != nil && latestCapture == self.latestCaptureToken,
+                                                 historyID: historyID, historyCaptureToken: latestCapture)
                     editor.requireRecoverySave()
                 }
                 DispatchQueue.main.async { [weak self] in
@@ -832,13 +839,35 @@ final class ScreenshotService: ObservableObject {
 
     @discardableResult
     func openEditor(with capture: ScreenshotSelectionController.Capture,
-                    withholdsLatest: Bool = true) -> ScreenshotEditorController {
+                    withholdsLatest: Bool = true, historyID: UUID? = nil,
+                    historyCaptureToken: UUID? = nil) -> ScreenshotEditorController {
         WindowActivationPolicy.retain()
         // Any editor may be showing the latest capture, and what it exports
         // is no longer the stored original, so the shortcut keeps that
         // original back until a newer capture arrives.
         if withholdsLatest { withholdLatestCapture() }
         let editor = ScreenshotEditorController(capture: capture)
+        if let historyID {
+            editor.discardHistory = { [weak self] completion in
+                guard let self else { completion(false); return }
+                if let historyCaptureToken { self.historyWrites.resolve(historyCaptureToken) }
+                let operation = UUID()
+                self.pendingDiscards.insert(operation)
+                RecentCaptureService.shared.removeScreenshot(id: historyID) { [self] success in
+                    self.pendingDiscards.remove(operation)
+                    if !success {
+                        UtilityWorkspace.shared.reportFeatureNotice("Could not remove this screenshot from recent captures. Try again.")
+                        QuickToolHUD.show(icon: "exclamationmark.triangle", message: "Could not remove screenshot from history")
+                        NSSound.beep()
+                    }
+                    completion(success)
+                    if !AppFeature.screenshot.isAvailable && !self.hasProtectedWork {
+                        self.syncWithPreferences()
+                        FeatureServicePool.shared.releaseUnused()
+                    }
+                }
+            }
+        }
         editors.append(editor)
         editor.show()
         return editor
@@ -917,7 +946,8 @@ final class ScreenshotService: ObservableObject {
         // Editing the latest capture takes its raw copy off the Shelf, as
         // Edit in its preview does.
         unshelve(latestCaptureToken)
-        openEditor(with: capture)
+        openEditor(with: capture, historyID: latestHistoryID,
+                   historyCaptureToken: latestHistoryID)
     }
 
     private func openClipboardImage() {
