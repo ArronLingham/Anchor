@@ -37,6 +37,18 @@ enum MicMuteSupport {
         volume.isFinite && (0...1).contains(volume)
     }
 
+    /// When a master exists, treat its zero as device silence. Without one,
+    /// every inspected channel must be readable and silent before treating the
+    /// device as already muted by someone else.
+    static func volumeIsSilent(hasMaster: Bool, master: Float?, channels: [Float?]) -> Bool {
+        func silent(_ value: Float?) -> Bool {
+            guard let value, shouldSaveChannelVolume(value) else { return false }
+            return value <= 0.01
+        }
+        if hasMaster { return silent(master) }
+        return !channels.isEmpty && channels.allSatisfy(silent)
+    }
+
     static func volumeRestoreMayWrite(elements: [(UInt32, Float?)], channels: [String: Double]) -> Bool {
         guard !elements.isEmpty else { return false }
         return elements.allSatisfy { element, value in

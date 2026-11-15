@@ -582,8 +582,17 @@ final class MicMuteService: ObservableObject {
     /// True when no audio can come out of the device right now.
     private static func isSilenced(_ device: AudioDeviceID) -> Bool {
         if muteSwitchValue(of: device) == 1 { return true }
-        guard let volume = inputVolume(of: device) else { return false }
-        return volume <= 0.01
+        let addresses = volumeAddresses()
+        var masterAddress = addresses[0]
+        let hasMaster = AudioObjectHasProperty(device, &masterAddress)
+        let master = hasMaster ? volumeValue(of: device, at: masterAddress) : nil
+        var channels: [Float?] = []
+        if !hasMaster {
+            for var address in addresses.dropFirst() where AudioObjectHasProperty(device, &address) {
+                channels.append(volumeValue(of: device, at: address))
+            }
+        }
+        return MicMuteSupport.volumeIsSilent(hasMaster: hasMaster, master: master, channels: channels)
     }
 
     /// Every device that can capture audio, skipping the app's own mixing

@@ -3,6 +3,36 @@ import XCTest
 @testable import AnchorUtilities
 
 final class FeatureResourceTests: XCTestCase {
+    func testMicrophoneSilenceRequiresEveryChannelWithoutMaster() {
+        XCTAssertFalse(MicMuteSupport.volumeIsSilent(hasMaster: false, master: nil, channels: [0, 0.6]))
+        XCTAssertTrue(MicMuteSupport.volumeIsSilent(hasMaster: false, master: nil, channels: [0, 0]))
+        XCTAssertFalse(MicMuteSupport.volumeIsSilent(hasMaster: false, master: nil, channels: [0, nil]))
+        XCTAssertFalse(MicMuteSupport.volumeIsSilent(hasMaster: false, master: nil, channels: []))
+        XCTAssertTrue(MicMuteSupport.volumeIsSilent(hasMaster: true, master: 0, channels: [0.5]))
+        XCTAssertFalse(MicMuteSupport.volumeIsSilent(hasMaster: true, master: nil, channels: [0]))
+    }
+
+    func testMicrophoneMuteReachesAudibleSecondChannelWithoutMaster() {
+        let mic = MicMuteService.InputDevice(id: 1, uid: "stereo")
+        var channels = ["1": 0.0, "2": 0.6]
+        var writes = 0
+        let backend = MicMuteService.MuteBackend(
+            muteSwitch: { _ in .unavailable }, setMute: { _, _ in .failed },
+            isSilenced: { _ in MicMuteSupport.volumeIsSilent(hasMaster: false, master: nil,
+                                                              channels: [Float(channels["1"]!), Float(channels["2"]!)]) },
+            volume: { _ in Float(channels["1"]!) }, channels: { _ in channels },
+            volumeSnapshotMatches: { _, _, _ in true },
+            setVolume: { _, _ in writes += 1; channels = ["1": 0, "2": 0]; return true },
+            volumeMuteVerified: { _, _ in channels.values.allSatisfy { $0 == 0 } },
+            isActiveNonAggregate: { _ in true })
+        let result = MicMuteService.mute([mic], savedVolumes: [:], savedChannelVolumes: [:],
+                                         mutedDevices: [], backend: backend)
+        XCTAssertEqual(writes, 1)
+        XCTAssertEqual(result.mutedDevices, ["stereo"])
+        XCTAssertEqual(result.savedChannelVolumes["stereo"], ["1": 0, "2": 0.6])
+        XCTAssertFalse(result.failed)
+    }
+
     func testMicrophoneSavedChannelsIncludeDeliberateSilence() {
         XCTAssertTrue(MicMuteSupport.shouldSaveChannelVolume(0))
         XCTAssertTrue(MicMuteSupport.shouldSaveChannelVolume(0.5))
