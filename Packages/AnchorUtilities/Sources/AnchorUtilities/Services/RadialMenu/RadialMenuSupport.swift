@@ -7,6 +7,48 @@ import Foundation
 import ImageIO
 import SwiftUI
 
+/// Authorization for a selection that can outlive the visible wheel. A
+/// Settings preview has its own ticket and can run while the feature is off.
+final class RadialMenuActionGate {
+    struct State: Equatable {
+        let available: Bool
+        let enabled: Bool
+        var active: Bool { available && enabled }
+    }
+
+    struct Ticket {
+        fileprivate let generation: UUID
+        fileprivate let state: State
+        fileprivate let preview: Bool
+    }
+
+    private let lock = NSLock()
+    private var state: State?
+    private var generation = UUID()
+
+    func update(state: State) {
+        lock.lock(); defer { lock.unlock() }
+        if self.state != state { self.state = state; generation = UUID() }
+    }
+
+    func invalidate() {
+        lock.lock(); defer { lock.unlock() }
+        generation = UUID()
+    }
+
+    func capture(preview: Bool, state: State) -> Ticket? {
+        lock.lock(); defer { lock.unlock() }
+        if self.state != state { self.state = state; generation = UUID() }
+        guard state.active || preview else { return nil }
+        return Ticket(generation: generation, state: state, preview: preview)
+    }
+
+    func accepts(_ ticket: Ticket, state: State) -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        return ticket.generation == generation && ticket.state == state && (state.active || ticket.preview)
+    }
+}
+
 /// Accent colors available for radial menu profiles.
 enum RadialMenuColor: String, Codable, CaseIterable, Identifiable {
     case accent, blue, purple, pink, red, orange, yellow, green, mint, cyan, indigo, graphite

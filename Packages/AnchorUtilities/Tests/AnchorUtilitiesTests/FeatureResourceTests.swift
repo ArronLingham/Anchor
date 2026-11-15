@@ -3,6 +3,81 @@ import XCTest
 @testable import AnchorUtilities
 
 final class FeatureResourceTests: XCTestCase {
+    func testRadialMenuActionTicketsSurviveDismissalButNotDisable() throws {
+        let gate = RadialMenuActionGate()
+        let on = RadialMenuActionGate.State(available: true, enabled: true)
+        let off = RadialMenuActionGate.State(available: true, enabled: false)
+        gate.update(state: on)
+        let ticket = try XCTUnwrap(gate.capture(preview: false, state: on))
+        // Closing the visible wheel does not update the feature lifecycle.
+        XCTAssertTrue(gate.accepts(ticket, state: on))
+        XCTAssertFalse(gate.accepts(ticket, state: off))
+        gate.update(state: off)
+        gate.update(state: on)
+        XCTAssertFalse(gate.accepts(ticket, state: on))
+        let next = try XCTUnwrap(gate.capture(preview: false, state: on))
+        gate.invalidate()
+        XCTAssertFalse(gate.accepts(next, state: on))
+    }
+
+    func testRadialMenuPreviewHasScopedOffStateAuthorization() throws {
+        let gate = RadialMenuActionGate()
+        let off = RadialMenuActionGate.State(available: true, enabled: false)
+        let uninstalled = RadialMenuActionGate.State(available: false, enabled: false)
+        gate.update(state: off)
+        XCTAssertNil(gate.capture(preview: false, state: off))
+        let preview = try XCTUnwrap(gate.capture(preview: true, state: off))
+        gate.update(state: off) // An unrelated re-sync is not a transition.
+        XCTAssertTrue(gate.accepts(preview, state: off))
+        gate.update(state: uninstalled)
+        XCTAssertFalse(gate.accepts(preview, state: uninstalled))
+        gate.update(state: off)
+        XCTAssertFalse(gate.accepts(preview, state: off))
+    }
+
+    func testRadialMenuDeferredActionChecksSessionAndDestination() throws {
+        let gate = RadialMenuActionGate()
+        let on = RadialMenuActionGate.State(available: true, enabled: true)
+        let off = RadialMenuActionGate.State(available: true, enabled: false)
+        gate.update(state: on)
+        var state = on
+        var destination = true
+        var actions = 0
+        let first = try XCTUnwrap(gate.capture(preview: false, state: state))
+        let queued = {
+            if gate.accepts(first, state: state) && destination { actions += 1 }
+        }
+        state = off
+        gate.update(state: off)
+        state = on
+        gate.update(state: on)
+        queued()
+        XCTAssertEqual(actions, 0)
+        let current = try XCTUnwrap(gate.capture(preview: false, state: state))
+        destination = false
+        if gate.accepts(current, state: state) && destination { actions += 1 }
+        XCTAssertEqual(actions, 0)
+        destination = true
+        if gate.accepts(current, state: state) && destination { actions += 1 }
+        XCTAssertEqual(actions, 1)
+    }
+
+    func testRadialMenuDisableRejectsLateNowPlayingResult() {
+        var completion: ((RadialNowPlayingSnapshot?) -> Void)?
+        let service = RadialNowPlayingService(fetch: { completion = $0 })
+        var updates: [RadialNowPlayingState] = []
+        service.refresh { updates.append($0) }
+        service.presentDetails(at: .zero)
+        XCTAssertEqual(updates, [.loading])
+        service.suspend()
+        completion?(nil)
+        let drained = expectation(description: "late result delivered")
+        DispatchQueue.main.async { drained.fulfill() }
+        wait(for: [drained], timeout: 2)
+        XCTAssertEqual(updates, [.loading])
+        XCTAssertEqual(service.state, .nothingPlaying)
+    }
+
     func testMicrophoneQueuedMuteLosesAuthorizationAcrossDisable() throws {
         let gate = ClipboardPresentationGate()
         gate.update(available: true)

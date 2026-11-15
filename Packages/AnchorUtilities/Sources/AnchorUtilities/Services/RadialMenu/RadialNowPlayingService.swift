@@ -10,9 +10,14 @@ import SwiftUI
 /// metadata all arrive here as an empty playback session.
 /// Nothing here is required for the radial menu itself to work.
 final class RadialNowPlayingService {
-    static let shared = RadialNowPlayingService()
+    private(set) static var existing: RadialNowPlayingService?
+    static let shared: RadialNowPlayingService = {
+        let service = RadialNowPlayingService()
+        existing = service
+        return service
+    }()
 
-    private let bridge = MediaRemoteNowPlayingBridge()
+    private let fetch: (@escaping (RadialNowPlayingSnapshot?) -> Void) -> Void
     private var generation = 0
     private(set) var state = RadialNowPlayingState.nothingPlaying
     private var pendingPresentationAnchor: CGPoint?
@@ -20,14 +25,21 @@ final class RadialNowPlayingService {
     private var eventMonitors: [Any] = []
     private var activationObserver: NSObjectProtocol?
 
-    private init() {}
+    init(fetch: ((@escaping (RadialNowPlayingSnapshot?) -> Void) -> Void)? = nil) {
+        if let fetch {
+            self.fetch = fetch
+        } else {
+            let bridge = MediaRemoteNowPlayingBridge()
+            self.fetch = { bridge.fetch(completion: $0) }
+        }
+    }
 
     func refresh(update: @escaping (RadialNowPlayingState) -> Void) {
         generation += 1
         let requestedGeneration = generation
         state = .loading
         update(.loading)
-        bridge.fetch { [weak self] snapshot in
+        fetch { [weak self] snapshot in
             DispatchQueue.main.async {
                 guard let self, self.generation == requestedGeneration else { return }
                 let nextState = snapshot.map(RadialNowPlayingState.playing) ?? .nothingPlaying
@@ -57,6 +69,14 @@ final class RadialNowPlayingService {
         pendingPresentationAnchor = nil
         removeMonitors()
         panel?.orderOut(nil)
+    }
+
+    func suspend() {
+        generation += 1
+        dismissDetails()
+        panel?.contentViewController = nil
+        panel = nil
+        state = .nothingPlaying
     }
 
     private func showCard(snapshot: RadialNowPlayingSnapshot, at anchor: CGPoint) {

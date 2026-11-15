@@ -65,6 +65,8 @@ final class RadialMenuService: ObservableObject {
     private var sessionActivationMode = RadialMenuActivationMode.pressOrHold
     private var sessionUsesSuperKey = false
     private var sessionID = 0
+    private let actionGate = RadialMenuActionGate()
+    private var sessionActionTicket: RadialMenuActionGate.Ticket?
     /// Set while a session was summoned by a mouse button and it is still
     /// down; releasing it runs the pointed slice, mirroring the chord.
     private var holdButton: Int64?
@@ -84,7 +86,11 @@ final class RadialMenuService: ObservableObject {
         // held summoner released, so a wheel still up when the tap is handed
         // back would come back stuck in hold phase with no release coming.
         SessionActivity.shared.onChange { [weak self] active in
-            if !active { self?.endSession() }
+            if !active {
+                self?.actionGate.invalidate()
+                self?.endSession()
+                RadialNowPlayingService.existing?.suspend()
+            }
             self?.syncMouseTap()
         }
     }
@@ -92,6 +98,14 @@ final class RadialMenuService: ObservableObject {
     var sessionActive: Bool { !stack.isEmpty && !dismissal.isActive }
 
     private var currentItems: [RadialMenuItem] { stack.last ?? [] }
+    private var radialState: RadialMenuActionGate.State {
+        RadialMenuActionGate.State(available: AppFeature.radialMenu.isAvailable,
+                                   enabled: UtilityPreferences.standard.bool(forKey: DefaultsKey.radialMenuEnabled))
+    }
+
+    private func actionAllowed(_ ticket: RadialMenuActionGate.Ticket) -> Bool {
+        SessionActivity.shared.isActive && actionGate.accepts(ticket, state: radialState)
+    }
 
     // MARK: - Lifecycle
 
@@ -100,10 +114,10 @@ final class RadialMenuService: ObservableObject {
         // The trackpad tap is recognized by the middle click's contact reader.
         defer { MiddleClickService.shared.syncWithPreferences() }
         let defaults = UtilityPreferences.standard
-        let enabled = AppFeature.radialMenu.isAvailable
-            && defaults.bool(forKey: DefaultsKey.radialMenuEnabled)
-        guard enabled else {
-            suspend()
+        let state = radialState
+        actionGate.update(state: state)
+        guard state.active else {
+            stopResources()
             registrationFailed = false
             return
         }
@@ -121,7 +135,14 @@ final class RadialMenuService: ObservableObject {
             guard !profile.shortcut.isEmpty,
                   let shortcut = GlobalShortcut(storageValue: profile.shortcut) else { continue }
             let hotkey = QuickToolHotkey(id: 1700 + UInt32(index))
-            hotkey.onPress = { [weak self] in self?.hotkeyPressed(for: profile) }
+            hotkey.capturePress = { [weak self] in
+                guard let self, SessionActivity.shared.isActive,
+                      let ticket = self.actionGate.capture(preview: false, state: self.radialState) else { return nil }
+                return { [weak self] in
+                    guard let self, self.actionAllowed(ticket) else { return }
+                    self.hotkeyPressed(for: profile)
+                }
+            }
             // Wheels keep their combinations inside the profile list, so a
             // claim is named by the profile it belongs to.
             let registered = hotkey.sync(
@@ -139,10 +160,16 @@ final class RadialMenuService: ObservableObject {
     }
 
     func suspend() {
+        actionGate.invalidate()
+        stopResources()
+    }
+
+    private func stopResources() {
         for hotkey in hotkeys.values { hotkey.unregister() }
         hotkeys.removeAll()
         tearDownMouseTap()
         endSession()
+        RadialNowPlayingService.existing?.suspend()
         panel = nil
     }
 
@@ -349,10 +376,13 @@ final class RadialMenuService: ObservableObject {
             defaults: defaults
         )
         let targetProfile = profile ?? profiles.first ?? RadialMenuProfilePreset.general.createProfile()
-        beginSession(for: targetProfile, hold: false)
+        beginSession(for: targetProfile, hold: false, preview: true)
     }
 
-    private func beginSession(for profile: RadialMenuProfile, hold: Bool, heldButton: Int64? = nil) {
+    private func beginSession(for profile: RadialMenuProfile, hold: Bool, heldButton: Int64? = nil,
+                              preview: Bool = false) {
+        guard SessionActivity.shared.isActive,
+              let ticket = actionGate.capture(preview: preview, state: radialState) else { return }
         let defaults = UtilityPreferences.standard
         let items = availableItems(profile.items)
         guard !items.isEmpty else {
@@ -362,6 +392,7 @@ final class RadialMenuService: ObservableObject {
         // Summoned again mid-close, the wheel is taken back rather than left
         // to be emptied by the closing it was already in the middle of.
         dismissal.cancel { forgetSession() }
+        sessionActionTicket = ticket
         // Small and clear until the panel is placed, so the wheel has somewhere
         // to grow from.
         visible = false
@@ -466,6 +497,7 @@ final class RadialMenuService: ObservableObject {
         holdButton = nil
         sessionShortcut = nil
         sessionActivationMode = .pressOrHold
+        sessionActionTicket = nil
         // A try-it session can run with the feature off; nothing may stay
         // resident for it once the wheel closes.
         if !AppFeature.radialMenu.isAvailable
@@ -553,8 +585,9 @@ final class RadialMenuService: ObservableObject {
             openPointerLocation = NSEvent.mouseLocation
             return
         }
+        guard let ticket = sessionActionTicket, actionAllowed(ticket) else { endSession(); return }
         endSession()
-        run(item)
+        run(item, ticket: ticket)
     }
 
     /// Esc or a click on the hub: leave the submenu, then the wheel.
@@ -722,7 +755,8 @@ final class RadialMenuService: ObservableObject {
 
     // MARK: - Actions
 
-    private func run(_ item: RadialMenuItem) {
+    private func run(_ item: RadialMenuItem, ticket: RadialMenuActionGate.Ticket) {
+        guard actionAllowed(ticket) else { return }
         switch item.kind {
         case .app:
             let url = URL(fileURLWithPath: (item.payload as NSString).expandingTildeInPath)
@@ -743,41 +777,49 @@ final class RadialMenuService: ObservableObject {
             }
         case .shortcut:
             if let shortcut = GlobalShortcut(storageValue: item.payload) {
-                postWhenModifiersReleased(attempt: 0) { Self.postShortcut(shortcut) }
+                postWhenModifiersReleased(attempt: 0, ticket: ticket) { Self.postShortcut(shortcut) }
             }
         case .media:
             if let key = item.mediaKey {
                 if key == .nowPlaying {
                     RadialNowPlayingService.shared.presentDetails(at: wheelCenter)
                 } else {
-                    postWhenModifiersReleased(attempt: 0) { Self.postMediaKey(key) }
+                    postWhenModifiersReleased(attempt: 0, ticket: ticket) { Self.postMediaKey(key) }
                 }
             }
         case .tool:
-            if let tool = item.tool { run(tool) }
+            if let tool = item.tool { run(tool, ticket: ticket) }
         case .quickToggle:
-            if let action = item.quickToggle { run(action) }
+            if let action = item.quickToggle { run(action, ticket: ticket) }
         case .windowLayout:
-            if let action = item.windowLayoutAction { run(action) }
+            if let action = item.windowLayoutAction { run(action, ticket: ticket) }
         case .submenu:
             break
         }
     }
 
-    private func run(_ tool: RadialMenuTool) {
-        guard tool.isRunnable() else { return }
+    private func run(_ tool: RadialMenuTool, ticket: RadialMenuActionGate.Ticket) {
+        guard actionAllowed(ticket), tool.isRunnable() else { return }
         if tool == .clipboardHistory {
-            ClipboardHistoryService.schedulePresentation(after: 0.15)
+            guard let request = ClipboardHistoryService.presentationRequest() else { return }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
+                guard let self, self.actionAllowed(ticket), tool.isRunnable() else { return }
+                request()
+            }
             return
         }
         if tool == .micMute {
             guard let request = MicMuteService.toggleRequest() else { return }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15, execute: request)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
+                guard let self, self.actionAllowed(ticket), tool.isRunnable() else { return }
+                request()
+            }
             return
         }
         // The same beat the quick panel gives screen-touching tools, so the
         // wheel is really gone before anything captures or presents.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
+            guard let self, self.actionAllowed(ticket), tool.isRunnable() else { return }
             switch tool {
             case .screenshot: ScreenshotService.shared.capture()
             case .screenRecorder: ScreenRecorderService.shared.toggle()
@@ -805,9 +847,10 @@ final class RadialMenuService: ObservableObject {
         appDelegate()?.openSettingsWindow()
     }
 
-    private func run(_ action: RadialMenuQuickToggle) {
-        guard AppFeature.quickToggles.isAvailable else { return }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+    private func run(_ action: RadialMenuQuickToggle, ticket: RadialMenuActionGate.Ticket) {
+        guard actionAllowed(ticket), AppFeature.quickToggles.isAvailable else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
+            guard let self, self.actionAllowed(ticket), AppFeature.quickToggles.isAvailable else { return }
             let toggles = QuickTogglesService.shared
             switch action {
             case .darkMode: toggles.toggleDarkMode()
@@ -822,11 +865,12 @@ final class RadialMenuService: ObservableObject {
         }
     }
 
-    private func run(_ action: WindowLayoutAction) {
-        guard AppFeature.windowLayout.isAvailable, ensureAccessibilityPermission() else { return }
+    private func run(_ action: WindowLayoutAction, ticket: RadialMenuActionGate.Ticket) {
+        guard actionAllowed(ticket), AppFeature.windowLayout.isAvailable, ensureAccessibilityPermission() else { return }
         // Let the non-activating wheel disappear before resolving the window
         // that was active behind it, matching the delay used by visual tools.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
+            guard let self, self.actionAllowed(ticket), AppFeature.windowLayout.isAvailable else { return }
             if case .failure = WindowLayoutService.shared.apply(action) { NSSound.beep() }
         }
     }
@@ -849,16 +893,20 @@ final class RadialMenuService: ObservableObject {
     /// Waits for the summoning chord to leave the keyboard before posting, or
     /// the synthetic key merges with the still-held modifiers (checked every
     /// 15 ms for up to ~1.5 s, with an extra beat once clean).
-    private func postWhenModifiersReleased(attempt: Int, then post: @escaping () -> Void) {
-        guard ensureAccessibilityPermission() else { return }
+    private func postWhenModifiersReleased(attempt: Int, ticket: RadialMenuActionGate.Ticket,
+                                           then post: @escaping () -> Void) {
+        guard actionAllowed(ticket), ensureAccessibilityPermission() else { return }
         let held = CGEventSource.flagsState(.combinedSessionState)
             .intersection([.maskCommand, .maskAlternate, .maskShift, .maskControl])
         if held.isEmpty || attempt >= 100 {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.06, execute: post)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.06) { [weak self] in
+                guard let self, self.actionAllowed(ticket) else { return }
+                post()
+            }
             return
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.015) { [weak self] in
-            self?.postWhenModifiersReleased(attempt: attempt + 1, then: post)
+            self?.postWhenModifiersReleased(attempt: attempt + 1, ticket: ticket, then: post)
         }
     }
 
