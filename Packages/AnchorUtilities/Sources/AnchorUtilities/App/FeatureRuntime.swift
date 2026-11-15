@@ -356,6 +356,11 @@ final class FeatureRuntime: ObservableObject {
                     UtilityWorkspace.shared.prepareOwnership()
                     serviceBindings[feature]?()
                 }
+                if feature == .screenshot {
+                    // A transient external Off may already have invalidated
+                    // queued presentations before protected work restored On.
+                    ScreenshotService.existing?.syncWithPreferences()
+                }
                 continue
             }
             UtilityWorkspace.shared.prepareOwnership()

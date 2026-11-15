@@ -54,6 +54,13 @@ final class ScreenshotHistoryWrites<Capture, Editor: AnyObject> {
 /// contextually on first use. The shared screen-capture service owns the
 /// general shortcut and hands completed pictures back here.
 final class ScreenshotService: ObservableObject {
+    private static let restorationGate = ClipboardPresentationGate()
+    static func restorationTicket() -> UUID? {
+        restorationGate.capture(currentlyAvailable: AppFeature.screenshot.isAvailable)
+    }
+    static func acceptsRestoration(_ ticket: UUID) -> Bool {
+        restorationGate.accepts(ticket, currentlyAvailable: AppFeature.screenshot.isAvailable)
+    }
     private static let serviceSlot = FeatureServiceSlot<ScreenshotService>([.screenshot], make: { ScreenshotService() }, onDisable: { !$0.hasProtectedWork })
     static var shared: ScreenshotService { serviceSlot.value }
     static var existing: ScreenshotService? { serviceSlot.existing }
@@ -174,6 +181,7 @@ final class ScreenshotService: ObservableObject {
 
     func syncWithPreferences() {
         UtilityWorkspace.shared.prepareOwnership()
+        Self.restorationGate.update(available: AppFeature.screenshot.isAvailable)
         guard AppFeature.screenshot.isAvailable else {
             fullScreenShortcutRegistrationFailed = false
             lastCaptureShortcutRegistrationFailed = false
@@ -238,6 +246,7 @@ final class ScreenshotService: ObservableObject {
     }
 
     func suspend() {
+        Self.restorationGate.update(available: false)
         fullScreenHotkey.unregister()
         lastCaptureHotkey.unregister()
         clipboardHotkey.unregister()

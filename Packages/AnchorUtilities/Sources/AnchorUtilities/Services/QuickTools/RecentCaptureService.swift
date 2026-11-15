@@ -373,7 +373,8 @@ final class RecentCaptureService: ObservableObject {
         hideHistoryWindow()
         switch entry.kind {
         case .screenshot:
-            restoreScreenshot(entry)
+            guard let ticket = ScreenshotService.restorationTicket() else { return }
+            restoreScreenshot(entry, ticket: ticket)
         case .recording:
             guard let url = entry.recordingURL, RecentCaptureStore.isRegularFile(url) else {
                 remove(entry)
@@ -387,18 +388,22 @@ final class RecentCaptureService: ObservableObject {
         }
     }
 
-    private func restoreScreenshot(_ entry: RecentCaptureEntry) {
+    private func restoreScreenshot(_ entry: RecentCaptureEntry, ticket: UUID) {
         queue.async { [weak self] in
+            guard ScreenshotService.acceptsRestoration(ticket) else { return }
             guard let self, let capture = self.loadScreenshot(entry) else {
                 DispatchQueue.main.async { [weak self] in
+                    guard ScreenshotService.acceptsRestoration(ticket) else { return }
                     self?.remove(entry)
                     NSSound.beep()
                 }
                 return
             }
             DispatchQueue.main.async {
+                guard ScreenshotService.acceptsRestoration(ticket) else { return }
                 appDelegate()?.closePopover()
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
+                    guard ScreenshotService.acceptsRestoration(ticket) else { return }
                     ScreenshotService.shared.restorePreview(capture)
                 }
             }
