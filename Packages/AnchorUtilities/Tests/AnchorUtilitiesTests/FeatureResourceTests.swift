@@ -4,6 +4,46 @@ import XCTest
 @testable import AnchorUtilities
 
 final class FeatureResourceTests: XCTestCase {
+    func testScreenshotDiscardRetryDoesNotReopenAfterSuccess() {
+        let recovery = ScreenshotDiscardRecovery()
+        recovery.begin()
+        XCTAssertFalse(recovery.finish(success: false, previewOpen: true))
+        recovery.begin()
+        XCTAssertFalse(recovery.takeForClose(), "A pending retry determines its own outcome")
+        XCTAssertFalse(recovery.finish(success: true, previewOpen: false))
+        XCTAssertFalse(recovery.takeForClose())
+
+        recovery.begin()
+        XCTAssertFalse(recovery.finish(success: false, previewOpen: true))
+        recovery.begin()
+        XCTAssertFalse(recovery.takeForClose())
+        XCTAssertTrue(recovery.finish(success: false, previewOpen: false))
+        XCTAssertFalse(recovery.takeForClose())
+
+        recovery.begin()
+        XCTAssertFalse(recovery.finish(success: false, previewOpen: true))
+        XCTAssertTrue(recovery.takeForEdit())
+        XCTAssertFalse(recovery.takeForClose())
+        recovery.begin()
+        XCTAssertFalse(recovery.finish(success: false, previewOpen: true))
+        recovery.resolve()
+        XCTAssertFalse(recovery.takeForClose())
+    }
+
+    func testScreenshotDiscardRewindsNumberOnlyAfterTrashSucceeds() {
+        let url = URL(fileURLWithPath: "/unused/screenshot.png")
+        var rewound: [Int] = []
+        let failed = ScreenshotService.trashSavedCapture(at: url, consumedNumber: 7,
+            trash: { _ in throw CocoaError(.fileWriteNoPermission) },
+            rewind: { rewound.append($0) })
+        XCTAssertFalse(failed)
+        XCTAssertTrue(rewound.isEmpty)
+        let succeeded = ScreenshotService.trashSavedCapture(at: url, consumedNumber: 7,
+            trash: { XCTAssertEqual($0, url) }, rewind: { rewound.append($0) })
+        XCTAssertTrue(succeeded)
+        XCTAssertEqual(rewound, [7])
+    }
+
     func testScreenshotHistoryWritesRespectPerCaptureDecisions() {
         final class Editor {}
         let writes = ScreenshotHistoryWrites<String, Editor>()
@@ -78,6 +118,38 @@ final class FeatureResourceTests: XCTestCase {
         let entries = try JSONDecoder().decode([RecentCaptureEntry].self, from: index)
         XCTAssertEqual(entries.count, 1)
         let name = try XCTUnwrap(entries.first?.screenshotName)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: goodRoot.appendingPathComponent(name).path))
+
+        // The discard request can arrive before the capture write finishes.
+        let discardID = UUID()
+        let queuedWrite = expectation(description: "queued capture")
+        let discarded = expectation(description: "queued discard")
+        good.recordScreenshot(capture, id: discardID) { success in
+            XCTAssertTrue(success)
+            queuedWrite.fulfill()
+        }
+        good.removeScreenshot(id: discardID) { success in
+            XCTAssertTrue(success)
+            discarded.fulfill()
+        }
+        wait(for: [queuedWrite, discarded], timeout: 5)
+        let afterDiscard = try JSONDecoder().decode([RecentCaptureEntry].self,
+            from: Data(contentsOf: goodRoot.appendingPathComponent("history.json")))
+        XCTAssertEqual(afterDiscard, entries)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: goodRoot.appendingPathComponent(name).path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: goodRoot.appendingPathComponent("\(discardID.uuidString).png").path))
+
+        let failingRemoval = RecentCaptureService(directoryOverride: goodRoot, loadOnInit: false,
+                                                   persistOverride: { _ in false })
+        let deletionFailure = expectation(description: "failed removal")
+        failingRemoval.removeScreenshot(id: entries[0].id) { success in
+            XCTAssertFalse(success)
+            deletionFailure.fulfill()
+        }
+        wait(for: [deletionFailure], timeout: 5)
+        XCTAssertTrue(failingRemoval.prepareForDisable())
+        XCTAssertEqual(try JSONDecoder().decode([RecentCaptureEntry].self,
+            from: Data(contentsOf: goodRoot.appendingPathComponent("history.json"))), entries)
         XCTAssertTrue(FileManager.default.fileExists(atPath: goodRoot.appendingPathComponent(name).path))
 
         let failedRoot = base.appendingPathComponent("failed")

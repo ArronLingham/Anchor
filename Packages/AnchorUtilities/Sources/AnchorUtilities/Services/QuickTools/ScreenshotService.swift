@@ -5,6 +5,32 @@ import AppKit
 import ImageIO
 import UniformTypeIdentifiers
 
+/// Keeps a failed discard recoverable while the preview is closed, edited,
+/// or retried. A pending retry decides its own recovery after it finishes.
+final class ScreenshotDiscardRecovery {
+    private var required = false
+    private var pending = false
+    func begin() { pending = true }
+    func finish(success: Bool, previewOpen: Bool) -> Bool {
+        pending = false
+        if success { required = false; return false }
+        if previewOpen { required = true; return false }
+        required = false
+        return true
+    }
+    func takeForClose() -> Bool {
+        guard !pending, required else { return false }
+        required = false
+        return true
+    }
+    func takeForEdit() -> Bool {
+        let value = required
+        required = false
+        return value
+    }
+    func resolve() { required = false }
+}
+
 /// Main-thread state for independent history writes and the user's decisions
 /// while those writes are in flight. The editor is owned by the service.
 final class ScreenshotHistoryWrites<Capture, Editor: AnyObject> {
@@ -88,7 +114,9 @@ final class ScreenshotService: ObservableObject {
     private var session: ScreenshotSelectionController?
     private var preview: ScreenshotQuickPreviewController?
     private var previewCaptureToken: UUID?
+    private var previewPresentationID: UUID?
     private var pendingPreviewEdits: Set<UUID> = []
+    private var pendingDiscards: Set<UUID> = []
     private var editors: [ScreenshotEditorController] = []
     private let historyWrites = ScreenshotHistoryWrites<ScreenshotSelectionController.Capture, ScreenshotEditorController>()
     var hasOpenEditors: Bool { !editors.isEmpty }
@@ -96,7 +124,7 @@ final class ScreenshotService: ObservableObject {
     var hasInFlightCaptureWork: Bool {
         session?.captureInProgress == true || directCaptureTask != nil || scrollingTask != nil
             || autoCopyTask != nil || !autoShelfTasks.isEmpty || !historyWrites.isEmpty
-            || !pendingPreviewEdits.isEmpty
+            || !pendingPreviewEdits.isEmpty || !pendingDiscards.isEmpty
     }
     private var hasProtectedWork: Bool { hasInFlightCaptureWork || hasOpenEditors || hasOpenPreview }
     private var countdown: DispatchWorkItem?
@@ -499,6 +527,18 @@ final class ScreenshotService: ObservableObject {
         let consumedNumber: Int?
     }
 
+    static func trashSavedCapture(at url: URL, consumedNumber: Int?,
+                                  trash: (URL) throws -> Void,
+                                  rewind: (Int) -> Void) -> Bool {
+        do {
+            try trash(url)
+            if let consumedNumber { rewind(consumedNumber) }
+            return true
+        } catch {
+            return false
+        }
+    }
+
     private struct AutomaticActionResult {
         let performed: Set<ScreenshotQuickPreviewController.Action>
         let saved: SaveOutcome?
@@ -518,7 +558,7 @@ final class ScreenshotService: ObservableObject {
         preview?.close()
         let token = latestCaptureToken
         historyWrites.begin(token, capture: capture)
-        RecentCaptureService.shared.recordScreenshot(capture) { [self] success in
+        RecentCaptureService.shared.recordScreenshot(capture, id: token) { [self] success in
             finishHistoryWrite(token, success: success)
         }
         let defaults = UtilityPreferences.standard
@@ -546,7 +586,8 @@ final class ScreenshotService: ObservableObject {
                        initialSaved: result.saved,
                        completedActions: result.performed,
                        dismissInterval: dismissInterval,
-                       latestCapture: latestCaptureToken)
+                       latestCapture: latestCaptureToken,
+                       historyID: token)
     }
 
     private func finishHistoryWrite(_ token: UUID, success: Bool) {
@@ -586,11 +627,13 @@ final class ScreenshotService: ObservableObject {
     /// The editor decides what is kept, and its Add to Shelf puts the
     /// finished picture there, so the raw capture leaves the Shelf as it
     /// does when captures open straight in the editor.
-    private func editFromPreview(_ capture: ScreenshotSelectionController.Capture, latestCapture: UUID?) {
+    private func editFromPreview(_ capture: ScreenshotSelectionController.Capture, latestCapture: UUID?,
+                                 recoveryRequired: Bool = false) {
         unshelve(latestCapture)
         let editor = openEditor(with: capture,
                                 withholdsLatest: latestCapture == nil || latestCapture == latestCaptureToken)
-        if let latestCapture, historyWrites.associate(latestCapture, editor: editor) {
+        let failedHistory = latestCapture.map { historyWrites.associate($0, editor: editor) } ?? false
+        if failedHistory || recoveryRequired {
             editor.requireRecoverySave()
         }
     }
@@ -623,14 +666,15 @@ final class ScreenshotService: ObservableObject {
 
     /// A history item returns to the same floating preview without repeating
     /// automatic copy or save actions that already ran when it was captured.
-    func restorePreview(_ capture: ScreenshotSelectionController.Capture) {
+    func restorePreview(_ capture: ScreenshotSelectionController.Capture, historyID: UUID) {
         preview?.close()
         presentPreview(capture,
                        defaultAction: .none,
                        initialSaved: nil,
                        completedActions: [],
                        dismissInterval: ScreenshotSupport.recoveryPreviewDismissInterval,
-                       latestCapture: nil)
+                       latestCapture: nil,
+                       historyID: historyID)
     }
 
     private func presentPreview(_ capture: ScreenshotSelectionController.Capture,
@@ -638,8 +682,11 @@ final class ScreenshotService: ObservableObject {
                                 initialSaved: SaveOutcome?,
                                 completedActions: Set<ScreenshotQuickPreviewController.Action>,
                                 dismissInterval: TimeInterval?,
-                                latestCapture: UUID?) {
+                                latestCapture: UUID?,
+                                historyID: UUID) {
         var saved = initialSaved
+        let recovery = ScreenshotDiscardRecovery()
+        var editNeedsRecovery = false
         let editID = UUID()
         let controller = ScreenshotQuickPreviewController(
             capture: capture,
@@ -648,50 +695,82 @@ final class ScreenshotService: ObservableObject {
             completedActions: completedActions,
             dismissInterval: dismissInterval,
             willEdit: { [weak self] in
+                editNeedsRecovery = recovery.takeForEdit()
                 self?.pendingPreviewEdits.insert(editID)
                 if let latestCapture { self?.historyWrites.beginEditing(latestCapture) }
+            },
+            discard: { [weak self] completion in
+                guard let self else { completion(false); return }
+                // Withdraw an in-flight shortcut upload immediately, even if
+                // Trash or the history update later needs to be retried.
+                self.discardLatestCapture(latestCapture)
+                if let outcome = saved {
+                    let trashed = Self.trashSavedCapture(at: outcome.url, consumedNumber: outcome.consumedNumber,
+                        trash: { try FileManager.default.trashItem(at: $0, resultingItemURL: nil) },
+                        rewind: { Self.rewindNumberSequence(toReuse: $0) })
+                    guard trashed else {
+                        UtilityWorkspace.shared.reportFeatureNotice("Could not move the saved screenshot to Trash. Try again.")
+                        QuickToolHUD.show(icon: "exclamationmark.triangle", message: "Could not move screenshot to Trash")
+                        NSSound.beep()
+                        completion(false)
+                        return
+                    }
+                    saved = nil
+                }
+                if let latestCapture { self.historyWrites.resolve(latestCapture) }
+                recovery.begin()
+                self.pendingDiscards.insert(editID)
+                RecentCaptureService.shared.removeScreenshot(id: historyID) { [self] success in
+                    self.pendingDiscards.remove(editID)
+                    let openRecovery = recovery.finish(success: success, previewOpen: self.previewPresentationID == editID)
+                    if success {
+                        self.unshelve(latestCapture)
+                    } else {
+                        UtilityWorkspace.shared.reportFeatureNotice("Could not remove this screenshot from recent captures. Try again.")
+                        QuickToolHUD.show(icon: "exclamationmark.triangle", message: "Could not remove screenshot from history")
+                        NSSound.beep()
+                        if openRecovery {
+                            let editor = self.openEditor(with: capture, withholdsLatest: latestCapture != nil && latestCapture == self.latestCaptureToken)
+                            editor.requireRecoverySave()
+                        }
+                    }
+                    completion(success)
+                    if !AppFeature.screenshot.isAvailable && !self.hasProtectedWork {
+                        self.syncWithPreferences()
+                        FeatureServicePool.shared.releaseUnused()
+                    }
+                }
             },
             action: { [weak self] action in
                 guard let self else { return [] }
                 switch action {
                 case .edit:
                     defer { self.pendingPreviewEdits.remove(editID) }
-                    self.editFromPreview(capture, latestCapture: latestCapture)
+                    self.editFromPreview(capture, latestCapture: latestCapture,
+                                         recoveryRequired: editNeedsRecovery)
                     return [.edit]
                 case .pin:
                     ScreenshotPinController.shared.pin(image: capture.image, scale: capture.scale)
                     return [.pin]
                 case .copy:
                     guard self.copyDirect(capture) else { return [] }
+                    recovery.resolve()
                     if let latestCapture { self.historyWrites.resolve(latestCapture) }
                     return [.copy]
                 case .save:
                     guard let outcome = self.saveDirect(capture) else { return [] }
                     saved = outcome
+                    recovery.resolve()
                     if let latestCapture { self.historyWrites.resolve(latestCapture) }
                     return [.save]
                 case .saveAndCopy:
                     guard let result = self.saveAndCopyDirect(capture) else { return [] }
                     saved = result.outcome
+                    recovery.resolve()
                     if let latestCapture { self.historyWrites.resolve(latestCapture) }
                     return result.copied ? [.save, .copy] : [.save]
                 case .discard:
-                    // If this capture was already written to disk — whether
-                    // by the default action or a manual Save — Trash should
-                    // undo that rather than leave an orphaned file behind.
-                    // Into the actual Trash: the person may be discarding a
-                    // file the HUD just announced as saved.
-                    if let saved {
-                        try? FileManager.default.trashItem(at: saved.url,
-                                                           resultingItemURL: nil)
-                        if let consumed = saved.consumedNumber {
-                            Self.rewindNumberSequence(toReuse: consumed)
-                        }
-                    }
-                    self.unshelve(latestCapture)
-                    if let latestCapture { self.historyWrites.resolve(latestCapture) }
-                    self.discardLatestCapture(latestCapture)
-                    return [.discard]
+                    return [] // Discard is asynchronous and handled above.
                 }
             },
             share: { [weak self] duration, completion in
@@ -709,6 +788,11 @@ final class ScreenshotService: ObservableObject {
             onClose: { [weak self] in
                 self?.preview = nil
                 self?.previewCaptureToken = nil
+                self?.previewPresentationID = nil
+                if recovery.takeForClose(), let self {
+                    let editor = self.openEditor(with: capture, withholdsLatest: latestCapture != nil && latestCapture == self.latestCaptureToken)
+                    editor.requireRecoverySave()
+                }
                 DispatchQueue.main.async { [weak self] in
                     guard let self, !AppFeature.screenshot.isAvailable, !self.hasProtectedWork else { return }
                     self.syncWithPreferences()
@@ -717,6 +801,7 @@ final class ScreenshotService: ObservableObject {
             })
         preview = controller
         previewCaptureToken = latestCapture
+        previewPresentationID = editID
         controller.show()
     }
 

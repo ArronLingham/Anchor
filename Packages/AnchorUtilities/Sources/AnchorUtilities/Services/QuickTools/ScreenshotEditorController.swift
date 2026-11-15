@@ -1232,7 +1232,7 @@ final class ScreenshotEditorController: NSObject, NSWindowDelegate {
         guard let window else { return }
         let alert = NSAlert()
         alert.messageText = "Screenshot needs saving"
-        alert.informativeText = "Recent captures could not save this screenshot. Save or copy it from the editor, or discard it if you no longer need it."
+        alert.informativeText = "Recent captures could not be updated. Save or copy this screenshot from the editor, or discard it if you no longer need it."
         alert.addButton(withTitle: "OK")
         alert.beginSheetModal(for: window)
     }
@@ -1671,7 +1671,7 @@ final class ScreenshotEditorController: NSObject, NSWindowDelegate {
         let alert = NSAlert()
         alert.messageText = strings.discardTitle
         alert.informativeText = recoverySaveRequired
-            ? "This screenshot could not be saved to recent captures. Closing will discard it."
+            ? "This screenshot still needs saving or copying. Closing will discard it from the editor."
             : strings.discardMessage
         alert.addButton(withTitle: strings.discardConfirm)
         alert.addButton(withTitle: strings.cancel)

@@ -36,6 +36,7 @@ final class ScreenshotQuickPreviewController {
     /// their buttons out. Empty means the action failed entirely.
     private let action: (Action) -> Set<Action>
     private let willEdit: () -> Void
+    private let discard: (@escaping (Bool) -> Void) -> Void
     private let share: (ScreenshotShareDuration,
                         @escaping @MainActor (ScreenshotShareRecord?) -> Void) -> Void
     /// Writes the capture as it would be saved into a temporary file for the
@@ -51,6 +52,7 @@ final class ScreenshotQuickPreviewController {
     private let baseDismissDuration: TimeInterval?
     private var autoDismissDuration: TimeInterval?
     private var closed = false
+    private var discarding = false
     private let presentationID = UUID()
     private var shownInNotch = false
     private var didStartPreview = false
@@ -67,6 +69,7 @@ final class ScreenshotQuickPreviewController {
          completedActions: Set<Action>,
          dismissInterval: TimeInterval?,
          willEdit: @escaping () -> Void,
+         discard: @escaping (@escaping (Bool) -> Void) -> Void,
          action: @escaping (Action) -> Set<Action>,
          share: @escaping (ScreenshotShareDuration,
                            @escaping @MainActor (ScreenshotShareRecord?) -> Void) -> Void,
@@ -79,6 +82,7 @@ final class ScreenshotQuickPreviewController {
         self.autoDismissDuration = dismissInterval
         self.action = action
         self.willEdit = willEdit
+        self.discard = discard
         self.share = share
         self.shareFile = shareFile
         self.onClose = onClose
@@ -244,12 +248,27 @@ final class ScreenshotQuickPreviewController {
     }
 
     private func perform(_ requested: Action) {
-        guard !closed else { return }
+        guard !closed, !discarding else { return }
         // Keyboard shortcuts honor the grayed-out buttons: what the
         // after-capture action already did is not done twice.
         guard !model.disabledActions.contains(requested) else { return }
         dismissWork?.cancel()
         dismissWork = nil
+        if requested == .discard {
+            discarding = true
+            discard { [weak self] success in
+                guard let self else { return }
+                self.discarding = false
+                if success { self.close() }
+                else {
+                    // Trash may already have succeeded before history failed.
+                    // Keep the image visible and let the person save it again.
+                    self.model.disabledActions.remove(.save)
+                    self.autoDismissDuration = nil
+                }
+            }
+            return
+        }
         if requested == .edit {
             // Release the island's non-activating key panel before promoting
             // the app and constructing another SwiftUI window. Defer past the
@@ -429,7 +448,7 @@ final class ScreenshotQuickPreviewController {
     }
 
     private func scheduleAutoDismiss() {
-        guard !closed, !pointerInside, !systemSharing, !model.sharing, !model.deletingShare,
+        guard !closed, !discarding, !pointerInside, !systemSharing, !model.sharing, !model.deletingShare,
               let dismissDuration = autoDismissDuration
         else { return }
         dismissWork?.cancel()

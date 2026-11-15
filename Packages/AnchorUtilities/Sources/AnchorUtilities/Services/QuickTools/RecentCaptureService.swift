@@ -236,9 +236,8 @@ final class RecentCaptureService: ObservableObject {
         }
     }
 
-    func recordScreenshot(_ capture: ScreenshotSelectionController.Capture,
+    func recordScreenshot(_ capture: ScreenshotSelectionController.Capture, id: UUID = UUID(),
                           completion: @escaping (Bool) -> Void) {
-        let id = UUID()
         let screenshotName = "\(id.uuidString).png"
         let thumbnailName = "\(id.uuidString)-thumbnail.png"
         let entry = RecentCaptureEntry(
@@ -346,6 +345,25 @@ final class RecentCaptureService: ObservableObject {
         }
     }
 
+    /// Runs after any earlier capture write on the same queue. A failed index
+    /// update restores the previous entries and leaves their files untouched.
+    func removeScreenshot(id: UUID, completion: @escaping (Bool) -> Void) {
+        queue.async { [self] in
+            let success: Bool = {
+                guard store.loadIfNeeded() else { return false }
+                let previous = store.entries
+                store.entries.removeAll { $0.id == id && $0.kind == .screenshot }
+                guard persistOverride?(store) ?? store.persist() else {
+                    store.restoreAfterFailedWrite(previous)
+                    return false
+                }
+                publish()
+                return true
+            }()
+            DispatchQueue.main.async { completion(success) }
+        }
+    }
+
     func clear() {
         generationLock.lock()
         clearGeneration &+= 1
@@ -404,7 +422,7 @@ final class RecentCaptureService: ObservableObject {
                 appDelegate()?.closePopover()
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
                     guard ScreenshotService.acceptsRestoration(ticket) else { return }
-                    ScreenshotService.shared.restorePreview(capture)
+                    ScreenshotService.shared.restorePreview(capture, historyID: entry.id)
                 }
             }
         }
