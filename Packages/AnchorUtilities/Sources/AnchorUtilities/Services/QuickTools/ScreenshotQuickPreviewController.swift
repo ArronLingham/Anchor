@@ -35,6 +35,7 @@ final class ScreenshotQuickPreviewController {
     /// save-and-copy can succeed by halves, and only the done halves gray
     /// their buttons out. Empty means the action failed entirely.
     private let action: (Action) -> Set<Action>
+    private let willEdit: () -> Void
     private let share: (ScreenshotShareDuration,
                         @escaping @MainActor (ScreenshotShareRecord?) -> Void) -> Void
     /// Writes the capture as it would be saved into a temporary file for the
@@ -65,6 +66,7 @@ final class ScreenshotQuickPreviewController {
          defaultAction: ScreenshotDefaultAction,
          completedActions: Set<Action>,
          dismissInterval: TimeInterval?,
+         willEdit: @escaping () -> Void,
          action: @escaping (Action) -> Set<Action>,
          share: @escaping (ScreenshotShareDuration,
                            @escaping @MainActor (ScreenshotShareRecord?) -> Void) -> Void,
@@ -76,6 +78,7 @@ final class ScreenshotQuickPreviewController {
         self.baseDismissDuration = dismissInterval
         self.autoDismissDuration = dismissInterval
         self.action = action
+        self.willEdit = willEdit
         self.share = share
         self.shareFile = shareFile
         self.onClose = onClose
@@ -252,6 +255,7 @@ final class ScreenshotQuickPreviewController {
             // the app and constructing another SwiftUI window. Defer past the
             // button's current update rather than nesting editor layout in it.
             let action = action
+            willEdit()
             close()
             DispatchQueue.main.async { _ = action(requested) }
             return

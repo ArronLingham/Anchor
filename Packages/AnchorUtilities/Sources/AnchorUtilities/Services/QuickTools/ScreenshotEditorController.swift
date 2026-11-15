@@ -1223,6 +1223,19 @@ final class ScreenshotEditorController: NSObject, NSWindowDelegate {
     private var keyMonitor: Any?
     private var scrollMonitor: Any?
     private var pointerMonitor: Any?
+    private var recoverySaveRequired = false
+    private(set) var explicitlyResolved = false
+
+    /// The history copy failed, so this editor holds the remaining image.
+    func requireRecoverySave() {
+        recoverySaveRequired = true
+        guard let window else { return }
+        let alert = NSAlert()
+        alert.messageText = "Screenshot needs saving"
+        alert.informativeText = "Recent captures could not save this screenshot. Save or copy it from the editor, or discard it if you no longer need it."
+        alert.addButton(withTitle: "OK")
+        alert.beginSheetModal(for: window)
+    }
 
     var protectedWindowIDs: Set<CGWindowID> {
         guard let window, window.isVisible, window.windowNumber > 0 else { return [] }
@@ -1290,6 +1303,7 @@ final class ScreenshotEditorController: NSObject, NSWindowDelegate {
 
     /// Closes without the discard confirmation used by the titlebar button.
     func discardAndClose() {
+        explicitlyResolved = true
         window?.close()
     }
 
@@ -1488,6 +1502,7 @@ final class ScreenshotEditorController: NSObject, NSWindowDelegate {
             return
         }
         model.markExported()
+        explicitlyResolved = true
         QuickToolHUD.show(icon: "camera.viewfinder", message: strings.copiedHUD)
         window?.close()
     }
@@ -1572,6 +1587,7 @@ final class ScreenshotEditorController: NSObject, NSWindowDelegate {
             try data.write(to: url, options: .atomic)
             ScreenshotSupport.markAsScreenCapture(url)
             model.markExported()
+            explicitlyResolved = true
             QuickToolHUD.show(icon: "camera.viewfinder",
                               message: String(format: strings.savedHUDFormat,
                                               url.deletingLastPathComponent().lastPathComponent))
@@ -1598,6 +1614,7 @@ final class ScreenshotEditorController: NSObject, NSWindowDelegate {
             do {
                 try data.write(to: url, options: .atomic)
                 self.model.markExported()
+                self.explicitlyResolved = true
                 self.window?.close()
             } catch {
                 NSSound.beep()
@@ -1617,6 +1634,7 @@ final class ScreenshotEditorController: NSObject, NSWindowDelegate {
             return
         }
         model.markExported()
+        explicitlyResolved = true
         QuickToolHUD.show(icon: "tray.full", message: L10n.shared.s.shelfName)
         window?.close()
     }
@@ -1649,14 +1667,18 @@ final class ScreenshotEditorController: NSObject, NSWindowDelegate {
     // MARK: NSWindowDelegate
 
     func windowShouldClose(_ sender: NSWindow) -> Bool {
-        guard model.isDirty else { return true }
+        guard model.isDirty || recoverySaveRequired else { return true }
         let alert = NSAlert()
         alert.messageText = strings.discardTitle
-        alert.informativeText = strings.discardMessage
+        alert.informativeText = recoverySaveRequired
+            ? "This screenshot could not be saved to recent captures. Closing will discard it."
+            : strings.discardMessage
         alert.addButton(withTitle: strings.discardConfirm)
         alert.addButton(withTitle: strings.cancel)
         alert.alertStyle = .warning
-        return alert.runModal() == .alertFirstButtonReturn
+        let discard = alert.runModal() == .alertFirstButtonReturn
+        if discard { explicitlyResolved = true }
+        return discard
     }
 
     func windowWillClose(_ notification: Notification) {

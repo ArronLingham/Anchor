@@ -47,6 +47,13 @@ final class RecentCaptureStore {
         loaded = false
     }
 
+    /// A failed write may still have replaced the index before reporting an
+    /// error. Force the restored snapshot to be written before any cleanup.
+    func restoreAfterFailedWrite(_ previousEntries: [RecentCaptureEntry]) {
+        entries = previousEntries
+        persistedEntries = nil
+    }
+
     func loadIfNeeded() -> Bool {
         if loaded { return true }
         guard let directoryURL else { return false }

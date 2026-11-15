@@ -1,8 +1,139 @@
 import Foundation
+import CoreGraphics
 import XCTest
 @testable import AnchorUtilities
 
 final class FeatureResourceTests: XCTestCase {
+    func testScreenshotHistoryWritesRespectPerCaptureDecisions() {
+        final class Editor {}
+        let writes = ScreenshotHistoryWrites<String, Editor>()
+        let first = UUID(), second = UUID(), third = UUID(), fourth = UUID()
+        let editor = Editor()
+        writes.begin(first, capture: "discarded")
+        writes.begin(second, capture: "editing")
+        writes.begin(third, capture: "older")
+        writes.begin(fourth, capture: "saved")
+        writes.associate(second, editor: editor)
+        writes.resolve(first)
+        writes.resolve(fourth)
+        XCTAssertNil(writes.finish(first, success: false))
+        XCTAssertNil(writes.finish(fourth, success: false))
+        let oldFailure = writes.finish(third, success: false)
+        XCTAssertEqual(oldFailure?.capture, "older")
+        XCTAssertNil(oldFailure?.editor)
+        let editingFailure = writes.finish(second, success: false)
+        XCTAssertTrue(editingFailure?.editor === editor)
+        XCTAssertEqual(editingFailure?.capture, "editing")
+        XCTAssertTrue(writes.isEmpty)
+
+        writes.begin(first, capture: "closed editor")
+        writes.associate(first, editor: editor)
+        writes.resolve(editor: editor)
+        XCTAssertNil(writes.finish(first, success: false))
+        writes.begin(first, capture: "closed without an explicit discard")
+        writes.associate(first, editor: editor)
+        writes.detach(editor: editor)
+        let closedFailure = writes.finish(first, success: false)
+        XCTAssertEqual(closedFailure?.capture, "closed without an explicit discard")
+        XCTAssertNil(closedFailure?.editor)
+        writes.begin(second, capture: "committed")
+        XCTAssertNil(writes.finish(second, success: true))
+        XCTAssertTrue(writes.isEmpty)
+
+        // Preview Edit closes its preview before opening the editor on the
+        // next main-queue turn; a result arriving there must wait for it.
+        writes.begin(first, capture: "deferred edit")
+        writes.beginEditing(first)
+        XCTAssertNil(writes.finish(first, success: false))
+        XCTAssertFalse(writes.isEmpty)
+        XCTAssertTrue(writes.associate(first, editor: editor))
+        XCTAssertTrue(writes.isEmpty)
+        writes.begin(second, capture: "successful deferred edit")
+        writes.beginEditing(second)
+        XCTAssertNil(writes.finish(second, success: true))
+        XCTAssertFalse(writes.associate(second, editor: editor))
+        XCTAssertTrue(writes.isEmpty)
+    }
+
+    func testScreenshotHistoryReportsCommittedAndFailedWrites() throws {
+        let base = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: base) }
+        let context = try XCTUnwrap(CGContext(data: nil, width: 4, height: 4,
+                                              bitsPerComponent: 8, bytesPerRow: 0,
+                                              space: CGColorSpaceCreateDeviceRGB(),
+                                              bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+        let capture = ScreenshotSelectionController.Capture(image: try XCTUnwrap(context.makeImage()),
+                                                            scale: 1, anchorRect: CGRect(x: 0, y: 0, width: 4, height: 4))
+        let goodRoot = base.appendingPathComponent("good")
+        let good = RecentCaptureService(directoryOverride: goodRoot, loadOnInit: false)
+        let committed = expectation(description: "committed")
+        good.recordScreenshot(capture) { success in
+            XCTAssertTrue(Thread.isMainThread)
+            XCTAssertTrue(success)
+            committed.fulfill()
+        }
+        wait(for: [committed], timeout: 5)
+        let index = try Data(contentsOf: goodRoot.appendingPathComponent("history.json"))
+        let entries = try JSONDecoder().decode([RecentCaptureEntry].self, from: index)
+        XCTAssertEqual(entries.count, 1)
+        let name = try XCTUnwrap(entries.first?.screenshotName)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: goodRoot.appendingPathComponent(name).path))
+
+        let failedRoot = base.appendingPathComponent("failed")
+        let failed = RecentCaptureService(directoryOverride: failedRoot, loadOnInit: false,
+                                          persistOverride: { _ in false })
+        let failedWrite = expectation(description: "failed index write")
+        failed.recordScreenshot(capture) { success in
+            XCTAssertFalse(success)
+            failedWrite.fulfill()
+        }
+        wait(for: [failedWrite], timeout: 5)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: failedRoot.appendingPathComponent("history.json").path))
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: failedRoot.path).filter { $0.hasSuffix(".png") }.count, 2)
+        XCTAssertTrue(failed.prepareForDisable())
+        let restoredEmpty = try JSONDecoder().decode([RecentCaptureEntry].self,
+            from: Data(contentsOf: failedRoot.appendingPathComponent("history.json")))
+        XCTAssertTrue(restoredEmpty.isEmpty)
+        XCTAssertTrue(try FileManager.default.contentsOfDirectory(atPath: failedRoot.path).filter { $0.hasSuffix(".png") }.isEmpty)
+
+        // An atomic replacement may have succeeded before a later filesystem
+        // error. A retry must rewrite the previous index before cleanup.
+        let ambiguous = RecentCaptureService(directoryOverride: goodRoot, loadOnInit: false,
+                                              persistOverride: { store in
+            XCTAssertTrue(store.persist())
+            return false
+        })
+        let ambiguousWrite = expectation(description: "ambiguous committed write")
+        ambiguous.recordScreenshot(capture) { success in
+            XCTAssertFalse(success)
+            ambiguousWrite.fulfill()
+        }
+        wait(for: [ambiguousWrite], timeout: 5)
+        let ambiguousIndex = goodRoot.appendingPathComponent("history.json")
+        XCTAssertEqual(try JSONDecoder().decode([RecentCaptureEntry].self,
+            from: Data(contentsOf: ambiguousIndex)).count, 2)
+        XCTAssertTrue(ambiguous.prepareForDisable())
+        let restored = try JSONDecoder().decode([RecentCaptureEntry].self, from: Data(contentsOf: ambiguousIndex))
+        XCTAssertEqual(restored, entries)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: goodRoot.appendingPathComponent(name).path))
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: goodRoot.path).filter { $0.hasSuffix(".png") }.count, 2)
+
+        let badRoot = base.appendingPathComponent("unreadable")
+        try FileManager.default.createDirectory(at: badRoot, withIntermediateDirectories: true)
+        let corrupt = Data("not an index".utf8)
+        let corruptURL = badRoot.appendingPathComponent("history.json")
+        try corrupt.write(to: corruptURL)
+        let unreadable = RecentCaptureService(directoryOverride: badRoot, loadOnInit: false)
+        let failedLoad = expectation(description: "unreadable index")
+        unreadable.recordScreenshot(capture) { success in
+            XCTAssertFalse(success)
+            failedLoad.fulfill()
+        }
+        wait(for: [failedLoad], timeout: 5)
+        XCTAssertEqual(try Data(contentsOf: corruptURL), corrupt)
+    }
+
     func testRadialMenuActionTicketsSurviveDismissalButNotDisable() throws {
         let gate = RadialMenuActionGate()
         let on = RadialMenuActionGate.State(available: true, enabled: true)

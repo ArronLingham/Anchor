@@ -35,6 +35,8 @@ final class RecentCaptureService: ObservableObject {
     @Published private(set) var shortcutRegistrationFailed = false
 
     private let manager = FileManager.default
+    private let directoryOverride: URL?
+    private let persistOverride: ((RecentCaptureStore) -> Bool)?
     private let hotkey = QuickToolHotkey(id: 21)
     private let queue = DispatchQueue(label: "com.vorssaint.utils.recent-captures",
                                       qos: .utility)
@@ -48,10 +50,13 @@ final class RecentCaptureService: ObservableObject {
     private var panelGlobalClickMonitor: Any?
     private var panelActivationObserver: NSObjectProtocol?
 
-    private init() {
+    init(directoryOverride: URL? = nil, loadOnInit: Bool = true,
+         persistOverride: ((RecentCaptureStore) -> Bool)? = nil) {
+        self.directoryOverride = directoryOverride
+        self.persistOverride = persistOverride
         thumbnailCache.countLimit = ScreenshotSupport.recentCaptureLimit
         hotkey.onPress = { [weak self] in self?.showHistoryWindow() }
-        reload()
+        if loadOnInit { reload() }
     }
 
     func syncWithPreferences() {
@@ -212,6 +217,7 @@ final class RecentCaptureService: ObservableObject {
     }
 
     private var root: URL? {
+        if let directoryOverride { return directoryOverride }
         guard let base = manager.urls(for: .cachesDirectory, in: .userDomainMask).first,
               let bundleID = Bundle.main.bundleIdentifier
         else { return nil }
@@ -230,7 +236,8 @@ final class RecentCaptureService: ObservableObject {
         }
     }
 
-    func recordScreenshot(_ capture: ScreenshotSelectionController.Capture) {
+    func recordScreenshot(_ capture: ScreenshotSelectionController.Capture,
+                          completion: @escaping (Bool) -> Void) {
         let id = UUID()
         let screenshotName = "\(id.uuidString).png"
         let thumbnailName = "\(id.uuidString)-thumbnail.png"
@@ -249,26 +256,28 @@ final class RecentCaptureService: ObservableObject {
         let image = capture.image
         let scale = capture.scale
 
-        queue.async { [weak self] in
-            guard let self, let root = self.root else { return }
-            guard self.store.loadIfNeeded() else { return }
-            do {
-                guard let full = ScreenshotRenderer.pngData(from: image, scale: scale),
-                      let smallImage = Self.thumbnail(from: image),
-                      let small = ScreenshotRenderer.pngData(from: smallImage, scale: 1)
-                else { return }
-                try RecentCaptureStore.write(full, to: root.appendingPathComponent(screenshotName))
+        queue.async { [self] in
+            let success: Bool = {
+                guard let root = self.root, self.store.loadIfNeeded() else { return false }
                 do {
-                    try RecentCaptureStore.write(small, to: root.appendingPathComponent(thumbnailName))
+                    guard let full = ScreenshotRenderer.pngData(from: image, scale: scale),
+                          let smallImage = Self.thumbnail(from: image),
+                          let small = ScreenshotRenderer.pngData(from: smallImage, scale: 1)
+                    else { return false }
+                    try RecentCaptureStore.write(full, to: root.appendingPathComponent(screenshotName))
+                    do {
+                        try RecentCaptureStore.write(small, to: root.appendingPathComponent(thumbnailName))
+                    } catch {
+                        try? self.manager.removeItem(at: root.appendingPathComponent(screenshotName))
+                        try? self.manager.removeItem(at: root.appendingPathComponent(thumbnailName))
+                        throw error
+                    }
+                    return self.prepend(entry, restoreOnFailure: true)
                 } catch {
-                    try? self.manager.removeItem(at: root.appendingPathComponent(screenshotName))
-                    try? self.manager.removeItem(at: root.appendingPathComponent(thumbnailName))
-                    throw error
+                    return false
                 }
-                self.prepend(entry)
-            } catch {
-                return
-            }
+            }()
+            DispatchQueue.main.async { completion(success) }
         }
     }
 
@@ -429,7 +438,9 @@ final class RecentCaptureService: ObservableObject {
         store.entries = kept.filter { keepIDs.contains($0.id) }
     }
 
-    private func prepend(_ entry: RecentCaptureEntry) {
+    @discardableResult
+    private func prepend(_ entry: RecentCaptureEntry, restoreOnFailure: Bool = false) -> Bool {
+        let previousEntries = store.entries
         if let path = entry.recordingPath,
            let previous = store.entries.first(where: { $0.recordingPath == path }) {
             store.entries.removeAll { $0.id == previous.id }
@@ -438,8 +449,14 @@ final class RecentCaptureService: ObservableObject {
         store.entries.sort { $0.createdAt > $1.createdAt }
         let keepIDs = cappedIDs(for: store.entries)
         store.entries.removeAll { !keepIDs.contains($0.id) }
-        store.persist()
+        let persisted = persistOverride?(store) ?? store.persist()
+        if !persisted && restoreOnFailure {
+            // Do not retry a capture the user may subsequently discard. The
+            // files stay intact until the restored index is committed.
+            store.restoreAfterFailedWrite(previousEntries)
+        }
         publish()
+        return persisted && store.entries.contains { $0.id == entry.id }
     }
 
     private func entryExists(_ entry: RecentCaptureEntry) -> Bool {

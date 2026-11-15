@@ -5,13 +5,56 @@ import AppKit
 import ImageIO
 import UniformTypeIdentifiers
 
+/// Main-thread state for independent history writes and the user's decisions
+/// while those writes are in flight. The editor is owned by the service.
+final class ScreenshotHistoryWrites<Capture, Editor: AnyObject> {
+    private final class Entry {
+        let capture: Capture
+        weak var editor: Editor?
+        var resolved = false
+        var waitingForEditor = false
+        var completed: Bool?
+        init(_ capture: Capture) { self.capture = capture }
+    }
+    private var entries: [UUID: Entry] = [:]
+    var isEmpty: Bool { entries.isEmpty }
+    func begin(_ token: UUID, capture: Capture) { entries[token] = Entry(capture) }
+    func beginEditing(_ token: UUID) { entries[token]?.waitingForEditor = true }
+    @discardableResult
+    func associate(_ token: UUID, editor: Editor) -> Bool {
+        guard let entry = entries[token] else { return false }
+        entry.editor = editor
+        entry.waitingForEditor = false
+        guard let success = entry.completed else { return false }
+        entries.removeValue(forKey: token)
+        return !success && !entry.resolved
+    }
+    func resolve(_ token: UUID) { entries[token]?.resolved = true }
+    func resolve(editor: Editor) {
+        for entry in entries.values where entry.editor === editor { entry.resolved = true }
+    }
+    func detach(editor: Editor) {
+        for entry in entries.values where entry.editor === editor { entry.editor = nil }
+    }
+    func finish(_ token: UUID, success: Bool) -> (capture: Capture, editor: Editor?)? {
+        guard let entry = entries[token] else { return nil }
+        if entry.waitingForEditor {
+            entry.completed = success
+            return nil
+        }
+        entries.removeValue(forKey: token)
+        guard !success, !entry.resolved else { return nil }
+        return (entry.capture, entry.editor)
+    }
+}
+
 /// The screenshot tool: freeze-first area, window and full screen capture
 /// with an annotation editor, pinned floating captures and direct clipboard
 /// or file output. Purely on demand and needs Screen Recording, requested
 /// contextually on first use. The shared screen-capture service owns the
 /// general shortcut and hands completed pictures back here.
 final class ScreenshotService: ObservableObject {
-    private static let serviceSlot = FeatureServiceSlot<ScreenshotService>([.screenshot], make: { ScreenshotService() })
+    private static let serviceSlot = FeatureServiceSlot<ScreenshotService>([.screenshot], make: { ScreenshotService() }, onDisable: { !$0.hasProtectedWork })
     static var shared: ScreenshotService { serviceSlot.value }
     static var existing: ScreenshotService? { serviceSlot.existing }
 
@@ -37,13 +80,18 @@ final class ScreenshotService: ObservableObject {
     private let clipboardHotkey = QuickToolHotkey(id: 24)
     private var session: ScreenshotSelectionController?
     private var preview: ScreenshotQuickPreviewController?
+    private var previewCaptureToken: UUID?
+    private var pendingPreviewEdits: Set<UUID> = []
     private var editors: [ScreenshotEditorController] = []
+    private let historyWrites = ScreenshotHistoryWrites<ScreenshotSelectionController.Capture, ScreenshotEditorController>()
     var hasOpenEditors: Bool { !editors.isEmpty }
     var hasOpenPreview: Bool { preview != nil }
     var hasInFlightCaptureWork: Bool {
         session?.captureInProgress == true || directCaptureTask != nil || scrollingTask != nil
-            || autoCopyTask != nil || !autoShelfTasks.isEmpty
+            || autoCopyTask != nil || !autoShelfTasks.isEmpty || !historyWrites.isEmpty
+            || !pendingPreviewEdits.isEmpty
     }
+    private var hasProtectedWork: Bool { hasInFlightCaptureWork || hasOpenEditors || hasOpenPreview }
     private var countdown: DispatchWorkItem?
     private var countdownRemaining = 0
     private var countdownMode: CaptureMode = .standard
@@ -136,7 +184,9 @@ final class ScreenshotService: ObservableObject {
             clipboardHotkey.unregister()
             uploadHotkey.unregister()
             ScreenshotLastCaptureStore.clear()
-            teardownSurfaces()
+            // External preference changes can be observed before the runtime
+            // gate restores availability. Do not destroy work in that gap.
+            if !hasProtectedWork { teardownSurfaces() }
             return
         }
         let defaults = UtilityPreferences.standard
@@ -457,7 +507,11 @@ final class ScreenshotService: ObservableObject {
         // The island's companion blinks hard, as a flash, if it is there to see.
         NotchService.shared.reactMascot(.flash, patience: 1)
         preview?.close()
-        RecentCaptureService.shared.recordScreenshot(capture)
+        let token = latestCaptureToken
+        historyWrites.begin(token, capture: capture)
+        RecentCaptureService.shared.recordScreenshot(capture) { [self] success in
+            finishHistoryWrite(token, success: success)
+        }
         let defaults = UtilityPreferences.standard
         if defaults.bool(forKey: DefaultsKey.screenshotCopyToClipboard) {
             autoCopy(capture)
@@ -466,10 +520,11 @@ final class ScreenshotService: ObservableObject {
         if defaultAction == .edit {
             // The editor decides what is kept. Its Add to Shelf puts the
             // finished picture there, so the raw capture is not shelved too.
-            openEditor(with: capture)
+            historyWrites.associate(token, editor: openEditor(with: capture))
             return
         }
         let result = runDefaultAction(defaultAction, capture: capture)
+        if result.saved != nil { historyWrites.resolve(token) }
         autoShelve(capture, saved: result.saved?.url)
         guard case .shown(let dismissInterval) = ScreenshotSupport.quickPreviewPresentation(
             defaultAction: defaultAction,
@@ -483,6 +538,22 @@ final class ScreenshotService: ObservableObject {
                        completedActions: result.performed,
                        dismissInterval: dismissInterval,
                        latestCapture: latestCaptureToken)
+    }
+
+    private func finishHistoryWrite(_ token: UUID, success: Bool) {
+        if let write = historyWrites.finish(token, success: success) {
+            if let editor = write.editor {
+                editor.requireRecoverySave()
+            } else {
+                if previewCaptureToken == token { preview?.close() }
+                let editor = openEditor(with: write.capture, withholdsLatest: token == latestCaptureToken)
+                editor.requireRecoverySave()
+            }
+        }
+        if !AppFeature.screenshot.isAvailable && !hasProtectedWork {
+            syncWithPreferences()
+            FeatureServicePool.shared.releaseUnused()
+        }
     }
 
     /// Thrown away, the latest capture is no longer one the upload shortcut
@@ -508,7 +579,11 @@ final class ScreenshotService: ObservableObject {
     /// does when captures open straight in the editor.
     private func editFromPreview(_ capture: ScreenshotSelectionController.Capture, latestCapture: UUID?) {
         unshelve(latestCapture)
-        openEditor(with: capture)
+        let editor = openEditor(with: capture,
+                                withholdsLatest: latestCapture == nil || latestCapture == latestCaptureToken)
+        if let latestCapture, historyWrites.associate(latestCapture, editor: editor) {
+            editor.requireRecoverySave()
+        }
     }
 
     private func cancelAutoShelf() {
@@ -556,30 +631,40 @@ final class ScreenshotService: ObservableObject {
                                 dismissInterval: TimeInterval?,
                                 latestCapture: UUID?) {
         var saved = initialSaved
+        let editID = UUID()
         let controller = ScreenshotQuickPreviewController(
             capture: capture,
             strings: strings,
             defaultAction: defaultAction,
             completedActions: completedActions,
             dismissInterval: dismissInterval,
+            willEdit: { [weak self] in
+                self?.pendingPreviewEdits.insert(editID)
+                if let latestCapture { self?.historyWrites.beginEditing(latestCapture) }
+            },
             action: { [weak self] action in
                 guard let self else { return [] }
                 switch action {
                 case .edit:
+                    defer { self.pendingPreviewEdits.remove(editID) }
                     self.editFromPreview(capture, latestCapture: latestCapture)
                     return [.edit]
                 case .pin:
                     ScreenshotPinController.shared.pin(image: capture.image, scale: capture.scale)
                     return [.pin]
                 case .copy:
-                    return self.copyDirect(capture) ? [.copy] : []
+                    guard self.copyDirect(capture) else { return [] }
+                    if let latestCapture { self.historyWrites.resolve(latestCapture) }
+                    return [.copy]
                 case .save:
                     guard let outcome = self.saveDirect(capture) else { return [] }
                     saved = outcome
+                    if let latestCapture { self.historyWrites.resolve(latestCapture) }
                     return [.save]
                 case .saveAndCopy:
                     guard let result = self.saveAndCopyDirect(capture) else { return [] }
                     saved = result.outcome
+                    if let latestCapture { self.historyWrites.resolve(latestCapture) }
                     return result.copied ? [.save, .copy] : [.save]
                 case .discard:
                     // If this capture was already written to disk — whether
@@ -595,6 +680,7 @@ final class ScreenshotService: ObservableObject {
                         }
                     }
                     self.unshelve(latestCapture)
+                    if let latestCapture { self.historyWrites.resolve(latestCapture) }
                     self.discardLatestCapture(latestCapture)
                     return [.discard]
                 }
@@ -611,8 +697,17 @@ final class ScreenshotService: ObservableObject {
                 return Self.temporaryExportFile(image: export.image, scale: export.scale,
                                                 strings: self.strings)
             },
-            onClose: { [weak self] in self?.preview = nil })
+            onClose: { [weak self] in
+                self?.preview = nil
+                self?.previewCaptureToken = nil
+                DispatchQueue.main.async { [weak self] in
+                    guard let self, !AppFeature.screenshot.isAvailable, !self.hasProtectedWork else { return }
+                    self.syncWithPreferences()
+                    FeatureServicePool.shared.releaseUnused()
+                }
+            })
         preview = controller
+        previewCaptureToken = latestCapture
         controller.show()
     }
 
@@ -641,15 +736,18 @@ final class ScreenshotService: ObservableObject {
         }
     }
 
-    func openEditor(with capture: ScreenshotSelectionController.Capture) {
+    @discardableResult
+    func openEditor(with capture: ScreenshotSelectionController.Capture,
+                    withholdsLatest: Bool = true) -> ScreenshotEditorController {
         WindowActivationPolicy.retain()
         // Any editor may be showing the latest capture, and what it exports
         // is no longer the stored original, so the shortcut keeps that
         // original back until a newer capture arrives.
-        withholdLatestCapture()
+        if withholdsLatest { withholdLatestCapture() }
         let editor = ScreenshotEditorController(capture: capture)
         editors.append(editor)
         editor.show()
+        return editor
     }
 
     @MainActor
@@ -806,8 +904,17 @@ final class ScreenshotService: ObservableObject {
 
     func editorDidClose(_ editor: ScreenshotEditorController) {
         guard editors.contains(where: { $0 === editor }) else { return }
+        if editor.explicitlyResolved {
+            historyWrites.resolve(editor: editor)
+        } else {
+            historyWrites.detach(editor: editor)
+        }
         editors.removeAll { $0 === editor }
         WindowActivationPolicy.release()
+        if !AppFeature.screenshot.isAvailable && !hasProtectedWork {
+            syncWithPreferences()
+            FeatureServicePool.shared.releaseUnused()
+        }
     }
 
     /// Automatic copy stays quiet on success: the preview or the editor is
