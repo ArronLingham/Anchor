@@ -2,8 +2,49 @@
 // Copyright (C) 2026 Vorssaint
 
 import AppKit
+import CryptoKit
+import Darwin
 import ImageIO
 import UniformTypeIdentifiers
+
+/// Tracks the capture whose automatic clipboard export is still in flight.
+final class ScreenshotAutoCopyState {
+    private var generation = 0
+    private var capture: UUID?
+    func begin(_ capture: UUID) -> Int {
+        generation += 1
+        self.capture = capture
+        return generation
+    }
+    func accepts(_ generation: Int) -> Bool { self.generation == generation && capture != nil }
+    func cancel(_ capture: UUID?) -> Bool {
+        guard let capture, self.capture == capture else { return false }
+        self.capture = nil
+        return true
+    }
+    func finish(_ generation: Int) -> Bool {
+        guard self.generation == generation else { return false }
+        capture = nil
+        return true
+    }
+    func invalidate() { generation += 1; capture = nil }
+}
+
+/// A history removal must finish before the matching shortcut copy is removed.
+enum ScreenshotDiscardCopies {
+    static func run(historyID: UUID?, cacheIdentity: ScreenshotLastCaptureStore.Identity?,
+                    removeHistory: (UUID, @escaping (Bool) -> Void) -> Void,
+                    removeCache: @escaping (ScreenshotLastCaptureStore.Identity, @escaping (Bool) -> Void) -> Void,
+                    completion: @escaping (Bool) -> Void) {
+        let finishHistory: (Bool) -> Void = { success in
+            guard success else { completion(false); return }
+            guard let cacheIdentity else { completion(true); return }
+            removeCache(cacheIdentity, completion)
+        }
+        if let historyID { removeHistory(historyID, finishHistory) }
+        else { finishHistory(true) }
+    }
+}
 
 /// Keeps a failed discard recoverable while the preview is closed, edited,
 /// or retried. A pending retry decides its own recovery after it finishes.
@@ -132,7 +173,7 @@ final class ScreenshotService: ObservableObject {
     private var countdownMode: CaptureMode = .standard
     private var directCaptureTask: Task<Void, Never>?
     private var autoCopyTask: Task<Void, Never>?
-    private var autoCopyGeneration = 0
+    private let autoCopyState = ScreenshotAutoCopyState()
     private var autoShelfTasks: [UUID: Task<Void, Never>] = [:]
     /// Only the latest capture still has a preview that can discard it.
     /// Older captures stay on the shelf without a growing item registry.
@@ -290,7 +331,7 @@ final class ScreenshotService: ObservableObject {
         directCaptureTask = nil
         autoCopyTask?.cancel()
         autoCopyTask = nil
-        autoCopyGeneration += 1
+        autoCopyState.invalidate()
         cancelAutoShelf()
         scrollingTask?.cancel()
         scrollingTask = nil
@@ -610,8 +651,13 @@ final class ScreenshotService: ObservableObject {
     /// Thrown away, the latest capture is no longer one the upload shortcut
     /// may publish. A capture reopened from history makes no such claim.
     private func discardLatestCapture(_ latestCapture: UUID?) {
+        cancelAutoCopy(for: latestCapture)
         guard let latestCapture, latestCapture == latestCaptureToken else { return }
         withholdLatestCapture()
+    }
+
+    private func cancelAutoCopy(for capture: UUID?) {
+        if autoCopyState.cancel(capture) { autoCopyTask?.cancel() }
     }
 
     /// A discarded preview cancels only its capture, including a copy still
@@ -635,9 +681,9 @@ final class ScreenshotService: ObservableObject {
                                 withholdsLatest: historyID == latestCaptureToken,
                                 historyID: historyID, historyCaptureToken: latestCapture)
         let failedHistory = latestCapture.map { historyWrites.associate($0, editor: editor) } ?? false
-        if failedHistory || recoveryRequired {
-            editor.requireRecoverySave()
-        }
+        if recoveryRequired {
+            editor.requireRecoverySave(message: "The screenshot could not be discarded. Save or copy it, or try again.")
+        } else if failedHistory { editor.requireRecoverySave() }
     }
 
     private func cancelAutoShelf() {
@@ -705,6 +751,7 @@ final class ScreenshotService: ObservableObject {
                 guard let self else { completion(false); return }
                 // Withdraw an in-flight shortcut upload immediately, even if
                 // Trash or the history update later needs to be retried.
+                self.cancelAutoCopy(for: historyID)
                 self.discardLatestCapture(latestCapture)
                 if let outcome = saved {
                     let trashed = Self.trashSavedCapture(at: outcome.url, consumedNumber: outcome.consumedNumber,
@@ -722,19 +769,24 @@ final class ScreenshotService: ObservableObject {
                 if let latestCapture { self.historyWrites.resolve(latestCapture) }
                 recovery.begin()
                 self.pendingDiscards.insert(editID)
-                RecentCaptureService.shared.removeScreenshot(id: historyID) { [self] success in
+                let cacheIdentity = ScreenshotLastCaptureStore.Identity.tagged(historyID)
+                ScreenshotLastCaptureStore.beginDiscard(cacheIdentity)
+                ScreenshotDiscardCopies.run(historyID: historyID, cacheIdentity: .tagged(historyID),
+                    removeHistory: { RecentCaptureService.shared.removeScreenshot(id: $0, completion: $1) },
+                    removeCache: { ScreenshotLastCaptureStore.discard($0, completion: $1) }) { [self] success in
+                    ScreenshotLastCaptureStore.endDiscard(cacheIdentity)
                     self.pendingDiscards.remove(editID)
                     let openRecovery = recovery.finish(success: success, previewOpen: self.previewPresentationID == editID)
                     if success {
                         self.unshelve(latestCapture)
                     } else {
-                        UtilityWorkspace.shared.reportFeatureNotice("Could not remove this screenshot from recent captures. Try again.")
-                        QuickToolHUD.show(icon: "exclamationmark.triangle", message: "Could not remove screenshot from history")
+                        UtilityWorkspace.shared.reportFeatureNotice("Could not discard this screenshot. Try again.")
+                        QuickToolHUD.show(icon: "exclamationmark.triangle", message: "Could not discard screenshot")
                         NSSound.beep()
                         if openRecovery {
                             let editor = self.openEditor(with: capture, withholdsLatest: latestCapture != nil && latestCapture == self.latestCaptureToken,
                                                          historyID: historyID, historyCaptureToken: latestCapture)
-                            editor.requireRecoverySave()
+                            editor.requireRecoverySave(message: "The screenshot could not be discarded. Save or copy it, or try again.")
                         }
                     }
                     completion(success)
@@ -776,12 +828,12 @@ final class ScreenshotService: ObservableObject {
                     return [] // Discard is asynchronous and handled above.
                 }
             },
-            share: { [weak self] duration, completion in
+            share: { [weak self] duration, canShare, completion in
                 guard let self else {
                     Task { @MainActor in completion(nil) }
                     return
                 }
-                self.shareDirect(capture, duration: duration, completion: completion)
+                self.shareDirect(capture, duration: duration, canShare: canShare, completion: completion)
             },
             shareFile: { [weak self] in
                 guard let self, let export = self.flatten(capture) else { return nil }
@@ -795,7 +847,7 @@ final class ScreenshotService: ObservableObject {
                 if recovery.takeForClose(), let self {
                     let editor = self.openEditor(with: capture, withholdsLatest: latestCapture != nil && latestCapture == self.latestCaptureToken,
                                                  historyID: historyID, historyCaptureToken: latestCapture)
-                    editor.requireRecoverySave()
+                    editor.requireRecoverySave(message: "The screenshot could not be discarded. Save or copy it, or try again.")
                 }
                 DispatchQueue.main.async { [weak self] in
                     guard let self, !AppFeature.screenshot.isAvailable, !self.hasProtectedWork else { return }
@@ -837,24 +889,33 @@ final class ScreenshotService: ObservableObject {
     @discardableResult
     func openEditor(with capture: ScreenshotSelectionController.Capture,
                     withholdsLatest: Bool = true, historyID: UUID? = nil,
-                    historyCaptureToken: UUID? = nil) -> ScreenshotEditorController {
+                    historyCaptureToken: UUID? = nil,
+                    cacheIdentity: ScreenshotLastCaptureStore.Identity? = nil) -> ScreenshotEditorController {
         WindowActivationPolicy.retain()
         // Any editor may be showing the latest capture, and what it exports
         // is no longer the stored original, so the shortcut keeps that
         // original back until a newer capture arrives.
         if withholdsLatest { withholdLatestCapture() }
         let editor = ScreenshotEditorController(capture: capture)
-        if let historyID {
+        let discardIdentity = cacheIdentity ?? historyID.map { .tagged($0) }
+        if historyID != nil || discardIdentity != nil {
+            editor.discardHasHistory = historyID != nil
             editor.discardHistory = { [weak self] completion in
                 guard let self else { completion(false); return }
+                self.cancelAutoCopy(for: historyID)
+                self.discardLatestCapture(historyCaptureToken)
                 if let historyCaptureToken { self.historyWrites.resolve(historyCaptureToken) }
                 let operation = UUID()
                 self.pendingDiscards.insert(operation)
-                RecentCaptureService.shared.removeScreenshot(id: historyID) { [self] success in
+                if let discardIdentity { ScreenshotLastCaptureStore.beginDiscard(discardIdentity) }
+                ScreenshotDiscardCopies.run(historyID: historyID, cacheIdentity: discardIdentity,
+                    removeHistory: { RecentCaptureService.shared.removeScreenshot(id: $0, completion: $1) },
+                    removeCache: { ScreenshotLastCaptureStore.discard($0, completion: $1) }) { [self] success in
+                    if let discardIdentity { ScreenshotLastCaptureStore.endDiscard(discardIdentity) }
                     self.pendingDiscards.remove(operation)
                     if !success {
-                        UtilityWorkspace.shared.reportFeatureNotice("Could not remove this screenshot from recent captures. Try again.")
-                        QuickToolHUD.show(icon: "exclamationmark.triangle", message: "Could not remove screenshot from history")
+                        UtilityWorkspace.shared.reportFeatureNotice("Could not discard this screenshot. Try again.")
+                        QuickToolHUD.show(icon: "exclamationmark.triangle", message: "Could not discard screenshot")
                         NSSound.beep()
                     }
                     completion(success)
@@ -895,7 +956,12 @@ final class ScreenshotService: ObservableObject {
         let captureID = latestCaptureID
         uploadingCaptureID = captureID
         QuickToolHUD.show(icon: "link", message: strings.sharingHUD)
-        shareDirect(record.capture, duration: .saved()) { [weak self] record in
+        shareDirect(record.capture, duration: .saved(), canShare: { [weak self] in
+            guard let self else { return false }
+            return self.latestCaptureID == captureID && AppFeature.screenshot.isAvailable
+                && ScreenshotSharingSupport.uploadShortcutEnabled()
+                && !self.latestCaptureWithheld && !ScreenshotLastCaptureStore.isWithheld
+        }) { [weak self] record in
             if self?.uploadingCaptureID == captureID { self?.uploadingCaptureID = nil }
             guard let record else { return }
             guard let self,
@@ -944,7 +1010,7 @@ final class ScreenshotService: ObservableObject {
         // Edit in its preview does.
         unshelve(latestCaptureToken)
         openEditor(with: record.capture, historyID: record.historyID,
-                   historyCaptureToken: record.historyID)
+                   historyCaptureToken: record.historyID, cacheIdentity: record.cacheIdentity)
     }
 
     private func openClipboardImage() {
@@ -1050,12 +1116,11 @@ final class ScreenshotService: ObservableObject {
         }
         let name = ScreenshotSupport.fileName(prefix: strings.fileNamePrefix, date: Date())
         autoCopyTask?.cancel()
-        autoCopyGeneration += 1
-        let generation = autoCopyGeneration
+        let generation = autoCopyState.begin(latestCaptureToken)
         let pasteboardChangeCount = NSPasteboard.general.changeCount
         autoCopyTask = Task { @MainActor [weak self] in
             defer {
-                if let self, self.autoCopyGeneration == generation { self.autoCopyTask = nil }
+                if let self, self.autoCopyState.finish(generation) { self.autoCopyTask = nil }
             }
             let output = await Task.detached(priority: .userInitiated) {
                 guard let export = Self.flatten(capture, downscaleTo1x: downscale) else {
@@ -1072,7 +1137,7 @@ final class ScreenshotService: ObservableObject {
                 return
             }
             guard let self, !Task.isCancelled,
-                  generation == self.autoCopyGeneration,
+                  self.autoCopyState.accepts(generation),
                   pasteboardChangeCount == NSPasteboard.general.changeCount,
                   AppFeature.screenshot.isAvailable
             else {
@@ -1131,6 +1196,7 @@ final class ScreenshotService: ObservableObject {
 
     private func shareDirect(_ capture: ScreenshotSelectionController.Capture,
                              duration: ScreenshotShareDuration,
+                             canShare: @escaping () -> Bool,
                              completion: @escaping @MainActor (ScreenshotShareRecord?) -> Void) {
         let downscale = UtilityPreferences.standard.bool(forKey: DefaultsKey.screenshotDownscale)
         Task { @MainActor [weak self] in
@@ -1138,12 +1204,14 @@ final class ScreenshotService: ObservableObject {
                 completion(nil)
                 return
             }
+            guard canShare() else { completion(nil); return }
             let data = await Task.detached(priority: .userInitiated) {
                 guard let export = Self.flatten(capture, downscaleTo1x: downscale) else {
                     return nil as Data?
                 }
                 return ScreenshotRenderer.pngData(from: export.image, scale: export.scale)
             }.value
+            guard canShare() else { completion(nil); return }
             guard let data else {
                 QuickToolHUD.show(icon: "link", message: self.strings.shareFailedHUD)
                 completion(nil)
@@ -1152,6 +1220,11 @@ final class ScreenshotService: ObservableObject {
             do {
                 let record = try await ScreenshotShareService.shared.createLink(
                     pngData: data, duration: duration)
+                guard canShare() else {
+                    try? await ScreenshotShareService.shared.delete(record)
+                    completion(nil)
+                    return
+                }
                 completion(record)
             } catch {
                 QuickToolHUD.show(icon: "link", message: self.strings.shareFailedHUD)
@@ -1358,9 +1431,14 @@ final class ScreenshotService: ObservableObject {
 /// One discardable PNG on disk keeps this shortcut useful across launches
 /// without holding a full-resolution screenshot in memory while the app rests.
 enum ScreenshotLastCaptureStore {
+    enum Identity: Hashable {
+        case tagged(UUID)
+        case legacyDigest(Data)
+    }
     struct Record {
         let capture: ScreenshotSelectionController.Capture
         let historyID: UUID?
+        var cacheIdentity: Identity?
     }
     private static let writeQueue = DispatchQueue(
         label: "com.vorssaint.utils.latest-screenshot",
@@ -1368,8 +1446,26 @@ enum ScreenshotLastCaptureStore {
     private static let stateLock = NSLock()
     private static var generation = 0
     private static var pendingCapture: Record?
+    private static let discardGate = ScreenshotLastCaptureDiscardGate()
+    #if ANCHOR_UTILITIES_DEVELOPMENT
+    private static var testingDirectory: URL?
+    static func useTestingDirectory(_ directory: URL?) {
+        // No queued operation may fall through to the real cache on reset.
+        writeQueue.sync {}
+        stateLock.lock(); defer { stateLock.unlock() }
+        generation += 1
+        pendingCapture = nil
+        testingDirectory = directory
+    }
+    #endif
 
     private static var fileURL: URL? {
+        #if ANCHOR_UTILITIES_DEVELOPMENT
+        stateLock.lock()
+        let directory = testingDirectory
+        stateLock.unlock()
+        if let directory { return directory.appendingPathComponent("LatestScreenshot.png") }
+        #endif
         guard let base = FileManager.default.urls(for: .cachesDirectory,
                                                   in: .userDomainMask).first,
               let bundleID = Bundle.main.bundleIdentifier
@@ -1404,12 +1500,13 @@ enum ScreenshotLastCaptureStore {
         stateLock.lock()
         generation += 1
         let operation = generation
-        pendingCapture = Record(capture: capture, historyID: historyID)
-        stateLock.unlock()
-
+        pendingCapture = Record(capture: capture, historyID: historyID, cacheIdentity: .tagged(historyID))
+        // Publish the queue ordering under the same lock as the pending image,
+        // so a concurrent discard cannot overtake this save.
         writeQueue.async {
             guard let data = ScreenshotRenderer.pngData(
-                from: capture.image, scale: capture.scale, historyID: historyID)
+                from: capture.image, scale: capture.scale, historyID: historyID),
+                  identity(of: data) == .tagged(historyID)
             else {
                 finish(operation, fileURL: fileURL, removeFile: true)
                 return
@@ -1429,18 +1526,24 @@ enum ScreenshotLastCaptureStore {
                 finish(operation, fileURL: fileURL, removeFile: true)
             }
         }
+        stateLock.unlock()
     }
 
     static func load() -> Record? {
         stateLock.lock()
         let pending = pendingCapture
         stateLock.unlock()
-        if let pending { return pending }
+        if let pending {
+            return isDiscarding(pending.cacheIdentity) ? nil : pending
+        }
 
         guard let fileURL else { return nil }
-        let sourceOptions = [kCGImageSourceShouldCache: false] as CFDictionary
-        guard let source = CGImageSourceCreateWithURL(fileURL as CFURL, sourceOptions) else { return nil }
-        return decode(source)
+        guard let data = try? Data(contentsOf: fileURL, options: .mappedIfSafe),
+              let source = CGImageSourceCreateWithData(data as CFData, nil),
+              var record = decode(source) else { return nil }
+        record.cacheIdentity = record.historyID.map { .tagged($0) }
+            ?? .legacyDigest(Data(SHA256.hash(data: data)))
+        return isDiscarding(record.cacheIdentity) ? nil : record
     }
 
     static func decode(_ source: CGImageSource) -> Record? {
@@ -1458,7 +1561,63 @@ enum ScreenshotLastCaptureStore {
             guard value.hasPrefix(prefix) else { return nil }
             return UUID(uuidString: String(value.dropFirst(prefix.count)))
         }
-        return Record(capture: capture, historyID: historyID)
+        return Record(capture: capture, historyID: historyID, cacheIdentity: historyID.map { .tagged($0) })
+    }
+
+    private static func isDiscarding(_ identity: Identity?) -> Bool {
+        discardGate.blocks(identity)
+    }
+
+    static func beginDiscard(_ identity: Identity) { discardGate.begin(identity) }
+    static func endDiscard(_ identity: Identity) { discardGate.end(identity) }
+
+    /// Serializing with saves means an older discard cannot remove a newer
+    /// queued write. Block the matching shortcut while removal is pending.
+    static func discard(_ identity: Identity, completion: @escaping (Bool) -> Void) {
+        discardGate.begin(identity)
+        stateLock.lock()
+        writeQueue.async {
+            let success = fileURL.map { removeMatching(identity, at: $0) } ?? false
+            discardGate.end(identity)
+            DispatchQueue.main.async { completion(success) }
+        }
+        stateLock.unlock()
+    }
+
+    /// The caller's queue must serialize app-owned saves and removals.
+    static func removeMatching(_ identity: Identity, at url: URL) -> Bool {
+        do {
+            var original = stat()
+            guard url.path.withCString({ lstat($0, &original) }) == 0 else { return errno == ENOENT }
+            guard original.st_mode & S_IFMT == S_IFREG else { return false }
+            let data = try Data(contentsOf: url, options: .mappedIfSafe)
+            guard let current = Self.identity(of: data) else { return false }
+            guard current == identity else { return true }
+            var rechecked = stat()
+            guard url.path.withCString({ lstat($0, &rechecked) }) == 0 else { return errno == ENOENT }
+            guard rechecked.st_mode & S_IFMT == S_IFREG,
+                  original.st_dev == rechecked.st_dev,
+                  original.st_ino == rechecked.st_ino else { return false }
+            try FileManager.default.removeItem(at: url)
+            return true
+        } catch let error as CocoaError where error.code == .fileReadNoSuchFile {
+            return true
+        } catch {
+            return false
+        }
+    }
+
+    static func identity(of data: Data) -> Identity? {
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil),
+              let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as NSDictionary? else { return nil }
+        let png = properties[kCGImagePropertyPNGDictionary] as? NSDictionary
+        let description = png?[kCGImagePropertyPNGDescription] as? String
+        let prefix = ScreenshotRenderer.lastCaptureIDPrefix
+        let id = description.flatMap { value -> UUID? in
+            guard value.hasPrefix(prefix) else { return nil }
+            return UUID(uuidString: String(value.dropFirst(prefix.count)))
+        }
+        return id.map { .tagged($0) } ?? .legacyDigest(Data(SHA256.hash(data: data)))
     }
 
     static func clear() {
@@ -1487,5 +1646,26 @@ enum ScreenshotLastCaptureStore {
             pendingCapture = nil
         }
         stateLock.unlock()
+    }
+}
+
+/// Multiple editors may discard the same capture while another capture is
+/// already pending; block only matching shortcut loads until all finish.
+final class ScreenshotLastCaptureDiscardGate {
+    private let lock = NSLock()
+    private var counts: [ScreenshotLastCaptureStore.Identity: Int] = [:]
+    func begin(_ identity: ScreenshotLastCaptureStore.Identity) {
+        lock.lock(); defer { lock.unlock() }
+        counts[identity, default: 0] += 1
+    }
+    func end(_ identity: ScreenshotLastCaptureStore.Identity) {
+        lock.lock(); defer { lock.unlock() }
+        if let count = counts[identity], count > 1 { counts[identity] = count - 1 }
+        else { counts.removeValue(forKey: identity) }
+    }
+    func blocks(_ identity: ScreenshotLastCaptureStore.Identity?) -> Bool {
+        guard let identity else { return false }
+        lock.lock(); defer { lock.unlock() }
+        return (counts[identity] ?? 0) > 0
     }
 }

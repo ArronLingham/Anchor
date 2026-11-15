@@ -5,6 +5,191 @@ import XCTest
 @testable import AnchorUtilities
 
 final class FeatureResourceTests: XCTestCase {
+    func testScreenshotAutoCopyDiscardDoesNotCancelNewerCapture() {
+        let state = ScreenshotAutoCopyState()
+        let first = UUID(), second = UUID()
+        let firstGeneration = state.begin(first)
+        XCTAssertTrue(state.cancel(first))
+        XCTAssertFalse(state.accepts(firstGeneration))
+        XCTAssertTrue(state.finish(firstGeneration))
+
+        let oldGeneration = state.begin(first)
+        let newGeneration = state.begin(second)
+        XCTAssertFalse(state.cancel(first))
+        XCTAssertFalse(state.finish(oldGeneration))
+        XCTAssertTrue(state.accepts(newGeneration))
+        XCTAssertTrue(state.cancel(second))
+        XCTAssertFalse(state.accepts(newGeneration))
+        XCTAssertTrue(state.finish(newGeneration))
+    }
+
+    #if DEBUG
+    func testScreenshotPreviewDiscardInvalidatesQueuedSharing() throws {
+        let context = try XCTUnwrap(CGContext(data: nil, width: 4, height: 4,
+                                              bitsPerComponent: 8, bytesPerRow: 0,
+                                              space: CGColorSpaceCreateDeviceRGB(),
+                                              bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+        let capture = ScreenshotSelectionController.Capture(image: try XCTUnwrap(context.makeImage()),
+                                                            scale: 1, anchorRect: .zero)
+        var allowed: (() -> Bool)?
+        var finishDiscard: ((Bool) -> Void)?
+        var shareCount = 0
+        func makePreview() -> ScreenshotQuickPreviewController {
+            ScreenshotQuickPreviewController(capture: capture, strings: FeatureStrings.screenshot(L10n.shared.language),
+                defaultAction: .none, completedActions: [], dismissInterval: nil,
+                willEdit: {}, discard: { finishDiscard = $0 }, action: { _ in [] },
+                share: { _, canShare, _ in shareCount += 1; allowed = canShare },
+                shareFile: { nil }, sharingAvailable: { true }, onClose: {})
+        }
+        let preview = makePreview()
+        preview.shareLink()
+        XCTAssertEqual(shareCount, 1)
+        let oldRequest = try XCTUnwrap(allowed)
+        XCTAssertTrue(oldRequest())
+        preview.discardForTesting()
+        XCTAssertFalse(oldRequest(), "A queued share must stop as soon as discard starts")
+        finishDiscard?(false)
+        XCTAssertFalse(oldRequest(), "A failed discard must not revive an old share")
+
+        let other = makePreview()
+        other.discardForTesting()
+        other.shareLink()
+        XCTAssertEqual(shareCount, 1, "A preview being discarded must not start a new share")
+        finishDiscard?(false)
+    }
+
+    func testLastCaptureQueueDiscardsOnlyItsTarget() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        ScreenshotLastCaptureStore.useTestingDirectory(root)
+        defer {
+            ScreenshotLastCaptureStore.useTestingDirectory(nil)
+            try? FileManager.default.removeItem(at: root)
+        }
+        let context = try XCTUnwrap(CGContext(data: nil, width: 4, height: 4,
+                                              bitsPerComponent: 8, bytesPerRow: 0,
+                                              space: CGColorSpaceCreateDeviceRGB(),
+                                              bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+        let image = try XCTUnwrap(context.makeImage())
+        let capture = ScreenshotSelectionController.Capture(image: image, scale: 1, anchorRect: .zero)
+        let old = UUID(), newer = UUID()
+        ScreenshotLastCaptureStore.save(capture, historyID: old)
+        let removed = expectation(description: "old cache discard")
+        ScreenshotLastCaptureStore.discard(.tagged(old)) { success in
+            XCTAssertTrue(success)
+            removed.fulfill()
+        }
+        XCTAssertNil(ScreenshotLastCaptureStore.load(), "A pending discard must not reopen its image")
+        ScreenshotLastCaptureStore.save(capture, historyID: newer)
+        XCTAssertEqual(ScreenshotLastCaptureStore.load()?.historyID, newer)
+        wait(for: [removed], timeout: 5)
+        // Drain the queue before inspecting the file rather than the pending image.
+        ScreenshotLastCaptureStore.useTestingDirectory(root)
+        XCTAssertEqual(ScreenshotLastCaptureStore.load()?.historyID, newer)
+
+        let legacy = try XCTUnwrap(ScreenshotRenderer.pngData(from: image, scale: 1))
+        try legacy.write(to: root.appendingPathComponent("LatestScreenshot.png"), options: .atomic)
+        let legacyRecord = try XCTUnwrap(ScreenshotLastCaptureStore.load())
+        XCTAssertNil(legacyRecord.historyID)
+        let legacyIdentity = try XCTUnwrap(legacyRecord.cacheIdentity)
+        let legacyRemoved = expectation(description: "legacy cache discard")
+        ScreenshotLastCaptureStore.discard(legacyIdentity) { success in
+            XCTAssertTrue(success)
+            legacyRemoved.fulfill()
+        }
+        wait(for: [legacyRemoved], timeout: 5)
+        XCTAssertNil(ScreenshotLastCaptureStore.load())
+    }
+    #endif
+
+    func testLastCaptureDiscardPreservesNewerAndLegacyFiles() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let context = try XCTUnwrap(CGContext(data: nil, width: 4, height: 4,
+                                              bitsPerComponent: 8, bytesPerRow: 0,
+                                              space: CGColorSpaceCreateDeviceRGB(),
+                                              bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+        let image = try XCTUnwrap(context.makeImage())
+        let old = UUID(), newer = UUID()
+        let newerData = try XCTUnwrap(ScreenshotRenderer.pngData(from: image, scale: 1, historyID: newer))
+        let url = root.appendingPathComponent("last.png")
+        try newerData.write(to: url)
+        XCTAssertTrue(ScreenshotLastCaptureStore.removeMatching(.tagged(old), at: url))
+        XCTAssertEqual(try Data(contentsOf: url), newerData)
+        XCTAssertTrue(ScreenshotLastCaptureStore.removeMatching(.tagged(newer), at: url))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: url.path))
+        XCTAssertTrue(ScreenshotLastCaptureStore.removeMatching(.tagged(newer), at: url))
+
+        let legacy = try XCTUnwrap(ScreenshotRenderer.pngData(from: image, scale: 1))
+        let legacyIdentity = try XCTUnwrap(ScreenshotLastCaptureStore.identity(of: legacy))
+        try legacy.write(to: url)
+        XCTAssertTrue(ScreenshotLastCaptureStore.removeMatching(.tagged(old), at: url))
+        XCTAssertEqual(try Data(contentsOf: url), legacy)
+        XCTAssertTrue(ScreenshotLastCaptureStore.removeMatching(legacyIdentity, at: url))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: url.path))
+
+        let target = root.appendingPathComponent("target.png")
+        try newerData.write(to: target)
+        try FileManager.default.createSymbolicLink(at: url, withDestinationURL: target)
+        XCTAssertFalse(ScreenshotLastCaptureStore.removeMatching(.tagged(newer), at: url))
+        XCTAssertEqual(try Data(contentsOf: target), newerData)
+    }
+
+    func testLastCaptureDiscardGateKeepsNewerCaptureAvailable() {
+        let gate = ScreenshotLastCaptureDiscardGate()
+        let old = ScreenshotLastCaptureStore.Identity.tagged(UUID())
+        let newer = ScreenshotLastCaptureStore.Identity.tagged(UUID())
+        gate.begin(old)
+        gate.begin(old)
+        XCTAssertTrue(gate.blocks(old))
+        XCTAssertFalse(gate.blocks(newer))
+        gate.end(old)
+        XCTAssertTrue(gate.blocks(old))
+        gate.end(old)
+        XCTAssertFalse(gate.blocks(old))
+    }
+
+    func testScreenshotDiscardCopiesStopsOnFailureAndSupportsRetry() {
+        let historyID = UUID()
+        let identity = ScreenshotLastCaptureStore.Identity.tagged(historyID)
+        var historyResult: ((Bool) -> Void)?
+        var cacheResult: ((Bool) -> Void)?
+        var result: Bool?
+        var cacheCalls = 0
+        func start() {
+            ScreenshotDiscardCopies.run(historyID: historyID, cacheIdentity: identity,
+                removeHistory: { id, done in XCTAssertEqual(id, historyID); historyResult = done },
+                removeCache: { id, done in XCTAssertEqual(id, identity); cacheCalls += 1; cacheResult = done },
+                completion: { result = $0 })
+        }
+        start()
+        XCTAssertEqual(cacheCalls, 0)
+        historyResult?(false)
+        XCTAssertEqual(result, false)
+        XCTAssertEqual(cacheCalls, 0)
+        result = nil
+        start()
+        historyResult?(true)
+        XCTAssertEqual(cacheCalls, 1)
+        XCTAssertNil(result)
+        cacheResult?(false)
+        XCTAssertEqual(result, false)
+        result = nil
+        start()
+        historyResult?(true)
+        cacheResult?(true)
+        XCTAssertEqual(result, true)
+        XCTAssertEqual(cacheCalls, 2)
+        result = nil
+        let legacy = ScreenshotLastCaptureStore.Identity.legacyDigest(Data([1, 2, 3]))
+        ScreenshotDiscardCopies.run(historyID: nil, cacheIdentity: legacy,
+            removeHistory: { _, _ in XCTFail("Legacy shortcut data has no history ID") },
+            removeCache: { id, done in XCTAssertEqual(id, legacy); done(true) },
+            completion: { result = $0 })
+        XCTAssertEqual(result, true)
+    }
+
     func testScreenshotLastCaptureIdentityIsStoredWithTheImage() throws {
         let context = try XCTUnwrap(CGContext(data: nil, width: 4, height: 4,
                                               bitsPerComponent: 8, bytesPerRow: 0,

@@ -38,7 +38,10 @@ final class ScreenshotQuickPreviewController {
     private let willEdit: () -> Void
     private let discard: (@escaping (Bool) -> Void) -> Void
     private let share: (ScreenshotShareDuration,
+                        @escaping () -> Bool,
                         @escaping @MainActor (ScreenshotShareRecord?) -> Void) -> Void
+    private let shareGate = ClipboardPresentationGate()
+    private let sharingAvailable: () -> Bool
     /// Writes the capture as it would be saved into a temporary file for the
     /// system share sheet.
     private let shareFile: () -> URL?
@@ -72,8 +75,13 @@ final class ScreenshotQuickPreviewController {
          discard: @escaping (@escaping (Bool) -> Void) -> Void,
          action: @escaping (Action) -> Set<Action>,
          share: @escaping (ScreenshotShareDuration,
+                           @escaping () -> Bool,
                            @escaping @MainActor (ScreenshotShareRecord?) -> Void) -> Void,
          shareFile: @escaping () -> URL?,
+         sharingAvailable: @escaping () -> Bool = {
+            AppFeature.screenshot.isAvailable
+                && UtilityPreferences.standard.bool(forKey: DefaultsKey.screenshotSharingEnabled)
+         },
          onClose: @escaping () -> Void) {
         self.capture = capture
         self.strings = strings
@@ -84,6 +92,7 @@ final class ScreenshotQuickPreviewController {
         self.willEdit = willEdit
         self.discard = discard
         self.share = share
+        self.sharingAvailable = sharingAvailable
         self.shareFile = shareFile
         self.onClose = onClose
         model.disabledActions = completedActions.intersection([.save, .copy])
@@ -232,6 +241,7 @@ final class ScreenshotQuickPreviewController {
     func close() {
         guard !closed else { return }
         closed = true
+        shareGate.update(available: false)
         dismissWork?.cancel()
         dismissWork = nil
         if let keyMonitor {
@@ -256,11 +266,13 @@ final class ScreenshotQuickPreviewController {
         dismissWork = nil
         if requested == .discard {
             discarding = true
+            shareGate.update(available: false)
             discard { [weak self] success in
                 guard let self else { return }
                 self.discarding = false
                 if success { self.close() }
                 else {
+                    self.shareGate.update(available: true)
                     // Trash may already have succeeded before history failed.
                     // Keep the image visible and let the person save it again.
                     self.model.disabledActions.remove(.save)
@@ -286,8 +298,12 @@ final class ScreenshotQuickPreviewController {
         close()
     }
 
+    #if ANCHOR_UTILITIES_DEVELOPMENT
+    func discardForTesting() { perform(.discard) }
+    #endif
+
     func shareLink() {
-        guard !closed, !model.deletingShare else { return }
+        guard !closed, !discarding, !model.deletingShare else { return }
         if model.sharedRecord != nil {
             copySharedLink()
         } else {
@@ -299,7 +315,7 @@ final class ScreenshotQuickPreviewController {
     /// Mac offers. The preview waits while the sheet is up, and a chosen
     /// target finishes it the way Copy does.
     private func performSystemShare() {
-        guard !closed, !systemSharing else { return }
+        guard !closed, !discarding, !systemSharing else { return }
         dismissWork?.cancel()
         dismissWork = nil
         guard let url = shareFile() else {
@@ -320,14 +336,19 @@ final class ScreenshotQuickPreviewController {
     }
 
     private func performShare(_ duration: ScreenshotShareDuration) {
-        guard !closed, !model.sharing else { return }
+        guard !closed, !discarding, !model.sharing,
+              let ticket = shareGate.capture(currentlyAvailable: true) else { return }
         dismissWork?.cancel()
         dismissWork = nil
         model.sharing = true
-        share(duration) { [weak self] record in
+        let canShare = { [weak self] in
+            guard let self else { return false }
+            return self.shareGate.accepts(ticket, currentlyAvailable: !self.closed && !self.discarding)
+                && self.sharingAvailable()
+        }
+        share(duration, canShare) { [weak self] record in
             guard let self, !self.closed,
-                  AppFeature.screenshot.isAvailable,
-                  UtilityPreferences.standard.bool(forKey: DefaultsKey.screenshotSharingEnabled) else {
+                  canShare() else {
                 if let self, !self.closed {
                     self.model.sharing = false
                     self.scheduleAutoDismiss()
@@ -356,11 +377,13 @@ final class ScreenshotQuickPreviewController {
     }
 
     private func copySharedLink() {
-        guard let record = model.sharedRecord else { return }
+        guard !discarding, sharingAvailable(), let record = model.sharedRecord,
+              let ticket = shareGate.capture(currentlyAvailable: !closed) else { return }
         dismissWork?.cancel()
         dismissWork = nil
         Task { @MainActor [weak self] in
-            guard let self, !self.closed else { return }
+            guard let self, self.sharingAvailable(),
+                  self.shareGate.accepts(ticket, currentlyAvailable: !self.closed && !self.discarding) else { return }
             if !self.copyLinkAndClose(record) { self.scheduleAutoDismiss() }
         }
     }

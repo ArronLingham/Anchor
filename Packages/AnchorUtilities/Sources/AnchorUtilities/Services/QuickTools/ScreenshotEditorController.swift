@@ -1231,15 +1231,16 @@ final class ScreenshotEditorController: NSObject, NSWindowDelegate {
     }
     private var shareGeneration = UUID()
     var discardHistory: ((@escaping (Bool) -> Void) -> Void)?
+    var discardHasHistory = false
     private(set) var explicitlyResolved = false
 
     /// The history copy failed, so this editor holds the remaining image.
-    func requireRecoverySave() {
+    func requireRecoverySave(message: String? = nil) {
         recoverySaveRequired = true
         guard let window else { return }
         let alert = NSAlert()
         alert.messageText = "Screenshot needs saving"
-        alert.informativeText = "Recent captures could not be updated. Save or copy this screenshot from the editor, or discard it if you no longer need it."
+        alert.informativeText = message ?? "Recent captures could not be updated. Save or copy this screenshot from the editor, or discard it if you no longer need it."
         alert.addButton(withTitle: "OK")
         alert.beginSheetModal(for: window)
     }
@@ -1326,7 +1327,7 @@ final class ScreenshotEditorController: NSObject, NSWindowDelegate {
                 self.explicitlyResolved = true
                 self.window?.close()
             } else {
-                self.requireRecoverySave()
+                self.requireRecoverySave(message: "The screenshot could not be discarded. Save or copy it, or try again.")
             }
         }
     }
@@ -1704,8 +1705,10 @@ final class ScreenshotEditorController: NSObject, NSWindowDelegate {
         guard model.isDirty || recoverySaveRequired else { return true }
         let alert = NSAlert()
         alert.messageText = strings.discardTitle
-        if discardHistory != nil {
+        if discardHasHistory {
             alert.informativeText = "Discarding removes this screenshot from recent captures. Separately saved files remain."
+        } else if discardHistory != nil {
+            alert.informativeText = "Discarding removes the shortcut's cached screenshot. Separately saved files remain."
         } else {
             alert.informativeText = recoverySaveRequired
                 ? "This screenshot still needs saving or copying. Closing will discard it from the editor."
