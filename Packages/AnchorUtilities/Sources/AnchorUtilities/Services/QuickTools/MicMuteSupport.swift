@@ -45,6 +45,17 @@ enum MicMuteSupport {
         }
     }
 
+    static func volumeSnapshotMatches(elements: [(UInt32, Float?)], volume: Float?,
+                                      channels: [String: Double]) -> Bool {
+        guard !elements.isEmpty else { return false }
+        return elements.allSatisfy { element, current in
+            guard let current, shouldSaveChannelVolume(current) else { return false }
+            let saved = element == 0 ? volume.map(Double.init) : channels[String(element)]
+            guard let saved, saved.isFinite, (0...1).contains(saved) else { return false }
+            return abs(Double(current) - saved) <= 0.01
+        }
+    }
+
     static func volumeToRestore(uid: String,
                                 saved: [String: Double],
                                 legacy: Double) -> Float {

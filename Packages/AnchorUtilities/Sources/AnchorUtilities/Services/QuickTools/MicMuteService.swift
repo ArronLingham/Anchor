@@ -357,7 +357,9 @@ final class MicMuteService: ObservableObject {
         let isSilenced: (AudioDeviceID) -> Bool
         let volume: (AudioDeviceID) -> Float?
         let channels: (AudioDeviceID) -> [String: Double]
+        let volumeSnapshotMatches: (AudioDeviceID, Float?, [String: Double]) -> Bool
         let setVolume: (Float, AudioDeviceID) -> Bool
+        let volumeMuteVerified: (AudioDeviceID, [String: Double]) -> Bool
         let isActiveNonAggregate: (AudioDeviceID) -> Bool
     }
 
@@ -384,7 +386,9 @@ final class MicMuteService: ObservableObject {
         isSilenced: { isSilenced($0) },
         volume: { inputVolume(of: $0) },
         channels: { channelVolumes(of: $0) },
+        volumeSnapshotMatches: { volumeSnapshotMatches(of: $0, volume: $1, channels: $2) },
         setVolume: { setInputVolume($0, of: $1) },
+        volumeMuteVerified: { volumeRestoreMayWrite(of: $0, channels: $1) },
         isActiveNonAggregate: { device in
             var transport: UInt32 = 0
             var running: UInt32 = 0
@@ -458,25 +462,26 @@ final class MicMuteService: ObservableObject {
             // No mute switch, or a device that keeps its own: use the input
             // volume, remembering the level.
             let volume = backend.volume(device.id)
-            if MicMuteSupport.shouldSaveVolume(volume), let volume {
-                outcome.savedVolumes[device.uid] = Double(volume)
-            }
             let channels = backend.channels(device.id)
-            if !channels.isEmpty { outcome.savedChannelVolumes[device.uid] = channels }
-            // Claimed only when the device really went quiet: a driver that
-            // takes the write and keeps its level must not be recorded as
-            // muted, or the unmute would raise a microphone it never lowered.
-            if backend.setVolume(0, device.id), backend.isSilenced(device.id) {
-                outcome.applied = true
-                outcome.mutedDevices.append(device.uid)
-            } else {
-                outcome.savedVolumes.removeValue(forKey: device.uid)
-                outcome.savedChannelVolumes.removeValue(forKey: device.uid)
-                // Only a microphone some app records from is left open. An aggregate
-                // has no switch or level of its own; the microphones under it are
-                // swept and reported on their own.
+            guard backend.volumeSnapshotMatches(device.id, volume, channels) else {
+                if owned.contains(device.uid) { outcome.mutedDevices.append(device.uid) }
                 if backend.isActiveNonAggregate(device.id) { outcome.failed = true }
+                continue
             }
+            // A reassertion must not replace the original recovery levels.
+            if !owned.contains(device.uid) || (savedVolumes[device.uid] == nil && savedChannelVolumes[device.uid] == nil) {
+                if MicMuteSupport.shouldSaveVolume(volume), let volume {
+                    outcome.savedVolumes[device.uid] = Double(volume)
+                }
+                if !channels.isEmpty { outcome.savedChannelVolumes[device.uid] = channels }
+            }
+            let writeSucceeded = backend.setVolume(0, device.id)
+            let confirmed = writeSucceeded && backend.volumeMuteVerified(device.id, channels)
+            // Even an error can follow a partial write. Keep the pre-write
+            // snapshot and claim so disabling can report or recover it.
+            outcome.applied = true
+            outcome.mutedDevices.append(device.uid)
+            if !confirmed { outcome.failed = true }
         }
         return outcome
     }
@@ -738,6 +743,15 @@ final class MicMuteService: ObservableObject {
             elements.append((address.mElement, volumeValue(of: device, at: address)))
         }
         return MicMuteSupport.volumeRestoreMayWrite(elements: elements, channels: channels)
+    }
+
+    private static func volumeSnapshotMatches(of device: AudioDeviceID, volume: Float?,
+                                              channels: [String: Double]) -> Bool {
+        var elements: [(UInt32, Float?)] = []
+        for var address in volumeAddresses() where AudioObjectHasProperty(device, &address) {
+            elements.append((address.mElement, volumeValue(of: device, at: address)))
+        }
+        return MicMuteSupport.volumeSnapshotMatches(elements: elements, volume: volume, channels: channels)
     }
 
     /// Writes the main level and channels 1 and 2, each channel taking its

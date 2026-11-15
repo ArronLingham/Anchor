@@ -166,7 +166,9 @@ final class FeatureResourceTests: XCTestCase {
             muteSwitch: { id in id == 1 ? .value(1) : (id == 2 ? .unreadable : .value(0)) },
             setMute: { _, id in writes.append(id); return .unconfirmed },
             isSilenced: { _ in false }, volume: { _ in 0.5 }, channels: { _ in [:] },
+            volumeSnapshotMatches: { _, _, _ in true },
             setVolume: { _, _ in XCTFail("Do not fall back after an uncertain switch write"); return true },
+            volumeMuteVerified: { _, _ in true },
             isActiveNonAggregate: { _ in true })
         let result = MicMuteService.mute([alreadyMuted, unreadable, uncertain], savedVolumes: [:],
                                           savedChannelVolumes: [:], mutedDevices: [], backend: backend)
@@ -174,6 +176,41 @@ final class FeatureResourceTests: XCTestCase {
         XCTAssertEqual(result.mutedDevices, ["uncertain"])
         XCTAssertTrue(result.applied)
         XCTAssertTrue(result.failed)
+    }
+
+    func testMicrophonePartialMuteRetainsOriginalLevelsAndClaim() {
+        let mic = MicMuteService.InputDevice(id: 1, uid: "owned")
+        var channelLevels = ["1": 0.4, "2": 0.6]
+        let backend = MicMuteService.MuteBackend(
+            muteSwitch: { _ in .unavailable }, setMute: { _, _ in .failed },
+            isSilenced: { _ in false }, volume: { _ in 0.5 }, channels: { _ in channelLevels },
+            volumeSnapshotMatches: { _, _, _ in true },
+            setVolume: { _, _ in channelLevels["1"] = 0; return false },
+            volumeMuteVerified: { _, _ in false }, isActiveNonAggregate: { _ in true })
+        let first = MicMuteService.mute([mic], savedVolumes: [:], savedChannelVolumes: [:],
+                                        mutedDevices: [], backend: backend)
+        XCTAssertEqual(first.mutedDevices, ["owned"])
+        XCTAssertEqual(first.savedVolumes["owned"], 0.5)
+        XCTAssertEqual(first.savedChannelVolumes["owned"], ["1": 0.4, "2": 0.6])
+        XCTAssertTrue(first.applied)
+        XCTAssertTrue(first.failed)
+        let repeated = MicMuteService.mute([mic], savedVolumes: first.savedVolumes,
+                                           savedChannelVolumes: first.savedChannelVolumes,
+                                           mutedDevices: first.mutedDevices, backend: backend)
+        XCTAssertEqual(repeated.savedChannelVolumes["owned"], ["1": 0.4, "2": 0.6])
+        XCTAssertEqual(repeated.mutedDevices, ["owned"])
+    }
+
+    func testMicrophoneMuteSnapshotRequiresAllReadableStableElements() {
+        let channels = ["1": 0.4, "2": 0.6]
+        XCTAssertTrue(MicMuteSupport.volumeSnapshotMatches(elements: [(0, 0.5), (1, 0.4), (2, 0.6)],
+                                                           volume: 0.5, channels: channels))
+        XCTAssertFalse(MicMuteSupport.volumeSnapshotMatches(elements: [(0, 0.5), (1, nil)],
+                                                            volume: 0.5, channels: channels))
+        XCTAssertFalse(MicMuteSupport.volumeSnapshotMatches(elements: [(1, 0.4), (2, 0.8)],
+                                                            volume: 0.4, channels: channels))
+        XCTAssertFalse(MicMuteSupport.volumeSnapshotMatches(elements: [(1, 0.4), (2, 0.6)],
+                                                            volume: 0.4, channels: ["1": 0.4]))
     }
 
     func testMicrophoneRestoreRetainsClaimWhenMuteSwitchIsUnreadable() {
