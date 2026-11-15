@@ -89,6 +89,18 @@ struct MicMuteWriteAhead {
         return true
     }
 
+    /// Only valid when the caller has not started any device write.
+    func abandonWithoutWrite() -> Bool {
+        guard let pending = defaults.data(forKey: key), case .valid = load() else { return false }
+        defaults.removeObject(forKey: key)
+        guard synchronize(), defaults.object(forKey: key) == nil else {
+            defaults.set(pending, forKey: key)
+            _ = synchronize()
+            return false
+        }
+        return true
+    }
+
     /// Called only after the user confirms they checked the inputs. This
     /// discards recovery records for affected devices without changing audio.
     /// An unreadable record cannot identify its devices, so all microphone

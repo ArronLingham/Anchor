@@ -17,6 +17,19 @@ import Foundation
 /// release even while unplugged: it gets its level back when it returns.
 final class MicMuteService: ObservableObject {
     static let shared = MicMuteService()
+    private static let availabilityGate = ClipboardPresentationGate()
+
+    static func toggleRequest() -> (() -> Void)? {
+        guard let ticket = availabilityGate.capture(currentlyAvailable: AppFeature.micMute.isAvailable) else { return nil }
+        return {
+            guard accepts(ticket) else { return }
+            shared.toggle()
+        }
+    }
+
+    private static func accepts(_ ticket: UUID) -> Bool {
+        availabilityGate.accepts(ticket, currentlyAvailable: AppFeature.micMute.isAvailable)
+    }
 
     @Published private(set) var isMuted = false
     @Published private(set) var shortcutRegistrationFailed = false
@@ -84,7 +97,14 @@ final class MicMuteService: ObservableObject {
 
     private init() {
         interruptedRecovery = Self.hasInterruptedRecovery
-        hotkey.onPress = { [weak self] in self?.toggle() }
+        hotkey.capturePress = {
+            guard UtilityPreferences.standard.bool(forKey: DefaultsKey.micMuteShortcutEnabled),
+                  let request = Self.toggleRequest() else { return nil }
+            return {
+                guard UtilityPreferences.standard.bool(forKey: DefaultsKey.micMuteShortcutEnabled) else { return }
+                request()
+            }
+        }
     }
 
     /// The smallest possible answer to a change: the system decides which
@@ -107,6 +127,7 @@ final class MicMuteService: ObservableObject {
 
     func syncWithPreferences() {
         UtilityWorkspace.shared.prepareOwnership()
+        Self.availabilityGate.update(available: AppFeature.micMute.isAvailable)
         if interruptedRecovery || MicMuteSupport.isInterruptedWrite(recordPresent: Self.hasInterruptedRecovery,
                                                                      inFlightSweeps: inFlightSweeps) {
             interruptedRecovery = true
@@ -167,6 +188,7 @@ final class MicMuteService: ObservableObject {
     }
 
     func suspend() {
+        Self.availabilityGate.update(available: false)
         hotkey.unregister()
     }
 
@@ -210,7 +232,7 @@ final class MicMuteService: ObservableObject {
         // runs behind it on the same serial queue.
         applyGeneration += 1
         wantsMute = false
-        _ = halQueue.sync { Self.sweep(muted: false, explicitUnmute: false) }
+        _ = halQueue.sync { Self.sweep(muted: false, explicitUnmute: false, muteTicket: nil) }
         let recorded = defaults.stringArray(forKey: DefaultsKey.micMuteMutedDevices)
         if MicMuteSupport.hasUntrackedActiveMute(active: defaults.bool(forKey: DefaultsKey.micMuteActive), recorded: recorded) {
             Self.reportUnknownLegacyRecovery()
@@ -243,6 +265,8 @@ final class MicMuteService: ObservableObject {
     /// Hands the sweep to the audio queue and keeps the published state, the
     /// wanted state and the HUD on the main thread, where they belong.
     private func apply(muted: Bool, announce: Bool) {
+        let ticket = muted ? Self.availabilityGate.capture(currentlyAvailable: AppFeature.micMute.isAvailable) : nil
+        guard !muted || ticket != nil else { return }
         wantsMute = muted
         inputVolumeLock.withLock {
             inputVolumeBlocked = muted
@@ -252,7 +276,7 @@ final class MicMuteService: ObservableObject {
         let generation = applyGeneration
         inFlightSweeps += 1
         halQueue.async { [weak self] in
-            let outcome = Self.sweep(muted: muted, explicitUnmute: announce && !muted)
+            let outcome = Self.sweep(muted: muted, explicitUnmute: announce && !muted, muteTicket: ticket)
             DispatchQueue.main.async {
                 guard let self else { return }
                 self.inFlightSweeps -= 1
@@ -269,9 +293,13 @@ final class MicMuteService: ObservableObject {
     /// for, both would start from the same record; the second would then find
     /// the devices the first had just silenced already quiet and unclaimed,
     /// leave them to "the user", and the unmute would never release them.
-    private static func sweep(muted: Bool, explicitUnmute: Bool) -> MuteOutcome {
+    private static func sweep(muted: Bool, explicitUnmute: Bool, muteTicket: UUID?) -> MuteOutcome {
         let defaults = UtilityPreferences.standard
         let recorded = defaults.stringArray(forKey: DefaultsKey.micMuteMutedDevices)
+        if muted && !(muteTicket.map(accepts) ?? false) {
+            return MuteOutcome(applied: false, savedVolumes: [:], savedChannelVolumes: [:],
+                               mutedDevices: recorded ?? [], cancelled: true)
+        }
         let journal = writeAhead
         if case .none = journal.load() {} else {
             return MuteOutcome(applied: false, savedVolumes: [:], savedChannelVolumes: [:],
@@ -286,20 +314,30 @@ final class MicMuteService: ObservableObject {
             // owning nothing, and the sweep must keep those two apart.
             mutedDevices: MicMuteSupport.claimsForSweep(recorded: recorded, muted: muted,
                                                          explicitUnmute: explicitUnmute),
-            legacyVolume: defaults.double(forKey: DefaultsKey.micMuteSavedVolume))
+            legacyVolume: defaults.double(forKey: DefaultsKey.micMuteSavedVolume), muteTicket: muteTicket)
         // A sweep that reached nothing leaves the record alone: it is what a
         // later unmute needs to put every level back.
         if outcome.recoveryBlocked { return outcome }
+        if outcome.cancelled && !outcome.didWrite {
+            if case .none = journal.load() { return outcome }
+            if !journal.abandonWithoutWrite() {
+                outcome.failed = true
+                outcome.recoveryBlocked = true
+            }
+            return outcome
+        }
         if case .none = journal.load() {
             if outcome.applied && (muted || explicitUnmute || recorded != nil) {
                 defaults.set(outcome.savedVolumes, forKey: DefaultsKey.micMuteSavedVolumes)
                 defaults.set(outcome.savedChannelVolumes, forKey: DefaultsKey.micMuteSavedChannelVolumes)
                 defaults.set(outcome.mutedDevices, forKey: DefaultsKey.micMuteMutedDevices)
             }
-        } else if !journal.checkpoint(volumes: outcome.savedVolumes, channels: outcome.savedChannelVolumes,
-                                      devices: outcome.mutedDevices) {
-            outcome.failed = true
-            outcome.recoveryBlocked = true
+        } else {
+            if !journal.checkpoint(volumes: outcome.savedVolumes, channels: outcome.savedChannelVolumes,
+                                   devices: outcome.mutedDevices) {
+                outcome.failed = true
+                outcome.recoveryBlocked = true
+            }
         }
         return outcome
     }
@@ -317,6 +355,12 @@ final class MicMuteService: ObservableObject {
             } else {
                 UtilityWorkspace.shared.reportFeatureNotice(String(localized: "Anchor could not save microphone recovery information, so it did not continue changing microphones."))
             }
+            return
+        }
+        if outcome.cancelled {
+            wantsMute = isMuted
+            inputVolumeLock.withLock { inputVolumeBlocked = isMuted }
+            syncListeners()
             return
         }
         guard outcome.applied else {
@@ -467,6 +511,8 @@ final class MicMuteService: ObservableObject {
         /// A device this sweep had to reach and could not, next to ones it did.
         var failed = false
         var recoveryBlocked = false
+        var cancelled = false
+        var didWrite = false
     }
 
     enum MuteSwitchState: Equatable {
@@ -492,6 +538,7 @@ final class MicMuteService: ObservableObject {
         let volumeMuteVerified: (AudioDeviceID, [String: Double]) -> Bool
         let isActiveNonAggregate: (AudioDeviceID) -> Bool
         let prepareWrite: (MicMuteWriteAhead.Entry) -> Bool
+        let mayMute: () -> Bool
     }
 
     struct RestoreBackend {
@@ -513,7 +560,7 @@ final class MicMuteService: ObservableObject {
         volumeRestoreMayWrite: { volumeRestoreMayWrite(of: $0, channels: $1) },
         prepareWrite: { writeAhead.append($0) })
 
-    private static let hardwareMute = MuteBackend(
+    private static func hardwareMute(ticket: UUID) -> MuteBackend { MuteBackend(
         muteSwitch: { muteSwitchState(of: $0) },
         setMute: { setMuteSwitch($0, of: $1) },
         isSilenced: { isSilenced($0) },
@@ -529,14 +576,15 @@ final class MicMuteService: ObservableObject {
             read(device, kAudioDevicePropertyDeviceIsRunningSomewhere, &running)
             return transport != kAudioDeviceTransportTypeAggregate && running != 0
         },
-        prepareWrite: { writeAhead.append($0) })
+        prepareWrite: { writeAhead.append($0) },
+        mayMute: { accepts(ticket) }) }
 
     /// Runs on `halQueue`. Every CoreAudio call of a sweep happens here.
     private static func applyToDevices(muted: Bool,
                                        savedVolumes: [String: Double],
                                        savedChannelVolumes: [String: [String: Double]],
                                        mutedDevices: [String]?,
-                                       legacyVolume: Double) -> MuteOutcome {
+                                       legacyVolume: Double, muteTicket: UUID?) -> MuteOutcome {
         let devices = inputDevices()
         guard !devices.isEmpty else {
             // Nothing to silence. An unmute has still done its job, and keeps
@@ -544,11 +592,16 @@ final class MicMuteService: ObservableObject {
             return MuteOutcome(applied: !muted, savedVolumes: savedVolumes,
                                savedChannelVolumes: savedChannelVolumes, mutedDevices: mutedDevices ?? [])
         }
-        return muted
-            ? mute(devices, savedVolumes: savedVolumes, savedChannelVolumes: savedChannelVolumes,
-                   mutedDevices: mutedDevices, backend: hardwareMute)
-            : unmute(devices, savedVolumes: savedVolumes, savedChannelVolumes: savedChannelVolumes,
-                     mutedDevices: mutedDevices, legacyVolume: legacyVolume, backend: hardwareRestore)
+        if muted {
+            guard let muteTicket else {
+                return MuteOutcome(applied: false, savedVolumes: savedVolumes,
+                                   savedChannelVolumes: savedChannelVolumes, mutedDevices: mutedDevices ?? [], cancelled: true)
+            }
+            return mute(devices, savedVolumes: savedVolumes, savedChannelVolumes: savedChannelVolumes,
+                        mutedDevices: mutedDevices, backend: hardwareMute(ticket: muteTicket))
+        }
+        return unmute(devices, savedVolumes: savedVolumes, savedChannelVolumes: savedChannelVolumes,
+                      mutedDevices: mutedDevices, legacyVolume: legacyVolume, backend: hardwareRestore)
     }
 
     static func mute(_ devices: [InputDevice],
@@ -562,6 +615,11 @@ final class MicMuteService: ObservableObject {
                                                                             present: devices.map(\.uid)))
         let owned = Set(mutedDevices ?? [])
         for device in devices {
+            guard backend.mayMute() else {
+                outcome.mutedDevices = Array(Set(outcome.mutedDevices).union(owned)).sorted()
+                outcome.cancelled = true
+                break
+            }
             // Already silent: a microphone the user muted themselves is left
             // alone, so unmuting later never opens something this app did not
             // close. One this app already muted keeps its owner.
@@ -585,6 +643,12 @@ final class MicMuteService: ObservableObject {
                     outcome.recoveryBlocked = true
                     break
                 }
+                guard backend.mayMute() else {
+                    outcome.mutedDevices = Array(Set(outcome.mutedDevices).union(owned)).sorted()
+                    outcome.cancelled = true
+                    break
+                }
+                outcome.didWrite = true
                 switch backend.setMute(true, device.id) {
                 case .confirmed:
                     outcome.applied = true
@@ -625,6 +689,14 @@ final class MicMuteService: ObservableObject {
                 outcome.recoveryBlocked = true
                 break
             }
+            guard backend.mayMute() else {
+                outcome.savedVolumes[device.uid] = savedVolumes[device.uid]
+                outcome.savedChannelVolumes[device.uid] = savedChannelVolumes[device.uid]
+                outcome.mutedDevices = Array(Set(outcome.mutedDevices).union(owned)).sorted()
+                outcome.cancelled = true
+                break
+            }
+            outcome.didWrite = true
             let writeSucceeded = backend.setVolume(0, device.id)
             let confirmed = writeSucceeded && backend.volumeMuteVerified(device.id, channels)
             // Even an error can follow a partial write. Keep the pre-write

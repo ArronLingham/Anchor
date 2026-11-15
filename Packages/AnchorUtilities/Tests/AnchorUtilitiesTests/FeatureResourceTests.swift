@@ -3,6 +3,69 @@ import XCTest
 @testable import AnchorUtilities
 
 final class FeatureResourceTests: XCTestCase {
+    func testMicrophoneQueuedMuteLosesAuthorizationAcrossDisable() throws {
+        let gate = ClipboardPresentationGate()
+        gate.update(available: true)
+        let ticket = try XCTUnwrap(gate.capture(currentlyAvailable: true))
+        XCTAssertTrue(gate.accepts(ticket, currentlyAvailable: true))
+        gate.update(available: false)
+        gate.update(available: true)
+        XCTAssertFalse(gate.accepts(ticket, currentlyAvailable: true))
+    }
+
+    func testMicrophoneMuteStopsAfterDisableBeforeDeviceWrite() {
+        let newMic = MicMuteService.InputDevice(id: 1, uid: "new")
+        let existingMic = MicMuteService.InputDevice(id: 2, uid: "existing")
+        var allowed = true
+        var writes = 0
+        let backend = MicMuteService.MuteBackend(
+            muteSwitch: { _ in .unavailable }, setMute: { _, _ in writes += 1; return .confirmed },
+            isSilenced: { _ in false }, volume: { _ in 0.5 }, channels: { _ in ["1": 0.5] },
+            volumeSnapshotMatches: { _, _, _ in true }, setVolume: { _, _ in writes += 1; return true },
+            volumeMuteVerified: { _, _ in true }, isActiveNonAggregate: { _ in true },
+            prepareWrite: { _ in allowed = false; return true }, mayMute: { allowed })
+        let outcome = MicMuteService.mute(
+            [newMic, existingMic], savedVolumes: ["existing": 0.7],
+            savedChannelVolumes: ["existing": ["1": 0.7]], mutedDevices: ["existing"], backend: backend)
+        XCTAssertTrue(outcome.cancelled)
+        XCTAssertEqual(writes, 0)
+        XCTAssertEqual(outcome.mutedDevices, ["existing"])
+        XCTAssertEqual(outcome.savedVolumes, ["existing": 0.7])
+        XCTAssertEqual(outcome.savedChannelVolumes, ["existing": ["1": 0.7]])
+    }
+
+    func testMicrophoneMuteStopsAfterDisableBeforeSwitchWrite() {
+        let mic = MicMuteService.InputDevice(id: 1, uid: "mic")
+        var allowed = true
+        var writes = 0
+        let backend = MicMuteService.MuteBackend(
+            muteSwitch: { _ in .value(0) }, setMute: { _, _ in writes += 1; return .confirmed },
+            isSilenced: { _ in false }, volume: { _ in 0.5 }, channels: { _ in [:] },
+            volumeSnapshotMatches: { _, _, _ in true }, setVolume: { _, _ in writes += 1; return true },
+            volumeMuteVerified: { _, _ in true }, isActiveNonAggregate: { _ in true },
+            prepareWrite: { _ in allowed = false; return true }, mayMute: { allowed })
+        let outcome = MicMuteService.mute([mic], savedVolumes: [:], savedChannelVolumes: [:],
+                                           mutedDevices: [], backend: backend)
+        XCTAssertTrue(outcome.cancelled)
+        XCTAssertFalse(outcome.didWrite)
+        XCTAssertEqual(writes, 0)
+    }
+
+    func testMicrophoneCancelledPreparedWriteKeepsLegacyOwnershipUntouched() throws {
+        let suite = "anchor.test.mic-write-ahead.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = MicMuteWriteAhead(defaults: defaults, key: "pending")
+        XCTAssertNil(defaults.object(forKey: DefaultsKey.micMuteMutedDevices))
+        XCTAssertTrue(store.append(.init(uid: "new", kind: .muteSwitch, volume: nil, channels: [:])))
+        let failed = MicMuteWriteAhead(defaults: defaults, key: "pending", synchronize: { false })
+        XCTAssertFalse(failed.abandonWithoutWrite())
+        guard case .valid = store.load() else { return XCTFail("Failed cleanup lost the record") }
+        XCTAssertTrue(store.abandonWithoutWrite())
+        XCTAssertNil(defaults.object(forKey: DefaultsKey.micMuteMutedDevices))
+        guard case .none = store.load() else { return XCTFail("Cancelled record was not cleared") }
+    }
+
     func testMicrophoneWriteAheadRetainsEveryPreparedDevice() throws {
         XCTAssertFalse(MicMuteSupport.isInterruptedWrite(recordPresent: true, inFlightSweeps: 1))
         XCTAssertTrue(MicMuteSupport.isInterruptedWrite(recordPresent: true, inFlightSweeps: 0))
@@ -84,7 +147,7 @@ final class FeatureResourceTests: XCTestCase {
             }, isSilenced: { _ in false }, volume: { _ in nil }, channels: { _ in [:] },
             volumeSnapshotMatches: { _, _, _ in false }, setVolume: { _, _ in false },
             volumeMuteVerified: { _, _ in false }, isActiveNonAggregate: { _ in true },
-            prepareWrite: { store.append($0) })
+            prepareWrite: { store.append($0) }, mayMute: { true })
         let outcome = MicMuteService.mute([mic], savedVolumes: [:], savedChannelVolumes: [:],
                                            mutedDevices: [], backend: backend)
         XCTAssertEqual(writes, 1)
@@ -112,7 +175,7 @@ final class FeatureResourceTests: XCTestCase {
                 XCTAssertEqual(entry.channels, channels)
                 return true
             }, volumeMuteVerified: { _, _ in true }, isActiveNonAggregate: { _ in true },
-            prepareWrite: { store.append($0) })
+            prepareWrite: { store.append($0) }, mayMute: { true })
         let muted = MicMuteService.mute([mic], savedVolumes: [:], savedChannelVolumes: [:],
                                         mutedDevices: [], backend: mute)
         XCTAssertTrue(store.checkpoint(volumes: muted.savedVolumes, channels: muted.savedChannelVolumes,
@@ -144,7 +207,7 @@ final class FeatureResourceTests: XCTestCase {
             muteSwitch: { _ in .value(0) }, setMute: { _, _ in writes += 1; return .confirmed },
             isSilenced: { _ in false }, volume: { _ in 0.5 }, channels: { _ in [:] },
             volumeSnapshotMatches: { _, _, _ in true }, setVolume: { _, _ in writes += 1; return true },
-            volumeMuteVerified: { _, _ in true }, isActiveNonAggregate: { _ in true }, prepareWrite: { _ in false })
+            volumeMuteVerified: { _, _ in true }, isActiveNonAggregate: { _ in true }, prepareWrite: { _ in false }, mayMute: { true })
         let outcome = MicMuteService.mute([mic], savedVolumes: [:], savedChannelVolumes: [:],
                                            mutedDevices: [], backend: backend)
         XCTAssertEqual(writes, 0)
@@ -186,7 +249,7 @@ final class FeatureResourceTests: XCTestCase {
             volumeSnapshotMatches: { _, _, _ in true },
             setVolume: { _, _ in writes += 1; channels = ["1": 0, "2": 0]; return true },
             volumeMuteVerified: { _, _ in channels.values.allSatisfy { $0 == 0 } },
-            isActiveNonAggregate: { _ in true }, prepareWrite: { _ in true })
+            isActiveNonAggregate: { _ in true }, prepareWrite: { _ in true }, mayMute: { true })
         let result = MicMuteService.mute([mic], savedVolumes: [:], savedChannelVolumes: [:],
                                          mutedDevices: [], backend: backend)
         XCTAssertEqual(writes, 1)
@@ -361,7 +424,7 @@ final class FeatureResourceTests: XCTestCase {
             volumeSnapshotMatches: { _, _, _ in true },
             setVolume: { _, _ in XCTFail("Do not fall back after an uncertain switch write"); return true },
             volumeMuteVerified: { _, _ in true },
-            isActiveNonAggregate: { _ in true }, prepareWrite: { _ in true })
+            isActiveNonAggregate: { _ in true }, prepareWrite: { _ in true }, mayMute: { true })
         let result = MicMuteService.mute([alreadyMuted, unreadable, uncertain], savedVolumes: [:],
                                           savedChannelVolumes: [:], mutedDevices: [], backend: backend)
         XCTAssertEqual(writes, [3])
@@ -378,7 +441,7 @@ final class FeatureResourceTests: XCTestCase {
             isSilenced: { _ in false }, volume: { _ in 0.5 }, channels: { _ in channelLevels },
             volumeSnapshotMatches: { _, _, _ in true },
             setVolume: { _, _ in channelLevels["1"] = 0; return false },
-            volumeMuteVerified: { _, _ in false }, isActiveNonAggregate: { _ in true }, prepareWrite: { _ in true })
+            volumeMuteVerified: { _, _ in false }, isActiveNonAggregate: { _ in true }, prepareWrite: { _ in true }, mayMute: { true })
         let first = MicMuteService.mute([mic], savedVolumes: [:], savedChannelVolumes: [:],
                                         mutedDevices: [], backend: backend)
         XCTAssertEqual(first.mutedDevices, ["owned"])

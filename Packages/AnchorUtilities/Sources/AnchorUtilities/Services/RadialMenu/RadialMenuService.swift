@@ -770,6 +770,11 @@ final class RadialMenuService: ObservableObject {
             ClipboardHistoryService.schedulePresentation(after: 0.15)
             return
         }
+        if tool == .micMute {
+            guard let request = MicMuteService.toggleRequest() else { return }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15, execute: request)
+            return
+        }
         // The same beat the quick panel gives screen-touching tools, so the
         // wheel is really gone before anything captures or presents.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
@@ -778,7 +783,7 @@ final class RadialMenuService: ObservableObject {
             case .screenRecorder: ScreenRecorderService.shared.toggle()
             case .colorPicker: ColorSamplerService.shared.pick()
             case .screenOCR: ScreenTextService.shared.capture()
-            case .micMute: MicMuteService.shared.toggle()
+            case .micMute: break // handled before the delay
             case .clipboardHistory: break // handled before the delay
             case .quickLauncher: QuickLauncherService.shared.show()
             case .cameraPreview: CameraPreviewService.shared.show()
