@@ -85,6 +85,9 @@ struct FeatureHubSettings: View {
                     .padding(12)
                     .background(Color.accentColor.opacity(0.08), in: AnchorCorners.rectangle(cornerRadius: 10))
                 }
+                if MicMuteService.hasInterruptedRecovery {
+                    MicMuteInterruptedRecoveryCard()
+                }
                 // The restart notice comes first, whichever tab is open:
                 // uninstalling anything makes it impossible to miss.
                 if features.needsRestartToUnload {
@@ -444,6 +447,60 @@ struct FeatureHubSettings: View {
         case .tools: return hub.groupTools
         case .dynamicIsland: return FeatureStrings.notch(l10n.language).title
         case .monitor: return hub.groupMonitor
+        }
+    }
+}
+
+/// Kept visible even when microphone mute and Quick Tools are disabled.
+private struct MicMuteInterruptedRecoveryCard: View {
+    @ObservedObject private var service = MicMuteService.shared
+    @State private var confirming = false
+
+    var body: some View {
+        if service.interruptedRecovery {
+            VStack(alignment: .leading, spacing: 8) {
+                Label("Check microphone input levels", systemImage: "exclamationmark.triangle")
+                    .font(.headline)
+                Text("A microphone change was interrupted. Check your microphone levels in System Settings before clearing this notice. Microphone Mute will not change them automatically while this notice remains.")
+                    .fixedSize(horizontal: false, vertical: true)
+                ForEach(Array(service.interruptedDetails.enumerated()), id: \.offset) { _, detail in
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(detail.name).fontWeight(.medium)
+                        if let volume = detail.entry.volume {
+                            if detail.entry.kind == .restoreVolume {
+                                Text("Intended input level: \(Int((volume * 100).rounded()))%")
+                            } else {
+                                Text("Saved input level: \(Int((volume * 100).rounded()))%")
+                            }
+                        }
+                        ForEach(detail.entry.channels.keys.sorted(), id: \.self) { channel in
+                            if let value = detail.entry.channels[channel] {
+                                Text("Saved channel \(channel): \(Int((value * 100).rounded()))%")
+                            }
+                        }
+                        if detail.entry.kind == .muteSwitch {
+                            Text("The mute switch was off before the interrupted change.")
+                        } else if detail.entry.kind == .restoreSwitch {
+                            Text("The mute switch was on before the interrupted change.")
+                        }
+                    }
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                }
+                Button("I've checked my microphones…") { confirming = true }
+            }
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.orange.opacity(0.1), in: AnchorCorners.rectangle(cornerRadius: 10))
+            .onAppear { service.refreshInterruptedRecoveryDetails() }
+            .alert("Clear microphone recovery information?", isPresented: $confirming) {
+                Button("Cancel", role: .cancel) {}
+                Button("Clear recovery information", role: .destructive) {
+                    service.discardInterruptedRecoveryAfterUserCheck()
+                }
+            } message: {
+                Text("This turns off Anchor's mute state and discards saved recovery information for affected microphones. If the record cannot be read, all device-specific microphone recovery records are discarded. It does not change your microphone levels.")
+            }
         }
     }
 }

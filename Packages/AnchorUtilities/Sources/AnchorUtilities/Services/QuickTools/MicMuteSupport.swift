@@ -71,13 +71,17 @@ enum MicMuteSupport {
     static func volumeToRestore(uid: String,
                                 saved: [String: Double],
                                 legacy: Double) -> Float {
-        if let value = saved[uid], value > 0.01 { return Float(value) }
-        if legacy > 0.01 { return Float(legacy) }
+        if let value = saved[uid], value.isFinite, value > 0.01, value <= 1 { return Float(value) }
+        if legacy.isFinite, legacy > 0.01, legacy <= 1 { return Float(legacy) }
         return fallbackVolume
     }
 
     static func needsRecoveryAtLaunch(featureAvailable: Bool, recorded: [String]?) -> Bool {
         !featureAvailable && !(recorded ?? []).isEmpty
+    }
+
+    static func isInterruptedWrite(recordPresent: Bool, inFlightSweeps: Int) -> Bool {
+        recordPresent && inFlightSweeps == 0
     }
 
     static func hasUntrackedActiveMute(active: Bool, recorded: [String]?) -> Bool {

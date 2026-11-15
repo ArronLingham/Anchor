@@ -20,8 +20,34 @@ final class MicMuteService: ObservableObject {
 
     @Published private(set) var isMuted = false
     @Published private(set) var shortcutRegistrationFailed = false
+    @Published private(set) var interruptedRecovery = false
+    @Published private(set) var interruptedDetails: [InterruptedDetail] = []
+
+    struct InterruptedDetail {
+        let name: String
+        let entry: MicMuteWriteAhead.Entry
+    }
+
+    private static var writeAhead: MicMuteWriteAhead {
+        MicMuteWriteAhead(defaults: UtilityPreferences.standard, key: DefaultsKey.micMuteWriteAhead)
+    }
+
+    static var hasInterruptedRecovery: Bool {
+        if case .none = writeAhead.load() { return false }
+        return true
+    }
 
     static func recoverAtLaunchIfNeeded() {
+        if hasInterruptedRecovery {
+            let service = shared
+            // A normal sweep also has a record while it is writing. A second
+            // launch reconciliation must not mistake that for an interruption.
+            guard MicMuteSupport.isInterruptedWrite(recordPresent: true, inFlightSweeps: service.inFlightSweeps) else { return }
+            service.interruptedRecovery = true
+            UtilityWorkspace.shared.reportFeatureNotice(interruptedRecoveryNotice)
+            service.refreshInterruptedRecoveryDetails()
+            return
+        }
         let defaults = UtilityPreferences.standard
         let recorded = defaults.stringArray(forKey: DefaultsKey.micMuteMutedDevices)
         if !AppFeature.micMute.isAvailable,
@@ -44,6 +70,7 @@ final class MicMuteService: ObservableObject {
     /// A sweep that finished after a newer one started must not publish what
     /// it saw.
     private var applyGeneration = 0
+    private var inFlightSweeps = 0
     /// What the last request asked for, kept from the moment it is queued.
     /// `isMuted` and the persisted flag only follow once the sweep has
     /// published, so a device change or a preference sync that lands while a
@@ -56,6 +83,7 @@ final class MicMuteService: ObservableObject {
     private var inputVolumeLifetime = UUID()
 
     private init() {
+        interruptedRecovery = Self.hasInterruptedRecovery
         hotkey.onPress = { [weak self] in self?.toggle() }
     }
 
@@ -79,6 +107,14 @@ final class MicMuteService: ObservableObject {
 
     func syncWithPreferences() {
         UtilityWorkspace.shared.prepareOwnership()
+        if interruptedRecovery || MicMuteSupport.isInterruptedWrite(recordPresent: Self.hasInterruptedRecovery,
+                                                                     inFlightSweeps: inFlightSweeps) {
+            interruptedRecovery = true
+            hotkey.unregister()
+            removeListeners()
+            Self.reportInterruptedRecovery()
+            return
+        }
         let available = AppFeature.micMute.isAvailable
         let enabled = available
             && UtilityPreferences.standard.bool(forKey: DefaultsKey.micMuteShortcutEnabled)
@@ -139,11 +175,14 @@ final class MicMuteService: ObservableObject {
     }
 
     func setMuted(_ muted: Bool) {
-        guard AppFeature.micMute.isAvailable else { return }
+        guard AppFeature.micMute.isAvailable, !interruptedRecovery else { return }
         apply(muted: muted, announce: true)
     }
 
     var inputVolumeAdjustmentLifetime: UUID? {
+        if UtilityPreferences.standard.object(forKey: DefaultsKey.micMuteWriteAhead) != nil {
+            return inputVolumeLock.withLock { inputVolumeLifetime }
+        }
         guard !AppFeature.micMute.isAvailable || !UtilityPreferences.standard.bool(forKey: DefaultsKey.micMuteActive) else { return nil }
         return inputVolumeLock.withLock { inputVolumeBlocked ? nil : inputVolumeLifetime }
     }
@@ -191,6 +230,7 @@ final class MicMuteService: ObservableObject {
     /// change is the moment a device this app still has to release may have
     /// come back.
     private func reapplyIfNeeded() {
+        guard !interruptedRecovery else { return }
         if AppFeature.micMute.isAvailable && wantsMute {
             apply(muted: true, announce: false)
         } else if hasOutstandingClaims {
@@ -210,10 +250,13 @@ final class MicMuteService: ObservableObject {
         }
         applyGeneration += 1
         let generation = applyGeneration
+        inFlightSweeps += 1
         halQueue.async { [weak self] in
             let outcome = Self.sweep(muted: muted, explicitUnmute: announce && !muted)
             DispatchQueue.main.async {
-                self?.finish(outcome, muted: muted, announce: announce, generation: generation)
+                guard let self else { return }
+                self.inFlightSweeps -= 1
+                self.finish(outcome, muted: muted, announce: announce, generation: generation)
             }
         }
     }
@@ -229,7 +272,12 @@ final class MicMuteService: ObservableObject {
     private static func sweep(muted: Bool, explicitUnmute: Bool) -> MuteOutcome {
         let defaults = UtilityPreferences.standard
         let recorded = defaults.stringArray(forKey: DefaultsKey.micMuteMutedDevices)
-        let outcome = applyToDevices(
+        let journal = writeAhead
+        if case .none = journal.load() {} else {
+            return MuteOutcome(applied: false, savedVolumes: [:], savedChannelVolumes: [:],
+                               mutedDevices: recorded ?? [], failed: true, recoveryBlocked: true)
+        }
+        var outcome = applyToDevices(
             muted: muted,
             savedVolumes: defaults.dictionary(forKey: DefaultsKey.micMuteSavedVolumes) as? [String: Double] ?? [:],
             savedChannelVolumes: defaults.dictionary(forKey: DefaultsKey.micMuteSavedChannelVolumes)
@@ -241,10 +289,17 @@ final class MicMuteService: ObservableObject {
             legacyVolume: defaults.double(forKey: DefaultsKey.micMuteSavedVolume))
         // A sweep that reached nothing leaves the record alone: it is what a
         // later unmute needs to put every level back.
-        if outcome.applied && (muted || explicitUnmute || recorded != nil) {
-            defaults.set(outcome.savedVolumes, forKey: DefaultsKey.micMuteSavedVolumes)
-            defaults.set(outcome.savedChannelVolumes, forKey: DefaultsKey.micMuteSavedChannelVolumes)
-            defaults.set(outcome.mutedDevices, forKey: DefaultsKey.micMuteMutedDevices)
+        if outcome.recoveryBlocked { return outcome }
+        if case .none = journal.load() {
+            if outcome.applied && (muted || explicitUnmute || recorded != nil) {
+                defaults.set(outcome.savedVolumes, forKey: DefaultsKey.micMuteSavedVolumes)
+                defaults.set(outcome.savedChannelVolumes, forKey: DefaultsKey.micMuteSavedChannelVolumes)
+                defaults.set(outcome.mutedDevices, forKey: DefaultsKey.micMuteMutedDevices)
+            }
+        } else if !journal.checkpoint(volumes: outcome.savedVolumes, channels: outcome.savedChannelVolumes,
+                                      devices: outcome.mutedDevices) {
+            outcome.failed = true
+            outcome.recoveryBlocked = true
         }
         return outcome
     }
@@ -252,6 +307,18 @@ final class MicMuteService: ObservableObject {
     /// Main thread. Publishes one sweep.
     private func finish(_ outcome: MuteOutcome, muted: Bool, announce: Bool, generation: Int) {
         guard generation == applyGeneration else { return }
+        if outcome.recoveryBlocked || Self.hasInterruptedRecovery {
+            interruptedRecovery = Self.hasInterruptedRecovery
+            hotkey.unregister()
+            removeListeners()
+            if interruptedRecovery {
+                Self.reportInterruptedRecovery()
+                refreshInterruptedRecoveryDetails()
+            } else {
+                UtilityWorkspace.shared.reportFeatureNotice(String(localized: "Anchor could not save microphone recovery information, so it did not continue changing microphones."))
+            }
+            return
+        }
         guard outcome.applied else {
             // Nothing was reached, so the request is dropped as it always was:
             // the published state stays what it is, and so does the wanted one.
@@ -300,6 +367,61 @@ final class MicMuteService: ObservableObject {
         String(localized: "Anchor could not confirm the restored levels for one or more microphones. Check their input levels and reconnect them if needed.")
     }
 
+    private static var interruptedRecoveryNotice: String {
+        String(localized: "A microphone change was interrupted. Check your microphone input levels, then review the recovery notice in Features.")
+    }
+
+    private static func reportInterruptedRecovery() {
+        UtilityWorkspace.shared.reportFeatureNotice(interruptedRecoveryNotice)
+    }
+
+    func refreshInterruptedRecoveryDetails() {
+        guard interruptedRecovery else { return }
+        halQueue.async { [weak self] in
+            guard case let .valid(record) = Self.writeAhead.load() else { return }
+            let names = Dictionary(Self.inputDevices().map { ($0.uid, $0.name) }, uniquingKeysWith: { first, _ in first })
+            let details = record.entries.map {
+                InterruptedDetail(name: names[$0.uid] ?? String(localized: "Disconnected microphone"), entry: $0)
+            }
+            DispatchQueue.main.async {
+                guard let self, self.interruptedRecovery else { return }
+                self.interruptedDetails = details
+            }
+        }
+    }
+
+    /// This never changes a device. It runs only after explicit confirmation
+    /// that the user checked their inputs and accepts discarding the record.
+    func discardInterruptedRecoveryAfterUserCheck() {
+        guard interruptedRecovery, inFlightSweeps == 0 else { return }
+        halQueue.async { [weak self] in
+            let success = Self.writeAhead.discardAfterUserCheck()
+            DispatchQueue.main.async {
+                guard let self else { return }
+                if success {
+                    self.interruptedRecovery = false
+                    self.interruptedDetails = []
+                    self.wantsMute = false
+                    self.isMuted = false
+                    self.inputVolumeLock.withLock {
+                        self.inputVolumeBlocked = false
+                        self.inputVolumeLifetime = UUID()
+                    }
+                    if UtilityWorkspace.shared.featureNotice == Self.interruptedRecoveryNotice {
+                        UtilityWorkspace.shared.clearFeatureNotice()
+                    }
+                    let enabled = AppFeature.micMute.isAvailable && UtilityPreferences.standard.bool(forKey: DefaultsKey.micMuteShortcutEnabled)
+                    let shortcut = GlobalShortcut.saved(for: DefaultsKey.micMuteShortcut, fallback: .micMuteDefault)
+                    self.shortcutRegistrationFailed = !self.hotkey.sync(enabled: enabled, shortcut: shortcut,
+                                                                          storageKey: DefaultsKey.micMuteShortcut)
+                    self.syncListeners()
+                } else {
+                    Self.reportInterruptedRecovery()
+                }
+            }
+        }
+    }
+
     private static func reportUnknownLegacyRecovery() {
         UtilityWorkspace.shared.reportFeatureNotice(unknownRecoveryNotice)
     }
@@ -326,6 +448,13 @@ final class MicMuteService: ObservableObject {
     struct InputDevice {
         let id: AudioDeviceID
         let uid: String
+        let name: String
+
+        init(id: AudioDeviceID, uid: String, name: String = "Microphone") {
+            self.id = id
+            self.uid = uid
+            self.name = name
+        }
     }
 
     struct MuteOutcome {
@@ -337,6 +466,7 @@ final class MicMuteService: ObservableObject {
         var mutedDevices: [String]
         /// A device this sweep had to reach and could not, next to ones it did.
         var failed = false
+        var recoveryBlocked = false
     }
 
     enum MuteSwitchState: Equatable {
@@ -361,6 +491,7 @@ final class MicMuteService: ObservableObject {
         let setVolume: (Float, AudioDeviceID) -> Bool
         let volumeMuteVerified: (AudioDeviceID, [String: Double]) -> Bool
         let isActiveNonAggregate: (AudioDeviceID) -> Bool
+        let prepareWrite: (MicMuteWriteAhead.Entry) -> Bool
     }
 
     struct RestoreBackend {
@@ -370,6 +501,7 @@ final class MicMuteService: ObservableObject {
         let setVolume: (Float, AudioDeviceID, [String: Double]) -> Bool
         let volumeRestoreVerified: (AudioDeviceID, [String: Double]) -> Bool
         let volumeRestoreMayWrite: (AudioDeviceID, [String: Double]) -> Bool
+        let prepareWrite: (MicMuteWriteAhead.Entry) -> Bool
     }
 
     private static let hardwareRestore = RestoreBackend(
@@ -378,7 +510,8 @@ final class MicMuteService: ObservableObject {
         volume: { inputVolume(of: $0) },
         setVolume: { setInputVolume($0, of: $1, channels: $2) },
         volumeRestoreVerified: { volumeRestoreVerified(of: $0, channels: $1) },
-        volumeRestoreMayWrite: { volumeRestoreMayWrite(of: $0, channels: $1) })
+        volumeRestoreMayWrite: { volumeRestoreMayWrite(of: $0, channels: $1) },
+        prepareWrite: { writeAhead.append($0) })
 
     private static let hardwareMute = MuteBackend(
         muteSwitch: { muteSwitchState(of: $0) },
@@ -395,7 +528,8 @@ final class MicMuteService: ObservableObject {
             read(device, kAudioDevicePropertyTransportType, &transport)
             read(device, kAudioDevicePropertyDeviceIsRunningSomewhere, &running)
             return transport != kAudioDeviceTransportTypeAggregate && running != 0
-        })
+        },
+        prepareWrite: { writeAhead.append($0) })
 
     /// Runs on `halQueue`. Every CoreAudio call of a sweep happens here.
     private static func applyToDevices(muted: Bool,
@@ -443,6 +577,14 @@ final class MicMuteService: ObservableObject {
                 continue
             }
             if switchState == .value(0) {
+                let entry = MicMuteWriteAhead.Entry(uid: device.uid, kind: .muteSwitch,
+                                                    volume: savedVolumes[device.uid],
+                                                    channels: savedChannelVolumes[device.uid] ?? [:])
+                guard backend.prepareWrite(entry) else {
+                    outcome.failed = true
+                    outcome.recoveryBlocked = true
+                    break
+                }
                 switch backend.setMute(true, device.id) {
                 case .confirmed:
                     outcome.applied = true
@@ -474,6 +616,14 @@ final class MicMuteService: ObservableObject {
                     outcome.savedVolumes[device.uid] = Double(volume)
                 }
                 if !channels.isEmpty { outcome.savedChannelVolumes[device.uid] = channels }
+            }
+            let entry = MicMuteWriteAhead.Entry(uid: device.uid, kind: .volume,
+                                                volume: outcome.savedVolumes[device.uid],
+                                                channels: outcome.savedChannelVolumes[device.uid] ?? [:])
+            guard backend.prepareWrite(entry) else {
+                outcome.failed = true
+                outcome.recoveryBlocked = true
+                break
             }
             let writeSucceeded = backend.setVolume(0, device.id)
             let confirmed = writeSucceeded && backend.volumeMuteVerified(device.id, channels)
@@ -517,6 +667,13 @@ final class MicMuteService: ObservableObject {
                     outcome.mutedDevices.append(device.uid)
                     outcome.failed = true
                     continue
+                }
+                let entry = MicMuteWriteAhead.Entry(uid: device.uid, kind: .restoreSwitch,
+                                                    volume: nil, channels: [:])
+                guard backend.prepareWrite(entry) else {
+                    outcome.failed = true
+                    outcome.recoveryBlocked = true
+                    break
                 }
                 attempted = true
                 if backend.setMute(false, device.id) {
@@ -563,6 +720,14 @@ final class MicMuteService: ObservableObject {
                                                          legacy: legacyVolume)
             // The preflight has verified that every exposed channel has a
             // saved level; a master-only device can use the legacy fallback.
+            let entry = MicMuteWriteAhead.Entry(uid: device.uid, kind: .restoreVolume,
+                                                volume: savedVolumes[device.uid] ?? (channels.isEmpty ? Double(restore) : nil),
+                                                channels: channels)
+            guard backend.prepareWrite(entry) else {
+                outcome.failed = true
+                outcome.recoveryBlocked = true
+                break
+            }
             if backend.setVolume(restore, device.id, channels),
                backend.volumeRestoreVerified(device.id, channels) {
                 outcome.applied = true
@@ -626,7 +791,7 @@ final class MicMuteService: ObservableObject {
             let name = read(deviceID, kAudioObjectPropertyName, &nameRef) ? nameRef as String : uid
             guard !MicMuteSupport.isOwnDevice(name: name) else { continue }
 
-            devices.append(InputDevice(id: deviceID, uid: uid))
+            devices.append(InputDevice(id: deviceID, uid: uid, name: name))
         }
         return devices
     }
