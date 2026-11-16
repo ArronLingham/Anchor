@@ -219,7 +219,7 @@ final class FeatureRuntime: ObservableObject {
             }
             UtilityPreferences.standard.set(available, forKey: feature.availabilityKey)
             if available {
-                if serviceBindings[feature] != nil { loadedThisSession.insert(feature) }
+                if serviceBindings[feature] != nil && feature != .quickToggles { loadedThisSession.insert(feature) }
                 offerableThisSession.remove(feature)
             }
             UtilityWorkspace.shared.prepareOwnership()
@@ -257,7 +257,7 @@ final class FeatureRuntime: ObservableObject {
             }
             UtilityPreferences.standard.set(joins, forKey: feature.availabilityKey)
             if joins {
-                if serviceBindings[feature] != nil { loadedThisSession.insert(feature) }
+                if serviceBindings[feature] != nil && feature != .quickToggles { loadedThisSession.insert(feature) }
                 offerableThisSession.remove(feature)
             }
             UtilityWorkspace.shared.prepareOwnership()
@@ -321,7 +321,9 @@ final class FeatureRuntime: ObservableObject {
         MicMuteService.recoverAtLaunchIfNeeded()
         appliedAvailability = Set(AppFeature.allCases.filter(\.isAvailable))
         for feature in AppFeature.allCases where feature.isAvailable {
-            if serviceBindings[feature] != nil { loadedThisSession.insert(feature) }
+            // Quick Toggles' binding only advances a lightweight session gate;
+            // it does not construct its on-demand service or require restart.
+            if serviceBindings[feature] != nil && feature != .quickToggles { loadedThisSession.insert(feature) }
             UtilityWorkspace.shared.prepareOwnership()
             serviceBindings[feature]?()
         }
@@ -497,6 +499,7 @@ final class FeatureRuntime: ObservableObject {
         .extraBrightness: { ExtraBrightnessService.shared.syncWithPreferences() },
         .bluetoothSleep: { BluetoothSleepService.shared.syncWithPreferences() },
         .quickLauncher: { QuickLauncherService.shared.syncWithPreferences() },
+        .quickToggles: { QuickTogglesService.syncAvailability() },
         .colorPicker: {
             ScreenCaptureService.shared.syncWithPreferences()
         },

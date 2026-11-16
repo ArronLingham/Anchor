@@ -5,6 +5,64 @@ import XCTest
 @testable import AnchorUtilities
 
 final class FeatureResourceTests: XCTestCase {
+    func testQuickToggleQueuedWorkRejectsOldSessionAndFinishesStartedWork() throws {
+        let gate = ClipboardPresentationGate()
+        gate.update(available: true)
+        let old = try XCTUnwrap(gate.capture(currentlyAvailable: true))
+        var available = true
+        var effects: [String] = []
+        var cancelled = 0
+        let accepts = { (ticket: UUID) in gate.accepts(ticket, currentlyAvailable: available) }
+        let queued = {
+            QuickToggleQueuedWork.run(ticket: old, accepts: accepts,
+                                      cancelled: { cancelled += 1 },
+                                      work: { effects.append("old operation") })
+        }
+        available = false
+        gate.update(available: false)
+        available = true
+        gate.update(available: true)
+        queued()
+        XCTAssertEqual(cancelled, 1)
+        XCTAssertTrue(effects.isEmpty)
+
+        let current = try XCTUnwrap(gate.capture(currentlyAvailable: true))
+        QuickToggleQueuedWork.run(ticket: current, accepts: accepts,
+            cancelled: { cancelled += 1 }, work: {
+                effects.append("started")
+                available = false
+                gate.update(available: false)
+                effects.append("finished")
+            })
+        XCTAssertEqual(effects, ["started", "finished"], "Already-started work must finish its safe sequence")
+
+        available = true
+        gate.update(available: true)
+        let batch = try XCTUnwrap(gate.capture(currentlyAvailable: true))
+        var ejected: [Int] = []
+        QuickToggleQueuedWork.run(ticket: batch, accepts: accepts,
+            cancelled: { cancelled += 1 }, work: {
+                for device in [1, 2] {
+                    guard accepts(batch) else { break }
+                    ejected.append(device)
+                    if device == 1 { available = false; gate.update(available: false) }
+                }
+            })
+        XCTAssertEqual(ejected, [1], "Disabling must not start the next eject in the batch")
+
+        available = true
+        gate.update(available: true)
+        let beforePermission = try XCTUnwrap(gate.capture(currentlyAvailable: true))
+        QuickToggleQueuedWork.run(ticket: beforePermission, accepts: accepts,
+            cancelled: { cancelled += 1 }, work: {
+                // A read-only permission check can return after disable.
+                available = false
+                gate.update(available: false)
+                if accepts(beforePermission) { effects.append("system change") }
+            })
+        XCTAssertEqual(effects, ["started", "finished"])
+    }
+
     func testScreenshotAutoCopyDiscardDoesNotCancelNewerCapture() {
         let state = ScreenshotAutoCopyState()
         let first = UUID(), second = UUID()

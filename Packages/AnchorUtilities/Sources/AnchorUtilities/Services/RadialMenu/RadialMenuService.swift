@@ -848,9 +848,9 @@ final class RadialMenuService: ObservableObject {
     }
 
     private func run(_ action: RadialMenuQuickToggle, ticket: RadialMenuActionGate.Ticket) {
-        guard actionAllowed(ticket), AppFeature.quickToggles.isAvailable else { return }
+        guard actionAllowed(ticket), let destination = QuickTogglesService.captureRequest() else { return }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
-            guard let self, self.actionAllowed(ticket), AppFeature.quickToggles.isAvailable else { return }
+            guard let self, self.actionAllowed(ticket), QuickTogglesService.accepts(destination) else { return }
             let toggles = QuickTogglesService.shared
             switch action {
             case .darkMode: toggles.toggleDarkMode()

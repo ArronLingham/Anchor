@@ -585,6 +585,7 @@ enum CommandBarCatalog {
         }
 
         if AppFeature.quickToggles.isAvailable {
+            let quickToggleTicket = QuickTogglesService.captureRequest()
             let toggles = QuickTogglesService.shared
             let togglesText = FeatureStrings.quickToggles(language)
             let togglesArea = area(.quickToggles)
@@ -594,46 +595,46 @@ enum CommandBarCatalog {
                 title: isDark ? togglesText.darkModeToLight : togglesText.darkModeToDark,
                 subtitle: togglesArea,
                 icon: .symbol(isDark ? "sun.max.fill" : "moon.fill"),
-                run: { _ in QuickTogglesService.shared.toggleDarkMode() }))
+                run: { _ in QuickTogglesService.runIfCurrent(quickToggleTicket) { QuickTogglesService.shared.toggleDarkMode() } }))
             entries.append(CommandBarEntry(
                 id: "action.lockScreen",
                 title: togglesText.lockScreenTitle,
                 subtitle: togglesArea,
                 icon: .symbol("lock.fill"),
                 confirmationPrompt: togglesText.lockScreenTitle + "?",
-                run: { _ in afterBeat { QuickTogglesService.shared.lockScreen() } }))
+                run: { _ in afterBeat { QuickTogglesService.runIfCurrent(quickToggleTicket) { QuickTogglesService.shared.lockScreen() } } }))
             entries.append(CommandBarEntry(
                 id: "action.displayOff",
                 title: togglesText.displayOffTitle,
                 subtitle: togglesArea,
                 icon: .symbol("display"),
                 confirmationPrompt: togglesText.displayOffTitle + "?",
-                run: { _ in afterBeat { QuickTogglesService.shared.turnDisplayOff() } }))
+                run: { _ in afterBeat { QuickTogglesService.runIfCurrent(quickToggleTicket) { QuickTogglesService.shared.turnDisplayOff() } } }))
             entries.append(CommandBarEntry(
                 id: "action.screenSaver",
                 title: togglesText.screenSaverTitle,
                 subtitle: togglesArea,
                 icon: .symbol("sparkles.tv"),
                 confirmationPrompt: togglesText.screenSaverTitle + "?",
-                run: { _ in afterBeat { QuickTogglesService.shared.startScreenSaver() } }))
+                run: { _ in afterBeat { QuickTogglesService.runIfCurrent(quickToggleTicket) { QuickTogglesService.shared.startScreenSaver() } } }))
             entries.append(CommandBarEntry(
                 id: "action.ejectDisks",
                 title: togglesText.ejectTitle,
                 subtitle: togglesArea,
                 icon: .symbol("eject.fill"),
-                run: { _ in QuickTogglesService.shared.ejectAllDisks() }))
+                run: { _ in QuickTogglesService.runIfCurrent(quickToggleTicket) { QuickTogglesService.shared.ejectAllDisks() } }))
             entries.append(CommandBarEntry(
                 id: "action.hiddenFiles",
                 title: toggles.hiddenFilesShown ? togglesText.hiddenFilesHide : togglesText.hiddenFilesShow,
                 subtitle: togglesArea,
                 icon: .symbol(toggles.hiddenFilesShown ? "eye.slash" : "eye"),
-                run: { _ in QuickTogglesService.shared.toggleHiddenFiles() }))
+                run: { _ in QuickTogglesService.runIfCurrent(quickToggleTicket) { QuickTogglesService.shared.toggleHiddenFiles() } }))
             entries.append(CommandBarEntry(
                 id: "action.desktopIcons",
                 title: toggles.desktopIconsShown ? togglesText.desktopIconsHide : togglesText.desktopIconsShow,
                 subtitle: togglesArea,
                 icon: .symbol("desktopcomputer"),
-                run: { _ in QuickTogglesService.shared.toggleDesktopIcons() }))
+                run: { _ in QuickTogglesService.runIfCurrent(quickToggleTicket) { QuickTogglesService.shared.toggleDesktopIcons() } }))
             entries.append(CommandBarEntry(
                 id: "action.emptyTrash",
                 title: togglesText.emptyTrashTitle,
@@ -641,7 +642,7 @@ enum CommandBarCatalog {
                 icon: .symbol("trash"),
                 trouble: automationDenied ? .needsPermission : nil,
                 confirmationPrompt: togglesText.emptyTrashConfirmTitle,
-                run: { _ in QuickTogglesService.shared.emptyTrashConfirmed() }))
+                run: { _ in QuickTogglesService.runIfCurrent(quickToggleTicket) { QuickTogglesService.shared.emptyTrashConfirmed() } }))
         }
 
         if AppFeature.urlCleaner.isAvailable {

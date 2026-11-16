@@ -262,9 +262,10 @@ struct QuickTogglesList: View {
                                 showsDragHandle: true,
                                 visibility: visibilityBinding(item),
                                 action: {
+                                    let ticket = QuickTogglesService.captureRequest()
                                     dismissSurface()
                                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                                        QuickTogglesService.shared.lockScreen()
+                                        QuickTogglesService.runIfCurrent(ticket) { QuickTogglesService.shared.lockScreen() }
                                     }
                                 })
         case .displayOff:
@@ -276,9 +277,10 @@ struct QuickTogglesList: View {
                                 visibility: visibilityBinding(item),
                                 captionStaysVisible: reportsState(item),
                                 action: {
+                                    let ticket = QuickTogglesService.captureRequest()
                                     dismissSurface()
                                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                                        QuickTogglesService.shared.turnDisplayOff()
+                                        QuickTogglesService.runIfCurrent(ticket) { QuickTogglesService.shared.turnDisplayOff() }
                                     }
                                 })
         case .screenSaver:
@@ -289,9 +291,10 @@ struct QuickTogglesList: View {
                                 showsDragHandle: true,
                                 visibility: visibilityBinding(item),
                                 action: {
+                                    let ticket = QuickTogglesService.captureRequest()
                                     dismissSurface()
                                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                                        QuickTogglesService.shared.startScreenSaver()
+                                        QuickTogglesService.runIfCurrent(ticket) { QuickTogglesService.shared.startScreenSaver() }
                                     }
                                 })
         }
