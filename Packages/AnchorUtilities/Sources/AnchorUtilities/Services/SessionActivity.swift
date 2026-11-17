@@ -23,8 +23,19 @@ final class SessionActivity {
     /// it answers under `lock`.
     var isActive: Bool { lock.withLock { active } }
 
+    /// A queued operation can distinguish the current active interval from
+    /// a previous one, even if the user has switched away and back.
+    func captureActiveSession() -> UUID? {
+        lock.withLock { active ? generation : nil }
+    }
+
+    func acceptsSession(_ ticket: UUID) -> Bool {
+        lock.withLock { active && generation == ticket }
+    }
+
     private let lock = NSLock()
     private var active = false
+    private var generation = UUID()
 
     private let center: NotificationCenter
     private var observers: [NSObjectProtocol] = []
@@ -69,6 +80,7 @@ final class SessionActivity {
         let changed = lock.withLock { () -> Bool in
             guard isActive != active else { return false }
             active = isActive
+            generation = UUID()
             return true
         }
         guard changed else { return }

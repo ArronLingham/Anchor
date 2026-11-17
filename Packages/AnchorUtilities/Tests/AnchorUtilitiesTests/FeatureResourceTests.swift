@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import CoreGraphics
 import ImageIO
@@ -5,6 +6,36 @@ import XCTest
 @testable import AnchorUtilities
 
 final class FeatureResourceTests: XCTestCase {
+    func testCleaningRequestCannotSurviveLoginSessionSwitch() throws {
+        let exercise = {
+            let center = NotificationCenter()
+            let activity = SessionActivity(center: center, initialIsActive: { true })
+            guard let old = activity.captureActiveSession() else {
+                XCTFail("Expected the fake session to begin active")
+                return
+            }
+            center.post(name: NSWorkspace.sessionDidBecomeActiveNotification, object: nil)
+            XCTAssertTrue(activity.acceptsSession(old), "A duplicate notification must not invalidate a session")
+            center.post(name: NSWorkspace.sessionDidResignActiveNotification, object: nil)
+            XCTAssertNil(activity.captureActiveSession())
+            center.post(name: NSWorkspace.sessionDidBecomeActiveNotification, object: nil)
+            XCTAssertFalse(activity.acceptsSession(old), "Returning to the login session must reject the old ticket")
+            guard let current = activity.captureActiveSession() else {
+                XCTFail("Expected the fake session to return")
+                return
+            }
+            var tapInstalls = 0
+            let feature = UUID()
+            for session in [old, current] {
+                CleaningModeActivationRequest.run(ticket: feature, accepts: { $0 == feature },
+                                                  sessionActive: { activity.acceptsSession(session) },
+                                                  activate: { tapInstalls += 1 })
+            }
+            XCTAssertEqual(tapInstalls, 1, "Only the fresh session may install the fake tap")
+        }
+        if Thread.isMainThread { exercise() } else { DispatchQueue.main.sync(execute: exercise) }
+    }
+
     func testCleaningDeactivationWaitsForMouseReleaseAndHasABoundedFallback() {
         var gate = CleaningMouseReleaseGate()
         gate.buttonDown(0)

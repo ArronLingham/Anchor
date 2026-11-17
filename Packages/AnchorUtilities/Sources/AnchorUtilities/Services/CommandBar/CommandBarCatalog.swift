@@ -460,14 +460,18 @@ enum CommandBarCatalog {
                 }))
         }
         if AppFeature.cleaningMode.isAvailable {
-            let request = CleaningModeManager.activationRequest()
+            let availability = CleaningModeManager.captureAvailability()
             entries.append(CommandBarEntry(
                 id: "action.cleaningMode",
                 title: s.cleaningMenuItem,
                 subtitle: area(.cleaningMode, under: s.cleaningMenuItem),
                 icon: .symbol("keyboard"),
                 trouble: accessibilityTrouble(),
-                run: { _ in if let request { afterBeat(0.1) { request() } } }))
+                run: { _ in
+                    guard let availability,
+                          let request = CleaningModeManager.activationRequest(availabilityTicket: availability) else { return }
+                    afterBeat(0.1) { request() }
+                }))
         }
 
         if AppFeature.keepAwake.isAvailable {

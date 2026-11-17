@@ -37,11 +37,20 @@ final class CleaningModeManager: ObservableObject {
     }
 
     static func activationRequest() -> (() -> Void)? {
-        guard let ticket = availabilityGate.capture(currentlyAvailable: AppFeature.cleaningMode.isAvailable) else { return nil }
+        guard let ticket = captureAvailability() else { return nil }
+        return activationRequest(availabilityTicket: ticket)
+    }
+
+    static func captureAvailability() -> UUID? {
+        availabilityGate.capture(currentlyAvailable: AppFeature.cleaningMode.isAvailable)
+    }
+
+    static func activationRequest(availabilityTicket ticket: UUID) -> (() -> Void)? {
+        guard accepts(ticket), let session = SessionActivity.shared.captureActiveSession() else { return nil }
         return {
             CleaningModeActivationRequest.run(ticket: ticket, accepts: accepts,
-                                              sessionActive: { SessionActivity.shared.isActive }) {
-                shared.activate(ticket: ticket)
+                                              sessionActive: { SessionActivity.shared.acceptsSession(session) }) {
+                shared.activate(ticket: ticket, session: session)
             }
         }
     }
@@ -126,18 +135,18 @@ final class CleaningModeManager: ObservableObject {
         Self.activationRequest()?()
     }
 
-    private func activate(ticket: UUID) {
-        guard Self.accepts(ticket), SessionActivity.shared.isActive, !isActive else { return }
+    private func activate(ticket: UUID, session: UUID) {
+        guard Self.accepts(ticket), SessionActivity.shared.acceptsSession(session), !isActive else { return }
         // Check Accessibility explicitly (same gate the other event taps use) so a
         // missing grant is reported clearly, rather than inferred from a nil tap.
         guard Permissions.shared.accessibility else {
             promptForAccessibility()
             return
         }
-        guard Self.accepts(ticket), SessionActivity.shared.isActive else { return }
+        guard Self.accepts(ticket), SessionActivity.shared.acceptsSession(session) else { return }
         mouseReleaseGate.reset()
         guard installTap() else { return }
-        guard Self.accepts(ticket), SessionActivity.shared.isActive else {
+        guard Self.accepts(ticket), SessionActivity.shared.acceptsSession(session) else {
             removeTap()
             return
         }
@@ -158,7 +167,7 @@ final class CleaningModeManager: ObservableObject {
         RadialMenuService.shared.suspend()
         resetEscapeHold()
         isActive = true
-        guard Self.accepts(ticket), SessionActivity.shared.isActive else {
+        guard Self.accepts(ticket), SessionActivity.shared.acceptsSession(session) else {
             deactivate(restoreSuspendedFeatures: SessionActivity.shared.isActive)
             return
         }
