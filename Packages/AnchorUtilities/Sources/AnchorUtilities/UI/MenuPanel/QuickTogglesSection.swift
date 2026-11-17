@@ -67,9 +67,37 @@ struct PanelQuickTogglesView: View {
 /// The shared row list: the menu panel tab and the quick panel host render
 /// the same actions, honoring the same order and per-item visibility.
 struct QuickTogglesList: View {
+    @ObservedObject private var features = FeatureRuntime.shared
+    @AppStorage(DefaultsKey.panelToggleMicMute, store: UtilityPreferences.standard) private var showMicMute = true
+    let editing: Bool
+    @Binding var draggingItem: QuickToggleAction?
+    let dismissSurface: () -> Void
+
+    var body: some View {
+        if AppFeature.quickToggles.isAvailable {
+            ActiveQuickTogglesList(editing: editing, draggingItem: $draggingItem,
+                                   dismissSurface: dismissSurface)
+        } else if AppFeature.micMute.isAvailable && (editing || showMicMute) {
+            PanelRowGroup(items: [QuickToggleAction.micMute], showsDragHandles: editing) { item in
+                PanelReorderableItem(item: item, isEnabled: editing, previewsAsCard: true,
+                                     order: micOrder, dragging: $draggingItem) {
+                    QuickToggleMicRow(editing: editing, visibility: $showMicMute)
+                }
+            }
+        }
+    }
+
+    private var micOrder: Binding<[QuickToggleAction]> {
+        Binding(get: { PanelLayout.itemOrder(QuickToggleAction.self, key: DefaultsKey.panelToggleOrder) },
+                set: { PanelLayout.setItemOrder($0, key: DefaultsKey.panelToggleOrder) })
+    }
+
+    static func resetPanelDefaults() { ActiveQuickTogglesList.resetPanelDefaults() }
+}
+
+private struct ActiveQuickTogglesList: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var toggles = QuickTogglesService.shared
-    @ObservedObject private var micMute = MicMuteService.shared
     @ObservedObject private var brightness = BrightnessService.shared
     @Environment(\.colorScheme) private var colorScheme
     @AppStorage(DefaultsKey.panelToggleDarkMode, store: UtilityPreferences.standard) private var showDarkMode = true
@@ -192,16 +220,7 @@ struct QuickTogglesList: View {
                            showsDragHandle: true,
                            visibility: visibilityBinding(item))
         case .micMute:
-            UtilityActionButton(title: micMute.isMuted ? l10n.s.micUnmuteName : l10n.s.micMuteName,
-                                caption: l10n.s.micMuteCaption,
-                                systemImage: micMute.isMuted ? "mic.slash.fill" : "mic",
-                                isEditing: editing,
-                                showsDragHandle: true,
-                                visibility: $showMicMute,
-                                shortcutHint: shortcutHint(.micMute),
-                                action: {
-                                    MicMuteService.shared.toggle()
-                                })
+            QuickToggleMicRow(editing: editing, visibility: $showMicMute)
         case .emptyTrash:
             UtilityActionButton(title: strings.emptyTrashTitle,
                                 caption: caption(for: item, idle: strings.emptyTrashCaption),
@@ -323,12 +342,6 @@ struct QuickTogglesList: View {
         }
     }
 
-    private func shortcutHint(_ role: GlobalShortcutRole) -> String? {
-        guard role.requiredEnableKeys.allSatisfy({ UtilityPreferences.standard.bool(forKey: $0) })
-        else { return nil }
-        return role.savedShortcut.displayString
-    }
-
     private func ejectCaption(_ strings: QuickToggleFeatureStrings) -> String {
         switch toggles.state(for: .ejectDisks) {
         case .running: return l10n.s.diskEjecting
@@ -359,5 +372,29 @@ struct QuickTogglesList: View {
         return {
             Permissions.shared.openAutomationSettings()
         }
+    }
+}
+
+/// The microphone row is an independent consumer: a Quick Toggles-only
+/// panel must not construct its service just to render unrelated actions.
+private struct QuickToggleMicRow: View {
+    @ObservedObject private var l10n = L10n.shared
+    @ObservedObject private var micMute = MicMuteService.shared
+    let editing: Bool
+    @Binding var visibility: Bool
+
+    var body: some View {
+        UtilityActionButton(title: micMute.isMuted ? l10n.s.micUnmuteName : l10n.s.micMuteName,
+                            caption: l10n.s.micMuteCaption,
+                            systemImage: micMute.isMuted ? "mic.slash.fill" : "mic",
+                            isEditing: editing, showsDragHandle: true,
+                            visibility: $visibility, shortcutHint: shortcutHint,
+                            action: { MicMuteService.shared.toggle() })
+    }
+
+    private var shortcutHint: String? {
+        let role = GlobalShortcutRole.micMute
+        guard role.requiredEnableKeys.allSatisfy({ UtilityPreferences.standard.bool(forKey: $0) }) else { return nil }
+        return role.savedShortcut.displayString
     }
 }
