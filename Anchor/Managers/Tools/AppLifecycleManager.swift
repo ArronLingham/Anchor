@@ -72,9 +72,33 @@ struct QuitOnClosePendingChecks {
     mutating func remove(pid: pid_t) { checks.removeValue(forKey: pid) }
 }
 
+/// A delayed termination notification must not remove a replacement app's
+/// launch time when the operating system has reused its process identifier.
+struct RunningApplicationLaunches<Process> {
+    private var entries: [pid_t: (process: Process, date: Date)] = [:]
+
+    mutating func record(pid: pid_t, process: Process, date: Date,
+                         matches: (Process, Process) -> Bool) -> Bool {
+        let alreadyKnown = entries[pid].map { matches($0.process, process) } ?? false
+        entries[pid] = (process, date)
+        return alreadyKnown
+    }
+
+    mutating func remove(pid: pid_t, process: Process, matches: (Process, Process) -> Bool) {
+        guard let entry = entries[pid], matches(entry.process, process) else { return }
+        entries.removeValue(forKey: pid)
+    }
+
+    func date(pid: pid_t, process: Process, matches: (Process, Process) -> Bool) -> Date? {
+        guard let entry = entries[pid], matches(entry.process, process) else { return nil }
+        return entry.date
+    }
+}
+
 private struct QuitOnCloseObserverContext {
-    let pid: pid_t
+    let app: NSRunningApplication
     let ticket: UUID
+    let observerID: UUID
 }
 
 /// Decides whether an app with no windows left should be quit.
@@ -201,7 +225,7 @@ final class AppLifecycleManager {
 
     /// Launch times, so the grace period can be applied. Populated on launch
     /// notifications and seeded for apps already running at startup.
-    private var launchTimes: [pid_t: Date] = [:]
+    private var launchTimes = RunningApplicationLaunches<NSRunningApplication>()
     /// When the user last did something that would explain a media app opening.
     private var lastUserIntent = Date.distantPast
     /// AX observers, one per watched app.
@@ -231,7 +255,8 @@ final class AppLifecycleManager {
         started = true
 
         for app in NSWorkspace.shared.runningApplications {
-            launchTimes[app.processIdentifier] = app.launchDate ?? Date.distantPast
+            _ = launchTimes.record(pid: app.processIdentifier, process: app,
+                                   date: app.launchDate ?? Date(), matches: { $0.isEqual($1) })
         }
 
         NSWorkspace.shared.notificationCenter
@@ -247,9 +272,7 @@ final class AppLifecycleManager {
                 Task { @MainActor in
                     guard let app = note.userInfo?[NSWorkspace.applicationUserInfoKey]
                         as? NSRunningApplication else { return }
-                    self?.launchTimes.removeValue(forKey: app.processIdentifier)
-                    self?.pendingCheck.remove(pid: app.processIdentifier)
-                    self?.removeObserver(for: app.processIdentifier)
+                    self?.applicationTerminated(app)
                 }
             }
             .store(in: &cancellables)
@@ -278,8 +301,9 @@ final class AppLifecycleManager {
         guard let app = note.userInfo?[NSWorkspace.applicationUserInfoKey]
             as? NSRunningApplication else { return }
 
-        let alreadyKnown = launchTimes[app.processIdentifier] != nil
-        launchTimes[app.processIdentifier] = Date()
+        guard isCurrentApplication(app) else { return }
+        let alreadyKnown = launchTimes.record(pid: app.processIdentifier, process: app,
+                                              date: Date(), matches: { $0.isEqual($1) })
 
         if Defaults[.enableQuitOnLastWindowClose] {
             installObserver(for: app)
@@ -304,6 +328,21 @@ final class AppLifecycleManager {
 
     // MARK: Quit on last window close
 
+    private func isCurrentApplication(_ app: NSRunningApplication) -> Bool {
+        guard !app.isTerminated,
+              let current = NSRunningApplication(processIdentifier: app.processIdentifier)
+        else { return false }
+        return current.isEqual(app)
+    }
+
+    private func applicationTerminated(_ app: NSRunningApplication) {
+        let pid = app.processIdentifier
+        launchTimes.remove(pid: pid, process: app, matches: { $0.isEqual($1) })
+        guard let context = refcons[pid]?.pointee, context.app.isEqual(app) else { return }
+        pendingCheck.remove(pid: pid)
+        removeObserver(for: pid)
+    }
+
     private func syncQuitOnClose() {
         if Defaults[.enableQuitOnLastWindowClose] {
             let current = quitSession.current()
@@ -326,8 +365,12 @@ final class AppLifecycleManager {
 
     private func installObserver(for app: NSRunningApplication) {
         let pid = app.processIdentifier
-        guard observers[pid] == nil,
-              app.activationPolicy == .regular,
+        guard isCurrentApplication(app) else { return }
+        if let context = refcons[pid]?.pointee {
+            guard !context.app.isEqual(app) else { return }
+            removeObserver(for: pid)
+        }
+        guard observers[pid] == nil, app.activationPolicy == .regular,
               pid != ProcessInfo.processInfo.processIdentifier,
               let bundleID = app.bundleIdentifier,
               !QuitOnCloseDecision.alwaysExcluded.contains(bundleID)
@@ -338,14 +381,15 @@ final class AppLifecycleManager {
             guard let refcon else { return }
             let context = refcon.load(as: QuitOnCloseObserverContext.self)
             Task { @MainActor in
-                AppLifecycleManager.shared.windowClosed(pid: context.pid, ticket: context.ticket)
+                AppLifecycleManager.shared.windowClosed(app: context.app, ticket: context.ticket,
+                                                        observerID: context.observerID)
             }
         }
         guard AXObserverCreate(pid, callback, &observer) == .success,
               let observer else { return }
 
         let box = UnsafeMutablePointer<QuitOnCloseObserverContext>.allocate(capacity: 1)
-        box.initialize(to: QuitOnCloseObserverContext(pid: pid, ticket: quitSession.current()))
+        box.initialize(to: QuitOnCloseObserverContext(app: app, ticket: quitSession.current(), observerID: UUID()))
         refcons[pid] = box
 
         let element = AXUIElementCreateApplication(pid)
@@ -372,13 +416,15 @@ final class AppLifecycleManager {
     }
 
     /// A window went away in `pid` — decide whether the app should follow.
-    private func windowClosed(pid: pid_t, ticket: UUID) {
+    private func windowClosed(app: NSRunningApplication, ticket: UUID, observerID: UUID) {
+        let pid = app.processIdentifier
         guard quitSession.accepts(ticket, enabled: Defaults[.enableQuitOnLastWindowClose]),
-              let app = NSRunningApplication(processIdentifier: pid)
+              refcons[pid]?.pointee.observerID == observerID,
+              isCurrentApplication(app)
         else { return }
 
         // Coalesce: one deferred check per app per burst.
-        guard let request = pendingCheck.begin(pid: pid, ticket: ticket) else { return }
+        guard let request = pendingCheck.begin(pid: pid, ticket: observerID) else { return }
 
         // AX reports the destruction before the window list settles, so read
         // it a moment later or the closing window is still counted.
@@ -387,20 +433,23 @@ final class AppLifecycleManager {
                 guard let self else { return }
                 guard self.pendingCheck.finish(pid: pid, request: request),
                       self.quitSession.accepts(ticket, enabled: Defaults[.enableQuitOnLastWindowClose]),
-                      !app.isTerminated else { return }
+                      self.refcons[pid]?.pointee.observerID == observerID,
+                      self.isCurrentApplication(app) else { return }
 
                 guard let counts = self.windowCounts(pid: pid) else { return }
                 let state = QuitOnCloseDecision.State(
                     bundleID: app.bundleIdentifier,
                     visibleWindowCount: counts.visible,
                     sinceLaunch: Date().timeIntervalSince(
-                        self.launchTimes[pid] ?? Date.distantPast),
+                        self.launchTimes.date(pid: pid, process: app, matches: { $0.isEqual($1) }) ?? Date()),
                     isRegularApp: app.activationPolicy == .regular,
                     hasMinimisedWindows: counts.minimised > 0)
 
                 self.quitDecision.userExcluded = Set(Defaults[.quitOnCloseExcludedApps])
                 guard self.quitDecision.shouldQuit(state),
-                      self.quitSession.accepts(ticket, enabled: Defaults[.enableQuitOnLastWindowClose])
+                      self.quitSession.accepts(ticket, enabled: Defaults[.enableQuitOnLastWindowClose]),
+                      self.refcons[pid]?.pointee.observerID == observerID,
+                      self.isCurrentApplication(app)
                 else { return }
 
                 app.terminate()

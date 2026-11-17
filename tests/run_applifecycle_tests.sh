@@ -20,7 +20,8 @@ quit_ = re.search(r'(struct QuitOnCloseDecision \{.*?\n\})\n', src, re.S).group(
 media = re.search(r'(struct MediaAutoLaunchDecision \{.*?\n\})\n', src, re.S).group(1)
 session = re.search(r'(final class QuitOnCloseSession \{.*?\n\})\n', src, re.S).group(1)
 pending = re.search(r'(struct QuitOnClosePendingChecks \{.*?\n\})\n', src, re.S).group(1)
-open(sys.argv[1], "w").write("import Foundation\n\n" + session + "\n\n" + pending + "\n\n" + quit_ + "\n\n" + media + "\n")
+launches = re.search(r'(struct RunningApplicationLaunches<Process> \{.*?\n\})\n', src, re.S).group(1)
+open(sys.argv[1], "w").write("import Foundation\n\n" + session + "\n\n" + pending + "\n\n" + launches + "\n\n" + quit_ + "\n\n" + media + "\n")
 PY
 
 cat > "$WORK/main.swift" <<'SWIFT'
@@ -64,6 +65,24 @@ if pending.finish(pid: 42, request: duringRead), session.accepts(current, enable
 }
 ok("handover during window read prevents termination", quits == 0)
 ok("off rejects even a current token", !session.accepts(session.current(), enabled: false))
+
+// Different fake processes can share a PID. A late termination from the old
+// one must neither erase the new process's launch time nor inherit its grace.
+var launches = RunningApplicationLaunches<String>()
+let oldLaunch = Date(timeIntervalSince1970: 10)
+let newLaunch = Date(timeIntervalSince1970: 20)
+ok("first process is new", !launches.record(pid: 7, process: "old", date: oldLaunch, matches: ==))
+ok("replacement with same PID is new", !launches.record(pid: 7, process: "new", date: newLaunch, matches: ==))
+launches.remove(pid: 7, process: "old", matches: ==)
+ok("old termination preserves new launch", launches.date(pid: 7, process: "new", matches: ==) == newLaunch)
+ok("old process cannot borrow new launch", launches.date(pid: 7, process: "old", matches: ==) == nil)
+launches.remove(pid: 7, process: "new", matches: ==)
+ok("matching termination removes launch", launches.date(pid: 7, process: "new", matches: ==) == nil)
+let oldObserver = UUID(), newObserver = UUID()
+let oldObserverRequest = pending.begin(pid: 7, ticket: oldObserver)!
+let newObserverRequest = pending.begin(pid: 7, ticket: newObserver)!
+ok("replaced observer gets its own check", !pending.finish(pid: 7, request: oldObserverRequest))
+ok("new observer check remains pending", pending.finish(pid: 7, request: newObserverRequest))
 
 // ---------- QuitOnCloseDecision ----------
 var quit = QuitOnCloseDecision()
