@@ -25,6 +25,58 @@ import Foundation
 
 // MARK: - Pure decisions
 
+/// Preference notifications can arrive outside the main actor. Invalidate
+/// synchronously, before a queued main-actor reconciliation can be delayed.
+final class QuitOnCloseSession {
+    private let lock = NSLock()
+    private var generation = UUID()
+
+    func current() -> UUID {
+        lock.lock(); defer { lock.unlock() }
+        return generation
+    }
+
+    func invalidate() {
+        lock.lock(); defer { lock.unlock() }
+        generation = UUID()
+    }
+
+    func accepts(_ ticket: UUID, enabled: Bool) -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        return enabled && generation == ticket
+    }
+}
+
+/// Coalesce only within a session. An old completion must not remove a
+/// newer session's pending check for the same process identifier.
+struct QuitOnClosePendingChecks {
+    private struct Entry {
+        let session: UUID
+        let request: UUID
+    }
+    private var checks: [pid_t: Entry] = [:]
+
+    mutating func begin(pid: pid_t, ticket: UUID) -> UUID? {
+        guard checks[pid]?.session != ticket else { return nil }
+        let request = UUID()
+        checks[pid] = Entry(session: ticket, request: request)
+        return request
+    }
+
+    mutating func finish(pid: pid_t, request: UUID) -> Bool {
+        guard checks[pid]?.request == request else { return false }
+        checks.removeValue(forKey: pid)
+        return true
+    }
+
+    mutating func remove(pid: pid_t) { checks.removeValue(forKey: pid) }
+}
+
+private struct QuitOnCloseObserverContext {
+    let pid: pid_t
+    let ticket: UUID
+}
+
 /// Decides whether an app with no windows left should be quit.
 ///
 /// Pure, because every rule here exists to stop the feature quitting something
@@ -161,7 +213,8 @@ final class AppLifecycleManager {
     /// produce dozens of callbacks, and without this each would schedule its
     /// own deferred AX window-count query. One check per burst is enough,
     /// because the check reads the live window list anyway.
-    private var pendingCheck: Set<pid_t> = []
+    private var pendingCheck = QuitOnClosePendingChecks()
+    private let quitSession = QuitOnCloseSession()
     private var observers: [pid_t: AXObserver] = [:]
     /// Refcon boxes handed to AX, one per observer.
     ///
@@ -169,7 +222,7 @@ final class AppLifecycleManager {
     /// pointer and dereferences it on every callback — so they are kept here
     /// and released in `removeObserver` alongside the observer itself. Without
     /// this they leak one allocation per app, per enable/disable cycle.
-    private var refcons: [pid_t: UnsafeMutablePointer<pid_t>] = [:]
+    private var refcons: [pid_t: UnsafeMutablePointer<QuitOnCloseObserverContext>] = [:]
 
     private init() {}
 
@@ -195,14 +248,16 @@ final class AppLifecycleManager {
                     guard let app = note.userInfo?[NSWorkspace.applicationUserInfoKey]
                         as? NSRunningApplication else { return }
                     self?.launchTimes.removeValue(forKey: app.processIdentifier)
-                    self?.pendingCheck.remove(app.processIdentifier)
+                    self?.pendingCheck.remove(pid: app.processIdentifier)
                     self?.removeObserver(for: app.processIdentifier)
                 }
             }
             .store(in: &cancellables)
 
-        Defaults.publisher(.enableQuitOnLastWindowClose)
-            .sink { [weak self] _ in
+        let session = quitSession
+        Defaults.publisher(.enableQuitOnLastWindowClose, options: [])
+            .sink { [weak self, session] _ in
+                session.invalidate()
                 Task { @MainActor in self?.syncQuitOnClose() }
             }
             .store(in: &cancellables)
@@ -251,6 +306,9 @@ final class AppLifecycleManager {
 
     private func syncQuitOnClose() {
         if Defaults[.enableQuitOnLastWindowClose] {
+            let current = quitSession.current()
+            let stale = refcons.compactMap { $0.value.pointee.ticket == current ? nil : $0.key }
+            for pid in stale { removeObserver(for: pid) }
             guard AXIsProcessTrusted() else {
                 NSLog("⚠️ AppLifecycle: quit-on-close needs Accessibility")
                 return
@@ -278,16 +336,16 @@ final class AppLifecycleManager {
         var observer: AXObserver?
         let callback: AXObserverCallback = { _, _, _, refcon in
             guard let refcon else { return }
-            let pid = refcon.load(as: pid_t.self)
+            let context = refcon.load(as: QuitOnCloseObserverContext.self)
             Task { @MainActor in
-                AppLifecycleManager.shared.windowClosed(pid: pid)
+                AppLifecycleManager.shared.windowClosed(pid: context.pid, ticket: context.ticket)
             }
         }
         guard AXObserverCreate(pid, callback, &observer) == .success,
               let observer else { return }
 
-        let box = UnsafeMutablePointer<pid_t>.allocate(capacity: 1)
-        box.initialize(to: pid)
+        let box = UnsafeMutablePointer<QuitOnCloseObserverContext>.allocate(capacity: 1)
+        box.initialize(to: QuitOnCloseObserverContext(pid: pid, ticket: quitSession.current()))
         refcons[pid] = box
 
         let element = AXUIElementCreateApplication(pid)
@@ -314,22 +372,22 @@ final class AppLifecycleManager {
     }
 
     /// A window went away in `pid` — decide whether the app should follow.
-    private func windowClosed(pid: pid_t) {
-        guard Defaults[.enableQuitOnLastWindowClose],
+    private func windowClosed(pid: pid_t, ticket: UUID) {
+        guard quitSession.accepts(ticket, enabled: Defaults[.enableQuitOnLastWindowClose]),
               let app = NSRunningApplication(processIdentifier: pid)
         else { return }
 
         // Coalesce: one deferred check per app per burst.
-        guard !pendingCheck.contains(pid) else { return }
-        pendingCheck.insert(pid)
+        guard let request = pendingCheck.begin(pid: pid, ticket: ticket) else { return }
 
         // AX reports the destruction before the window list settles, so read
         // it a moment later or the closing window is still counted.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
             MainActor.assumeIsolated {
                 guard let self else { return }
-                self.pendingCheck.remove(pid)
-                guard !app.isTerminated else { return }
+                guard self.pendingCheck.finish(pid: pid, request: request),
+                      self.quitSession.accepts(ticket, enabled: Defaults[.enableQuitOnLastWindowClose]),
+                      !app.isTerminated else { return }
 
                 guard let counts = self.windowCounts(pid: pid) else { return }
                 let state = QuitOnCloseDecision.State(
@@ -341,7 +399,9 @@ final class AppLifecycleManager {
                     hasMinimisedWindows: counts.minimised > 0)
 
                 self.quitDecision.userExcluded = Set(Defaults[.quitOnCloseExcludedApps])
-                guard self.quitDecision.shouldQuit(state) else { return }
+                guard self.quitDecision.shouldQuit(state),
+                      self.quitSession.accepts(ticket, enabled: Defaults[.enableQuitOnLastWindowClose])
+                else { return }
 
                 app.terminate()
                 NSLog("AppLifecycle: quit \(app.bundleIdentifier ?? "?") — last window closed")
