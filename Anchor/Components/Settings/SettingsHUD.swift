@@ -198,6 +198,13 @@ struct HUDAndOSDSettingsView: View {
                 enableVerticalHUD = style == .vertical; enableCircularHUD = style == .circular
             }
 
+            Defaults.Toggle(key: .playVolumeChangeFeedback) {
+                Text("Play feedback when volume is changed")
+            }
+            .settingsHighlight(id: highlightID("Play feedback when volume is changed"))
+            .settingsInfo("Plays Anchor's feedback sound when you use the volume keys.")
+            .padding(.horizontal, 12)
+
             switch selectedTab {
             case .none:
                 VStack(spacing: 16) {
@@ -873,20 +880,6 @@ struct HUD: View {
                         .foregroundStyle(.secondary)
                         .font(.caption)
                 }
-            }
-
-            Section {
-                Defaults.Toggle(key: .playVolumeChangeFeedback) {
-                    Text("Play feedback when volume is changed")
-                }
-                .settingsHighlight(id: highlightID("Play feedback when volume is changed"))
-                .settingsInfo("Plays the supplied feedback clip whenever you press the hardware volume keys.")
-            } header: {
-                Text("Audio feedback")
-            } footer: {
-                Text("Requires Accessibility permission so Dynamic Island can intercept the hardware volume keys.")
-                    .foregroundStyle(.secondary)
-                    .font(.caption)
             }
 
             Section {
