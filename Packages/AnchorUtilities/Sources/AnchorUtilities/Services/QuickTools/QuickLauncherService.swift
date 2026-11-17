@@ -326,9 +326,10 @@ final class QuickLauncherService: ObservableObject {
             hide()
             ClipboardHistoryService.schedulePresentation(after: 0.1)
         case .cleaning:
+            guard let request = CleaningModeManager.activationRequest() else { return }
             hide()
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                CleaningModeManager.shared.activate()
+                request()
             }
         case .windowLayout, .homebrew, .media, .urlCleaner, .uninstaller, .cleaner, .toggles:
             activeUtility = item

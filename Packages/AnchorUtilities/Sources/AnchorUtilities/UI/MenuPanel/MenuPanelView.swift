@@ -468,7 +468,7 @@ struct MenuPanelView: View {
         // Close the panel first so, if activate() has to show the Accessibility
         // alert, it isn't stranded on top of the still-open panel.
         appDelegate()?.closePopover()
-        CleaningModeManager.shared.activate()
+        CleaningModeManager.activationRequest()?()
     }
 
     private var header: some View {

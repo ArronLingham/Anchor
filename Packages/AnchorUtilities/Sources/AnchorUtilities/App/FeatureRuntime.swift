@@ -439,6 +439,7 @@ final class FeatureRuntime: ObservableObject {
             ClipboardAutoClearService.shared.syncWithPreferences()
         },
         .cleaningMode: {
+            CleaningModeManager.syncAvailability()
             if !AppFeature.cleaningMode.isAvailable { CleaningModeManager.existing?.deactivate() }
         },
         .uninstaller: {

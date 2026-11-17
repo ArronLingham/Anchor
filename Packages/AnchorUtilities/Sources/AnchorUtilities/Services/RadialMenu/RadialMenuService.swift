@@ -816,6 +816,14 @@ final class RadialMenuService: ObservableObject {
             }
             return
         }
+        if tool == .cleaningMode {
+            guard let request = CleaningModeManager.activationRequest() else { return }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
+                guard let self, self.actionAllowed(ticket), tool.isRunnable() else { return }
+                request()
+            }
+            return
+        }
         // The same beat the quick panel gives screen-touching tools, so the
         // wheel is really gone before anything captures or presents.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
@@ -836,7 +844,7 @@ final class RadialMenuService: ObservableObject {
             case .appUpdates:
                 AppUpdatesService.shared.check()
                 Self.openSettings(at: .appUpdates)
-            case .cleaningMode: CleaningModeManager.shared.activate()
+            case .cleaningMode: break // handled before the delay
             case .keepAwake: KeepAwakeManager.shared.toggle()
             }
         }

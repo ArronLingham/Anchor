@@ -435,7 +435,7 @@ public final class UtilityWorkspace: ObservableObject {
         case .micMute: MicMuteService.shared.toggle()
         case .clipboardHistory: ClipboardHistoryService.showIfAvailable()
         case .shelf: ShelfService.shared.toggle()
-        case .cleaningMode: CleaningModeManager.shared.activate()
+        case .cleaningMode: CleaningModeManager.activationRequest()?()
         default: showFeature(id)
         }
     }

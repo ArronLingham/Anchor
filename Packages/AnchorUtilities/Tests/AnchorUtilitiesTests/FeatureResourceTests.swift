@@ -5,6 +5,50 @@ import XCTest
 @testable import AnchorUtilities
 
 final class FeatureResourceTests: XCTestCase {
+    func testCleaningDeactivationWaitsForMouseReleaseAndHasABoundedFallback() {
+        var gate = CleaningMouseReleaseGate()
+        gate.buttonDown(0)
+        gate.buttonDown(1)
+        XCTAssertFalse(gate.requestDeactivation())
+        XCTAssertFalse(gate.buttonUp(0), "A second held button keeps the input tap alive")
+        XCTAssertTrue(gate.buttonUp(1), "The final real release allows teardown")
+        gate.reset()
+        gate.buttonDown(0)
+        XCTAssertFalse(gate.requestDeactivation())
+        XCTAssertTrue(gate.releaseWaitExpired(), "A missing release cannot strand input indefinitely")
+        XCTAssertTrue(gate.pressedButtons.isEmpty)
+        gate.reset()
+        XCTAssertFalse(gate.releaseWaitExpired(), "An unrequested unlock cannot be triggered by the deadline")
+    }
+
+    func testCleaningModeDelayedRequestRejectsDisabledAndOldSessions() throws {
+        let gate = ClipboardPresentationGate()
+        gate.update(available: true)
+        let old = try XCTUnwrap(gate.capture(currentlyAvailable: true))
+        var available = true, sessionActive = true, tapInstalls = 0
+        let accepts: (UUID) -> Bool = { gate.accepts($0, currentlyAvailable: available) }
+        let run: (UUID) -> Void = { ticket in
+            CleaningModeActivationRequest.run(ticket: ticket, accepts: accepts,
+                                              sessionActive: { sessionActive },
+                                              activate: { tapInstalls += 1 })
+        }
+        available = false
+        gate.update(available: false)
+        run(old)
+        XCTAssertEqual(tapInstalls, 0, "A request must not install a tap after off")
+        available = true
+        gate.update(available: true)
+        run(old)
+        XCTAssertEqual(tapInstalls, 0, "Re-enabling must not revive the old request")
+        let current = try XCTUnwrap(gate.capture(currentlyAvailable: true))
+        sessionActive = false
+        run(current)
+        XCTAssertEqual(tapInstalls, 0, "An inactive login session must not install a tap")
+        sessionActive = true
+        run(current)
+        XCTAssertEqual(tapInstalls, 1, "A current request may install the fake tap")
+    }
+
     func testQuickToggleQueuedWorkRejectsOldSessionAndFinishesStartedWork() throws {
         let gate = ClipboardPresentationGate()
         gate.update(available: true)

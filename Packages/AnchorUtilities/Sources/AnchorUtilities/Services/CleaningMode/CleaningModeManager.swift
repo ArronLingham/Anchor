@@ -7,6 +7,16 @@ import Combine
 import CoreGraphics
 import SwiftUI
 
+/// Only start the input filter for the session that requested it, while the
+/// local login session is active. Injectable boundaries keep tests off input.
+enum CleaningModeActivationRequest {
+    static func run(ticket: UUID, accepts: (UUID) -> Bool,
+                    sessionActive: () -> Bool, activate: () -> Void) {
+        guard accepts(ticket), sessionActive() else { return }
+        activate()
+    }
+}
+
 /// "Cleaning mode" temporarily locks the keyboard so the user can wipe it down
 /// without typing gibberish, then restores it on a deliberate gesture. The lock
 /// is a HID-level event tap that swallows key events before the system handles
@@ -20,6 +30,26 @@ import SwiftUI
 /// Requires Accessibility, like the app's other event taps. If it is missing the
 /// tap can't be created, so we never lock the keyboard with no way to unlock it.
 final class CleaningModeManager: ObservableObject {
+    private static let availabilityGate = ClipboardPresentationGate()
+
+    static func syncAvailability() {
+        availabilityGate.update(available: AppFeature.cleaningMode.isAvailable)
+    }
+
+    static func activationRequest() -> (() -> Void)? {
+        guard let ticket = availabilityGate.capture(currentlyAvailable: AppFeature.cleaningMode.isAvailable) else { return nil }
+        return {
+            CleaningModeActivationRequest.run(ticket: ticket, accepts: accepts,
+                                              sessionActive: { SessionActivity.shared.isActive }) {
+                shared.activate(ticket: ticket)
+            }
+        }
+    }
+
+    private static func accepts(_ ticket: UUID) -> Bool {
+        availabilityGate.accepts(ticket, currentlyAvailable: AppFeature.cleaningMode.isAvailable)
+    }
+
     private static weak var existingInstance: CleaningModeManager?
     static let shared: CleaningModeManager = {
         let value = CleaningModeManager()
@@ -93,15 +123,24 @@ final class CleaningModeManager: ObservableObject {
     /// Starts the lock. No-op (and guides the user) when Accessibility is missing,
     /// because without the tap there would be no way to unlock the keyboard.
     func activate() {
-        guard !isActive else { return }
+        Self.activationRequest()?()
+    }
+
+    private func activate(ticket: UUID) {
+        guard Self.accepts(ticket), SessionActivity.shared.isActive, !isActive else { return }
         // Check Accessibility explicitly (same gate the other event taps use) so a
         // missing grant is reported clearly, rather than inferred from a nil tap.
         guard Permissions.shared.accessibility else {
             promptForAccessibility()
             return
         }
+        guard Self.accepts(ticket), SessionActivity.shared.isActive else { return }
         mouseReleaseGate.reset()
         guard installTap() else { return }
+        guard Self.accepts(ticket), SessionActivity.shared.isActive else {
+            removeTap()
+            return
+        }
         // Debounce must not filter while the lock is up: its tap can run ahead
         // of ours (head-insert order depends on creation order) and would eat
         // the repeated same-key presses the unlock gesture counts on.
@@ -119,6 +158,10 @@ final class CleaningModeManager: ObservableObject {
         RadialMenuService.shared.suspend()
         resetEscapeHold()
         isActive = true
+        guard Self.accepts(ticket), SessionActivity.shared.isActive else {
+            deactivate(restoreSuspendedFeatures: SessionActivity.shared.isActive)
+            return
+        }
         installScreenObserver()
         showOverlays()
     }

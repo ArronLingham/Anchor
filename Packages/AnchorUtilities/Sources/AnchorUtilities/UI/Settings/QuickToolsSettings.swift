@@ -268,7 +268,7 @@ struct QuickToolsSettings: View {
             if AppFeature.cleaningMode.isAvailable {
                 Section {
                     Button {
-                        CleaningModeManager.shared.activate()
+                        CleaningModeManager.activationRequest()?()
                     } label: {
                         Label(l10n.s.cleaningStartNow, systemImage: "bubbles.and.sparkles")
                     }
