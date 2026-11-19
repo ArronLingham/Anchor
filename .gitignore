@@ -87,6 +87,11 @@ __pycache__/
 /tests/*
 !/tests/LyricsLookupGateTests.swift
 !/tests/run_lyrics_lookup_tests.sh
+!/tests/LyricsTranslationCoordinatorTests.swift
+!/tests/run_lyrics_translation_tests.sh
+!/tests/LyricsTranslationManagerTests.swift
+!/tests/LyricsTranslationFakeDefaults.swift
+!/tests/run_lyrics_translation_manager_tests.sh
 !/tests/AIAssistantCredentialTests.swift
 !/tests/AIAssistantSessionTests.swift
 !/tests/AppleNotesSyncLifecycleTests.swift

@@ -24,12 +24,9 @@ import Translation
 
 /// Translated lyric lines, the last item in category 4.
 ///
-/// On-device through Apple's Translation framework — no key, no network, and no
-/// third-party service receiving what the user is listening to.
+/// Uses Apple's on-device Translation framework.
 ///
-/// Translation happens once per track and is cached by line, so scrolling the
-/// sheet costs nothing and a repeated track costs nothing. There is no periodic
-/// work here at all: it runs when the lyrics change and is otherwise idle.
+/// Translation is shared by the visible lyric sheets and has no periodic work.
 @MainActor
 final class LyricsTranslator: ObservableObject {
     static let shared = LyricsTranslator()
@@ -38,66 +35,79 @@ final class LyricsTranslator: ObservableObject {
     @Published private(set) var translations: [String: String] = [:]
     @Published private(set) var isTranslating = false
 
-    /// Set by the view that owns the TranslationSession; the framework requires
-    /// a session be driven from SwiftUI via `.translationTask`.
-    var requestTranslation: (([String]) -> Void)?
-
-    private var lastTranslatedKey: String?
+    private let gate = LyricsLookupGate(enabled: Defaults[.enableLyrics] && Defaults[.lyricsTranslationEnabled])
+    private lazy var coordinator = LyricsTranslationCoordinator(gate: gate)
     private var cancellables = Set<AnyCancellable>()
+    private var lyricsSubscription: AnyCancellable?
+    private var visibleViews = Set<UUID>()
 
     private init() {
-        DispatchQueue.main.async { [weak self] in self?.observe() }
+        coordinator.clear = { [weak self] in self?.translations.removeAll() }
+        coordinator.setTranslating = { [weak self] value in self?.isTranslating = value }
+        observe()
     }
 
     private func observe() {
-        // Re-translate when the lyric set changes, not on a timer.
-        MusicManager.shared.$syncedLyrics
-            .removeDuplicates { $0.map(\.text) == $1.map(\.text) }
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] lines in self?.lyricsChanged(lines) }
-            .store(in: &cancellables)
-
+        let gate = gate
         Defaults.publisher(.lyricsTranslationEnabled)
+            .map { _ in gate.update(enabled: Defaults[.enableLyrics] && Defaults[.lyricsTranslationEnabled]) }
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] change in
-                guard let self else { return }
-                if change.newValue {
-                    self.lyricsChanged(MusicManager.shared.syncedLyrics)
-                } else {
-                    self.reset()
-                }
-            }
+            .sink { [weak self] _ in self?.refresh() }
+            .store(in: &cancellables)
+        Defaults.publisher(.enableLyrics)
+            .map { _ in gate.update(enabled: Defaults[.enableLyrics] && Defaults[.lyricsTranslationEnabled]) }
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in self?.refresh() }
             .store(in: &cancellables)
     }
 
-    private func lyricsChanged(_ lines: [LyricLine]) {
-        guard Defaults[.lyricsTranslationEnabled] else { reset(); return }
-        let key = lines.map(\.text).joined(separator: "\u{1}")
-        guard key != lastTranslatedKey, !lines.isEmpty else { return }
-        lastTranslatedKey = key
-        translations.removeAll()
-        isTranslating = true
-        requestTranslation?(lines.map(\.text))
+    private var enabled: Bool { Defaults[.enableLyrics] && Defaults[.lyricsTranslationEnabled] }
+    private var lines: [String] { MusicManager.shared.syncedLyrics.map(\.text) }
+
+    private func refresh() {
+        updateLyricsObservation()
+        coordinator.reconcile(enabled: enabled, lines: lines)
     }
 
-    /// Called back by the view once the session has produced results.
-    func apply(_ pairs: [(source: String, target: String)]) {
+    private func updateLyricsObservation() {
+        guard enabled, !visibleViews.isEmpty else {
+            lyricsSubscription = nil
+            gate.cancel()
+            return
+        }
+        guard lyricsSubscription == nil else { return }
+        let gate = gate
+        lyricsSubscription = MusicManager.shared.$syncedLyrics
+            .removeDuplicates { $0.map(\.text) == $1.map(\.text) }
+            .map { lines in gate.cancel(); return lines }
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in self?.refresh() }
+    }
+
+    func register(_ id: UUID, handler: @escaping LyricsTranslationCoordinator.Handler) {
+        visibleViews.insert(id)
+        updateLyricsObservation()
+        coordinator.register(id, handler: handler, enabled: enabled, lines: lines)
+    }
+
+    func unregister(_ id: UUID) {
+        visibleViews.remove(id)
+        coordinator.unregister(id, enabled: enabled, lines: lines)
+        updateLyricsObservation()
+    }
+
+    func accepts(_ request: LyricsTranslationCoordinator.Request, owner: UUID) -> Bool {
+        coordinator.accepts(request, owner: owner, enabled: enabled, lines: lines)
+    }
+
+    func apply(_ pairs: [(source: String, target: String)], request: LyricsTranslationCoordinator.Request, owner: UUID) {
+        guard coordinator.finish(request, owner: owner, enabled: enabled, lines: lines, success: true) else { return }
         for pair in pairs where pair.source != pair.target {
             translations[pair.source] = pair.target
         }
-        isTranslating = false
     }
 
-    func failed() {
-        isTranslating = false
-        // Deliberately not cleared: a partial translation is more useful than
-        // none, and a failure here should never blank lyrics that already work.
-        lastTranslatedKey = nil
-    }
-
-    private func reset() {
-        translations.removeAll()
-        lastTranslatedKey = nil
-        isTranslating = false
+    func failed(_ request: LyricsTranslationCoordinator.Request, owner: UUID) {
+        _ = coordinator.finish(request, owner: owner, enabled: enabled, lines: lines, success: false)
     }
 }

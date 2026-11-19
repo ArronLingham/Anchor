@@ -32,11 +32,13 @@ struct SyncedLyricsList: View {
     @ObservedObject private var musicManager = MusicManager.shared
     @ObservedObject private var translator = LyricsTranslator.shared
     @Default(.lyricsTranslationEnabled) private var translationEnabled
+    @Default(.enableLyrics) private var lyricsEnabled
 
     /// Lines handed to the session. The Translation framework insists on being
     /// driven from SwiftUI, so the view owns the session and the manager owns
     /// the results.
-    @State private var pendingTranslation: [String] = []
+    @State private var translationOwner = UUID()
+    @State private var pendingTranslation: LyricsTranslationCoordinator.Request?
     @State private var translationConfiguration: TranslationSession.Configuration?
 
     var currentSize: CGFloat = 15
@@ -79,31 +81,34 @@ struct SyncedLyricsList: View {
     var body: some View {
         content
             .onAppear {
-                LyricsTranslator.shared.requestTranslation = { lines in
-                    Task { @MainActor in
-                        pendingTranslation = lines
-                        // A fresh configuration is what re-triggers the task;
-                        // mutating the existing one does not.
-                        translationConfiguration = TranslationSession.Configuration(
-                            source: nil, target: Locale.current.language)
-                    }
+                translator.register(translationOwner) { request in
+                    pendingTranslation = request
+                    translationConfiguration = request == nil ? nil : TranslationSession.Configuration(
+                        source: nil, target: Locale.current.language)
                 }
             }
+            .onDisappear {
+                pendingTranslation = nil
+                translationConfiguration = nil
+                translator.unregister(translationOwner)
+            }
             .translationTask(translationConfiguration) { session in
-                guard !pendingTranslation.isEmpty else { return }
+                guard !Task.isCancelled, let request = pendingTranslation,
+                      await MainActor.run(body: { translator.accepts(request, owner: translationOwner) }) else { return }
                 do {
-                    let requests = pendingTranslation.map {
+                    let requests = request.lines.map {
                         TranslationSession.Request(sourceText: $0)
                     }
                     var pairs: [(source: String, target: String)] = []
                     for try await response in session.translate(batch: requests) {
+                        try Task.checkCancellation()
                         pairs.append((response.sourceText, response.targetText))
                     }
-                    await MainActor.run { LyricsTranslator.shared.apply(pairs) }
+                    guard !Task.isCancelled else { return }
+                    await MainActor.run { translator.apply(pairs, request: request, owner: translationOwner) }
                 } catch {
-                    // Most often the language pair is unavailable or the model
-                    // has not been downloaded. Lyrics keep working untranslated.
-                    await MainActor.run { LyricsTranslator.shared.failed() }
+                    guard !Task.isCancelled else { return }
+                    await MainActor.run { translator.failed(request, owner: translationOwner) }
                 }
             }
     }
@@ -219,7 +224,7 @@ struct SyncedLyricsList: View {
                 // Only under the current line: a translation under every line
                 // doubles the height of the sheet and buries the thing you are
                 // actually reading.
-                if isCurrent, let translated = translator.translations[line.text] {
+                if isCurrent, lyricsEnabled, translationEnabled, let translated = translator.translations[line.text] {
                     Text(translated)
                         .font(.system(size: otherSize * 0.85))
                         .foregroundStyle(.white.opacity(0.55))
