@@ -85,6 +85,8 @@ __pycache__/
 !/scripts/regen-settings-indexes.sh
 !/scripts/settings_index.py
 /tests/*
+!/tests/LyricsLookupGateTests.swift
+!/tests/run_lyrics_lookup_tests.sh
 !/tests/AIAssistantCredentialTests.swift
 !/tests/AIAssistantSessionTests.swift
 !/tests/AppleNotesSyncLifecycleTests.swift

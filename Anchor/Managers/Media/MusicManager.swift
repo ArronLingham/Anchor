@@ -521,7 +521,9 @@ class MusicManager: ObservableObject {
     // Task used to periodically sync displayed lyric with playback position
     private var lyricSyncTask: Task<Void, Never>?
     private var lyricsFetchTask: Task<Void, Never>?
+    private let lyricsLookupGate = LyricsLookupGate(enabled: Defaults[.enableLyrics])
     private var lyricsFetchKey: LyricsLookupKey?
+    private var lyricsFetchTicket: LyricsLookupGate.Ticket?
     private var activeLyricsKey: LyricsLookupKey?
     private var lyricsCache: [LyricsLookupKey: [LyricLine]] = [:]
     // Bounded, insertion-order eviction so the cache cannot grow unboundedly.
@@ -578,10 +580,14 @@ class MusicManager: ObservableObject {
             }
             .store(in: &cancellables)
 
+        let lyricsGate = lyricsLookupGate
         Defaults.publisher(.enableLyrics)
+            .map { change in (enabled: change.newValue, epoch: lyricsGate.update(enabled: change.newValue)) }
             .receive(on: RunLoop.main)
             .sink { [weak self] change in
-                self?.handleLyricsPreferenceChange(isEnabled: change.newValue)
+                self?.cancelInvalidLyricsLookup()
+                guard lyricsGate.acceptsEpoch(change.epoch, currentlyEnabled: Defaults[.enableLyrics]) else { return }
+                self?.handleLyricsPreferenceChange(isEnabled: change.enabled)
             }
             .store(in: &cancellables)
 
@@ -1372,20 +1378,38 @@ class MusicManager: ObservableObject {
         if isEnabled {
             prepareLyricsForCurrentTrack(prioritizeVisibleResult: true)
         } else {
-            stopLyricSync()
+            clearActiveLyrics()
         }
     }
 
+    private func clearActiveLyrics() {
+        lyricsLookupGate.cancel()
+        lyricsFetchTask?.cancel()
+        lyricsFetchTask = nil
+        lyricsFetchKey = nil
+        lyricsFetchTicket = nil
+        activeLyricsKey = nil
+        syncedLyrics = []
+        currentLyrics = ""
+        currentLyricIndex = -1
+        lyricsAreSynced = false
+        stopLyricSync()
+    }
+
+    private func cancelInvalidLyricsLookup() {
+        guard let ticket = lyricsFetchTicket,
+              !lyricsLookupGate.accepts(ticket, currentlyEnabled: Defaults[.enableLyrics]) else { return }
+        lyricsFetchTask?.cancel()
+        lyricsFetchTask = nil
+        lyricsFetchKey = nil
+        lyricsFetchTicket = nil
+    }
+
     private func prepareLyricsForCurrentTrack(forceFetch: Bool = false, prioritizeVisibleResult: Bool = false) {
+        guard Defaults[.enableLyrics] else { clearActiveLyrics(); return }
+        guard lyricsLookupGate.permitsLookup(currentlyEnabled: Defaults[.enableLyrics]) else { return }
         guard let lookup = currentLyricsLookupContext() else {
-            activeLyricsKey = nil
-            lyricsFetchKey = nil
-            lyricsFetchTask?.cancel()
-            lyricsFetchTask = nil
-            syncedLyrics = []
-            currentLyrics = ""
-            currentLyricIndex = -1
-            stopLyricSync()
+            clearActiveLyrics()
             return
         }
 
@@ -1396,6 +1420,11 @@ class MusicManager: ObservableObject {
         activeLyricsKey = key
 
         if trackChanged {
+            lyricsLookupGate.cancel()
+            lyricsFetchTask?.cancel()
+            lyricsFetchTask = nil
+            lyricsFetchKey = nil
+            lyricsFetchTicket = nil
             syncedLyrics = []
             currentLyricIndex = -1
             currentLyrics = shouldShowLoading ? "Loading lyrics..." : ""
@@ -1407,7 +1436,8 @@ class MusicManager: ObservableObject {
             return
         }
 
-        if lyricsFetchKey == key {
+        if lyricsFetchKey == key, let ticket = lyricsFetchTicket,
+           lyricsLookupGate.accepts(ticket, currentlyEnabled: Defaults[.enableLyrics]) {
             if shouldShowLoading && syncedLyrics.isEmpty {
                 currentLyrics = "Loading lyrics..."
             }
@@ -1415,7 +1445,12 @@ class MusicManager: ObservableObject {
         }
 
         lyricsFetchTask?.cancel()
+        guard let ticket = lyricsLookupGate.begin(currentlyEnabled: Defaults[.enableLyrics]) else {
+            clearActiveLyrics()
+            return
+        }
         lyricsFetchKey = key
+        lyricsFetchTicket = ticket
 
         if shouldShowLoading || (lyricsEnabled && syncedLyrics.isEmpty) {
             currentLyrics = "Loading lyrics..."
@@ -1426,28 +1461,35 @@ class MusicManager: ObservableObject {
         let requestAlbum = lookup.requestAlbum
 
         lyricsFetchTask = Task { [weak self] in
-            guard let self else { return }
+            guard let self, !Task.isCancelled,
+                  self.lyricsLookupGate.accepts(ticket, currentlyEnabled: Defaults[.enableLyrics]) else { return }
 
             do {
                 let lyrics = try await self.fetchLyricsFromAPI(
                     artist: requestArtist,
                     title: requestTitle,
-                    album: requestAlbum
+                    album: requestAlbum,
+                    ticket: ticket
                 )
                 guard !Task.isCancelled else { return }
 
                 await MainActor.run {
-                    guard self.activeLyricsKey == key else { return }
+                    guard self.activeLyricsKey == key,
+                          self.lyricsLookupGate.finish(ticket, currentlyEnabled: Defaults[.enableLyrics]) else { return }
                     self.storeLyricsInCache(lyrics, for: key)
                     self.lyricsFetchKey = nil
+                    self.lyricsFetchTicket = nil
                     self.lyricsFetchTask = nil
                     self.applyLyricsToDisplay(lyrics)
                 }
             } catch {
+                guard !Task.isCancelled else { return }
                 print("Failed to fetch lyrics: \(error)")
                 await MainActor.run {
-                    guard self.activeLyricsKey == key else { return }
+                    guard self.activeLyricsKey == key,
+                          self.lyricsLookupGate.finish(ticket, currentlyEnabled: Defaults[.enableLyrics]) else { return }
                     self.lyricsFetchKey = nil
+                    self.lyricsFetchTicket = nil
                     self.lyricsFetchTask = nil
                     self.syncedLyrics = []
                     self.currentLyricIndex = -1
@@ -1458,7 +1500,8 @@ class MusicManager: ObservableObject {
         }
     }
 
-    private func fetchLyricsFromAPI(artist: String, title: String, album: String) async throws -> [LyricLine] {
+    private func fetchLyricsFromAPI(artist: String, title: String, album: String,
+                                    ticket: LyricsLookupGate.Ticket) async throws -> [LyricLine] {
         guard !artist.isEmpty, !title.isEmpty else { return [] }
 
         // Normalize input and percent-encode
@@ -1474,7 +1517,15 @@ class MusicManager: ObservableObject {
         let urlString = "https://lrclib.net/api/search?track_name=\(encodedTitle)&artist_name=\(encodedArtist)"
         guard let url = URL(string: urlString) else { return [] }
 
+        guard !Task.isCancelled,
+              lyricsLookupGate.accepts(ticket, currentlyEnabled: Defaults[.enableLyrics]) else {
+            throw CancellationError()
+        }
         let (data, response) = try await URLSession.shared.data(from: url)
+        try Task.checkCancellation()
+        guard lyricsLookupGate.accepts(ticket, currentlyEnabled: Defaults[.enableLyrics]) else {
+            throw CancellationError()
+        }
         if let http = response as? HTTPURLResponse, http.statusCode == 200 {
             // Try parse as array JSON (preferred)
             if let jsonArray = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]],
@@ -1792,25 +1843,18 @@ class MusicManager: ObservableObject {
     }
 
     func toggleLyrics() {
+        if !Defaults[.enableLyrics] {
+            // This button is an explicit request to show lyrics, so enable the
+            // same master control used by the other player surfaces.
+            Defaults[.enableLyrics] = true
+            showLyrics = true
+            return
+        }
         // Toggle the UI state first so the views can react immediately.
         showLyrics.toggle()
 
-        // If lyrics are requested to be shown but we don't have any yet,
-        // show a loading placeholder and start fetching asynchronously.
         if showLyrics && syncedLyrics.isEmpty {
-            // Provide immediate feedback so the UI can show a loading state.
-            currentLyrics = "Loading lyrics..."
-
-            Task {
-                fetchLyrics()
-
-                // If fetch completed but no lyrics were found, show a friendly message.
-                await MainActor.run {
-                    if self.syncedLyrics.isEmpty && self.currentLyrics.isEmpty {
-                        self.currentLyrics = "No lyrics found"
-                    }
-                }
-            }
+            prepareLyricsForCurrentTrack(forceFetch: true, prioritizeVisibleResult: true)
         }
     }
 }
