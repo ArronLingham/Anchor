@@ -113,15 +113,17 @@ enum InstalledApps {
         return roots
     }
 
-    static func forEachApplication(in roots: [URL], _ visit: (URL) -> Void) {
+    static func forEachApplication(in roots: [URL], shouldContinue: () -> Bool = { true }, _ visit: (URL) -> Void) {
         let fm = FileManager.default
         for root in roots where fm.fileExists(atPath: root.path) {
+            guard shouldContinue() else { return }
             // Include hidden symlinks, and never descend into app bundles.
             guard let enumerator = fm.enumerator(at: root,
                 includingPropertiesForKeys: [.isDirectoryKey, .isPackageKey],
                 options: [.skipsPackageDescendants]) else { continue }
-            for case let url as URL in enumerator where url.pathExtension == "app" {
-                visit(url)
+            for case let url as URL in enumerator {
+                guard shouldContinue() else { return }
+                if url.pathExtension == "app" { visit(url) }
             }
         }
     }
@@ -129,10 +131,11 @@ enum InstalledApps {
     /// One query definition, with caller-specific limits for interactive and
     /// background scans. The result is filtered separately by each consumer.
     static func spotlightApplicationPaths(timeout: TimeInterval = Shell.defaultTimeout,
-                                          maxOutputBytes: Int = 4 * 1024 * 1024) -> [String] {
+                                          maxOutputBytes: Int = 4 * 1024 * 1024,
+                                          cancellation: BoundedProcessCancellation? = nil) -> [String] {
         let result = Shell.run("/usr/bin/mdfind",
             ["-onlyin", NSHomeDirectory(), "kMDItemContentType == 'com.apple.application-bundle'"],
-            timeout: timeout, maxOutputBytes: maxOutputBytes)
+            timeout: timeout, maxOutputBytes: maxOutputBytes, cancellation: cancellation)
         guard result.status == 0 else { return [] }
         return result.output.split(separator: "\n").map(String.init)
     }

@@ -3,6 +3,20 @@ import XCTest
 @testable import AnchorUtilities
 
 final class InstalledAppsDiscoveryTests: XCTestCase {
+    func testFolderWalkStopsAfterConsumerCancels() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let fm = FileManager.default
+        try fm.createDirectory(at: root.appendingPathComponent("First.app"), withIntermediateDirectories: true)
+        try fm.createDirectory(at: root.appendingPathComponent("Second.app"), withIntermediateDirectories: true)
+        defer { try? fm.removeItem(at: root) }
+        var found: [URL] = []
+        InstalledApps.forEachApplication(in: [root], shouldContinue: { found.isEmpty }) { found.append($0) }
+        XCTAssertEqual(found.count, 1)
+        var complete: [URL] = []
+        InstalledApps.forEachApplication(in: [root]) { complete.append($0) }
+        XCTAssertEqual(complete.count, 2)
+    }
+
     func testFolderWalkIncludesNestedHiddenAndLinkedAppsWithoutEnteringBundles() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let fm = FileManager.default

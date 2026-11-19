@@ -23,15 +23,11 @@ final class AppUpdatesService: ObservableObject {
     func releaseResources() -> Bool {
         stop()
         scanGeneration &+= 1
+        scanLifetime?.cancel()
+        scanLifetime = nil
         automaticCheckPending = false
         sourceRefreshPending = false
         upgradeObserver = nil
-        lookupSession.getAllTasks { tasks in
-            if !AppFeature.appUpdates.isAvailable { tasks.forEach { $0.cancel() } }
-        }
-        catalogSession.getAllTasks { tasks in
-            if !AppFeature.appUpdates.isAvailable { tasks.forEach { $0.cancel() } }
-        }
         onlineCatalogCache = nil
         items = []; allItems = []; selection = []
         uncheckedAppNames = []; knownIDs = []
@@ -84,6 +80,7 @@ final class AppUpdatesService: ObservableObject {
     private var timer: Timer?
     private var wakeObserver: NSObjectProtocol?
     private var scanGeneration = 0
+    private var scanLifetime: AppUpdateScanLifetime?
     private var sourceRefreshPending = false
     private var automaticCheckPending = false
     private var knownIDs = Set<String>()
@@ -183,6 +180,8 @@ final class AppUpdatesService: ObservableObject {
         lastError = nil
         scanGeneration += 1
         let generation = scanGeneration
+        let lifetime = AppUpdateScanLifetime()
+        scanLifetime = lifetime
         let includeHomebrewApps = UtilityPreferences.standard.bool(
             forKey: DefaultsKey.appUpdatesIncludeHomebrewApps)
         let includeAppStore = UtilityPreferences.standard.bool(forKey: DefaultsKey.appUpdatesIncludeAppStore)
@@ -191,13 +190,15 @@ final class AppUpdatesService: ObservableObject {
         let country = Locale.current.region?.identifier
 
         workQueue.async { [weak self] in
-            guard let self else { return }
+            guard let self, lifetime.isActive else { return }
             let apps = AppUpdatesSupport.checkedApps(
-                Self.scanInstalledApps(includePublisherFeeds: includeOnlineCatalog), rules: checkedRules)
+                Self.scanInstalledApps(includePublisherFeeds: includeOnlineCatalog, lifetime: lifetime), rules: checkedRules)
+            guard lifetime.isActive else { return }
             let packageResult = includeHomebrewApps || includeOnlineCatalog
-                ? self.packageManagerFindings(apps: apps, includeUpdates: includeHomebrewApps)
+                ? self.packageManagerFindings(apps: apps, includeUpdates: includeHomebrewApps, lifetime: lifetime)
                 : PackageResult(items: [], coveredPaths: [], available: true,
                                 onlineCoverageAvailable: true)
+            guard lifetime.isActive else { return }
             let coveredPaths = packageResult.coveredPaths
             let storeCandidates = includeAppStore
                 ? AppUpdatesSupport.appStoreCandidates(
@@ -222,30 +223,35 @@ final class AppUpdatesService: ObservableObject {
             group.enter()
             self.storeFindings(for: storeCandidates,
                                country: country,
-                               operatingSystemVersion: operatingSystemVersion) {
+                               operatingSystemVersion: operatingSystemVersion,
+                               lifetime: lifetime) {
                 storeResult = $0
                 group.leave()
             }
             if includeOnlineCatalog, onlineResult.available {
                 group.enter()
                 self.publisherFindings(for: onlineCandidates,
-                                       operatingSystemVersion: operatingSystemVersion) {
+                                       operatingSystemVersion: operatingSystemVersion,
+                                       lifetime: lifetime) {
                     feedResult = $0
                     group.leave()
                 }
                 group.enter()
                 self.onlineCatalogFindings(for: onlineCandidates,
                                            operatingSystemVersion: operatingSystemVersion,
-                                           forceRefresh: !automatic) {
+                                           forceRefresh: !automatic, lifetime: lifetime) {
                     onlineResult = $0
                     group.leave()
                 }
             }
             group.notify(queue: self.workQueue) {
+                guard lifetime.isActive else { return }
                 let resolvedFeed = feedResult.resolvingCatalogFallback(
                     checkedPaths: onlineResult.checkedPaths, candidates: onlineCandidates)
                 DispatchQueue.main.async {
-                    guard generation == self.scanGeneration else { return }
+                    guard generation == self.scanGeneration, lifetime.isActive else { return }
+                    lifetime.finish()
+                    self.scanLifetime = nil
                     self.finishCheck(items: AppUpdatesSupport.merged(packageResult.items,
                                                                      storeResult.items,
                                                                      resolvedFeed.items,
@@ -350,7 +356,8 @@ final class AppUpdatesService: ObservableObject {
     }
 
     private func packageManagerFindings(apps: [AppUpdatesSupport.InstalledApp],
-                                        includeUpdates: Bool) -> PackageResult {
+                                        includeUpdates: Bool,
+                                        lifetime: AppUpdateScanLifetime) -> PackageResult {
         guard let brewPath = HomebrewCommandBuilder.candidatePaths.first(where: {
             FileManager.default.isExecutableFile(atPath: $0)
         }) else {
@@ -358,24 +365,26 @@ final class AppUpdatesService: ObservableObject {
                                  onlineCoverageAvailable: true)
         }
         let installedOutput = Self.runCommand(HomebrewCommandBuilder.installed(brewPath: brewPath),
-                                              environment: HomebrewEnvironment.forBrew)
+                                              environment: HomebrewEnvironment.forBrew,
+                                              cancellation: lifetime.commandCancellation)
         let records = installedOutput.status == 0
             ? HomebrewParser.parseInstalledCaskRecords(installedOutput.output)
             : []
         let coveredPaths = Set(records.compactMap {
             AppUpdatesSupport.packageBundle(for: $0, apps: apps)?.path
         })
-        guard includeUpdates else {
+        guard includeUpdates, lifetime.isActive else {
             return PackageResult(items: [], coveredPaths: coveredPaths, available: true,
                                  onlineCoverageAvailable: installedOutput.status == 0)
         }
         let outdatedOutput = Self.runCommand(
             HomebrewCommandBuilder.outdatedCasksIncludingSelfUpdating(brewPath: brewPath),
-            environment: HomebrewEnvironment.forBrew)
+            environment: HomebrewEnvironment.forBrew, cancellation: lifetime.commandCancellation)
         guard installedOutput.status == 0, outdatedOutput.status == 0 else {
             let failure = [outdatedOutput, installedOutput].first { $0.status != 0 }
             let message = failure.map { HomebrewProgressParser.visibleError(from: $0.output) } ?? ""
             DispatchQueue.main.async { [weak self] in
+                guard lifetime.isActive else { return }
                 self?.lastError = message.isEmpty ? nil : message
             }
             return PackageResult(items: [], coveredPaths: coveredPaths, available: true,
@@ -396,10 +405,11 @@ final class AppUpdatesService: ObservableObject {
     private func storeFindings(for candidates: [AppUpdatesSupport.InstalledApp],
                                country: String?,
                                operatingSystemVersion: String,
+                               lifetime: AppUpdateScanLifetime,
                                completion: @escaping (SourceResult) -> Void) {
-        storeEntries(for: candidates, country: country, preferStoreIDs: true) { entries in
+        storeEntries(for: candidates, country: country, preferStoreIDs: true, lifetime: lifetime) { entries in
             let missing = candidates.filter { entries[$0.bundleID] == nil && $0.storeID != nil }
-            self.storeEntries(for: missing, country: country, preferStoreIDs: false) { fallback in
+            self.storeEntries(for: missing, country: country, preferStoreIDs: false, lifetime: lifetime) { fallback in
                 let merged = entries.merging(fallback) { first, _ in first }
                 completion(SourceResult(
                     items: AppUpdatesSupport.appStoreUpdates(apps: candidates,
@@ -414,8 +424,9 @@ final class AppUpdatesService: ObservableObject {
 
     private func storeEntries(for candidates: [AppUpdatesSupport.InstalledApp],
                               country: String?, preferStoreIDs: Bool,
+                              lifetime: AppUpdateScanLifetime,
                               completion: @escaping ([String: AppUpdatesSupport.StoreEntry]) -> Void) {
-        guard !candidates.isEmpty else {
+        guard lifetime.isActive, !candidates.isEmpty else {
             completion([:])
             return
         }
@@ -432,17 +443,24 @@ final class AppUpdatesService: ObservableObject {
                     : AppUpdatesSupport.storeLookupURL(bundleIDs: batch.map(\.bundleID), country: country)
                 guard let url = lookup else { continue }
                 group.enter()
-                lookupSession.dataTask(with: url) { data, response, error in
-                    defer { group.leave() }
-                    let body = error == nil ? data : nil
-                    let statusCode = (response as? HTTPURLResponse)?.statusCode
-                    let entries = useIDs
-                        ? AppUpdatesSupport.storeMetadataResponse(body, statusCode: statusCode)
-                        : AppUpdatesSupport.storeLookupResponse(body, statusCode: statusCode)
-                    lock.lock()
-                    merged.merge(entries) { _, new in new }
-                    lock.unlock()
-                }.resume()
+                let started = lifetime.start { requestID in
+                    let task = lookupSession.dataTask(with: url) { data, response, error in
+                        defer { lifetime.finishRequest(requestID) }
+                        defer { group.leave() }
+                        guard lifetime.isActive else { return }
+                        let body = error == nil ? data : nil
+                        let statusCode = (response as? HTTPURLResponse)?.statusCode
+                        let entries = useIDs
+                            ? AppUpdatesSupport.storeMetadataResponse(body, statusCode: statusCode)
+                            : AppUpdatesSupport.storeLookupResponse(body, statusCode: statusCode)
+                        lock.lock()
+                        merged.merge(entries) { _, new in new }
+                        lock.unlock()
+                    }
+                    task.resume()
+                    return { task.cancel() }
+                }
+                if !started { group.leave() }
             }
         }
 
@@ -471,6 +489,7 @@ final class AppUpdatesService: ObservableObject {
 
     private func publisherFindings(for candidates: [AppUpdatesSupport.InstalledApp],
                                    operatingSystemVersion: String,
+                                   lifetime: AppUpdateScanLifetime,
                                    completion: @escaping (SourceResult) -> Void) {
         var grouped: [AppUpdateFeedSupport.Feed: [AppUpdatesSupport.InstalledApp]] = [:]
         for app in candidates {
@@ -495,52 +514,54 @@ final class AppUpdatesService: ObservableObject {
 
         // Four at a time, coalesced by URL, with a ceiling for the whole pass.
         // All accumulated results are confined to workQueue.
-        func checkBatch(_ start: Int) {
-            guard start < feeds.count, Date() < deadline else {
-                // A feed the deadline cut off was not checked, so keep its apps named.
-                uncheckedPaths.formUnion(feeds[start...].flatMap { $0.value.map(\.path) })
-                completion(SourceResult(items: items, available: complete && start >= feeds.count,
-                                        checkedPaths: checkedPaths,
-                                        uncheckedApps: candidates.filter {
-                                            uncheckedPaths.contains($0.path)
-                                        }, catalogFallbackPaths: catalogFallbackPaths))
-                return
-            }
-            let end = min(start + 4, feeds.count)
-            let group = DispatchGroup()
-            for (feed, apps) in feeds[start..<end] {
-                group.enter()
-                AppUpdateFeedLoader.load(feed.url) { loadResult in
-                    self.workQueue.async {
-                        defer { group.leave() }
-                        let findings = AppUpdateFeedSupport.findings(
-                            loadResult: loadResult, format: feed.format, apps: apps,
-                            operatingSystemVersion: operatingSystemVersion,
-                            kernelVersion: kernelVersion, architecture: architecture)
-                        items.append(contentsOf: findings.items)
-                        checkedPaths.formUnion(findings.checkedPaths)
-                        uncheckedPaths.formUnion(findings.uncheckedPaths)
-                        catalogFallbackPaths.formUnion(findings.catalogFallbackPaths)
-                        complete = complete && findings.complete
+        AppUpdateBatchScheduler.run(feeds, batchSize: 4, lifetime: lifetime, queue: workQueue,
+                                    beforeDeadline: { Date() < deadline }) { element, finished in
+                let (feed, apps) = element
+                let started = lifetime.start { requestID in
+                    let task = AppUpdateFeedLoader.load(feed.url) { loadResult in
+                        self.workQueue.async {
+                            defer { lifetime.finishRequest(requestID) }
+                            defer { finished() }
+                            guard lifetime.isActive else { return }
+                            let findings = AppUpdateFeedSupport.findings(
+                                loadResult: loadResult, format: feed.format, apps: apps,
+                                operatingSystemVersion: operatingSystemVersion,
+                                kernelVersion: kernelVersion, architecture: architecture)
+                            items.append(contentsOf: findings.items)
+                            checkedPaths.formUnion(findings.checkedPaths)
+                            uncheckedPaths.formUnion(findings.uncheckedPaths)
+                            catalogFallbackPaths.formUnion(findings.catalogFallbackPaths)
+                            complete = complete && findings.complete
+                        }
                     }
+                    return task.map { task in { task.cancel() } }
                 }
-            }
-            group.notify(queue: self.workQueue) { checkBatch(end) }
+                if !started { finished() }
+        } completion: { index in
+            // A feed the deadline cut off was not checked, so keep its apps named.
+            uncheckedPaths.formUnion(feeds[index...].flatMap { $0.value.map(\.path) })
+            completion(SourceResult(items: items, available: complete && index >= feeds.count,
+                                    checkedPaths: checkedPaths,
+                                    uncheckedApps: candidates.filter {
+                                        uncheckedPaths.contains($0.path)
+                                    }, catalogFallbackPaths: catalogFallbackPaths))
         }
-        checkBatch(0)
     }
 
     private func onlineCatalogFindings(for candidates: [AppUpdatesSupport.InstalledApp],
                                        operatingSystemVersion: String,
                                        forceRefresh: Bool,
+                                       lifetime: AppUpdateScanLifetime,
                                        completion: @escaping (SourceResult) -> Void) {
-        guard !candidates.isEmpty else {
+        guard lifetime.isActive, !candidates.isEmpty else {
             completion(SourceResult(items: [], available: true))
             return
         }
 
         let now = Date()
-        if !forceRefresh, let cache = onlineCatalogCache {
+        var existingCache: (loadedAt: Date, entries: [AppUpdatesSupport.CatalogEntry])?
+        lifetime.whileActive { existingCache = onlineCatalogCache }
+        if !forceRefresh, let cache = existingCache {
             let age = now.timeIntervalSince(cache.loadedAt)
             if age >= 0, age < Self.onlineCatalogCacheLifetime {
                 completion(onlineResult(candidates: candidates,
@@ -552,21 +573,31 @@ final class AppUpdatesService: ObservableObject {
 
         var request = URLRequest(url: AppUpdatesSupport.onlineCatalogURL)
         if forceRefresh { request.cachePolicy = .reloadIgnoringLocalCacheData }
-        catalogSession.dataTask(with: request) { [weak self] data, response, _ in
-            guard let self else { return }
-            let statusCode = (response as? HTTPURLResponse)?.statusCode
-            self.workQueue.async {
-                guard let entries = AppUpdatesSupport.parseOnlineCatalogResponse(
-                    data, statusCode: statusCode) else {
-                    completion(SourceResult(items: [], available: false, uncheckedApps: candidates))
-                    return
+        let started = lifetime.start { requestID in
+            let task = catalogSession.dataTask(with: request) { [weak self] data, response, _ in
+                lifetime.finishRequest(requestID)
+                guard let self else { return }
+                let statusCode = (response as? HTTPURLResponse)?.statusCode
+                self.workQueue.async {
+                    guard lifetime.isActive,
+                          let entries = AppUpdatesSupport.parseOnlineCatalogResponse(
+                            data, statusCode: statusCode) else {
+                        completion(SourceResult(items: [], available: false, uncheckedApps: candidates))
+                        return
+                    }
+                    guard lifetime.whileActive({ self.onlineCatalogCache = (Date(), entries) }) else {
+                        completion(SourceResult(items: [], available: false, uncheckedApps: candidates))
+                        return
+                    }
+                    completion(self.onlineResult(candidates: candidates,
+                                                 catalog: entries,
+                                                 operatingSystemVersion: operatingSystemVersion))
                 }
-                self.onlineCatalogCache = (Date(), entries)
-                completion(self.onlineResult(candidates: candidates,
-                                             catalog: entries,
-                                             operatingSystemVersion: operatingSystemVersion))
             }
-        }.resume()
+            task.resume()
+            return { task.cancel() }
+        }
+        if !started { completion(SourceResult(items: [], available: false, uncheckedApps: candidates)) }
     }
 
     private func onlineResult(candidates: [AppUpdatesSupport.InstalledApp],
@@ -764,17 +795,27 @@ final class AppUpdatesService: ObservableObject {
 
     /// Reads the normal Applications folders plus shallow app results from
     /// Spotlight in the user's home, all off the main thread.
-    private static func scanInstalledApps(includePublisherFeeds: Bool) -> [AppUpdatesSupport.InstalledApp] {
-        InstalledApps.applicationScanPaths(
-            folderPaths: folderApplicationPaths(),
-            spotlightPaths: InstalledApps.spotlightApplicationPaths(timeout: commandTimeout, maxOutputBytes: commandOutputLimit),
+    private static func scanInstalledApps(includePublisherFeeds: Bool, lifetime: AppUpdateScanLifetime) -> [AppUpdatesSupport.InstalledApp] {
+        let folders = folderApplicationPaths(lifetime: lifetime)
+        guard lifetime.isActive else { return [] }
+        let spotlight = InstalledApps.spotlightApplicationPaths(timeout: commandTimeout,
+                                                               maxOutputBytes: commandOutputLimit,
+                                                               cancellation: lifetime.commandCancellation)
+        guard lifetime.isActive else { return [] }
+        return InstalledApps.applicationScanPaths(
+            folderPaths: folders,
+            spotlightPaths: spotlight,
             homeDirectory: NSHomeDirectory()
-        ).compactMap { scannedApp(at: URL(fileURLWithPath: $0), includePublisherFeeds: includePublisherFeeds) }
+        ).compactMap {
+            guard lifetime.isActive else { return nil }
+            return scannedApp(at: URL(fileURLWithPath: $0), includePublisherFeeds: includePublisherFeeds)
+        }
     }
 
-    private static func folderApplicationPaths() -> [String] {
+    private static func folderApplicationPaths(lifetime: AppUpdateScanLifetime) -> [String] {
         var paths: [String] = []
-        InstalledApps.forEachApplication(in: InstalledApps.applicationRoots(includeSystemApplications: false)) {
+        InstalledApps.forEachApplication(in: InstalledApps.applicationRoots(includeSystemApplications: false),
+                                         shouldContinue: { lifetime.isActive }) {
             paths.append($0.path)
         }
         return paths
@@ -837,11 +878,12 @@ final class AppUpdatesService: ObservableObject {
     private static let commandOutputLimit = 32 * 1_024 * 1_024
 
     private static func runCommand(_ command: HomebrewCommand,
-                                   environment: [String: String]? = nil) -> (status: Int32, output: String) {
+                                   environment: [String: String]? = nil,
+                                   cancellation: BoundedProcessCancellation? = nil) -> (status: Int32, output: String) {
         let result = BoundedProcessRunner.run(command.executable, command.arguments,
                                               timeout: commandTimeout,
                                               maxOutputBytes: commandOutputLimit,
-                                              environment: environment)
+                                              environment: environment, cancellation: cancellation)
         return (result.status, String(decoding: result.output, as: UTF8.self))
     }
 }

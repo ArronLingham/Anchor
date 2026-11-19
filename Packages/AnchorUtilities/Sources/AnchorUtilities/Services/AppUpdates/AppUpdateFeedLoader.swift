@@ -14,10 +14,11 @@ final class AppUpdateFeedLoader: NSObject, URLSessionDataDelegate {
 
     private init(completion: @escaping (AppUpdateFeedSupport.LoadResult) -> Void) { self.completion = completion }
 
-    static func load(_ url: URL, completion: @escaping (AppUpdateFeedSupport.LoadResult) -> Void) {
+    @discardableResult
+    static func load(_ url: URL, completion: @escaping (AppUpdateFeedSupport.LoadResult) -> Void) -> URLSessionDataTask? {
         guard AppUpdateFeedSupport.publicURL(url.absoluteString) != nil else {
             completion(.failed)
-            return
+            return nil
         }
         let delegate = AppUpdateFeedLoader(completion: completion)
         let configuration = URLSessionConfiguration.ephemeral
@@ -28,8 +29,10 @@ final class AppUpdateFeedLoader: NSObject, URLSessionDataDelegate {
         configuration.httpShouldSetCookies = false
         configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
         let session = URLSession(configuration: configuration, delegate: delegate, delegateQueue: nil)
-        session.dataTask(with: url).resume()
+        let task = session.dataTask(with: url)
+        task.resume()
         session.finishTasksAndInvalidate()
+        return task
     }
 
     func urlSession(_ session: URLSession, dataTask: URLSessionDataTask,
