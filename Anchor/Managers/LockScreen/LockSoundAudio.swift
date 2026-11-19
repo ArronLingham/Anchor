@@ -9,6 +9,8 @@ final class LockSoundAudio: @unchecked Sendable {
     private let queue = DispatchQueue(label: "Anchor.lock-sound", qos: .userInteractive)
     private let requestLock = NSLock()
     private var latestRequest = UUID()
+    private var enabled = true
+    private var enableGeneration = UUID()
     private var players: [LockChime: AVAudioPlayer] = [:]
     private var playbackOffsets: [LockChime: TimeInterval] = [:]
     private var lastPlayed: [LockChime: TimeInterval] = [:]
@@ -21,31 +23,64 @@ final class LockSoundAudio: @unchecked Sendable {
     }
 
     func prepare(completion: (@Sendable ([LockChime: TimeInterval]) -> Void)? = nil) {
-        queue.async {
-            for type in LockChime.allCases { _ = self.player(for: type) }
-            completion?(self.playbackOffsets)
+        requestLock.withLock {
+            let generation = enableGeneration
+            queue.async {
+                for type in LockChime.allCases {
+                    guard self.allowsPreparation(generation) else { completion?([:]); return }
+                    _ = self.player(for: type)
+                }
+                completion?(self.allowsPreparation(generation) ? self.playbackOffsets : [:])
+            }
         }
+    }
+
+    func setEnabled(_ value: Bool) {
+        requestLock.withLock {
+            guard enabled != value else { return }
+            enabled = value
+            enableGeneration = UUID()
+            latestRequest = UUID()
+            if !value {
+                queue.async {
+                    self.players.values.forEach { $0.stop() }
+                    self.players.removeAll()
+                    self.playbackOffsets.removeAll()
+                    self.lastPlayed.removeAll()
+                }
+            }
+        }
+    }
+
+    private func allowsPreparation(_ generation: UUID) -> Bool {
+        requestLock.withLock { enabled && enableGeneration == generation }
     }
 
     func play(_ type: LockChime) {
         let token = UUID()
         let requestedAt = ProcessInfo.processInfo.systemUptime
-        requestLock.withLock { latestRequest = token }
-        queue.async {
-            guard self.isCurrent(token, requestedAt: requestedAt),
-                  let player = self.player(for: type),
-                  self.isCurrent(token, requestedAt: requestedAt) else { return }
-            let now = ProcessInfo.processInfo.systemUptime
-            guard now - (self.lastPlayed[type] ?? -.infinity) >= 0.25 else { return }
-            for (other, audio) in self.players where other != type { audio.stop() }
-            player.currentTime = self.playbackOffsets[type] ?? 0
-            player.play()
-            self.lastPlayed[type] = now
+        requestLock.withLock {
+            guard enabled else { return }
+            latestRequest = token
+            queue.async {
+                guard self.isCurrent(token, requestedAt: requestedAt),
+                      let player = self.player(for: type),
+                      self.isCurrent(token, requestedAt: requestedAt) else { return }
+                let now = ProcessInfo.processInfo.systemUptime
+                guard now - (self.lastPlayed[type] ?? -.infinity) >= 0.25 else { return }
+                for (other, audio) in self.players where other != type { audio.stop() }
+                player.currentTime = self.playbackOffsets[type] ?? 0
+                self.requestLock.withLock {
+                    guard self.enabled, self.latestRequest == token else { return }
+                    player.play()
+                    self.lastPlayed[type] = now
+                }
+            }
         }
     }
 
     private func isCurrent(_ token: UUID, requestedAt: TimeInterval) -> Bool {
-        requestLock.withLock { latestRequest == token }
+        requestLock.withLock { enabled && latestRequest == token }
             && ProcessInfo.processInfo.systemUptime - requestedAt <= 0.35
     }
 

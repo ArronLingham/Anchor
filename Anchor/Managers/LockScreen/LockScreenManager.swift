@@ -337,7 +337,13 @@ extension LockScreenManager {
 final class LockSoundPlayer {
     static let shared = LockSoundPlayer()
     private let audio = LockSoundAudio()
-    private init() {}
+    private var preferenceObservation: AnyCancellable?
+    private init() {
+        audio.setEnabled(Defaults[.enableLockSounds])
+        let audio = audio
+        preferenceObservation = Defaults.publisher(.enableLockSounds)
+            .sink { change in audio.setEnabled(change.newValue) }
+    }
 
     func prepare() {
         guard Defaults[.enableLockSounds] else { return }
