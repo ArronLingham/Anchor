@@ -154,6 +154,30 @@ final class LegacySnippetMigrationTests: XCTestCase {
     }
 
     #if DEBUG
+    func testSuspendingExpansionClearsOnlyItsInMemorySnippetCache() throws {
+        try XCTSkipIf(IsSecureEventInputEnabled(), "Secure input is active")
+        var posts = 0
+        let service = TextSnippetService(testPoster: { _, _, _, _, _, _, _, _ in posts += 1; return true })
+        var snippet = TextSnippet()
+        snippet.trigger = ";x"; snippet.replacement = "fixture"; snippet.legacyBehavior = true
+        let original = try XCTUnwrap(TextSnippetSupport.encode([snippet]))
+        service.configureForTest([snippet])
+        service.suspend()
+
+        func event(_ text: String) -> CGEvent {
+            let value = CGEvent(keyboardEventSource: nil, virtualKey: CGKeyCode(kVK_ANSI_A), keyDown: true)!
+            let units = Array(text.utf16)
+            units.withUnsafeBufferPointer { value.keyboardSetUnicodeString(stringLength: units.count, unicodeString: $0.baseAddress) }
+            return value
+        }
+        for character in ";x " { _ = service.handle(type: .keyDown, event: event(String(character))) }
+        XCTAssertEqual(posts, 0, "A suspended expansion service must not retain the old trigger")
+        XCTAssertEqual(TextSnippetSupport.decode(original), [snippet], "The encoded fixture remains intact")
+        service.configureForTest([snippet])
+        for character in ";x " { _ = service.handle(type: .keyDown, event: event(String(character))) }
+        XCTAssertEqual(posts, 1, "A later reload must restore the saved trigger")
+    }
+
     func testInputHandlerExpandsAndUndoesImportedSnippet() throws {
         try XCTSkipIf(IsSecureEventInputEnabled(), "Secure input is active")
         var posts: [(Int, String, CGKeyCode?)] = []

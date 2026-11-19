@@ -6,6 +6,14 @@ import AudioToolbox
 import Carbon.HIToolbox
 import CoreGraphics
 
+/// Accessed under the tap lifecycle lock. A stop invalidates even a restart
+/// that the old tap thread has already dispatched to the main queue.
+struct SnippetTapRestartGate {
+    private(set) var ticket = UUID()
+    mutating func invalidate() { ticket = UUID() }
+    func accepts(_ candidate: UUID) -> Bool { ticket == candidate }
+}
+
 /// Text snippets: typing a trigger replaces it with its expansion, with
 /// {{date}}, {{time}}, {{datetime}} and {{clipboard}} filled in. The key tap,
 /// the observers and the snippet cache only exist while the feature is on;
@@ -38,6 +46,7 @@ final class TextSnippetService {
     private var tapThread: Thread?
     private var shouldStopTapThread = false
     private var pendingTapRestart = false
+    private var restartGate = SnippetTapRestartGate()
     private var activationObserver: NSObjectProtocol?
     private let inputLock = NSLock()
     private var buffer = ""
@@ -64,6 +73,11 @@ final class TextSnippetService {
         UtilityWorkspace.shared.prepareOwnership()
         let enabled = AppFeature.textSnippets.isAvailable
             && UtilityPreferences.standard.bool(forKey: DefaultsKey.textSnippetsEnabled)
+        guard enabled else {
+            syncExpansionSound(featureEnabled: false)
+            stop()
+            return
+        }
         reloadSnippets()
         let hasWork = inputLock.withLock {
             !(immediateSnippets.isEmpty && delimiterSnippets.isEmpty
@@ -172,6 +186,7 @@ final class TextSnippetService {
     private func stop() {
         let snapshot = tapLifecycleLock.withLock {
             () -> (runLoop: CFRunLoop?, tap: CFMachPort?, threadExists: Bool) in
+            restartGate.invalidate()
             shouldStopTapThread = true
             pendingTapRestart = false
             return (tapRunLoop, tap, tapThread != nil)
@@ -192,7 +207,11 @@ final class TextSnippetService {
             NSWorkspace.shared.notificationCenter.removeObserver(activationObserver)
             self.activationObserver = nil
         }
-        resetBuffer()
+        inputLock.withLock {
+            buffer = ""; legacyBuffer = ""; legacyUndo.reset()
+            installSnippets([])
+            expansionSound = nil
+        }
     }
 
     private func runEventTap() {
@@ -200,7 +219,7 @@ final class TextSnippetService {
             let runLoop = CFRunLoopGetCurrent()
             tapLifecycleLock.withLock { tapRunLoop = runLoop }
             guard !tapLifecycleLock.withLock({ shouldStopTapThread }) else {
-                if clearEventTapThread() { startOnMain() }
+                if let ticket = clearEventTapThread() { startOnMain(ticket: ticket) }
                 return
             }
 
@@ -220,7 +239,7 @@ final class TextSnippetService {
                 },
                 userInfo: Unmanaged.passUnretained(self).toOpaque()
             ) else {
-                _ = clearEventTapThread()
+                if let ticket = clearEventTapThread() { startOnMain(ticket: ticket) }
                 return
             }
 
@@ -239,24 +258,29 @@ final class TextSnippetService {
             CGEvent.tapEnable(tap: tap, enable: false)
             CFRunLoopRemoveSource(runLoop, source, .commonModes)
             CFMachPortInvalidate(tap)
-            if clearEventTapThread() { startOnMain() }
+            if let ticket = clearEventTapThread() { startOnMain(ticket: ticket) }
         }
     }
 
-    private func clearEventTapThread() -> Bool {
+    private func clearEventTapThread() -> UUID? {
         tapLifecycleLock.withLock {
-            let shouldRestart = pendingTapRestart
+            let ticket = pendingTapRestart ? restartGate.ticket : nil
             tap = nil
             tapRunLoop = nil
             tapThread = nil
             shouldStopTapThread = false
             pendingTapRestart = false
-            return shouldRestart
+            return ticket
         }
     }
 
-    private func startOnMain() {
-        DispatchQueue.main.async { [weak self] in self?.start() }
+    private func startOnMain(ticket: UUID) {
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.tapLifecycleLock.withLock({ self.restartGate.accepts(ticket) }) else { return }
+            // Re-evaluate availability, preference, permission, session and
+            // the current snippet list instead of reviving the old demand.
+            self.syncWithPreferences()
+        }
     }
 
     private func tapDidStart(_ startedTap: CFMachPort) {
@@ -289,6 +313,17 @@ final class TextSnippetService {
     // MARK: - Tap
 
     func handle(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
+        #if DEBUG
+        let testing = testPoster != nil
+        #else
+        let testing = false
+        #endif
+        guard testing || (AppFeature.textSnippets.isAvailable
+            && UtilityPreferences.standard.bool(forKey: DefaultsKey.textSnippetsEnabled)
+            && SessionActivity.shared.isActive
+            && tapLifecycleLock.withLock({ !shouldStopTapThread })) else {
+            return Unmanaged.passUnretained(event)
+        }
         if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
             resetBuffer()
             let currentTap = tapLifecycleLock.withLock { shouldStopTapThread ? nil : tap }

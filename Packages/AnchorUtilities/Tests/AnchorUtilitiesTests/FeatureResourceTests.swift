@@ -6,6 +6,29 @@ import XCTest
 @testable import AnchorUtilities
 
 final class FeatureResourceTests: XCTestCase {
+    func testSnippetRestartIsInvalidatedByLaterStop() {
+        var gate = SnippetTapRestartGate()
+        let queued = gate.ticket
+        var enabled = true, starts = 0
+        let reconcile: (UUID) -> Void = { ticket in
+            guard gate.accepts(ticket), enabled else { return }
+            starts += 1
+        }
+        gate.invalidate()
+        enabled = false
+        reconcile(queued)
+        XCTAssertEqual(starts, 0, "An off transition must cancel the queued restart")
+        enabled = true
+        reconcile(queued)
+        XCTAssertEqual(starts, 0, "Re-enabling must not revive the old restart")
+        let fresh = gate.ticket
+        reconcile(fresh)
+        XCTAssertEqual(starts, 1, "A fresh restart can reconcile current demand")
+        gate.invalidate()
+        reconcile(fresh)
+        XCTAssertEqual(starts, 1, "A suspension after queueing must cancel the restart")
+    }
+
     func testCleaningRequestCannotSurviveLoginSessionSwitch() throws {
         let exercise = {
             let center = NotificationCenter()
