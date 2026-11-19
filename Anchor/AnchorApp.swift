@@ -1310,14 +1310,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         
         previousScreens = NSScreen.screens
 
-        // Skip weather under UI testing: prepareLocationAccess prompts for Location.
-        if Defaults[.enableLockScreenWeatherWidget] && !AppRuntimeEnvironment.isUITesting {
-            LockScreenWeatherManager.shared.prepareLocationAccess()
-            Task { @MainActor in
-                await LockScreenWeatherManager.shared.refresh(force: true)
-            }
-        }
-
         // Warm up the lock screen timer widget manager so it can observe timer/default
         // changes immediately instead of waiting for the first lock event.
         let timerWidgetManager = LockScreenTimerWidgetManager.shared

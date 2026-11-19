@@ -372,7 +372,7 @@ private struct LauncherClockWidget: View {
 
 private struct LauncherWeatherWidget: View {
     @ObservedObject private var weather = LockScreenWeatherManager.shared
-    @State private var didRequest = false
+    @State private var consumerID = UUID()
 
     var body: some View {
         WidgetCard {
@@ -401,13 +401,8 @@ private struct LauncherWeatherWidget: View {
                 }
             }
         }
-        .task {
-            // Once per appearance, and only if nothing has been fetched — the
-            // lock screen shares this manager and may already have a snapshot.
-            guard !didRequest, weather.snapshot == nil else { return }
-            didRequest = true
-            _ = await weather.refresh()
-        }
+        .onAppear { weather.beginLauncher(consumerID) }
+        .onDisappear { weather.endLauncher(consumerID) }
     }
 }
 

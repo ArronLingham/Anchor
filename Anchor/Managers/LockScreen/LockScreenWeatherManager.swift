@@ -28,76 +28,153 @@ final class LockScreenWeatherManager: ObservableObject {
 
     @Published private(set) var snapshot: LockScreenWeatherSnapshot?
 
-    private let provider = LockScreenWeatherProvider()
-    private let locationProvider = LockScreenWeatherLocationProvider()
+    private lazy var provider = LockScreenWeatherProvider()
+    private var locationProvider: LockScreenWeatherLocationProvider?
     private var lastFetchDate: Date?
     private var latestWeatherPayload: LockScreenWeatherSnapshot?
-    private var cancellables = Set<AnyCancellable>()
+    private var demand = WeatherDemandState()
+    private let settingEpoch = WeatherSettingEpoch()
+    private var settingCancellables = Set<AnyCancellable>()
+    private var accessoryCancellables = Set<AnyCancellable>()
+    private var bluetoothCancellables = Set<AnyCancellable>()
+    private var refreshTask: Task<LockScreenWeatherSnapshot?, Never>?
+    private var lockSettingTicket: UUID?
 
     private init() {
-        observeAccessoryChanges()
-        Task { @MainActor [weak self] in
-            guard let self else { return }
-            self.locationProvider.prepareAuthorization()
-            _ = await self.refresh(force: true)
-        }
+        observeSettings()
     }
 
-    func prepareLocationAccess() {
-        locationProvider.prepareAuthorization()
+    private func location() -> LockScreenWeatherLocationProvider {
+        if let locationProvider { return locationProvider }
+        let value = LockScreenWeatherLocationProvider()
+        locationProvider = value
+        return value
+    }
+
+    func beginLauncher(_ id: UUID) {
+        guard !AppRuntimeEnvironment.isUITesting, Defaults[.launcherShowWeatherWidget] else { return }
+        demand.addLauncher(id)
+        location().prepareAuthorization()
+        _ = scheduleRefresh(force: false)
+    }
+
+    func endLauncher(_ id: UUID) {
+        demand.removeLauncher(id)
+        stopIfUnused()
     }
 
     func showWeatherWidget() {
-        guard Defaults[.enableLockScreenWeatherWidget] else {
-            LockScreenWeatherPanelManager.shared.hide()
-            return
-        }
+        guard !AppRuntimeEnvironment.isUITesting, Defaults[.enableLockScreenWeatherWidget],
+              LockScreenManager.shared.currentLockStatus else { return }
 
-        locationProvider.prepareAuthorization()
+        // An off/on pair can be delivered before either queued settings task.
+        // Retire the old lock owner, but keep a visible Launcher's fetch alive.
+        if let previous = lockSettingTicket, !settingEpoch.accepts(previous) {
+            demand.endLock()
+            lockSettingTicket = nil
+            stopIfUnused()
+        }
+        let ticket = demand.beginLock()
+        let settingTicket = settingEpoch.current()
+        lockSettingTicket = settingTicket
+        guard acceptsLock(ticket, settingTicket: settingTicket) else { hideWeatherWidget(); return }
+        observeAccessoryChanges()
+        guard acceptsLock(ticket, settingTicket: settingTicket) else { hideWeatherWidget(); return }
+        location().prepareAuthorization()
         let existingSnapshot = snapshot
         let hadSnapshot = existingSnapshot != nil
         var cachedSnapshot = existingSnapshot
 
-        if cachedSnapshot == nil, let payload = latestWeatherPayload {
+        if let payload = latestWeatherPayload {
             let derivedSnapshot = makeSnapshot(from: payload)
             snapshot = derivedSnapshot
             cachedSnapshot = derivedSnapshot
         }
 
         if let cachedSnapshot {
-            deliver(cachedSnapshot, forceShow: true)
+            deliver(cachedSnapshot, forceShow: true, lockTicket: ticket, settingTicket: settingTicket)
         }
 
         let needsForceShowOnRefresh = cachedSnapshot == nil
         let shouldForceRefresh = !hadSnapshot
 
+        guard let task = scheduleRefresh(force: shouldForceRefresh) else { return }
         Task { @MainActor [weak self] in
-            guard let self else { return }
-            let refreshedSnapshot = await self.refresh(force: shouldForceRefresh)
-
-            guard LockScreenManager.shared.currentLockStatus else { return }
-
+            let refreshedSnapshot = await task.value
+            guard let self, self.acceptsLock(ticket, settingTicket: settingTicket) else { return }
             if let refreshedSnapshot {
-                self.deliver(refreshedSnapshot, forceShow: needsForceShowOnRefresh)
+                self.deliver(refreshedSnapshot, forceShow: needsForceShowOnRefresh,
+                             lockTicket: ticket, settingTicket: settingTicket)
             } else if needsForceShowOnRefresh {
-                LockScreenWeatherPanelManager.shared.hide()
+                LockScreenWeatherPanelManager.existing?.hide()
             }
         }
     }
 
     func hideWeatherWidget() {
-        LockScreenWeatherPanelManager.shared.hide()
+        demand.endLock()
+        lockSettingTicket = nil
+        accessoryCancellables.removeAll()
+        bluetoothCancellables.removeAll()
+        LockScreenWeatherPanelManager.existing?.hide()
+        stopIfUnused()
     }
 
-    @discardableResult
-    func refresh(force: Bool = false) async -> LockScreenWeatherSnapshot? {
+    private func acceptsLock(_ ticket: UUID, settingTicket: UUID) -> Bool {
+        settingEpoch.accepts(settingTicket) && demand.acceptsLock(ticket,
+            enabled: Defaults[.enableLockScreenWeatherWidget], locked: LockScreenManager.shared.currentLockStatus)
+    }
+
+    private var hasCurrentLockDemand: Bool {
+        guard let lock = demand.lockPresentation, let setting = lockSettingTicket else { return false }
+        return acceptsLock(lock, settingTicket: setting)
+    }
+
+    private var hasCurrentLauncherDemand: Bool {
+        Defaults[.launcherShowWeatherWidget] && !demand.launchers.isEmpty
+    }
+
+    private var hasCurrentDemand: Bool {
+        demand.hasUsableDemand(lockAllowed: hasCurrentLockDemand,
+                               launcherEnabled: Defaults[.launcherShowWeatherWidget])
+    }
+
+    private func stopIfUnused() {
+        guard !hasCurrentDemand else { return }
+        demand.invalidateFetch()
+        refreshTask?.cancel()
+        refreshTask = nil
+        locationProvider?.cancelPending()
+        locationProvider = nil
+    }
+
+    private func scheduleRefresh(force: Bool) -> Task<LockScreenWeatherSnapshot?, Never>? {
+        guard hasCurrentDemand else { return nil }
+        if let refreshTask { return refreshTask }
+        let ticket = demand.fetchGeneration
+        let task = Task { @MainActor [weak self] () -> LockScreenWeatherSnapshot? in
+            guard let self else { return nil }
+            let value = await self.refresh(force: force, ticket: ticket)
+            if self.demand.acceptsFetch(ticket) { self.refreshTask = nil }
+            return value
+        }
+        refreshTask = task
+        return task
+    }
+
+    private func acceptsFetch(_ ticket: UUID) -> Bool {
+        !Task.isCancelled && demand.acceptsFetch(ticket) && hasCurrentDemand
+    }
+
+    private func refresh(force: Bool, ticket: UUID) async -> LockScreenWeatherSnapshot? {
+        guard acceptsFetch(ticket) else { return nil }
         NSLog("LockScreenWeatherManager: refresh requested (force=%@)", force ? "true" : "false")
         let interval = Defaults[.lockScreenWeatherRefreshInterval]
         if !force, let lastFetchDate, Date().timeIntervalSince(lastFetchDate) < interval {
             let remaining = interval - Date().timeIntervalSince(lastFetchDate)
             NSLog("LockScreenWeatherManager: skipping refresh (%.0f s remaining until next fetch)", max(remaining, 0))
             if let payload = latestWeatherPayload {
-                if Defaults[.lockScreenBatteryShowsBluetooth] {
+                if hasCurrentLockDemand && Defaults[.lockScreenBatteryShowsBluetooth] {
                     BluetoothAudioManager.shared.refreshConnectedDeviceBatteries()
                 }
                 let snapshot = makeSnapshot(from: payload)
@@ -112,7 +189,8 @@ final class LockScreenWeatherManager: ObservableObject {
         }
 
         do {
-            let location = await locationProvider.currentLocation()
+            let location = await location().currentLocation()
+            guard acceptsFetch(ticket) else { return nil }
             let provider = Defaults[.lockScreenWeatherProviderSource]
             NSLog(
                 "LockScreenWeatherManager: fetching weather from %@ (location %@)",
@@ -120,8 +198,9 @@ final class LockScreenWeatherManager: ObservableObject {
                 location != nil ? "available" : "missing"
             )
             let payload = try await fetchWeatherPayload(location: location)
+            guard acceptsFetch(ticket) else { return nil }
             latestWeatherPayload = payload
-            if Defaults[.lockScreenBatteryShowsBluetooth] {
+            if hasCurrentLockDemand && Defaults[.lockScreenBatteryShowsBluetooth] {
                 BluetoothAudioManager.shared.refreshConnectedDeviceBatteries()
             }
             let snapshot = makeSnapshot(from: payload)
@@ -131,12 +210,13 @@ final class LockScreenWeatherManager: ObservableObject {
             NSLog("LockScreenWeatherManager: weather refresh succeeded")
             return snapshot
         } catch {
+            guard acceptsFetch(ticket) else { return nil }
             NSLog("LockScreenWeatherManager: failed to fetch weather - \(error.localizedDescription)")
 
             let providerSource = Defaults[.lockScreenWeatherProviderSource]
-            let showsCharging = Defaults[.lockScreenBatteryShowsCharging]
+            let showsCharging = hasCurrentLockDemand && Defaults[.lockScreenBatteryShowsCharging]
             let chargingInfo = showsCharging ? makeChargingInfo() : nil
-            let showsBatteryGauge = Defaults[.lockScreenBatteryShowsBatteryGauge]
+            let showsBatteryGauge = hasCurrentLockDemand && Defaults[.lockScreenBatteryShowsBatteryGauge]
             let widgetStyle = Defaults[.lockScreenWeatherWidgetStyle]
             let batteryInfo = showsBatteryGauge ? makeBatteryGaugeInfo(isCharging: chargingInfo != nil, widgetStyle: widgetStyle) : nil
             let showsSunriseSetting = Defaults[.lockScreenWeatherShowsSunrise]
@@ -148,7 +228,7 @@ final class LockScreenWeatherManager: ObservableObject {
                 description: snapshot?.description ?? "",
                 locationName: snapshot?.locationName,
                 charging: chargingInfo,
-                bluetooth: Defaults[.lockScreenBatteryShowsBluetooth] ? makeBluetoothInfo() : nil,
+                bluetooth: hasCurrentLockDemand && Defaults[.lockScreenBatteryShowsBluetooth] ? makeBluetoothInfo() : nil,
                 battery: batteryInfo,
                 showsLocation: snapshot?.showsLocation ?? false,
                 airQuality: (providerSource.supportsAirQuality && Defaults[.lockScreenWeatherShowsAQI]) ? snapshot?.airQuality : nil,
@@ -172,6 +252,7 @@ final class LockScreenWeatherManager: ObservableObject {
         do {
             return try await provider.fetchSnapshot(location: location, source: primarySource)
         } catch {
+            guard !Task.isCancelled else { throw error }
             if primarySource == .openMeteo {
                 NSLog("LockScreenWeatherManager: Open Meteo fetch failed - %@. Falling back to wttr.in", error.localizedDescription)
                 do {
@@ -186,22 +267,8 @@ final class LockScreenWeatherManager: ObservableObject {
     }
 
     private func observeAccessoryChanges() {
-        let bluetoothManager = BluetoothAudioManager.shared
-
-        bluetoothManager.$connectedDevices
-            .receive(on: RunLoop.main)
-            .sink { [weak self] _ in
-                self?.handleAccessoryUpdate(triggerBluetoothRefresh: false)
-            }
-            .store(in: &cancellables)
-
-        bluetoothManager.$lastConnectedDevice
-            .receive(on: RunLoop.main)
-            .sink { [weak self] _ in
-                self?.handleAccessoryUpdate(triggerBluetoothRefresh: false)
-            }
-            .store(in: &cancellables)
-
+        accessoryCancellables.removeAll()
+        syncBluetoothObservation()
         let battery = BatteryStatusViewModel.shared
         let batteryPublishers: [AnyPublisher<Void, Never>] = [
             battery.$isCharging.map { _ in () }.eraseToAnyPublisher(),
@@ -214,7 +281,7 @@ final class LockScreenWeatherManager: ObservableObject {
             .sink { [weak self] in
                 self?.handleAccessoryUpdate(triggerBluetoothRefresh: false)
             }
-            .store(in: &cancellables)
+            .store(in: &accessoryCancellables)
 
         let defaultsPublishers: [AnyPublisher<Void, Never>] = [
             Defaults.publisher(.lockScreenWeatherShowsLocation, options: [])
@@ -246,64 +313,98 @@ final class LockScreenWeatherManager: ObservableObject {
         ]
 
         Publishers.MergeMany(defaultsPublishers)
+            .receive(on: RunLoop.main)
             .sink { [weak self] in
+                self?.syncBluetoothObservation()
                 self?.handleAccessoryUpdate(triggerBluetoothRefresh: true)
             }
-            .store(in: &cancellables)
+            .store(in: &accessoryCancellables)
+    }
 
-        Defaults.publisher(.lockScreenWeatherProviderSource, options: [])
+    private func syncBluetoothObservation() {
+        let wanted = hasCurrentLockDemand && Defaults[.lockScreenBatteryShowsBluetooth]
+        guard wanted != !bluetoothCancellables.isEmpty else { return }
+        bluetoothCancellables.removeAll()
+        guard wanted else { return }
+        let bluetooth = BluetoothAudioManager.shared
+        bluetooth.$connectedDevices.receive(on: RunLoop.main)
+            .sink { [weak self] _ in self?.handleAccessoryUpdate(triggerBluetoothRefresh: false) }
+            .store(in: &bluetoothCancellables)
+        bluetooth.$lastConnectedDevice.receive(on: RunLoop.main)
+            .sink { [weak self] _ in self?.handleAccessoryUpdate(triggerBluetoothRefresh: false) }
+            .store(in: &bluetoothCancellables)
+    }
+
+    private func observeSettings() {
+        Defaults.publisher(.launcherShowWeatherWidget, options: [])
             .sink { [weak self] _ in
-                guard let self else { return }
-                self.latestWeatherPayload = nil
-                Task { @MainActor in
-                    NSLog("LockScreenWeatherManager: provider changed, forcing refresh")
-                    _ = await self.refresh(force: true)
-                }
-            }
-            .store(in: &cancellables)
-
-        Defaults.publisher(.lockScreenWeatherTemperatureUnit, options: [])
-            .sink { [weak self] _ in
-                guard let self else { return }
-                self.latestWeatherPayload = nil
-                Task { @MainActor in
-                    NSLog("LockScreenWeatherManager: temperature unit changed, forcing refresh")
-                    _ = await self.refresh(force: true)
-                }
-            }
-            .store(in: &cancellables)
-
-        Defaults.publisher(.lockScreenWeatherAQIScale, options: [])
-            .sink { [weak self] _ in
-                guard let self else { return }
-                self.latestWeatherPayload = nil
-                Task { @MainActor in
-                    NSLog("LockScreenWeatherManager: AQI scale changed, forcing refresh")
-                    _ = await self.refresh(force: true)
-                }
-            }
-            .store(in: &cancellables)
-
-        Defaults.publisher(.enableLockScreenWeatherWidget, options: [])
-            .sink { [weak self] change in
-                guard let self else { return }
-                Task { @MainActor in
-                    if change.newValue {
-                        NSLog("LockScreenWeatherManager: widget enabled, triggering refresh")
-                        self.locationProvider.prepareAuthorization()
-                        _ = await self.refresh(force: true)
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    if self.hasCurrentLauncherDemand {
+                        self.location().prepareAuthorization()
+                        _ = self.scheduleRefresh(force: false)
                     } else {
-                        LockScreenWeatherPanelManager.shared.hide()
+                        self.stopIfUnused()
                     }
                 }
             }
-            .store(in: &cancellables)
+            .store(in: &settingCancellables)
+
+        Defaults.publisher(.lockScreenWeatherProviderSource, options: [])
+            .sink { [weak self] _ in
+                Task { @MainActor [weak self] in self?.weatherConfigurationChanged() }
+            }
+            .store(in: &settingCancellables)
+
+        Defaults.publisher(.lockScreenWeatherTemperatureUnit, options: [])
+            .sink { [weak self] _ in
+                Task { @MainActor [weak self] in self?.weatherConfigurationChanged() }
+            }
+            .store(in: &settingCancellables)
+
+        Defaults.publisher(.lockScreenWeatherAQIScale, options: [])
+            .sink { [weak self] _ in
+                Task { @MainActor [weak self] in self?.weatherConfigurationChanged() }
+            }
+            .store(in: &settingCancellables)
+
+        let epoch = settingEpoch
+        Defaults.publisher(.enableLockScreenWeatherWidget, options: [])
+            .sink { [weak self, epoch] _ in
+                epoch.invalidate()
+                let ticket = epoch.current()
+                Task { @MainActor [weak self] in
+                    guard let self, epoch.accepts(ticket) else { return }
+                    if Defaults[.enableLockScreenWeatherWidget] && LockScreenManager.shared.currentLockStatus {
+                        self.showWeatherWidget()
+                    } else {
+                        self.hideWeatherWidget()
+                    }
+                }
+            }
+            .store(in: &settingCancellables)
+    }
+
+    private func weatherConfigurationChanged() {
+        demand.invalidateFetch()
+        refreshTask?.cancel()
+        refreshTask = nil
+        locationProvider?.cancelPending()
+        locationProvider = nil
+        latestWeatherPayload = nil
+        lastFetchDate = nil
+        if demand.lockPresentation != nil, Defaults[.enableLockScreenWeatherWidget],
+           LockScreenManager.shared.currentLockStatus {
+            showWeatherWidget()
+        } else if hasCurrentLauncherDemand {
+            _ = scheduleRefresh(force: true)
+        }
     }
 
     private func handleAccessoryUpdate(triggerBluetoothRefresh: Bool) {
-        guard let payload = latestWeatherPayload else { return }
+        guard hasCurrentLockDemand, let payload = latestWeatherPayload else { return }
 
-        if triggerBluetoothRefresh {
+        if triggerBluetoothRefresh && Defaults[.lockScreenBatteryShowsBluetooth] {
             BluetoothAudioManager.shared.refreshConnectedDeviceBatteries()
         }
 
@@ -312,10 +413,13 @@ final class LockScreenWeatherManager: ObservableObject {
         deliver(snapshot, forceShow: false)
     }
 
-    private func deliver(_ snapshot: LockScreenWeatherSnapshot, forceShow: Bool) {
-        guard LockScreenManager.shared.currentLockStatus else { return }
+    private func deliver(_ snapshot: LockScreenWeatherSnapshot, forceShow: Bool,
+                         lockTicket: UUID? = nil, settingTicket: UUID? = nil) {
+        guard let currentLock = demand.lockPresentation, let currentSetting = lockSettingTicket,
+              acceptsLock(currentLock, settingTicket: currentSetting) else { return }
 
         if forceShow {
+            guard lockTicket == currentLock, settingTicket == currentSetting else { return }
             LockScreenWeatherPanelManager.shared.show(with: snapshot)
         } else {
             LockScreenWeatherPanelManager.shared.update(with: snapshot)
@@ -324,14 +428,15 @@ final class LockScreenWeatherManager: ObservableObject {
 
     private func makeSnapshot(from payload: LockScreenWeatherSnapshot) -> LockScreenWeatherSnapshot {
         let locationName = payload.locationName
-        let chargingInfo = Defaults[.lockScreenBatteryShowsCharging] ? makeChargingInfo() : nil
-        let bluetoothInfo = Defaults[.lockScreenBatteryShowsBluetooth] ? makeBluetoothInfo() : nil
+        let lockVisible = hasCurrentLockDemand
+        let chargingInfo = lockVisible && Defaults[.lockScreenBatteryShowsCharging] ? makeChargingInfo() : nil
+        let bluetoothInfo = lockVisible && Defaults[.lockScreenBatteryShowsBluetooth] ? makeBluetoothInfo() : nil
         let widgetStyle = Defaults[.lockScreenWeatherWidgetStyle]
         let shouldShowLocation = widgetStyle == .inline && Defaults[.lockScreenWeatherShowsLocation] && !(locationName?.isEmpty ?? true)
         let showsChargingPercentage = Defaults[.lockScreenBatteryShowsChargingPercentage]
         let providerSource = Defaults[.lockScreenWeatherProviderSource]
         let airQualityInfo = (Defaults[.lockScreenWeatherShowsAQI] && providerSource.supportsAirQuality) ? payload.airQuality : nil
-        let batteryInfo = Defaults[.lockScreenBatteryShowsBatteryGauge] ? makeBatteryGaugeInfo(isCharging: chargingInfo != nil, widgetStyle: widgetStyle) : nil
+        let batteryInfo = lockVisible && Defaults[.lockScreenBatteryShowsBatteryGauge] ? makeBatteryGaugeInfo(isCharging: chargingInfo != nil, widgetStyle: widgetStyle) : nil
         let usesGaugeTint = Defaults[.lockScreenWeatherUsesGaugeTint]
         let showsSunriseSetting = Defaults[.lockScreenWeatherShowsSunrise]
         let shouldShowSunrise = showsSunriseSetting && widgetStyle == .inline && payload.sunCycle?.sunrise != nil
@@ -1122,6 +1227,11 @@ private final class LockScreenWeatherLocationProvider: NSObject, CLLocationManag
         default:
             return nil
         }
+    }
+
+    func cancelPending() {
+        manager.stopUpdatingLocation()
+        flushContinuations(with: nil)
     }
 
     nonisolated func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {

@@ -79,6 +79,8 @@ class LockScreenManager: ObservableObject {
     // MARK: - Setup
     
     private func setupObservers() {
+        // Installs only preference observation; weather work needs a consumer.
+        _ = LockScreenWeatherManager.shared
         // Observe screen locked event
         DistributedNotificationCenter.default().addObserver(
             self,
@@ -155,7 +157,9 @@ class LockScreenManager: ObservableObject {
             do { try await Task.sleep(for: .milliseconds(250)) } catch { return }
             guard let self, self.isLocked, !Task.isCancelled, Self.sessionLockStatus() != false else { return }
             LockScreenPanelManager.shared.showPanel()
-            LockScreenWeatherManager.shared.showWeatherWidget()
+            if Defaults[.enableLockScreenWeatherWidget] {
+                LockScreenWeatherManager.shared.showWeatherWidget()
+            }
             LockScreenTimerWidgetManager.shared.handleLockStateChange(isLocked: true)
         }
 

@@ -940,7 +940,7 @@ private struct LockScreenPositioningControls: View {
 
     private func propagateWeatherOffsetChange(animated: Bool) {
         Task { @MainActor in
-            LockScreenWeatherPanelManager.shared.refreshPositionForOffsets(animated: animated)
+            LockScreenWeatherPanelManager.existing?.refreshPositionForOffsets(animated: animated)
         }
     }
 

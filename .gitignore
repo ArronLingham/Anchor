@@ -106,6 +106,7 @@ __pycache__/
 !/tests/SwitcherDashboardTests.swift
 !/tests/TodoStorageTests.swift
 !/tests/UtilityOwnershipTests.swift
+!/tests/WeatherDemandTests.swift
 !/tests/YouTubeMusicResourceTests.swift
 !/tests/run_ai_credential_tests.sh
 !/tests/run_ai_session_tests.sh
@@ -132,6 +133,7 @@ __pycache__/
 !/tests/run_switcher_dashboard_tests.sh
 !/tests/run_todo_storage_tests.sh
 !/tests/run_utility_ownership_tests.sh
+!/tests/run_weather_demand_tests.sh
 !/tests/test_privacy_configuration.py
 !/tests/audio_diagnostics/
 /tests/audio_diagnostics/*

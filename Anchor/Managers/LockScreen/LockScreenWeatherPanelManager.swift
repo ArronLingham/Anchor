@@ -25,7 +25,13 @@ import QuartzCore
 
 @MainActor
 final class LockScreenWeatherPanelManager {
-    static let shared = LockScreenWeatherPanelManager()
+    private static weak var existingInstance: LockScreenWeatherPanelManager?
+    static let shared: LockScreenWeatherPanelManager = {
+        let manager = LockScreenWeatherPanelManager()
+        existingInstance = manager
+        return manager
+    }()
+    static var existing: LockScreenWeatherPanelManager? { existingInstance }
 
     private var window: NSWindow?
     private var hasDelegated = false
@@ -36,11 +42,10 @@ final class LockScreenWeatherPanelManager {
     private var screenChangeObserver: NSObjectProtocol?
     private var workspaceObservers: [NSObjectProtocol] = []
 
-    private init() {
-        registerScreenChangeObservers()
-    }
+    private init() {}
 
     func show(with snapshot: LockScreenWeatherSnapshot) {
+        if screenChangeObserver == nil { registerScreenChangeObservers() }
         render(snapshot: snapshot, makeVisible: true)
     }
 
@@ -49,6 +54,13 @@ final class LockScreenWeatherPanelManager {
     }
 
     func hide() {
+        if let screenChangeObserver {
+            NotificationCenter.default.removeObserver(screenChangeObserver)
+            self.screenChangeObserver = nil
+        }
+        let workspaceCenter = NSWorkspace.shared.notificationCenter
+        workspaceObservers.forEach { workspaceCenter.removeObserver($0) }
+        workspaceObservers.removeAll()
         guard let window else { return }
         window.alphaValue = 0
         window.orderOut(nil)

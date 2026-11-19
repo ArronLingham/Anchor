@@ -415,7 +415,7 @@ class LockScreenPanelManager {
         var maxCenterY = screenFrame.maxY - largestHalfHeight - 84
 
         let widgetClearance: CGFloat = 20
-        if let weatherFrame = LockScreenWeatherPanelManager.shared.latestFrame,
+        if let weatherFrame = LockScreenWeatherPanelManager.existing?.latestFrame,
            !weatherFrame.isEmpty {
             let weatherTopConstrainedCenterY = weatherFrame.minY - widgetClearance - largestHalfHeight
             maxCenterY = min(maxCenterY, weatherTopConstrainedCenterY)
