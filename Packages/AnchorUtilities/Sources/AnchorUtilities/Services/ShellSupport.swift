@@ -51,7 +51,9 @@ enum AdminShell {
         runSync(command, prompt: prompt, origin: .systemScript)
     }
 
-    private static func runSync(_ command: String, prompt: String, origin: RequestOrigin) -> Bool {
+    private static func runSync(_ command: String, prompt: String, origin: RequestOrigin,
+                                shouldProceed: () -> Bool = { true }) -> Bool {
+        guard shouldProceed() else { return false }
         promptLock.lock()
         if prompting {
             promptLock.unlock()
@@ -66,6 +68,7 @@ enum AdminShell {
         }
 
         bringAppToFront()
+        guard shouldProceed() else { return false }
         let source = appleScriptSource(command: command, prompt: prompt)
         switch origin {
         case .systemScript:
@@ -82,9 +85,10 @@ enum AdminShell {
         }
     }
 
-    static func run(_ command: String, prompt: String, completion: @escaping (Bool) -> Void) {
+    static func run(_ command: String, prompt: String, shouldProceed: @escaping () -> Bool = { true },
+                    completion: @escaping (Bool) -> Void) {
         DispatchQueue.global(qos: .userInitiated).async {
-            completion(runSync(command, prompt: prompt))
+            completion(runSync(command, prompt: prompt, origin: .systemScript, shouldProceed: shouldProceed))
         }
     }
 
@@ -145,11 +149,11 @@ enum Sudoers {
     /// exercises the exact call the feature makes. Listing checks (`sudo -l`)
     /// reported the rule as ready on Macs where the real call still asked for
     /// a password, which put every toggle behind a prompt (issue #269).
-    static func isConfigured() -> Bool {
+    static func isConfigured(shouldProceed: () -> Bool = { true }) -> Bool {
         sleepStateQueue.sync {
-            guard sleepStateProbeSuspensions == 0 else { return false }
+            guard sleepStateProbeSuspensions == 0, shouldProceed() else { return false }
             let report = Shell.run("/usr/bin/pmset", ["-g"])
-            guard report.status == 0 else { return false }
+            guard report.status == 0, shouldProceed() else { return false }
             return pmsetDisableSleepOnQueue(SudoersSupport.sleepDisabled(inPmsetOutput: report.output))
         }
     }
@@ -161,7 +165,7 @@ enum Sudoers {
         ([rulePath] + legacyRulePaths).contains { FileManager.default.fileExists(atPath: $0) }
     }
 
-    static func install(completion: @escaping (Bool) -> Void) {
+    static func install(shouldProceed: @escaping () -> Bool, completion: @escaping (Bool) -> Void) {
         // Granted by uid, not username: a short name is free-form text on
         // SSO-enrolled Macs (name@company.com, #915) and the old validation
         // rejected it before the password prompt could even appear.
@@ -169,8 +173,8 @@ enum Sudoers {
         // Clear any earlier-named rule first, then write and validate the new one
         // (a failed check rolls back). Same password prompt either way.
         let command = "mkdir -p /etc/sudoers.d && chmod 0755 /etc/sudoers.d && echo '\(rule)' > \(rulePath) && chmod 0440 \(rulePath) && /usr/sbin/visudo -c -f \(rulePath) || { rm -f \(rulePath); exit 1; }"
-        AdminShell.run(command, prompt: L10n.shared.s.adminPromptSudoersInstall) { ok in
-            completion(ok && isConfigured())
+        AdminShell.run(command, prompt: L10n.shared.s.adminPromptSudoersInstall, shouldProceed: shouldProceed) { ok in
+            completion(ok && isConfigured(shouldProceed: shouldProceed))
         }
     }
 

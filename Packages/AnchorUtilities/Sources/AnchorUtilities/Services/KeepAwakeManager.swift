@@ -46,12 +46,10 @@ final class KeepAwakeManager: ObservableObject {
             if clamshellPreferred {
                 if !sessionPausedForScreenLock { applyClamshellPreference() }
             } else if clamshellNeedsRestore {
-                clamshellSetupInProgress = false
-                clamshellSetupID = nil
+                cancelClamshellSetup()
                 disableClamshell(synchronous: false)
             } else {
-                clamshellSetupInProgress = false
-                clamshellSetupID = nil
+                cancelClamshellSetup()
             }
         }
     }
@@ -93,7 +91,7 @@ final class KeepAwakeManager: ObservableObject {
     private var clamshellEnablePending = false
     private var clamshellRestorePending = false
     private var clamshellOperationGeneration = 0
-    private var clamshellSetupID: UUID?
+    private var clamshellSetupRequest: BoundedProcessCancellation?
     private var lidSleepGeneration = 0
     private var lidSleepAttemptsRemaining = 0
     private var lidDimmingNotificationPort: IONotificationPortRef?
@@ -204,6 +202,7 @@ final class KeepAwakeManager: ObservableObject {
     /// (saved duration, tint, shortcut setting) stays for its return.
     func syncWithFeatures() {
         guard AppFeature.keepAwake.isAvailable else {
+            cancelClamshellSetup()
             stopAutomationMonitoring()
             if isActive { deactivate(reason: .manual) }
             return
@@ -310,8 +309,7 @@ final class KeepAwakeManager: ObservableObject {
         let hadSession = isActive
         if reason == .quit {
             isTerminating = true
-            clamshellSetupID = nil
-            clamshellSetupInProgress = false
+            cancelClamshellSetup()
             stopAutomationMonitoring()
         }
         endTimer?.invalidate()
@@ -734,24 +732,34 @@ final class KeepAwakeManager: ObservableObject {
         }
     }
 
+    private func cancelClamshellSetup() {
+        clamshellSetupRequest?.cancel()
+        clamshellSetupRequest = nil
+        if clamshellSetupInProgress { clamshellSetupInProgress = false }
+    }
+
     private func prepareClamshellPreference() {
-        guard !isTerminating, !clamshellRestorePending,
+        guard AppFeature.keepAwake.isAvailable, !isTerminating, !clamshellRestorePending,
               clamshellPreferred, !clamshellSetupInProgress else { return }
-        let requestID = UUID()
-        clamshellSetupID = requestID
+        let request = BoundedProcessCancellation()
+        clamshellSetupRequest = request
         clamshellSetupInProgress = true
         clamshellSetupFailed = false
 
+        let shouldProceed = {
+            !request.isCancelled && AppFeature.keepAwake.isAvailable
+        }
         DispatchQueue.global(qos: .userInitiated).async {
-            let configured = Sudoers.isConfigured()
+            guard shouldProceed() else { return }
+            let configured = Sudoers.isConfigured(shouldProceed: shouldProceed)
             DispatchQueue.main.async {
-                guard !self.isTerminating, self.clamshellSetupID == requestID else { return }
+                guard shouldProceed(), self.clamshellSetupRequest === request else { return }
                 if configured {
-                    self.finishClamshellSetup(ok: true, requestID: requestID)
+                    self.finishClamshellSetup(ok: true, request: request)
                 } else {
-                    Sudoers.install { ok in
+                    Sudoers.install(shouldProceed: shouldProceed) { ok in
                         DispatchQueue.main.async {
-                            self.finishClamshellSetup(ok: ok, requestID: requestID)
+                            self.finishClamshellSetup(ok: ok, request: request)
                         }
                     }
                 }
@@ -759,10 +767,10 @@ final class KeepAwakeManager: ObservableObject {
         }
     }
 
-    private func finishClamshellSetup(ok: Bool, requestID: UUID) {
-        guard !isTerminating, clamshellSetupID == requestID else { return }
-        clamshellSetupID = nil
-        clamshellSetupInProgress = false
+    private func finishClamshellSetup(ok: Bool, request: BoundedProcessCancellation) {
+        guard AppFeature.keepAwake.isAvailable, !isTerminating,
+              clamshellSetupRequest === request, !request.isCancelled else { return }
+        cancelClamshellSetup()
         passwordlessClamshell = ok
 
         guard ok else {
@@ -786,7 +794,7 @@ final class KeepAwakeManager: ObservableObject {
     }
 
     private func enableClamshell() {
-        guard !isTerminating, isActive, clamshellPreferred, !sessionPausedForScreenLock,
+        guard AppFeature.keepAwake.isAvailable, !isTerminating, isActive, clamshellPreferred, !sessionPausedForScreenLock,
               !clamshellActive, !clamshellEnablePending, !clamshellRestorePending else { return }
         clamshellOperationGeneration &+= 1
         let generation = clamshellOperationGeneration
@@ -824,8 +832,7 @@ final class KeepAwakeManager: ObservableObject {
         // A new session waits for an outstanding restore, including its
         // authorization fallback, so an old off cannot overwrite a new on.
         guard synchronous || !clamshellRestorePending else { return }
-        clamshellSetupID = nil
-        clamshellSetupInProgress = false
+        cancelClamshellSetup()
         clamshellOperationGeneration &+= 1
         let generation = clamshellOperationGeneration
         lidSleepGeneration &+= 1
@@ -947,8 +954,7 @@ final class KeepAwakeManager: ObservableObject {
         }
         // A manual session may start while launch recovery is asking for
         // authorization. Its enable must wait until that older off is done.
-        clamshellSetupID = nil
-        clamshellSetupInProgress = false
+        cancelClamshellSetup()
         clamshellOperationGeneration &+= 1
         let generation = clamshellOperationGeneration
         clamshellRestorePending = true
