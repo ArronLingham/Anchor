@@ -85,6 +85,10 @@ __pycache__/
 !/scripts/regen-settings-indexes.sh
 !/scripts/settings_index.py
 /tests/*
+!/tests/SuperKeyRecoveryLifecycleTests.swift
+!/tests/run_super_key_recovery_lifecycle_tests.sh
+!/tests/DockAutohideRecoveryTests.swift
+!/tests/run_dock_autohide_recovery_tests.sh
 !/tests/DisplayToggleLifecycleTests.swift
 !/tests/run_display_toggle_lifecycle_tests.sh
 !/tests/WindowLayoutDeferredActionTests.swift

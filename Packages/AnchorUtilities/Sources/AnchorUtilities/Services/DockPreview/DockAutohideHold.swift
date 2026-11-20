@@ -14,6 +14,14 @@ final class DockAutohideHold {
     private(set) var isHolding = false
 
     static var isSupported: Bool { CoreDock.get != nil && CoreDock.set != nil }
+    static let recoveryNotice = "Dock Preview could not confirm that Dock auto-hide was restored. Review Automatically hide and show the Dock in System Settings → Desktop & Dock."
+
+    /// Check a leftover marker even on a disabled launch. Once the hold has
+    /// ended, an off reading may be a deliberate choice made in System
+    /// Settings. Only the live hold may write the original value back.
+    static func reconcilePendingRecovery() -> Bool {
+        DockAutohideHold().end()
+    }
 
     init(defaults: UserDefaults = UtilityPreferences.standard,
          readAutohide: @escaping () -> Bool? = { CoreDock.read() },
@@ -21,33 +29,33 @@ final class DockAutohideHold {
         self.defaults = defaults
         self.readAutohide = readAutohide
         self.writeAutohide = writeAutohide
-        // Recover even if the experimental toggle was disabled after a crash.
-        end()
     }
 
     @discardableResult
     func begin() -> Bool {
         if isHolding { return true }
-        guard !defaults.bool(forKey: DefaultsKey.dockPreviewRestoreAutohide),
-              readAutohide() == true else { return false }
+        guard end(), readAutohide() == true else { return false }
         // Persist the restoration before touching the system preference.
         defaults.set(true, forKey: DefaultsKey.dockPreviewRestoreAutohide)
         defaults.synchronize()
+        isHolding = true
         guard writeAutohide(false) else {
             end()
             return false
         }
-        isHolding = true
         return true
     }
 
-    func end() {
+    @discardableResult
+    func end() -> Bool {
+        let mayRestore = isHolding
         isHolding = false
-        guard defaults.bool(forKey: DefaultsKey.dockPreviewRestoreAutohide) else { return }
+        guard defaults.bool(forKey: DefaultsKey.dockPreviewRestoreAutohide) else { return true }
         // Keep the recovery marker if the API disappears or restoration fails.
-        guard writeAutohide(true) else { return }
+        guard readAutohide() == true || (mayRestore && writeAutohide(true)) else { return false }
         defaults.removeObject(forKey: DefaultsKey.dockPreviewRestoreAutohide)
         defaults.synchronize()
+        return true
     }
 }
 

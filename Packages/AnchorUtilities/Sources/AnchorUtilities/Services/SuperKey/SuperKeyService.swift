@@ -19,6 +19,15 @@ import IOKit.hidsystem
 /// without it the tap cannot modify events, and the mapping is not applied
 /// either, so the source is never left as a key that does nothing.
 final class SuperKeyService: ObservableObject {
+    private static let mappingRecoveryNotice = "Anchor could not confirm that the Super Key mapping was removed. It will retry after this Mac wakes or Anchor restarts."
+
+    static func recoverAtLaunchIfNeeded() {
+        guard !AppFeature.superKey.isAvailable,
+              UtilityPreferences.standard.bool(forKey: DefaultsKey.superKeyMappingApplied) else { return }
+        shared.clearLeftoverMapping()
+    }
+
+    private var mappingRecoveryWakeObserver: NSObjectProtocol?
     static let shared = SuperKeyService()
 
     /// True while the key is actually working: tap up and mapping applied.
@@ -389,8 +398,44 @@ final class SuperKeyService: ObservableObject {
             forKey: DefaultsKey.superKeyMappingApplied
         ) || stateLock.withLock { pendingMappingEnableCount > 0 }
         if mappingMayBeApplied {
-            applyMapping(false, synchronously: synchronously)
+            applyMapping(false, synchronously: synchronously) { [weak self] failure in
+                self?.updateMappingRecovery(pending: failure != nil
+                    && UtilityPreferences.standard.bool(forKey: DefaultsKey.superKeyMappingApplied))
+            }
         }
+    }
+
+    private func updateMappingRecovery(pending: Bool) {
+        let workspace = UtilityWorkspace.shared
+        if pending {
+            workspace.reportFeatureNotice(Self.mappingRecoveryNotice)
+            guard mappingRecoveryWakeObserver == nil else { return }
+            mappingRecoveryWakeObserver = NSWorkspace.shared.notificationCenter.addObserver(
+                forName: NSWorkspace.didWakeNotification, object: nil, queue: .main
+            ) { [weak self] _ in
+                self?.retryMappingRecoveryOnWake()
+            }
+        } else {
+            if let mappingRecoveryWakeObserver {
+                NSWorkspace.shared.notificationCenter.removeObserver(mappingRecoveryWakeObserver)
+                self.mappingRecoveryWakeObserver = nil
+            }
+            if workspace.featureNotice == Self.mappingRecoveryNotice {
+                workspace.clearFeatureNotice()
+            }
+        }
+    }
+
+    private func retryMappingRecoveryOnWake() {
+        guard UtilityPreferences.standard.bool(forKey: DefaultsKey.superKeyMappingApplied) else {
+            updateMappingRecovery(pending: false)
+            return
+        }
+        // A startup or repair already owns the mapping if it has a live tap.
+        // Do not enqueue a clear behind that newer enable.
+        guard !isRunning,
+              lifecycleLock.withLock({ tapThread == nil || shouldStopTapThread }) else { return }
+        clearLeftoverMapping()
     }
 
     /// Sleep can bring the keyboard back without the mapping, and so can
@@ -447,7 +492,7 @@ final class SuperKeyService: ObservableObject {
             let ownedSource = previousMarker ? SuperKeySource.sanitized(
                 defaults.string(forKey: DefaultsKey.superKeyMappedSource)
             ) : nil
-            let failure = self.performMapping(
+            var failure = self.performMapping(
                 enabled,
                 source: source,
                 ownedSource: ownedSource
@@ -461,9 +506,11 @@ final class SuperKeyService: ObservableObject {
                 )
                 defaults.set(marker, forKey: DefaultsKey.superKeyMappingApplied)
                 if !marker { defaults.removeObject(forKey: DefaultsKey.superKeyMappedSource) }
+                if guardConfirmed { failure = nil }
             }
             if let completion {
-                DispatchQueue.main.async { completion(failure) }
+                let result = failure
+                DispatchQueue.main.async { completion(result) }
             }
         }
         if synchronously {
@@ -568,6 +615,7 @@ final class SuperKeyService: ObservableObject {
             }
             guard active else { return }
             guard let failure else {
+                if self.mappingRecoveryWakeObserver != nil { self.updateMappingRecovery(pending: false) }
                 self.setMappingFailure(nil)
                 if publishingRunState || !self.isRunning { self.finishStart() }
                 return

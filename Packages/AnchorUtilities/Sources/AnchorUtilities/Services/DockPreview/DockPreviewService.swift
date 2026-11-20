@@ -997,6 +997,7 @@ final class DockPreviewService: ObservableObject {
         dockFrameRestorationGeneration &+= 1
         let frameRestoration = DockPreviewFrameRestoration()
         guard dockAutohideHold.begin() else {
+            reportDockAutohideRecovery()
             stopDockHoldInputTap()
             return
         }
@@ -1064,13 +1065,22 @@ final class DockPreviewService: ObservableObject {
     private func releaseDockAutohideHold() {
         // Restore before invalidating an active input callback: detaching the
         // tap must never let its key reach the system ahead of this write.
-        dockAutohideHold.end()
+        let restored = dockAutohideHold.end()
         dockFrameRestoration = nil
         stopDockHoldInputTap()
         for observer in dockHoldObservers {
             NSWorkspace.shared.notificationCenter.removeObserver(observer)
         }
         dockHoldObservers.removeAll()
+        if !restored { reportDockAutohideRecovery() }
+        else if UtilityWorkspace.shared.featureNotice == DockAutohideHold.recoveryNotice {
+            UtilityWorkspace.shared.clearFeatureNotice()
+        }
+    }
+
+    private func reportDockAutohideRecovery() {
+        guard UtilityPreferences.standard.bool(forKey: DefaultsKey.dockPreviewRestoreAutohide) else { return }
+        UtilityWorkspace.shared.reportFeatureNotice(DockAutohideHold.recoveryNotice)
     }
 
     private func clampedPanelFrame(_ frame: CGRect) -> CGRect {

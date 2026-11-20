@@ -319,6 +319,10 @@ final class FeatureRuntime: ObservableObject {
         // Recovery is independent of feature availability: a disconnected
         // microphone previously muted by Anchor still needs its level back.
         MicMuteService.recoverAtLaunchIfNeeded()
+        SuperKeyService.recoverAtLaunchIfNeeded()
+        if !DockAutohideHold.reconcilePendingRecovery() {
+            UtilityWorkspace.shared.reportFeatureNotice(DockAutohideHold.recoveryNotice)
+        }
         appliedAvailability = Set(AppFeature.allCases.filter(\.isAvailable))
         for feature in AppFeature.allCases where feature.isAvailable {
             // Quick Toggles' binding only advances a lightweight session gate;
