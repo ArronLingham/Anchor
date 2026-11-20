@@ -85,6 +85,8 @@ __pycache__/
 !/scripts/regen-settings-indexes.sh
 !/scripts/settings_index.py
 /tests/*
+!/tests/HomebrewLifecycleTests.swift
+!/tests/run_homebrew_lifecycle_tests.sh
 !/tests/AppUpdateScanLifetimeTests.swift
 !/tests/AppUpdateDiscoveryTests.swift
 !/tests/run_app_update_scan_tests.sh
