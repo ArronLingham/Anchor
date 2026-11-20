@@ -874,12 +874,15 @@ final class RadialMenuService: ObservableObject {
     }
 
     private func run(_ action: WindowLayoutAction, ticket: RadialMenuActionGate.Ticket) {
-        guard actionAllowed(ticket), AppFeature.windowLayout.isAvailable, ensureAccessibilityPermission() else { return }
+        guard actionAllowed(ticket), let availability = WindowLayoutService.captureAvailability(),
+              let request = WindowLayoutService.deferredAction(action, availability: availability,
+                                                                onFailure: { NSSound.beep() }),
+              ensureAccessibilityPermission() else { return }
         // Let the non-activating wheel disappear before resolving the window
         // that was active behind it, matching the delay used by visual tools.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
-            guard let self, self.actionAllowed(ticket), AppFeature.windowLayout.isAvailable else { return }
-            if case .failure = WindowLayoutService.shared.apply(action) { NSSound.beep() }
+            guard let self, self.actionAllowed(ticket) else { return }
+            request()
         }
     }
 

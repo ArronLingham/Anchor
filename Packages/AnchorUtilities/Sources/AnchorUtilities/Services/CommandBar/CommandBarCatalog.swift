@@ -660,7 +660,7 @@ enum CommandBarCatalog {
                 run: { _ in cleanClipboardURL() }))
         }
 
-        if AppFeature.windowLayout.isAvailable {
+        if let availability = WindowLayoutService.captureAvailability() {
             let layoutText = FeatureStrings.windowLayout(language)
             let layoutArea = area(.windowLayout)
             let axTrouble = accessibilityTrouble()
@@ -679,11 +679,9 @@ enum CommandBarCatalog {
                     shortcut: action.savedShortcut,
                     trouble: axTrouble,
                     run: { _ in
-                        afterBeat {
-                            if case .failure = WindowLayoutService.shared.apply(action) {
-                                NSSound.beep()
-                            }
-                        }
+                        guard let request = WindowLayoutService.deferredAction(action, availability: availability,
+                                                                              onFailure: { NSSound.beep() }) else { return }
+                        afterBeat { request() }
                     }))
             }
         }

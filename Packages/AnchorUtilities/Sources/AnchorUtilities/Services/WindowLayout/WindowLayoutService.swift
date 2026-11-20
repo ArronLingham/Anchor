@@ -32,6 +32,30 @@ final class WindowLayoutService: ObservableObject {
         return service
     }()
     static var existing: WindowLayoutService? { initializedInstance }
+    private static let availabilityGate = ClipboardPresentationGate()
+
+    static func captureAvailability() -> UUID? {
+        availabilityGate.capture(currentlyAvailable: AppFeature.windowLayout.isAvailable)
+    }
+
+    static func deferredAction(_ action: WindowLayoutAction, availability: UUID,
+                               onFailure: (() -> Void)? = nil) -> (() -> Void)? {
+        guard let isCurrent = executionCheck(availability: availability) else { return nil }
+        return {
+            guard isCurrent() else { return }
+            if case .failure = shared.apply(action) { onFailure?() }
+        }
+    }
+
+    private static func executionCheck(availability: UUID) -> (() -> Bool)? {
+        let gate = availabilityGate
+        guard gate.accepts(availability, currentlyAvailable: AppFeature.windowLayout.isAvailable),
+              let session = SessionActivity.shared.captureActiveSession() else { return nil }
+        return {
+            gate.accepts(availability, currentlyAvailable: AppFeature.windowLayout.isAvailable)
+                && SessionActivity.shared.acceptsSession(session)
+        }
+    }
 
     @Published private(set) var lastResult: WindowLayoutResult?
     /// Bumped on every published result, so a late settle failure can tell
@@ -49,7 +73,9 @@ final class WindowLayoutService: ObservableObject {
     private var hotKeyRefs: [WindowLayoutAction: EventHotKeyRef] = [:]
     private var eventHandler: EventHandlerRef?
     private var registeredShortcuts: [WindowLayoutAction: GlobalShortcut] = [:]
+    private var shortcutRegistration = UUID()
     private var directionalHotKeyRef: EventHotKeyRef?
+    private var directionalRegistration = UUID()
     private var registeredDirectionalTrigger: WindowDirectionalTrigger?
     private var directionalModifierHold: WindowDirectionalModifierHold?
     private var directionalModifierButtons = WindowDirectionalModifierButtons()
@@ -112,6 +138,7 @@ final class WindowLayoutService: ObservableObject {
         UtilityWorkspace.shared.prepareOwnership()
         WindowLayoutIgnoredApps.shared.reload()
         let available = AppFeature.windowLayout.isAvailable
+        Self.availabilityGate.update(available: available)
         let trusted = SessionActivitySupport.tapShouldRun(
             featureWanted: available,
             accessibilityGranted: AXIsProcessTrusted(),
@@ -183,6 +210,7 @@ final class WindowLayoutService: ObservableObject {
     /// the process terminates. Idempotent so permission and feature changes can
     /// call it freely.
     func suspend() {
+        Self.availabilityGate.update(available: false)
         unregisterHotkeys()
         unregisterDirectionalHotkey()
         stopGestureTap()
@@ -235,6 +263,9 @@ final class WindowLayoutService: ObservableObject {
 
     @discardableResult
     func apply(_ action: WindowLayoutAction) -> WindowLayoutResult {
+        guard Self.captureAvailability() != nil, SessionActivity.shared.isActive else {
+            return .failure(.failed)
+        }
         guard AXIsProcessTrusted() else {
             return finish(.failure(.missingAccessibility))
         }
@@ -864,8 +895,14 @@ final class WindowLayoutService: ObservableObject {
                 let service = Unmanaged<WindowLayoutService>.fromOpaque(userData).takeUnretainedValue()
                 let kind = event.map(GetEventKind) ?? 0
                 if id.signature == 0x5655_5744 { // 'VUWD'
+                    guard let availability = WindowLayoutService.captureAvailability(),
+                          let isCurrent = WindowLayoutService.executionCheck(availability: availability),
+                          service.directionalHotKeyRef != nil else { return noErr }
+                    let registration = service.directionalRegistration
                     DispatchQueue.main.async {
-                        guard service.directionalHotKeyRef != nil, !ShortcutCapture.isCapturing else { return }
+                        guard isCurrent(), service.directionalRegistration == registration,
+                              UtilityPreferences.standard.bool(forKey: DefaultsKey.windowDirectionalEnabled),
+                              !ShortcutCapture.isCapturing else { return }
                         kind == UInt32(kEventHotKeyPressed)
                             ? service.beginDirectionalGesture()
                             : service.finishDirectionalGesture()
@@ -877,7 +914,16 @@ final class WindowLayoutService: ObservableObject {
                       let action = WindowLayoutAction(shortcutID: id.id) else {
                     return OSStatus(eventNotHandledErr)
                 }
-                DispatchQueue.main.async { service.apply(action) }
+                guard let availability = WindowLayoutService.captureAvailability(),
+                      let request = WindowLayoutService.deferredAction(action, availability: availability),
+                      service.hotKeyRefs[action] != nil else { return noErr }
+                let registration = service.shortcutRegistration
+                DispatchQueue.main.async {
+                    guard service.shortcutRegistration == registration,
+                          UtilityPreferences.standard.bool(forKey: DefaultsKey.windowLayoutShortcutsEnabled),
+                          !ShortcutCapture.isCapturing else { return }
+                    request()
+                }
                 return noErr
             }, specs.count, &specs, Unmanaged.passUnretained(self).toOpaque(), &eventHandler)
         }
@@ -893,6 +939,7 @@ final class WindowLayoutService: ObservableObject {
     }
 
     private func unregisterHotkeys() {
+        if !hotKeyRefs.isEmpty { shortcutRegistration = UUID() }
         for (action, ref) in hotKeyRefs {
             UnregisterEventHotKey(ref)
             SystemShortcutTakeover.release(action.shortcutKey)
@@ -943,6 +990,7 @@ final class WindowLayoutService: ObservableObject {
 
     private func unregisterDirectionalHotkey() {
         if let directionalHotKeyRef {
+            directionalRegistration = UUID()
             UnregisterEventHotKey(directionalHotKeyRef)
             SystemShortcutTakeover.release(DefaultsKey.windowDirectionalShortcut)
         }

@@ -85,6 +85,8 @@ __pycache__/
 !/scripts/regen-settings-indexes.sh
 !/scripts/settings_index.py
 /tests/*
+!/tests/WindowLayoutDeferredActionTests.swift
+!/tests/run_window_layout_deferred_action_tests.sh
 !/tests/LockScreenLiveActivityLifecycleTests.swift
 !/tests/run_lock_screen_live_activity_lifecycle_tests.sh
 !/tests/KeepAwakeSetupTests.swift
