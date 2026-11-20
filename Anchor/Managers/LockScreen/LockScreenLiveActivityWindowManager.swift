@@ -18,6 +18,7 @@
  */
 
 import AppKit
+import Combine
 import Defaults
 import SkyLightWindow
 import SwiftUI
@@ -37,6 +38,8 @@ class LockScreenLiveActivityWindowManager {
     private var screenChangeObserver: NSObjectProtocol?
     private var workspaceObservers: [NSObjectProtocol] = []
     private var currentNotchSize: CGSize?
+    private var presentationID = UUID()
+    private var preferenceObservation: AnyCancellable?
 
     /// Whether the target screen uses Dynamic Island (pill) mode.
     private var isDynamicIslandMode: Bool {
@@ -49,7 +52,16 @@ class LockScreenLiveActivityWindowManager {
     }
 
     private init() {
-        registerScreenChangeObservers()
+        preferenceObservation = Defaults.publisher(.enableLockScreenLiveActivity, options: [])
+            .receive(on: RunLoop.main)
+            .sink { [weak self] change in
+                guard let self else { return }
+                if !change.newValue {
+                    self.hideImmediately()
+                } else if Defaults[.enableLockScreenLiveActivity], LockScreenManager.shared.currentLockStatus {
+                    self.showLocked()
+                }
+            }
     }
 
     private func timestamp() -> String {
@@ -125,6 +137,7 @@ class LockScreenLiveActivityWindowManager {
     }
 
     private func registerScreenChangeObservers() {
+        guard screenChangeObserver == nil else { return }
         screenChangeObserver = NotificationCenter.default.addObserver(
             forName: NSApplication.didChangeScreenParametersNotification,
             object: nil,
@@ -154,8 +167,19 @@ class LockScreenLiveActivityWindowManager {
         workspaceObservers = [wakeObserver]
     }
 
+    private func removeScreenChangeObservers() {
+        if let screenChangeObserver {
+            NotificationCenter.default.removeObserver(screenChangeObserver)
+            self.screenChangeObserver = nil
+        }
+        for observer in workspaceObservers {
+            NSWorkspace.shared.notificationCenter.removeObserver(observer)
+        }
+        workspaceObservers.removeAll()
+    }
+
     private func handleScreenGeometryChange(reason: String) {
-        guard let window else { return }
+        guard Defaults[.enableLockScreenLiveActivity], let window else { return }
         guard window.isVisible || window.alphaValue > 0.01 else { return }
         guard let context = lockContext() else { return }
 
@@ -176,11 +200,6 @@ class LockScreenLiveActivityWindowManager {
     }
 
     private func present(notchSize: CGSize, on screen: NSScreen) {
-        guard Defaults[.enableLockScreenLiveActivity] else {
-            hideImmediately()
-            return
-        }
-
         let windowSize = windowSize(for: notchSize)
         let window = ensureWindow(windowSize: windowSize, screen: screen)
         let targetFrame = frame(for: windowSize, on: screen)
@@ -213,11 +232,13 @@ class LockScreenLiveActivityWindowManager {
         window.alphaValue = 1
 
         currentNotchSize = notchSize
+        registerScreenChangeObservers()
     }
 
     func showLocked() {
-        hideTask?.cancel()
+        guard Defaults[.enableLockScreenLiveActivity] else { hideImmediately(); return }
         guard let context = lockContext() else { return }
+        let id = beginPresentation()
 
         let collapsedScale = LockScreenLiveActivityOverlay.collapsedScale(for: context.notchSize, isDynamicIslandMode: isDynamicIslandMode)
 
@@ -227,7 +248,8 @@ class LockScreenLiveActivityWindowManager {
 
         present(notchSize: context.notchSize, on: context.screen)
 
-        DispatchQueue.main.async {
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.presentationID == id, Defaults[.enableLockScreenLiveActivity] else { return }
             withAnimation(.spring(response: 0.45, dampingFraction: 0.82)) {
                 self.overlayModel.scale = 1
             }
@@ -240,8 +262,9 @@ class LockScreenLiveActivityWindowManager {
     }
 
     func showUnlockAndScheduleHide() {
-        hideTask?.cancel()
+        guard Defaults[.enableLockScreenLiveActivity] else { hideImmediately(); return }
         guard let context = lockContext() else { return }
+        let id = beginPresentation()
 
         overlayModel.scale = 1
         overlayModel.opacity = 1
@@ -251,22 +274,37 @@ class LockScreenLiveActivityWindowManager {
         overlayAnimator.update(isLocked: false)
 
         hideTask = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(LockScreenAnimationTimings.unlockCollapse))
-            guard let self, !Task.isCancelled else { return }
-            await MainActor.run {
-                self.hideWithAnimation()
-            }
+            do { try await Task.sleep(for: .seconds(LockScreenAnimationTimings.unlockCollapse)) }
+            catch { return }
+            guard let self, self.presentationID == id, !Task.isCancelled else { return }
+            self.hideWithAnimation(presentationID: id)
         }
     }
 
-    func hideImmediately() {
+    @discardableResult
+    private func beginPresentation() -> UUID {
         hideTask?.cancel()
         hideTask = nil
-
-        hideWithAnimation()
+        presentationID = UUID()
+        return presentationID
     }
 
-    private func hideWithAnimation() {
+    func hideImmediately() {
+        beginPresentation()
+        removeScreenChangeObservers()
+        currentNotchSize = nil
+        guard let window else { return }
+        window.alphaValue = 0
+        window.orderOut(nil)
+        ScreenCaptureVisibilityManager.shared.unregister(window)
+        window.contentView = nil
+        window.close()
+        self.window = nil
+        hostingView = nil
+        hasDelegated = false
+    }
+
+    private func hideWithAnimation(presentationID id: UUID) {
         guard let window else { return }
 
         let targetScale: CGFloat
@@ -287,9 +325,14 @@ class LockScreenLiveActivityWindowManager {
             window.animator().alphaValue = 0
         }
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + LockScreenAnimationTimings.unlockCollapse + 0.02) {
-            window.orderOut(nil)
+        hideTask = Task { [weak self, weak window] in
+            do { try await Task.sleep(for: .seconds(LockScreenAnimationTimings.unlockCollapse + 0.02)) }
+            catch { return }
+            guard let self, self.presentationID == id, !Task.isCancelled else { return }
+            window?.orderOut(nil)
             self.currentNotchSize = nil
+            self.removeScreenChangeObservers()
+            self.hideTask = nil
         }
 
         print("[\(timestamp())] LockScreenLiveActivityWindowManager: HUD hidden")
