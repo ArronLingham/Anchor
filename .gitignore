@@ -85,6 +85,8 @@ __pycache__/
 !/scripts/regen-settings-indexes.sh
 !/scripts/settings_index.py
 /tests/*
+!/tests/DisplayToggleLifecycleTests.swift
+!/tests/run_display_toggle_lifecycle_tests.sh
 !/tests/WindowLayoutDeferredActionTests.swift
 !/tests/run_window_layout_deferred_action_tests.sh
 !/tests/LockScreenLiveActivityLifecycleTests.swift

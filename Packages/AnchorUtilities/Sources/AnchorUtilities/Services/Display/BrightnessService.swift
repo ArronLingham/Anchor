@@ -76,6 +76,9 @@ final class BrightnessService: ObservableObject {
     /// answering (issue #969).
     @Published private(set) var drawableDisplays = Set<CGDirectDisplayID>()
     @Published private(set) var pendingDisplayIDs = Set<CGDirectDisplayID>()
+    private let displayToggleGate = ClipboardPresentationGate()
+    private var restoringAfterStop = false
+    private var restartAfterRestoration = false
     /// Displays a person has told this app to dim in software. A channel that
     /// accepts writes and answers no reads is indistinguishable on the bus
     /// from one that swallows them, so the only witness is someone watching
@@ -452,12 +455,15 @@ final class BrightnessService: ObservableObject {
 
     func syncWithPreferences() {
         UtilityWorkspace.shared.prepareOwnership()
-        let wanted = AppFeature.brightness.isAvailable
-            && UtilityPreferences.standard.bool(forKey: DefaultsKey.brightnessControlEnabled)
-        if wanted { start() } else if running { stop() }
+        if Self.displayControlWanted { start() } else if running || restartAfterRestoration { stop() }
         syncKeyTap()
         syncKeyboardBrightnessHotkeys()
         syncDisplayBrightnessHotkeys()
+    }
+
+    private static var displayControlWanted: Bool {
+        AppFeature.brightness.isAvailable
+            && UtilityPreferences.standard.bool(forKey: DefaultsKey.brightnessControlEnabled)
     }
 
     private func syncDisplayBrightnessHotkeys() {
@@ -523,6 +529,11 @@ final class BrightnessService: ObservableObject {
 
     private func start() {
         guard !running else { return }
+        if restoringAfterStop {
+            restartAfterRestoration = true
+            return
+        }
+        displayToggleGate.update(available: true)
         running = true
         screenObserver = NotificationCenter.default.addObserver(
             forName: NSApplication.didChangeScreenParametersNotification,
@@ -534,6 +545,8 @@ final class BrightnessService: ObservableObject {
     }
 
     func stop() {
+        restartAfterRestoration = false
+        displayToggleGate.update(available: false)
         // Keep the reset guard intact while preferences or feature state
         // changes during the asynchronous permission teardown. The reset
         // owner releases it explicitly through resumeInputTaps().
@@ -546,6 +559,7 @@ final class BrightnessService: ObservableObject {
         displayBrightnessShortcutRegistrationFailed = false
         guard running else { return }
         running = false
+        restoringAfterStop = true
         removeFunctionKeyTap()
         if let screenObserver { NotificationCenter.default.removeObserver(screenObserver) }
         screenObserver = nil
@@ -585,9 +599,19 @@ final class BrightnessService: ObservableObject {
                     self.restoreAllGamma()
                     self.ddcCommandEnds = [:]
                     Self.log.log("brightness service stopped; displays and gamma restored")
+                    DispatchQueue.main.async { [weak self] in
+                        self?.finishStopRestoration()
+                    }
                 }
             }
         }
+    }
+
+    private func finishStopRestoration() {
+        restoringAfterStop = false
+        let shouldRestart = restartAfterRestoration
+        restartAfterRestoration = false
+        if shouldRestart, Self.displayControlWanted { syncWithPreferences() }
     }
 
     /// Re-reads every display. Called when the panel section or the Settings
@@ -668,7 +692,8 @@ final class BrightnessService: ObservableObject {
     }
 
     func canToggleDisplay(_ display: BrightnessDisplay) -> Bool {
-        guard displaySwitchingAvailable, !isDisplayPending(display.id) else { return false }
+        guard running, Self.displayControlWanted, displaySwitchingAvailable,
+              !isDisplayPending(display.id) else { return false }
         guard display.isActive else { return true }
         return BrightnessSupport.canDisableDisplay(drawableDisplayIDs: drawableDisplays,
                                                   target: display.id)
@@ -678,7 +703,8 @@ final class BrightnessService: ObservableObject {
     /// system arrangement. The transaction is app-only and never overwrites
     /// the user's saved display configuration.
     func toggleDisplay(_ display: BrightnessDisplay) {
-        guard !isDisplayPending(display.id) else { return }
+        guard running, !isDisplayPending(display.id),
+              let ticket = displayToggleGate.capture(currentlyAvailable: Self.displayControlWanted) else { return }
         guard displaySwitchingAvailable else {
             displayControlFailure = .unavailable
             return
@@ -700,7 +726,7 @@ final class BrightnessService: ObservableObject {
         displayControlFailure = nil
         pendingDisplayIDs.insert(display.id)
         workQueue.async { [weak self] in
-            guard let self else { return }
+            guard let self, self.acceptsDisplayToggle(ticket) else { return }
             if !targetEnabled {
                 let topology = Self.currentTopology()
                 let drawable = Self.drawableDisplayIDs(online: topology.online,
@@ -708,7 +734,7 @@ final class BrightnessService: ObservableObject {
                 guard BrightnessSupport.canDisableDisplay(drawableDisplayIDs: drawable,
                                                            target: display.id) else {
                     self.finishDisplayToggle(id: display.id, enabled: targetEnabled,
-                                             failure: .lastActive)
+                                             failure: .lastActive, ticket: ticket)
                     return
                 }
                 // A software-dimmed screen should return with its clean gamma
@@ -724,14 +750,19 @@ final class BrightnessService: ObservableObject {
             // The gamma curve above is work-queue state; the reconfiguration
             // itself belongs to the main thread (see `configureDisplay`).
             DispatchQueue.main.async { [weak self] in
-                self?.commitDisplayToggle(display, enabled: targetEnabled)
+                self?.commitDisplayToggle(display, enabled: targetEnabled, ticket: ticket)
             }
         }
     }
 
     /// Second half of `toggleDisplay`, on the main thread: the display
     /// reconfiguration and the bookkeeping that follows it.
-    private func commitDisplayToggle(_ display: BrightnessDisplay, enabled: Bool) {
+    private func acceptsDisplayToggle(_ ticket: UUID) -> Bool {
+        displayToggleGate.accepts(ticket, currentlyAvailable: Self.displayControlWanted)
+    }
+
+    private func commitDisplayToggle(_ display: BrightnessDisplay, enabled: Bool, ticket: UUID) {
+        guard running, acceptsDisplayToggle(ticket) else { return }
         if !enabled {
             // Another monitor can disconnect after the worker's check but
             // before this main-thread transaction. Never turn off the last
@@ -739,12 +770,12 @@ final class BrightnessService: ObservableObject {
             let topology = Self.currentTopology()
             let drawable = Self.drawableDisplayIDs(online: topology.online, active: topology.active)
             guard BrightnessSupport.canDisableDisplay(drawableDisplayIDs: drawable, target: display.id) else {
-                finishDisplayToggle(id: display.id, enabled: enabled, failure: .lastActive)
+                finishDisplayToggle(id: display.id, enabled: enabled, failure: .lastActive, ticket: ticket)
                 return
             }
         }
         if enabled, discardReplacedDisplay(display.id) {
-            finishDisplayToggle(id: display.id, enabled: enabled, failure: .failed)
+            finishDisplayToggle(id: display.id, enabled: enabled, failure: .failed, ticket: ticket)
             refresh(force: true)
             return
         }
@@ -763,7 +794,7 @@ final class BrightnessService: ObservableObject {
                 syncLidObserver()
             }
             finishDisplayToggle(id: display.id, enabled: enabled,
-                                failure: result == .closedLid ? .closedLid : .failed)
+                                failure: result == .closedLid ? .closedLid : .failed, ticket: ticket)
             return
         }
 
@@ -796,13 +827,13 @@ final class BrightnessService: ObservableObject {
         deferredRestoration.record(display.id, result: .success)
         syncLidObserver()
         if enabled { Self.forgetDisplaySwitchedOff(display.id) }
-        finishDisplayToggle(id: display.id, enabled: enabled, failure: nil)
+        finishDisplayToggle(id: display.id, enabled: enabled, failure: nil, ticket: ticket)
     }
 
     private func finishDisplayToggle(id: CGDirectDisplayID, enabled: Bool,
-                                     failure: DisplayControlFailure?) {
+                                     failure: DisplayControlFailure?, ticket: UUID) {
         let finish = { [weak self] in
-            guard let self else { return }
+            guard let self, self.running, self.acceptsDisplayToggle(ticket) else { return }
             self.pendingDisplayIDs.remove(id)
             self.displayControlFailure = failure
             if failure == nil, let index = self.displays.firstIndex(where: { $0.id == id }) {
