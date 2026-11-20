@@ -21,11 +21,12 @@ final class HomebrewManager: ObservableObject {
         completedOperationCleanup?.cancel(); completedOperationCleanup = nil
         if let activeProcess, activeProcess.isRunning { activeProcess.terminate() }
         activeProcess = nil
-        analyticsSession.getAllTasks { tasks in
-            if ![AppFeature.homebrew, .appUpdates, .uninstaller].contains(where: \.isAvailable) {
-                tasks.forEach { $0.cancel() }
-            }
-        }
+        readEpoch = UUID()
+        readRequests.values.forEach { $0.cancel() }
+        readRequests.removeAll()
+        analyticsRequests.values.forEach { $0.cancel() }
+        analyticsRequests.removeAll()
+        let abandonedOwnership = ownershipLoads.values.flatMap { $0 }
         installed = []; searchResults = []; selectedPackage = nil
         installedCaskRecords = []; installedCaskRecordsFetchedAt = nil
         popularityCache = [:]; popularityLoads = []; ownershipLoads = [:]
@@ -33,7 +34,8 @@ final class HomebrewManager: ObservableObject {
         isLoadingInstalled = false; isLoadingOutdated = false
         isSearching = false; isLoadingPopularity = false; isLoadingDetails = false
         log = ""
-        return true
+        abandonedOwnership.forEach { $0(nil) }
+        return !isTrustingTap
     }
 
 
@@ -63,6 +65,12 @@ final class HomebrewManager: ObservableObject {
     @Published private(set) var outdatedPackagesByID: [String: HomebrewPackageUpdate] = [:]
 
     private let workQueue = DispatchQueue(label: "com.vorssaint.homebrew", qos: .userInitiated)
+    private var readEpoch = UUID()
+    private var readRequests: [UUID: BoundedProcessCancellation] = [:]
+    private var analyticsRequests: [HomebrewPackageKind: URLSessionDataTask] = [:]
+    private var hasConsumers: Bool {
+        [AppFeature.homebrew, .appUpdates, .uninstaller].contains(where: \.isAvailable)
+    }
     private var searchGeneration = 0
     private var detailsGeneration = 0
     private var outdatedGeneration = 0
@@ -98,6 +106,8 @@ final class HomebrewManager: ObservableObject {
     ///   failed operation, so the reason that operation gave is still on screen
     ///   while the fresh state loads.
     func refreshInstalled(clearingError: Bool = true) {
+        guard hasConsumers else { return }
+        let epoch = readEpoch
         guard let brewPath = detectBrewPath() else {
             self.brewPath = nil
             installed = []
@@ -122,7 +132,7 @@ final class HomebrewManager: ObservableObject {
         let command = HomebrewCommandBuilder.installed(brewPath: brewPath)
         run(command) { [weak self] status, output in
             DispatchQueue.main.async {
-                guard let self else { return }
+                guard let self, self.readEpoch == epoch, self.hasConsumers else { return }
                 self.isLoadingInstalled = false
                 guard status == 0 else {
                     if let tap = HomebrewCommandBuilder.untrustedTapName(fromOutput: output) {
@@ -157,6 +167,7 @@ final class HomebrewManager: ObservableObject {
     }
 
     func search(query: String, kind: HomebrewPackageKind) {
+        guard hasConsumers else { return }
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
             searchResults = []
@@ -197,6 +208,7 @@ final class HomebrewManager: ObservableObject {
     }
 
     func select(_ package: HomebrewPackage) {
+        guard hasConsumers else { return }
         selectedPackage = package
         guard let brewPath = brewPath ?? detectBrewPath() else { return }
         detailsGeneration += 1
@@ -246,6 +258,8 @@ final class HomebrewManager: ObservableObject {
     /// answers every concurrent request for the same path.
     func packageManagingApplication(at url: URL,
                                     completion: @escaping (HomebrewPackage?) -> Void) {
+        guard hasConsumers else { completion(nil); return }
+        let epoch = readEpoch
         let path = url.standardizedFileURL.path
         if let fetchedAt = installedCaskRecordsFetchedAt,
            Date().timeIntervalSince(fetchedAt) < 60 {
@@ -267,7 +281,7 @@ final class HomebrewManager: ObservableObject {
         self.brewPath = brewPath
         run(HomebrewCommandBuilder.installed(brewPath: brewPath)) { [weak self] status, output in
             DispatchQueue.main.async {
-                guard let self else { return }
+                guard let self, self.readEpoch == epoch, self.hasConsumers else { return }
                 let records = status == 0 ? HomebrewParser.parseInstalledCaskRecords(output) : []
                 if status == 0 {
                     self.installedCaskRecords = records
@@ -541,6 +555,8 @@ final class HomebrewManager: ObservableObject {
     }
 
     private func loadPopularityIfNeeded(kind: HomebrewPackageKind) {
+        guard hasConsumers else { return }
+        let epoch = readEpoch
         if popularityCache[kind]?.isFresh == true {
             applyPopularityToCurrentSearch(kind: kind)
             return
@@ -549,9 +565,10 @@ final class HomebrewManager: ObservableObject {
         popularityLoads.insert(kind)
         isLoadingPopularity = true
         let url = HomebrewAnalytics.url(kind: kind)
-        analyticsSession.dataTask(with: url) { [weak self] data, _, _ in
+        let task = analyticsSession.dataTask(with: url) { [weak self] data, _, _ in
             DispatchQueue.main.async {
-                guard let self else { return }
+                guard let self, self.readEpoch == epoch, self.hasConsumers else { return }
+                self.analyticsRequests.removeValue(forKey: kind)
                 self.popularityLoads.remove(kind)
                 self.isLoadingPopularity = !self.popularityLoads.isEmpty
                 guard let data,
@@ -559,7 +576,9 @@ final class HomebrewManager: ObservableObject {
                 self.popularityCache[kind] = PopularityCacheEntry(values: values, fetchedAt: Date())
                 self.applyPopularityToCurrentSearch(kind: kind)
             }
-        }.resume()
+        }
+        analyticsRequests[kind] = task
+        task.resume()
     }
 
     private func applyPopularityToCurrentSearch(kind: HomebrewPackageKind) {
@@ -672,21 +691,23 @@ final class HomebrewManager: ObservableObject {
     /// One click on the trust card: marks the tap as trusted for Homebrew
     /// and picks the interrupted work back up.
     func trustTapAndContinue() {
-        guard let tap = untrustedTap, !isTrustingTap,
+        guard hasConsumers, let tap = untrustedTap, !isTrustingTap,
               HomebrewCommandBuilder.isValidToken(tap),
               let brewPath = brewPath ?? detectBrewPath() else { return }
         isTrustingTap = true
         let retry = untrustedTapRetry
-        run(HomebrewCommandBuilder.trustTap(brewPath: brewPath, tap: tap)) { [weak self] status, output in
+        let epoch = readEpoch
+        run(HomebrewCommandBuilder.trustTap(brewPath: brewPath, tap: tap), preserveOnDisable: true) { [weak self] status, output in
             DispatchQueue.main.async {
                 guard let self else { return }
                 self.isTrustingTap = false
+                defer { if !self.hasConsumers { _ = self.releaseResources() } }
                 guard status == 0 else {
                     self.errorMessage = output.trimmingCharacters(in: .whitespacesAndNewlines)
                     return
                 }
                 self.clearUntrustedTap()
-                retry?()
+                if self.hasConsumers, self.readEpoch == epoch { retry?() }
             }
         }
     }
@@ -750,44 +771,25 @@ final class HomebrewManager: ObservableObject {
     }
 
     private func run(_ command: HomebrewCommand,
+                     preserveOnDisable: Bool = false,
                      completion: @escaping (_ status: Int32, _ output: String) -> Void) {
-        workQueue.async {
-            let process = Self.makeProcess(command)
-            let pipe = Pipe()
-            process.standardOutput = pipe
-            process.standardError = pipe
-            var data = Data()
-            let lock = NSLock()
-            let drained = DispatchSemaphore(value: 0)
-            pipe.fileHandleForReading.readabilityHandler = { handle in
-                let chunk = handle.availableData
-                guard !chunk.isEmpty else {
-                    drained.signal()
-                    return
-                }
-                lock.lock()
-                data.append(chunk)
-                lock.unlock()
+        guard hasConsumers || preserveOnDisable else { return }
+        let epoch = readEpoch
+        let requestID = UUID()
+        let cancellation = BoundedProcessCancellation()
+        if !preserveOnDisable { readRequests[requestID] = cancellation }
+        workQueue.async { [weak self] in
+            let result = BoundedProcessRunner.run(command.executable, command.arguments,
+                                                  timeout: Self.brewReadTimeout,
+                                                  maxOutputBytes: 32 * 1024 * 1024,
+                                                  environment: HomebrewEnvironment.forBrew,
+                                                  cancellation: cancellation)
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.readRequests.removeValue(forKey: requestID)
+                guard preserveOnDisable || (self.readEpoch == epoch && self.hasConsumers) else { return }
+                completion(result.status, String(decoding: result.output, as: UTF8.self))
             }
-            let finished = DispatchSemaphore(value: 0)
-            process.terminationHandler = { _ in finished.signal() }
-            do {
-                try process.run()
-            } catch {
-                pipe.fileHandleForReading.readabilityHandler = nil
-                completion(-1, error.localizedDescription)
-                return
-            }
-            if finished.wait(timeout: .now() + Self.brewReadTimeout) == .timedOut {
-                Self.stop(process, finished: finished)
-            }
-            _ = drained.wait(timeout: .now() + 1)
-            pipe.fileHandleForReading.readabilityHandler = nil
-            try? pipe.fileHandleForReading.close()
-            lock.lock()
-            let output = String(data: data, encoding: .utf8) ?? ""
-            lock.unlock()
-            completion(process.isRunning ? -1 : process.terminationStatus, output)
         }
     }
 
