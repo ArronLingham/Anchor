@@ -85,6 +85,8 @@ __pycache__/
 !/scripts/regen-settings-indexes.sh
 !/scripts/settings_index.py
 /tests/*
+!/tests/DiskImageInspectionLifecycleTests.swift
+!/tests/run_disk_image_inspection_tests.sh
 !/tests/WindowMaximizerLifecycleTests.swift
 !/tests/run_window_maximizer_lifecycle_tests.sh
 !/tests/HomebrewLifecycleTests.swift

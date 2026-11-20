@@ -15,6 +15,7 @@ final class DiskImageInstallerService {
     }
 
     private struct Candidate {
+        let inspectionSession: BoundedProcessCancellation
         let mountURL: URL
         let appURL: URL
         let imageURL: URL
@@ -53,6 +54,7 @@ final class DiskImageInstallerService {
     private let workQueue = DispatchQueue(label: "com.vorssaint.utils.disk-image-installer",
                                           qos: .utility)
     private var mountObserver: NSObjectProtocol?
+    private var inspectionSession = BoundedProcessCancellation()
     private var pending: [Candidate] = []
     private var processingMounts = Set<String>()
     private var promptActive = false
@@ -69,6 +71,7 @@ final class DiskImageInstallerService {
 
     private func start() {
         guard mountObserver == nil else { return }
+        inspectionSession = BoundedProcessCancellation()
         mountObserver = NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.didMountNotification,
             object: nil,
@@ -82,6 +85,7 @@ final class DiskImageInstallerService {
     }
 
     private func stop() {
+        inspectionSession.cancel()
         if let mountObserver {
             NSWorkspace.shared.notificationCenter.removeObserver(mountObserver)
         }
@@ -93,13 +97,15 @@ final class DiskImageInstallerService {
 
     private func inspect(mountURL: URL) {
         guard mountObserver != nil else { return }
+        let session = inspectionSession
         let path = mountURL.standardizedFileURL.resolvingSymlinksInPath().path
         guard processingMounts.insert(path).inserted else { return }
 
         workQueue.async { [weak self] in
-            let candidate = self?.candidate(mountedAt: mountURL)
+            guard !session.isCancelled else { return }
+            let candidate = self?.candidate(mountedAt: mountURL, session: session)
             DispatchQueue.main.async { [weak self] in
-                guard let self else { return }
+                guard let self, self.inspectionSession === session, !session.isCancelled else { return }
                 self.processingMounts.remove(path)
                 guard self.mountObserver != nil, let candidate else { return }
                 self.pending.append(candidate)
@@ -108,10 +114,13 @@ final class DiskImageInstallerService {
         }
     }
 
-    private func candidate(mountedAt mountURL: URL) -> Candidate? {
+    private func candidate(mountedAt mountURL: URL, session: BoundedProcessCancellation) -> Candidate? {
         let fm = FileManager.default
-        let info = Self.run("/usr/bin/hdiutil", arguments: ["info", "-plist"])
-        guard info.status == 0,
+        guard !session.isCancelled else { return nil }
+        let info = BoundedProcessRunner.run("/usr/bin/hdiutil", ["info", "-plist"],
+                                            timeout: 10, maxOutputBytes: 8 * 1024 * 1024,
+                                            cancellation: session, discardStandardError: true)
+        guard !session.isCancelled, info.status == 0,
               let imageURL = DiskImageInstallerSupport.imageURL(mountedAt: mountURL,
                                                                  hdiutilInfo: info.output),
               let imageIdentity = Self.fileIdentity(at: imageURL),
@@ -124,7 +133,7 @@ final class DiskImageInstallerService {
         else { return nil }
 
         let apps = entries.filter { url in
-            guard url.pathExtension.caseInsensitiveCompare("app") == .orderedSame,
+            guard !session.isCancelled, url.pathExtension.caseInsensitiveCompare("app") == .orderedSame,
                   let values = try? url.resourceValues(forKeys: [.isDirectoryKey,
                                                                   .isSymbolicLinkKey]),
                   values.isDirectory == true,
@@ -134,7 +143,7 @@ final class DiskImageInstallerService {
         }
         let useUserApplications = UtilityPreferences.standard.bool(
             forKey: DefaultsKey.diskImageInstallerUseUserApplications)
-        guard apps.count == 1, let appURL = apps.first,
+        guard !session.isCancelled, apps.count == 1, let appURL = apps.first,
               let collisionURLs = DiskImageInstallerSupport.collisionURLs(for: appURL,
                 useUserApplications: useUserApplications,
                 fileManager: fm),
@@ -142,7 +151,7 @@ final class DiskImageInstallerService {
         else { return nil }
 
         let preferredName = Bundle(url: appURL)?.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String
-        return Candidate(mountURL: mountURL,
+        return Candidate(inspectionSession: session, mountURL: mountURL,
                          appURL: appURL,
                          imageURL: imageURL,
                          imageIdentity: imageIdentity,
@@ -151,6 +160,7 @@ final class DiskImageInstallerService {
     }
 
     private func presentNextCandidate() {
+        pending.removeAll { $0.inspectionSession.isCancelled || $0.inspectionSession !== inspectionSession }
         guard !promptActive, mountObserver != nil, let candidate = pending.first else { return }
         pending.removeFirst()
         promptActive = true
@@ -189,7 +199,10 @@ final class DiskImageInstallerService {
         installPrompt = NonModalAlert.present(alert, retaining: [destinationPrompt]) { [weak self] response in
             guard let self else { return }
             self.installPrompt = nil
-            guard response == .alertFirstButtonReturn else {
+            guard response == .alertFirstButtonReturn,
+                  !candidate.inspectionSession.isCancelled,
+                  candidate.inspectionSession === self.inspectionSession,
+                  AppFeature.diskImageInstaller.isAvailable else {
                 self.finishCurrentCandidate()
                 return
             }

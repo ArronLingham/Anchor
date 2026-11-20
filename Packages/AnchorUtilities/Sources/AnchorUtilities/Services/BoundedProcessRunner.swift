@@ -89,14 +89,15 @@ enum BoundedProcessRunner {
                     timeout: TimeInterval,
                     maxOutputBytes: Int,
                     environment: [String: String]? = nil,
-                    cancellation: BoundedProcessCancellation? = nil) -> Result {
+                    cancellation: BoundedProcessCancellation? = nil,
+                    discardStandardError: Bool = false) -> Result {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: path)
         process.arguments = arguments
         process.environment = environment
         let pipe = Pipe()
         process.standardOutput = pipe
-        process.standardError = pipe
+        process.standardError = discardStandardError ? FileHandle.nullDevice : pipe
 
         defer { cancellation?.release(process) }
         return collect(from: pipe, timeout: timeout, maxOutputBytes: maxOutputBytes) { finished in
