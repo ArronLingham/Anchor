@@ -150,7 +150,7 @@ enum SelfUninstall {
         let mouseAccelerationRestored = MouseAccelerationService.shared.stop()
         MouseNavigationService.shared.suspend()
         MouseButtonShortcutService.shared.suspend()
-        WindowMaximizer.shared.stop()
+        WindowMaximizer.shared.stop(finishAcceptedChanges: false)
         WindowLayoutService.shared.suspend()
         PointerDisplayService.shared.suspend()
         AppSwitcher.shared.suspend()

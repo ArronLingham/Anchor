@@ -38,11 +38,11 @@ final class WindowMaximizer: ObservableObject {
                                                sessionIsActive: SessionActivity.shared.isActive) {
             start()
         } else {
-            stop()
+            stop(finishAcceptedChanges: AXIsProcessTrusted() && SessionActivity.shared.isActive)
         }
     }
 
-    func stop() {
+    func stop(finishAcceptedChanges: Bool = true) {
         if let tap { CGEvent.tapEnable(tap: tap, enable: false) }
         if let runLoopSource {
             CFRunLoopRemoveSource(CFRunLoopGetMain(), runLoopSource, .commonModes)
@@ -51,11 +51,18 @@ final class WindowMaximizer: ObservableObject {
         tap = nil
         runLoopSource = nil
         pendingClick = nil
-        for timer in frameAnimations.values { timer.invalidate() }
-        frameAnimations.removeAll()
-        for suspension in assistiveModeSuspensions.values { suspension.resume() }
-        assistiveModeSuspensions.removeAll()
-        originalFrames.removeAll()
+        // A click already accepted owns its bounded animation and settle.
+        // Dropping its timer here strands the window at an intermediate frame.
+        // Its completion releases the suspension and original frame below.
+        if !finishAcceptedChanges {
+            for timer in frameAnimations.values { timer.invalidate() }
+            frameAnimations.removeAll()
+        }
+        let finishing = Set(frameAnimations.keys)
+        for id in Array(assistiveModeSuspensions.keys) where !finishing.contains(id) {
+            assistiveModeSuspensions.removeValue(forKey: id)?.resume()
+        }
+        originalFrames = originalFrames.filter { finishing.contains($0.key) }
         isRunning = false
     }
 
@@ -203,6 +210,7 @@ final class WindowMaximizer: ObservableObject {
         let started = animateFrame(frame, on: target.window, windowID: target.windowID) { [weak self] success in
             self?.assistiveModeSuspensions.removeValue(forKey: target.windowID)?.resume()
             completion(success)
+            if self?.isRunning == false { self?.originalFrames.removeValue(forKey: target.windowID) }
         }
         if !started {
             assistiveModeSuspensions.removeValue(forKey: target.windowID)?.resume()

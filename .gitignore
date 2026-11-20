@@ -85,6 +85,8 @@ __pycache__/
 !/scripts/regen-settings-indexes.sh
 !/scripts/settings_index.py
 /tests/*
+!/tests/WindowMaximizerLifecycleTests.swift
+!/tests/run_window_maximizer_lifecycle_tests.sh
 !/tests/HomebrewLifecycleTests.swift
 !/tests/run_homebrew_lifecycle_tests.sh
 !/tests/AppUpdateScanLifetimeTests.swift
