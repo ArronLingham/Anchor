@@ -9,10 +9,12 @@ import HIDEventSystem
 /// Trackpads are deliberately excluded.
 final class MouseAccelerationService {
     static let shared = MouseAccelerationService()
+    private static let recoveryNotice = "Anchor could not restore mouse acceleration for every mouse. Reconnect the affected mouse so Anchor can retry."
 
     private let defaults = UtilityPreferences.standard
     private var client: IOHIDEventSystemClient?
     private var hidManager: IOHIDManager?
+    private var observingRecovery = false
     private var reapplySchedule = MouseAccelerationReapplySchedule()
     private var reapplyWork: DispatchWorkItem?
     private var recoveryGuard: MouseAccelerationGuard.Handle?
@@ -24,15 +26,18 @@ final class MouseAccelerationService {
 
     static func recoverPendingAtLaunch() {
         guard MouseAccelerationRecovery.hasPendingEntries() else { return }
-        _ = shared.pauseAndRestore()
+        if !shared.pauseAndRestore(), !shared.featureWanted {
+            shared.observePendingRecovery()
+        }
     }
 
     func syncWithPreferences() {
         UtilityWorkspace.shared.prepareOwnership()
         guard featureWanted else {
-            stop()
+            if !stop() { observePendingRecovery() }
             return
         }
+        stopRecoveryObservation()
         installLifecycleObservers()
         startIfAllowed()
     }
@@ -41,6 +46,7 @@ final class MouseAccelerationService {
     @discardableResult
     func stop() -> Bool {
         removeLifecycleObservers()
+        stopRecoveryObservation()
         return pauseAndRestore()
     }
 
@@ -145,6 +151,35 @@ final class MouseAccelerationService {
         return recoveryGuard != nil
     }
 
+    private func observePendingRecovery() {
+        observingRecovery = true
+        UtilityWorkspace.shared.reportFeatureNotice(Self.recoveryNotice)
+        startDeviceObservation()
+        scheduleDeviceReapplication()
+    }
+
+    private func stopRecoveryObservation() {
+        if observingRecovery {
+            observingRecovery = false
+            stopDeviceObservation()
+        }
+        let workspace = UtilityWorkspace.shared
+        if workspace.featureNotice == Self.recoveryNotice { workspace.clearFeatureNotice() }
+    }
+
+    private func retryPendingRecovery() {
+        _ = MouseAccelerationRecovery.restorePending()
+        if MouseAccelerationRecovery.hasPendingEntries() {
+            _ = ensureRecoveryGuard()
+        } else {
+            stopRecoveryObservation()
+            if let recoveryGuard {
+                _ = recoveryGuard.stop()
+                self.recoveryGuard = nil
+            }
+        }
+    }
+
     // MARK: - Device lifecycle
 
     private static let deviceChanged: IOHIDDeviceCallback = { context, _, _, _ in
@@ -154,7 +189,8 @@ final class MouseAccelerationService {
     }
 
     private func scheduleDeviceReapplication() {
-        guard client != nil, featureWanted, sessionIsActive, systemIsAwake else { return }
+        let mayApply = client != nil && featureWanted && sessionIsActive && systemIsAwake
+        guard mayApply || (observingRecovery && !featureWanted) else { return }
         reapplyWork?.cancel()
         scheduleDeviceReapplication(for: reapplySchedule.restart())
     }
@@ -164,6 +200,12 @@ final class MouseAccelerationService {
         let work = DispatchWorkItem { [weak self] in
             guard let self, self.reapplySchedule.isCurrent(token) else { return }
             self.reapplyWork = nil
+            if self.observingRecovery {
+                guard !self.featureWanted else { return }
+                self.retryPendingRecovery()
+                self.scheduleDeviceReapplication(for: token)
+                return
+            }
             guard self.client != nil, self.featureWanted,
                   self.sessionIsActive, self.systemIsAwake else { return }
             // Physical-device callbacks can precede the event-system service, and

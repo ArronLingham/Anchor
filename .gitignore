@@ -87,6 +87,8 @@ __pycache__/
 /tests/*
 !/tests/DockClickDisableLifecycleTests.swift
 !/tests/run_dock_click_disable_lifecycle_tests.sh
+!/tests/MouseAccelerationRecoveryLifecycleTests.swift
+!/tests/run_mouse_acceleration_recovery_lifecycle_tests.sh
 !/tests/SuperKeyRecoveryLifecycleTests.swift
 !/tests/run_super_key_recovery_lifecycle_tests.sh
 !/tests/DockAutohideRecoveryTests.swift
