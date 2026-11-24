@@ -154,13 +154,15 @@ final class AudioInputDeviceManager: ObservableObject {
     /// record left by the singular preferred-microphone behavior. The HAL write
     /// runs off-main: a device connecting or disappearing is exactly when
     /// CoreAudio may block.
-    func setCurrentInputDeviceUID(_ uid: String) {
+    func setCurrentInputDeviceUID(_ uid: String, shouldApply: @escaping () -> Bool = { true }) {
+        guard shouldApply() else { return }
         volumeWriteLock.withLock { volumeWriteLifetime = UUID() }
         guard listenerInstalled,
               uid != currentInputDeviceUID,
               let device = inputDevices.first(where: { $0.uid == uid }) else { return }
         refresh.discardInFlight()
         halQueue.async { [weak self] in
+            guard shouldApply() else { return }
             let status = Self.setDefaultInputDevice(device.audioObjectID)
             DispatchQueue.main.async {
                 guard let self, self.listenerInstalled else { return }

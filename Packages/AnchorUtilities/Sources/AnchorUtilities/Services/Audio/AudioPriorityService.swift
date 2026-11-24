@@ -41,6 +41,8 @@ final class AudioPriorityService: ObservableObject {
     private var unplacedInputUIDs = Set<String>()
     private var placementWork: DispatchWorkItem?
     private var started = false
+    private let outputWriteGate = ClipboardPresentationGate()
+    private let inputWriteGate = ClipboardPresentationGate()
 
     private init() {}
 
@@ -86,6 +88,7 @@ final class AudioPriorityService: ObservableObject {
 
     func stop() {
         started = false
+        syncWriteGates()
         cancellables.removeAll()
         enforceDebounce?.cancel()
         enforceDebounce = nil
@@ -110,6 +113,7 @@ final class AudioPriorityService: ObservableObject {
         let defaults = UtilityPreferences.standard
         outputPriorityEnabled = defaults.bool(forKey: DefaultsKey.audioPriorityOutputEnabled)
         inputPriorityEnabled = defaults.bool(forKey: DefaultsKey.audioPriorityInputEnabled)
+        syncWriteGates()
         outputPriorityUIDs = Defaults.sanitizedAudioPriorityUIDs(
             defaults.array(forKey: DefaultsKey.audioPriorityOutputUIDs) ?? [])
         inputPriorityUIDs = Defaults.sanitizedAudioPriorityUIDs(
@@ -125,6 +129,7 @@ final class AudioPriorityService: ObservableObject {
         let defaults = UtilityPreferences.standard
         defaults.set(enabled, forKey: DefaultsKey.audioPriorityOutputEnabled)
         outputPriorityEnabled = enabled
+        syncWriteGates()
         mergeAvailableDevicesIntoPriorityLists()
         updateDeviceNames()
         if becameEnabled {
@@ -138,6 +143,7 @@ final class AudioPriorityService: ObservableObject {
         let defaults = UtilityPreferences.standard
         defaults.set(enabled, forKey: DefaultsKey.audioPriorityInputEnabled)
         inputPriorityEnabled = enabled
+        syncWriteGates()
         AudioInputDeviceManager.shared.setInputPriorityActive(enabled)
         mergeAvailableDevicesIntoPriorityLists()
         updateDeviceNames()
@@ -421,7 +427,9 @@ final class AudioPriorityService: ObservableObject {
             currentUID: currentUID) else { return }
         // Automatic selection preserves the configured priority order and
         // explicit per-app routes; only the normal system default changes.
-        AppVolumeMixer.shared.setPriorityOutputDeviceUID(target)
+        guard let shouldApply = priorityWriteCheck(outputWriteGate, key: DefaultsKey.audioPriorityOutputEnabled)
+        else { return }
+        AppVolumeMixer.shared.setPriorityOutputDeviceUID(target, shouldApply: shouldApply)
     }
 
     private func enforceInputPriority() {
@@ -434,6 +442,22 @@ final class AudioPriorityService: ObservableObject {
         guard MixerRoutingSupport.shouldSwitchToDevice(
             targetUID: target,
             currentUID: currentUID) else { return }
-        AudioInputDeviceManager.shared.setCurrentInputDeviceUID(target)
+        guard let shouldApply = priorityWriteCheck(inputWriteGate, key: DefaultsKey.audioPriorityInputEnabled)
+        else { return }
+        AudioInputDeviceManager.shared.setCurrentInputDeviceUID(target, shouldApply: shouldApply)
+    }
+
+    private func syncWriteGates() {
+        outputWriteGate.update(available: started && Self.priorityWanted(DefaultsKey.audioPriorityOutputEnabled))
+        inputWriteGate.update(available: started && Self.priorityWanted(DefaultsKey.audioPriorityInputEnabled))
+    }
+
+    private static func priorityWanted(_ key: String) -> Bool {
+        AppFeature.audioPriority.isAvailable && UtilityPreferences.standard.bool(forKey: key)
+    }
+
+    private func priorityWriteCheck(_ gate: ClipboardPresentationGate, key: String) -> (() -> Bool)? {
+        guard let ticket = gate.capture(currentlyAvailable: Self.priorityWanted(key)) else { return nil }
+        return { gate.accepts(ticket, currentlyAvailable: Self.priorityWanted(key)) }
     }
 }

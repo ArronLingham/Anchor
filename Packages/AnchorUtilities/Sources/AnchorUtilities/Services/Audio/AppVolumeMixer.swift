@@ -782,7 +782,8 @@ final class AppVolumeMixer: ObservableObject {
     /// Priority changes only the normal system default. Unlike the manual
     /// universal picker, this must not erase explicit per-app routes or
     /// block the main thread while a device is being reconfigured.
-    func setPriorityOutputDeviceUID(_ uid: String) {
+    func setPriorityOutputDeviceUID(_ uid: String, shouldApply: @escaping () -> Bool) {
+        guard shouldApply() else { return }
         guard let sanitized = Defaults.sanitizedAppOutputDeviceUID(uid),
               let device = outputDevices.first(where: {
                   $0.uid == sanitized && $0.canBeDefaultOutput
@@ -793,6 +794,7 @@ final class AppVolumeMixer: ObservableObject {
         }
 
         halQueue.async { [weak self] in
+            guard shouldApply() else { return }
             let status = Self.setDefaultDevice(
                 device.audioObjectID,
                 selector: kAudioHardwarePropertyDefaultOutputDevice)
