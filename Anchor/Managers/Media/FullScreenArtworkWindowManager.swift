@@ -337,6 +337,8 @@ final class FullScreenArtworkWindowManager: ObservableObject {
     private var liveWallpaperTask: Task<Void, Never>?
     private var deferredTrackRefreshTask: Task<Void, Never>?
     private var isLiveWallpaperAllowed = false
+    private let artworkConsumerID = UUID()
+    private var artworkPreferenceObservers = Set<AnyCancellable>()
     private var activeLiveWallpaperFingerprint: String?
     private var activeWallpaperKey: String?
     private var pendingFallbackStaticURL: URL?
@@ -351,6 +353,7 @@ final class FullScreenArtworkWindowManager: ObservableObject {
     private init() {
         observeArtworkChanges()
         observeVideoArtworkChanges()
+        observeArtworkPreferences()
         observePanelFrameChanges()
         observeArtworkLayoutOverCanvasPreference()
         observeLyricsChanges()
@@ -360,15 +363,17 @@ final class FullScreenArtworkWindowManager: ObservableObject {
     }
 
     func show(artwork: NSImage, videoURL: URL? = nil, allowLiveWallpaper: Bool = false) {
-        guard !isShowing else { return }
+        guard !isShowing, Defaults[.enableLockScreenMediaWidget],
+              Defaults[.lockScreenMusicFullscreenArtworkEnabled] else { return }
         guard let screen = LockScreenDisplayContextProvider.shared.contextSnapshot()?.screen ?? NSScreen.main else { return }
         applyPresentation(
             artwork: artwork,
-            videoURL: videoURL,
-            allowLiveWallpaper: allowLiveWallpaper,
+            videoURL: MusicManager.lockScreenArtworkEnabled ? videoURL : nil,
+            allowLiveWallpaper: allowLiveWallpaper && MusicManager.lockScreenArtworkEnabled,
             on: screen,
             backupWallpaperConfiguration: true
         )
+        if isShowing { MusicManager.shared.setArtworkConsumer(artworkConsumerID, kind: .lockScreen, mounted: true) }
         observeTrackChanges()
     }
 
@@ -377,6 +382,7 @@ final class FullScreenArtworkWindowManager: ObservableObject {
         resumeWallpaperAgentIfNeeded()
         isShowing = false
         isLiveWallpaperAllowed = false
+        MusicManager.shared.setArtworkConsumer(artworkConsumerID, kind: .lockScreen, mounted: false)
         activeLiveWallpaperFingerprint = nil
         activeWallpaperKey = nil
         pendingFallbackStaticURL = nil
@@ -440,9 +446,35 @@ final class FullScreenArtworkWindowManager: ObservableObject {
             .debounce(for: .milliseconds(120), scheduler: DispatchQueue.main)
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in
-                guard let self, self.isShowing, self.isLiveWallpaperAllowed else { return }
+                guard let self, self.isShowing, self.isLiveWallpaperAllowed,
+                      MusicManager.lockScreenArtworkEnabled else { return }
                 self.refreshPresentationForCurrentTrack()
             }
+    }
+
+    private func observeArtworkPreferences() {
+        for key in [Defaults.Key<Bool>.enableLockScreenMediaWidget, .lockScreenMusicFullscreenArtworkEnabled,
+                    .lockScreenMusicFullscreenVideoArtwork] {
+            Defaults.publisher(key, options: [])
+                .receive(on: DispatchQueue.main)
+                .sink { [weak self] _ in
+                    guard let self, self.isShowing else { return }
+                    guard Defaults[.enableLockScreenMediaWidget],
+                          Defaults[.lockScreenMusicFullscreenArtworkEnabled] else { self.hide(); return }
+                    let allowsVideo = MusicManager.lockScreenArtworkEnabled
+                    guard self.isLiveWallpaperAllowed != allowsVideo else { return }
+                    self.isLiveWallpaperAllowed = allowsVideo
+                    if !allowsVideo {
+                        self.liveWallpaperTask?.cancel()
+                        self.liveWallpaperTask = nil
+                        self.hideVideoWindow()
+                        self.resumeWallpaperAgentIfNeeded()
+                        guard MusicManager.shared.hasActiveSession else { self.hide(); return }
+                    }
+                    self.refreshPresentationForCurrentTrack()
+                }
+                .store(in: &artworkPreferenceObservers)
+        }
     }
 
     private func observePlaybackStateChanges() {
@@ -638,8 +670,8 @@ final class FullScreenArtworkWindowManager: ObservableObject {
 
         applyPresentation(
             artwork: MusicManager.shared.albumArt,
-            videoURL: isLiveWallpaperAllowed ? MusicManager.shared.videoArtworkURL : nil,
-            allowLiveWallpaper: isLiveWallpaperAllowed,
+            videoURL: isLiveWallpaperAllowed && MusicManager.lockScreenArtworkEnabled ? MusicManager.shared.videoArtworkURL : nil,
+            allowLiveWallpaper: isLiveWallpaperAllowed && MusicManager.lockScreenArtworkEnabled,
             on: screen,
             backupWallpaperConfiguration: false
         )
@@ -995,7 +1027,8 @@ final class FullScreenArtworkWindowManager: ObservableObject {
             guard !Task.isCancelled else { return }
 
             await MainActor.run {
-                guard let self, self.isShowing, self.isLiveWallpaperAllowed else { return }
+                guard let self, self.isShowing, self.isLiveWallpaperAllowed,
+                      MusicManager.lockScreenArtworkEnabled else { return }
                 let currentIdentifier = "\(MusicManager.shared.songTitle)|\(MusicManager.shared.artistName)"
                 let currentVideoURL = self.isLiveWallpaperAllowed ? MusicManager.shared.videoArtworkURL : nil
                 guard currentIdentifier == identifier else { return }
@@ -1032,6 +1065,7 @@ final class FullScreenArtworkWindowManager: ObservableObject {
         videoBackupURL: URL,
         thumbnailBackupURL: URL
     ) async -> Bool {
+        guard !Task.isCancelled else { return false }
         let fm = FileManager.default
         let videoDestinationURL = videosDirectoryURL.appendingPathComponent("\(assetID).mov")
         let thumbnailDestinationURL = thumbnailsDirectoryURL.appendingPathComponent("\(assetID).png")
@@ -1043,13 +1077,22 @@ final class FullScreenArtworkWindowManager: ObservableObject {
             return false
         }
 
+        let staged = videosDirectoryURL.appendingPathComponent(".anchor-\(UUID()).mov")
+        defer { try? fm.removeItem(at: staged) }
+        guard await materializeVideo(from: sourceURL, to: staged), !Task.isCancelled else {
+            return false
+        }
         backupItemIfNeeded(at: manifestURL, backupURL: manifestBackupURL)
         backupItemIfNeeded(at: videoDestinationURL, backupURL: videoBackupURL)
         backupItemIfNeeded(at: thumbnailDestinationURL, backupURL: thumbnailBackupURL)
-
-        guard await materializeVideo(from: sourceURL, to: videoDestinationURL) else {
-            return false
-        }
+        guard !Task.isCancelled else { return false }
+        do {
+            if fm.fileExists(atPath: videoDestinationURL.path) {
+                _ = try fm.replaceItemAt(videoDestinationURL, withItemAt: staged)
+            } else {
+                try fm.moveItem(at: staged, to: videoDestinationURL)
+            }
+        } catch { return false }
 
         if let thumbnailData {
             try? thumbnailData.write(to: thumbnailDestinationURL, options: .atomic)
@@ -1065,6 +1108,7 @@ final class FullScreenArtworkWindowManager: ObservableObject {
     }
 
     private nonisolated static func materializeVideo(from sourceURL: URL, to destinationURL: URL) async -> Bool {
+        guard !Task.isCancelled else { return false }
         let fm = FileManager.default
         try? fm.removeItem(at: destinationURL)
 
@@ -1088,6 +1132,7 @@ final class FullScreenArtworkWindowManager: ObservableObject {
         let asset = AVURLAsset(url: sourceURL)
         let presets = [AVAssetExportPresetPassthrough, AVAssetExportPresetHighestQuality]
         for preset in presets {
+            guard !Task.isCancelled else { return false }
             try? fm.removeItem(at: destinationURL)
             guard let exportSession = AVAssetExportSession(asset: asset, presetName: preset) else {
                 continue
@@ -1098,6 +1143,7 @@ final class FullScreenArtworkWindowManager: ObservableObject {
             exportSession.shouldOptimizeForNetworkUse = true
 
             let exported = await export(exportSession)
+            guard !Task.isCancelled else { return false }
             if exported, validateVideo(at: destinationURL) {
                 return true
             }
@@ -1127,10 +1173,14 @@ final class FullScreenArtworkWindowManager: ObservableObject {
     }
 
     private nonisolated static func export(_ exportSession: AVAssetExportSession) async -> Bool {
-        await withCheckedContinuation { continuation in
-            exportSession.exportAsynchronously {
-                continuation.resume(returning: exportSession.status == .completed)
+        await withTaskCancellationHandler {
+            await withCheckedContinuation { continuation in
+                exportSession.exportAsynchronously {
+                    continuation.resume(returning: exportSession.status == .completed)
+                }
             }
+        } onCancel: {
+            exportSession.cancelExport()
         }
     }
 

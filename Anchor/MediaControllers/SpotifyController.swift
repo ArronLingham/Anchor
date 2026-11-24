@@ -49,11 +49,7 @@ class SpotifyController: MediaControllerProtocol {
 
     private var lastArtworkURL: String?
     private var artworkFetchTask: Task<Void, Never>?
-    private var canvasFetchTask: Task<Void, Never>?
-    private var currentCanvasTrackURI: String?
-    private var lastCanvasRequestTrackURI: String?
-    private var lastCanvasRequestDate: Date = .distantPast
-    private let canvasResolver = SpotifyCanvasResolver()
+    private var currentArtworkTrackURI: String?
     private let trackMetadataResolver = SpotifyTrackMetadataResolver()
     private var artistMetadataFetchTask: Task<Void, Never>?
     private var currentArtistTrackURI: String?
@@ -101,16 +97,9 @@ class SpotifyController: MediaControllerProtocol {
     private func setupSessionChangeObserver() {
         sessionChangeCancellable = NotificationCenter.default.publisher(for: .spotifyCanvasSessionDidChange)
             .sink { [weak self] _ in
-                self?.lastCanvasRequestTrackURI = nil
-                self?.lastCanvasRequestDate = .distantPast
                 self?.artistMetadataFetchTask?.cancel()
                 self?.artistMetadataFetchTask = nil
                 self?.currentArtistTrackURI = nil
-                if let self {
-                    var updatedState = self.playbackState
-                    updatedState.liveArtworkURL = nil
-                    self.playbackState = updatedState
-                }
                 Task {
                     await self?.trackMetadataResolver.clearCache()
                     await self?.updatePlaybackInfo()
@@ -124,7 +113,6 @@ class SpotifyController: MediaControllerProtocol {
         }
         notificationTask?.cancel()
         artworkFetchTask?.cancel()
-        canvasFetchTask?.cancel()
         artistMetadataFetchTask?.cancel()
         sessionChangeCancellable?.cancel()
     }
@@ -198,16 +186,7 @@ class SpotifyController: MediaControllerProtocol {
             state.artwork = existingArtwork
         }
 
-        let isSameCanvasTrack = trackURI == currentCanvasTrackURI
-
-        if isSameCanvasTrack {
-            state.liveArtworkURL = playbackState.liveArtworkURL
-        } else {
-            state.liveArtworkURL = nil
-            currentCanvasTrackURI = trackURI.isEmpty ? nil : trackURI
-            canvasFetchTask?.cancel()
-            canvasFetchTask = nil
-        }
+        currentArtworkTrackURI = trackURI.isEmpty ? nil : trackURI
 
         let isSameArtistTrack = trackURI == currentArtistTrackURI
 
@@ -223,7 +202,6 @@ class SpotifyController: MediaControllerProtocol {
             if cachedArtistResult == nil {
                 scheduleArtistMetadataFetchIfNeeded(for: trackURI)
             }
-            scheduleCanvasFetchIfNeeded(for: trackURI)
         }
 
         if !artworkURL.isEmpty, let url = URL(string: artworkURL) {
@@ -239,14 +217,13 @@ class SpotifyController: MediaControllerProtocol {
 
                     await MainActor.run { [weak self] in
                         guard let self = self else { return }
-                        guard expectedTrackURI.isEmpty || self.currentCanvasTrackURI == expectedTrackURI else {
+                        guard expectedTrackURI.isEmpty || self.currentArtworkTrackURI == expectedTrackURI else {
                             self.artworkFetchTask = nil
                             return
                         }
                         var updatedState = currentState
                         updatedState.artwork = data
                         updatedState.artist = self.playbackState.artist
-                        updatedState.liveArtworkURL = self.playbackState.liveArtworkURL
                         self.playbackState = updatedState
                         self.lastArtworkURL = artworkURL
                         self.artworkFetchTask = nil
@@ -287,39 +264,6 @@ class SpotifyController: MediaControllerProtocol {
         }
     }
 
-    private func scheduleCanvasFetchIfNeeded(for trackURI: String) {
-        guard !trackURI.isEmpty else { return }
-        guard playbackState.liveArtworkURL == nil else { return }
-        guard canvasFetchTask == nil else { return }
-
-        if lastCanvasRequestTrackURI == trackURI,
-           Date().timeIntervalSince(lastCanvasRequestDate) < 5
-        {
-            return
-        }
-
-        lastCanvasRequestTrackURI = trackURI
-        lastCanvasRequestDate = Date()
-
-        canvasFetchTask = Task { [weak self] in
-            guard let self else { return }
-
-            let canvasURL = await self.canvasResolver.canvasURL(for: trackURI)
-            guard !Task.isCancelled else { return }
-
-            await MainActor.run {
-                guard self.currentCanvasTrackURI == trackURI else {
-                    self.canvasFetchTask = nil
-                    return
-                }
-
-                var updatedState = self.playbackState
-                updatedState.liveArtworkURL = canvasURL
-                self.playbackState = updatedState
-                self.canvasFetchTask = nil
-            }
-        }
-    }
     private func executeCommand(_ command: String) async {
         let script = "tell application \"Spotify\" to \(command)"
         try? await AppleScriptHelper.executeVoid(script)
@@ -357,7 +301,7 @@ class SpotifyController: MediaControllerProtocol {
         return try await AppleScriptHelper.execute(script)
     }
 
-    private static func canonicalTrackURI(from trackIdentifier: String, spotifyURLString: String) -> String {
+    static func canonicalTrackURI(from trackIdentifier: String, spotifyURLString: String) -> String {
         let trimmedIdentifier = trackIdentifier.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmedIdentifier.hasPrefix("spotify:track:") {
             return trimmedIdentifier
@@ -570,7 +514,7 @@ private struct SpotifyArtistCacheResult: Sendable {
     let displayName: String?
 }
 
-private actor SpotifyCanvasResolver {
+actor SpotifyCanvasResolver {
     private struct CacheEntry {
         let url: URL?
         let expiresAt: Date
@@ -579,19 +523,28 @@ private actor SpotifyCanvasResolver {
     private var cache: [String: CacheEntry] = [:]
 
     func canvasURL(for trackURI: String) async -> URL? {
+        guard !Task.isCancelled else { return nil }
         let now = Date()
         if let entry = cache[trackURI], entry.expiresAt > now {
             return entry.url
         }
 
         let resolvedURL = await fetchCanvasURL(for: trackURI, retryOnUnauthorized: true)
+        guard !Task.isCancelled else { return nil }
+        if cache.count >= 128 {
+            cache = cache.filter { $0.value.expiresAt > now }
+            if cache.count >= 128, let oldest = cache.min(by: { $0.value.expiresAt < $1.value.expiresAt })?.key {
+                cache.removeValue(forKey: oldest)
+            }
+        }
         let cacheLifetime: TimeInterval = resolvedURL == nil ? 300 : 3600
         cache[trackURI] = CacheEntry(url: resolvedURL, expiresAt: now.addingTimeInterval(cacheLifetime))
         return resolvedURL
     }
 
     private func fetchCanvasURL(for trackURI: String, retryOnUnauthorized: Bool) async -> URL? {
-        guard let accessToken = await SpotifyAuthManager.shared.validAccessToken() else {
+        guard !Task.isCancelled, let accessToken = await SpotifyAuthManager.shared.validAccessToken(),
+              !Task.isCancelled else {
             return nil
         }
 
@@ -606,6 +559,7 @@ private actor SpotifyCanvasResolver {
 
         do {
             let (data, response) = try await URLSession.shared.data(for: request)
+            guard !Task.isCancelled else { return nil }
             guard let httpResponse = response as? HTTPURLResponse else {
                 return nil
             }

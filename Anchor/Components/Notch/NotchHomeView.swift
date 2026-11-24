@@ -126,6 +126,7 @@ private struct AnchorArtworkVideoView: NSViewRepresentable {
 struct AnchorArtworkSourceView: View {
     @ObservedObject private var musicManager = MusicManager.shared
     @Default(.showLiveCanvasInDynamicIsland) private var showLiveCanvasInDynamicIsland
+    @State private var artworkConsumerID = UUID()
 
     let cornerRadius: CGFloat
     let contentMode: ContentMode
@@ -147,6 +148,8 @@ struct AnchorArtworkSourceView: View {
         }
         .clipShape(AnchorCorners.rectangle(cornerRadius: cornerRadius))
         .anchorCornerContainer(radius: cornerRadius)
+        .onAppear { musicManager.setArtworkConsumer(artworkConsumerID, kind: .island, mounted: true) }
+        .onDisappear { musicManager.setArtworkConsumer(artworkConsumerID, kind: .island, mounted: false) }
     }
 }
 

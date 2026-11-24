@@ -53,8 +53,9 @@ actor AnimatedArtworkManager {
         return Date().timeIntervalSince(last) < tokenBackoffInterval()
     }
 
-    func fetchAnimatedArtworkURL(title: String, artist: String) async -> URL? {
-        let key = "\(title)|\(artist)"
+    func fetchAnimatedArtworkURL(title: String, artist: String, contentID: String?) async -> URL? {
+        guard !Task.isCancelled else { return nil }
+        let key = "\(title)|\(artist)|\(contentID ?? "")"
 
         // Return the cached result for the same song immediately.
         if key == cachedKey {
@@ -68,22 +69,18 @@ actor AnimatedArtworkManager {
             return nil
         }
 
-        guard await requestMusicAuthorization() else {
+        guard await requestMusicAuthorization(), !Task.isCancelled else {
             return nil
         }
 
-        // Auth and backoff checks passed. Cache the key and clear old video URL.
+        guard let songID = await searchSongID(title: title, artist: artist), !Task.isCancelled else {
+            return nil
+        }
+
+        let videoURL = await fetchEditorialVideoURL(songID: songID)
+        guard !Task.isCancelled else { return nil }
+
         cachedKey = key
-        cachedVideoURL = nil
-
-        guard let songID = await searchSongID(title: title, artist: artist) else {
-            return nil
-        }
-
-        guard let videoURL = await fetchEditorialVideoURL(songID: songID) else {
-            return nil
-        }
-
         cachedSongID = songID
         cachedVideoURL = videoURL
         return videoURL
@@ -120,6 +117,7 @@ actor AnimatedArtworkManager {
 
         do {
             let response = try await request.response()
+            guard !Task.isCancelled else { return nil }
             resetTokenFailureState()
             
             let normalizedTitle = title.lowercased()
@@ -146,6 +144,7 @@ actor AnimatedArtworkManager {
     // MARK: - Editorial Video Fetch
 
     private func fetchEditorialVideoURL(songID: String) async -> URL? {
+        guard !Task.isCancelled else { return nil }
         let storefront: String
         if let code = try? await MusicDataRequest.currentCountryCode {
             storefront = code
@@ -153,6 +152,7 @@ actor AnimatedArtworkManager {
             storefront = "us"
         }
 
+        guard !Task.isCancelled else { return nil }
         return await fetchEditorialVideoURLFallback(songID: songID, storefront: storefront)
     }
 
@@ -164,6 +164,7 @@ actor AnimatedArtworkManager {
         do {
             let request = MusicDataRequest(urlRequest: URLRequest(url: url))
             let response = try await request.response()
+            guard !Task.isCancelled else { return nil }
             resetTokenFailureState()
 
             guard let json = try JSONSerialization.jsonObject(with: response.data) as? [String: Any],

@@ -431,6 +431,12 @@ private actor SpotifyExplicitnessResolver {
 }
 
 class MusicManager: ObservableObject {
+    enum ArtworkConsumer { case island, lockScreen }
+    private enum ArtworkRequest: Equatable {
+        case apple(title: String, artist: String, contentID: String?)
+        case spotify(trackURI: String)
+    }
+
     enum SkipDirection: Equatable {
         case backward
         case forward
@@ -448,6 +454,13 @@ class MusicManager: ObservableObject {
     static let shared = MusicManager()
     private var cancellables = Set<AnyCancellable>()
     private var controllerCancellables = Set<AnyCancellable>()
+    private var artworkConsumers: [UUID: ArtworkConsumer] = [:]
+    private var currentArtworkRequest: ArtworkRequest?
+    private var requestedArtwork: ArtworkRequest?
+    private var suppliedArtworkURL: URL?
+    private var liveArtworkTask: Task<Void, Never>?
+    private var liveArtworkGeneration = UUID()
+    private var spotifyCanvasResolver = SpotifyCanvasResolver()
     private var debounceIdleTask: Task<Void, Never>?
     @MainActor private var pendingOptimisticPlayState: Bool?
 
@@ -596,6 +609,25 @@ class MusicManager: ObservableObject {
             .sink { [weak self] _ in self?.calculateAverageColor() }
             .store(in: &cancellables)
 
+        for key in [Defaults.Key<Bool>.showLiveCanvasInDynamicIsland, .enableLockScreenMediaWidget,
+                    .lockScreenMusicFullscreenArtworkEnabled, .lockScreenMusicFullscreenVideoArtwork] {
+            Defaults.publisher(key, options: [])
+                .receive(on: DispatchQueue.main)
+                .sink { [weak self] _ in self?.refreshLiveArtwork() }
+                .store(in: &cancellables)
+        }
+        NotificationCenter.default.publisher(for: .spotifyCanvasSessionDidChange)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                guard let self else { return }
+                self.spotifyCanvasResolver = SpotifyCanvasResolver()
+                if case .spotify = self.currentArtworkRequest {
+                    self.cancelArtworkRequest()
+                    self.refreshLiveArtwork()
+                }
+            }
+            .store(in: &cancellables)
+
         // Observe Pear Desktop launch/terminate for auto-detection
         setupPearDesktopAutoDetection()
 
@@ -663,6 +695,7 @@ class MusicManager: ObservableObject {
     }
     
     public func destroy() {
+        cancelArtworkRequest()
         debounceIdleTask?.cancel()
         lyricsFetchTask?.cancel()
         lyricSyncTask?.cancel()
@@ -679,6 +712,10 @@ class MusicManager: ObservableObject {
     private func createController(for type: MediaControllerType) -> (any MediaControllerProtocol)? {
         // Cleanup previous controller
         if activeController != nil {
+            cancelArtworkRequest()
+            currentArtworkRequest = nil
+            suppliedArtworkURL = nil
+            if videoArtworkURL != nil { videoArtworkURL = nil }
             controllerCancellables.removeAll()
             activeController = nil
         }
@@ -800,11 +837,7 @@ class MusicManager: ObservableObject {
             || bundleChanged
             || contentIdentifierChanged
             || contentURLChanged
-        let liveArtworkChanged = state.liveArtworkURL != self.videoArtworkURL
-
-        if liveArtworkChanged {
-            self.videoArtworkURL = state.liveArtworkURL
-        }
+        updateArtworkRequest(for: state)
 
         if state.title != self.songTitle {
             self.songTitle = state.title
@@ -844,12 +877,6 @@ class MusicManager: ObservableObject {
             self.lastArtworkContentURL = state.contentURL
 
             self.prepareLyricsForCurrentTrack()
-            if let liveArtworkURL = state.liveArtworkURL {
-                self.videoArtworkURL = liveArtworkURL
-            } else {
-                self.fetchVideoArtwork()
-            }
-
             self.refreshExplicitFlag(for: state)
 
 
@@ -1818,28 +1845,77 @@ class MusicManager: ObservableObject {
 
     // MARK: - Video Artwork
 
-    func fetchVideoArtwork() {
-        guard Defaults[.lockScreenMusicFullscreenVideoArtwork] else {
-            videoArtworkURL = nil
-            return
-        }
-        // Se il player non è Apple Music, non toccare videoArtworkURL:
-        // SpotifyController gestisce il canvas in modo autonomo tramite liveArtworkURL.
-        guard bundleIdentifier == "com.apple.Music" else {
-            return
-        }
+    static var lockScreenArtworkEnabled: Bool {
+        Defaults[.enableLockScreenMediaWidget] && Defaults[.lockScreenMusicFullscreenArtworkEnabled]
+            && Defaults[.lockScreenMusicFullscreenVideoArtwork]
+    }
 
-        let title = songTitle
-        let artist = artistName
+    func setArtworkConsumer(_ id: UUID, kind: ArtworkConsumer, mounted: Bool) {
+        if mounted { artworkConsumers[id] = kind } else { artworkConsumers.removeValue(forKey: id) }
+        refreshLiveArtwork()
+    }
 
-        Task {
-            let url = await AnimatedArtworkManager.shared.fetchAnimatedArtworkURL(
-                title: title, artist: artist
-            )
-            await MainActor.run {
-                self.videoArtworkURL = url
+    private var hasArtworkDemand: Bool {
+        artworkConsumers.values.contains {
+            switch $0 {
+            case .island: return Defaults[.showLiveCanvasInDynamicIsland]
+            case .lockScreen: return Self.lockScreenArtworkEnabled
             }
         }
+    }
+
+    private func updateArtworkRequest(for state: PlaybackState) {
+        var request: ArtworkRequest?
+        if !state.title.isEmpty, state.bundleIdentifier == "com.apple.Music" {
+            request = .apple(title: state.title, artist: state.artist, contentID: state.contentIdentifier)
+        } else if state.bundleIdentifier == SpotifyController.bundleIdentifier {
+            let uri = SpotifyController.canonicalTrackURI(from: state.contentIdentifier ?? "",
+                                                          spotifyURLString: state.contentURL ?? "")
+            if !uri.isEmpty { request = .spotify(trackURI: uri) }
+        }
+        guard currentArtworkRequest != request || suppliedArtworkURL != state.liveArtworkURL else { return }
+        currentArtworkRequest = request
+        suppliedArtworkURL = state.liveArtworkURL
+        refreshLiveArtwork()
+    }
+
+    private func cancelArtworkRequest() {
+        liveArtworkTask?.cancel()
+        liveArtworkTask = nil
+        requestedArtwork = nil
+        liveArtworkGeneration = UUID()
+    }
+
+    private func refreshLiveArtwork() {
+        guard hasArtworkDemand, suppliedArtworkURL == nil, let request = currentArtworkRequest else {
+            if requestedArtwork != nil { cancelArtworkRequest() }
+            let url = hasArtworkDemand ? suppliedArtworkURL : nil
+            if videoArtworkURL != url { videoArtworkURL = url }
+            return
+        }
+        guard requestedArtwork != request else { return }
+        cancelArtworkRequest()
+        requestedArtwork = request
+        if videoArtworkURL != nil { videoArtworkURL = nil }
+        let generation = liveArtworkGeneration
+        let spotify = spotifyCanvasResolver
+        liveArtworkTask = Task { @MainActor [weak self] in
+            guard let self, self.acceptsArtworkResult(generation) else { return }
+            let url: URL?
+            switch request {
+            case let .apple(title, artist, contentID):
+                url = await AnimatedArtworkManager.shared.fetchAnimatedArtworkURL(title: title, artist: artist, contentID: contentID)
+            case let .spotify(trackURI):
+                url = await spotify.canvasURL(for: trackURI)
+            }
+            guard self.acceptsArtworkResult(generation) else { return }
+            self.liveArtworkTask = nil
+            if self.videoArtworkURL != url { self.videoArtworkURL = url }
+        }
+    }
+
+    private func acceptsArtworkResult(_ generation: UUID) -> Bool {
+        !Task.isCancelled && liveArtworkGeneration == generation && hasArtworkDemand
     }
 
     func toggleLyrics() {
