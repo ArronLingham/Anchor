@@ -49,8 +49,10 @@ final class BatteryHistoryManager: ObservableObject {
     private let maxSamples = 720
 
     private var observerID: Int?
+    private var observerGeneration = UUID()
     private var cancellables = Set<AnyCancellable>()
     private var saveWorkItem: DispatchWorkItem?
+    private let saveQueue = DispatchQueue(label: "com.arronlingham.Anchor.batteryHistory", qos: .utility)
 
     private var storeURL: URL {
         AppSupportDirectory.root.appendingPathComponent("battery-history.json")
@@ -62,9 +64,11 @@ final class BatteryHistoryManager: ObservableObject {
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
             self.load()
-            Defaults.publisher(.enableBatteryHistory)
+            Defaults.publisher(.enableBatteryHistory, options: [])
                 .receive(on: DispatchQueue.main)
-                .sink { [weak self] _ in self?.syncToSettings() }
+                .sink { [weak self] change in
+                    if change.newValue { self?.syncToSettings() } else { self?.stop() }
+                }
                 .store(in: &self.cancellables)
             self.syncToSettings()
         }
@@ -75,10 +79,11 @@ final class BatteryHistoryManager: ObservableObject {
     }
 
     private func start() {
-        guard observerID == nil else { return }
+        guard Defaults[.enableBatteryHistory], observerID == nil else { return }
         let manager = BatteryActivityManager.shared
+        let generation = observerGeneration
         observerID = manager.addObserver { [weak self] event in
-            Task { @MainActor in self?.handle(event) }
+            Task { @MainActor [weak self] in self?.handle(event, generation: generation) }
         }
         // Seed with where we are now, so a fresh install draws something.
         let info = manager.initializeBatteryInfo()
@@ -86,13 +91,21 @@ final class BatteryHistoryManager: ObservableObject {
     }
 
     private func stop() {
+        observerGeneration = UUID()
         if let observerID {
             BatteryActivityManager.shared.removeObserver(byId: observerID)
         }
         observerID = nil
+        if let saveWorkItem {
+            saveWorkItem.cancel()
+            self.saveWorkItem = nil
+            save()
+        }
     }
 
-    private func handle(_ event: BatteryActivityManager.BatteryEvent) {
+    private func handle(_ event: BatteryActivityManager.BatteryEvent, generation: UUID) {
+        guard Defaults[.enableBatteryHistory], observerID != nil,
+              observerGeneration == generation else { return }
         let last = samples.last
         switch event {
         case let .batteryLevelChanged(level):
@@ -139,7 +152,8 @@ final class BatteryHistoryManager: ObservableObject {
     private func scheduleSave() {
         saveWorkItem?.cancel()
         let work = DispatchWorkItem { [weak self] in
-            Task { @MainActor in self?.save() }
+            self?.saveWorkItem = nil
+            self?.save()
         }
         saveWorkItem = work
         DispatchQueue.main.asyncAfter(deadline: .now() + 5, execute: work)
@@ -148,7 +162,7 @@ final class BatteryHistoryManager: ObservableObject {
     private func save() {
         let snapshot = samples
         let url = storeURL
-        DispatchQueue.global(qos: .utility).async {
+        saveQueue.async {
             guard let data = try? JSONEncoder().encode(snapshot) else { return }
             try? data.write(to: url, options: [.atomic])
         }

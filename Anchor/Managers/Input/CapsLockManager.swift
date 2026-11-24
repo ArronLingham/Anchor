@@ -27,66 +27,62 @@ import SwiftUI
 class CapsLockManager: ObservableObject {
     static let shared = CapsLockManager()
     
-    @Published var isCapsLockActive: Bool = false
+    @Published private(set) var isCapsLockActive = false
     
     private var localEventMonitor: Any?
     private var globalEventMonitor: Any?
+    private var monitorGeneration = UUID()
+    private var preferenceObserver: AnyCancellable?
     private let coordinator = AnchorViewCoordinator.shared
     private let capsLockAnimation = Animation.spring(response: 0.32, dampingFraction: 0.85)
     
     private init() {
-        // Get initial state
+        preferenceObserver = Defaults.publisher(.enableCapsLockIndicator, options: [])
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] change in
+                if change.newValue { self?.startMonitoring() } else { self?.stopMonitoring() }
+            }
+        startMonitoring()
+    }
+
+    private func startMonitoring() {
+        guard Defaults[.enableCapsLockIndicator],
+              localEventMonitor == nil, globalEventMonitor == nil else { return }
+        let generation = monitorGeneration
         isCapsLockActive = NSEvent.modifierFlags.contains(.capsLock)
-        
-        // Monitor flag changes when app is focused
         localEventMonitor = NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { [weak self] event in
-            self?.handleFlagsChanged(event)
+            self?.handleFlagsChanged(event.modifierFlags.contains(.capsLock), generation: generation)
             return event
         }
-        
-        // Monitor flag changes globally (even when app is not focused)
         globalEventMonitor = NSEvent.addGlobalMonitorForEvents(matching: .flagsChanged) { [weak self] event in
-            Task { @MainActor in
-                self?.handleFlagsChanged(event)
+            let active = event.modifierFlags.contains(.capsLock)
+            Task { @MainActor [weak self] in
+                self?.handleFlagsChanged(active, generation: generation)
             }
         }
-        
-        print("CapsLockManager: ✅ Initialized with Caps Lock \(isCapsLockActive ? "ON" : "OFF")")
     }
-    
-    deinit {
+
+    private func stopMonitoring() {
+        monitorGeneration = UUID()
         if let monitor = localEventMonitor {
             NSEvent.removeMonitor(monitor)
+            localEventMonitor = nil
         }
         if let monitor = globalEventMonitor {
             NSEvent.removeMonitor(monitor)
+            globalEventMonitor = nil
         }
+        if isCapsLockActive { isCapsLockActive = false }
+        hideIndicator()
     }
-    
-    private func handleFlagsChanged(_ event: NSEvent) {
-        let newState = event.modifierFlags.contains(.capsLock)
-        
-        guard newState != isCapsLockActive else { return }
-        
+
+    private func handleFlagsChanged(_ active: Bool, generation: UUID) {
+        guard Defaults[.enableCapsLockIndicator], generation == monitorGeneration,
+              active != isCapsLockActive else { return }
         withAnimation(capsLockAnimation) {
-            isCapsLockActive = newState
+            isCapsLockActive = active
         }
-        
-        print("CapsLockManager: Caps Lock \(newState ? "ACTIVATED" : "DEACTIVATED")")
-        
-        // Only show/hide if feature is enabled
-        guard Defaults[.enableCapsLockIndicator] else {
-            // Returning here while the indicator is showing would strand it:
-            // it was scheduled with an infinite duration, so nothing else will
-            // ever hide it. Clear it on the way out instead.
-            if coordinator.sneakPeek.show, coordinator.sneakPeek.type == .capsLock {
-                coordinator.toggleSneakPeek(status: false, type: .capsLock, duration: 0, value: 0, icon: "")
-            }
-            return
-        }
-        
-        if newState {
-            // Show inline indicator
+        if active {
             coordinator.toggleSneakPeek(
                 status: true,
                 type: .capsLock,
@@ -95,14 +91,12 @@ class CapsLockManager: ObservableObject {
                 icon: ""
             )
         } else {
-            // Hide indicator
-            coordinator.toggleSneakPeek(
-                status: false,
-                type: .capsLock,
-                duration: 0,
-                value: 0,
-                icon: ""
-            )
+            hideIndicator()
         }
+    }
+
+    private func hideIndicator() {
+        guard coordinator.sneakPeek.show, coordinator.sneakPeek.type == .capsLock else { return }
+        coordinator.toggleSneakPeek(status: false, type: .capsLock, duration: 0, value: 0, icon: "")
     }
 }

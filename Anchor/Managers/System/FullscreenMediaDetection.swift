@@ -22,68 +22,92 @@
  */
 
 import ApplicationServices
+import Combine
 import Defaults
 import MacroVisionKit
 import SwiftUI
 
-class FullscreenMediaDetector: ObservableObject {
+@MainActor
+final class FullscreenMediaDetector: ObservableObject {
     static let shared = FullscreenMediaDetector()
-    private let detector: MacroVisionKit
-    @ObservedObject private var musicManager = MusicManager.shared
-    @MainActor @Published private(set) var fullscreenStatus: [String: Bool] = [:]
-    private var notificationTask: Task<Void, Never>?
+    private lazy var detector: MacroVisionKit = {
+        let detector = MacroVisionKit.shared
+        detector.configuration.includeSystemApps = true
+        return detector
+    }()
+    @Published private(set) var fullscreenStatus: [String: Bool] = [:]
+    private var observers: [(NotificationCenter, NSObjectProtocol)] = []
+    private var preferences = Set<AnyCancellable>()
+    private var scan: DispatchWorkItem?
+    private var generation = UUID()
 
     private init() {
-        self.detector = MacroVisionKit.shared
-        detector.configuration.includeSystemApps = true
-        setupNotificationObservers()
+        Defaults.publisher(.enableFullscreenMediaDetection, options: [])
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] change in
+                if change.newValue { self?.syncMonitoring() } else { self?.stopMonitoring() }
+            }
+            .store(in: &preferences)
+        Defaults.publisher(.hideNotchOption, options: [])
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] change in
+                if change.newValue == .never { self?.stopMonitoring() } else { self?.syncMonitoring() }
+            }
+            .store(in: &preferences)
+        syncMonitoring()
+    }
+
+    private var wantsMonitoring: Bool {
+        Defaults[.enableFullscreenMediaDetection] && Defaults[.hideNotchOption] != .never
+    }
+
+    private func syncMonitoring() {
+        guard wantsMonitoring else { stopMonitoring(); return }
+        if observers.isEmpty {
+            observe(NSWorkspace.activeSpaceDidChangeNotification, in: NSWorkspace.shared.notificationCenter)
+            observe(NSApplication.didChangeScreenParametersNotification, in: .default)
+        }
+        scan?.cancel()
+        scan = nil
         updateFullScreenStatus()
     }
 
-    private func setupNotificationObservers() {
-        notificationTask = Task { @Sendable [weak self] in
-            await withTaskGroup(of: Void.self) { group in
-                group.addTask {
-                    let activeSpaceNotifications = NSWorkspace.shared.notificationCenter.notifications(
-                        named: NSWorkspace.activeSpaceDidChangeNotification
-                    )
-                    
-                    for await _ in activeSpaceNotifications {
-                        await self?.handleChange()
-                    }
-                }
-                
-                group.addTask {
-                    let screenParameterNotifications = NSWorkspace.shared.notificationCenter.notifications(
-                        named:  NSApplication.didChangeScreenParametersNotification
-                    )
-                    
-                    for await _ in screenParameterNotifications {
-                        await  self?.handleChange()
-                    }
-                }
-            }
+    private func observe(_ name: Notification.Name, in center: NotificationCenter) {
+        let token = generation
+        let observer = center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.scheduleScan(generation: token) }
         }
+        observers.append((center, observer))
     }
 
-    private func handleChange() async {
-        try? await Task.sleep(for: .milliseconds(500))
-        self.updateFullScreenStatus()
+    private func scheduleScan(generation token: UUID) {
+        guard generation == token, wantsMonitoring else { return }
+        scan?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            guard let self, self.generation == token, self.wantsMonitoring else { return }
+            self.scan = nil
+            self.updateFullScreenStatus()
+        }
+        scan = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: work)
+    }
+
+    private func stopMonitoring() {
+        generation = UUID()
+        scan?.cancel()
+        scan = nil
+        for (center, observer) in observers { center.removeObserver(observer) }
+        observers.removeAll()
+        if !fullscreenStatus.isEmpty { fullscreenStatus = [:] }
     }
 
     private func updateFullScreenStatus() {
-        guard Defaults[.enableFullscreenMediaDetection] else {
-            let reset = Dictionary(uniqueKeysWithValues: NSScreen.screens.map { ($0.localizedName, false) })
-            if reset != fullscreenStatus {
-                fullscreenStatus = reset
-            }
-            return
-        }
-        
+        guard wantsMonitoring else { return }
 
         let apps = detector.detectFullscreenApps(debug: false)
         let names = NSScreen.screens.map { $0.localizedName }
         let hideOption = Defaults[.hideNotchOption]
+        let playingBundleID = hideOption == .nowPlayingOnly ? MusicManager.shared.bundleIdentifier : nil
 
         var newStatus: [String: Bool] = [:]
         for name in names {
@@ -100,7 +124,7 @@ class FullscreenMediaDetector: ObservableObject {
                     return isInNativeFullscreen(app)
                 case .nowPlayingOnly:
                     // Hide only when the currently playing media app is in fullscreen.
-                    return app.bundleIdentifier == musicManager.bundleIdentifier
+                    return app.bundleIdentifier == playingBundleID
                         && isInNativeFullscreen(app)
                 case .never:
                     // Always on display; never hide.
@@ -152,11 +176,4 @@ class FullscreenMediaDetector: ObservableObject {
         return typed
     }
 
-    private func cleanupNotificationObservers() {
-        NSWorkspace.shared.notificationCenter.removeObserver(self)
-    }
-
-    deinit {
-        NSWorkspace.shared.notificationCenter.removeObserver(self)
-    }
 }
