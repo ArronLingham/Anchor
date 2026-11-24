@@ -85,6 +85,13 @@ struct Shortcuts: View {
                 }
 
                 Section {
+                    KeyboardShortcuts.Recorder("Toggle external monitors", name: .toggleExternalMonitors)
+                        .settingsHighlight(id: highlightID("Toggle external monitors"))
+                } header: {
+                    Text("Monitors")
+                }
+
+                Section {
                     HStack {
                         VStack(alignment: .leading) {
                             KeyboardShortcuts.Recorder("Start Demo Timer:", name: .startDemoTimer)

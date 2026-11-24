@@ -40,6 +40,23 @@ final class ExternalMonitorController: ObservableObject {
         return CFUUIDCreateString(nil, value) as String
     }
 
+    func toggleExternalMonitors() {
+        guard !isChangingDisplays else { return }
+        let active = Set(displayIDs(active: true).filter { CGDisplayIsBuiltin($0) == 0 })
+        let available = Set(displayIDs(active: false))
+        let tracked = savedExternalDisplayIDs().intersection(available)
+        if Self.shouldReconnect(activeExternal: active, trackedExternal: tracked) {
+            reconnectMonitors()
+        } else {
+            disconnectExternalMonitors()
+        }
+    }
+
+    static func shouldReconnect(activeExternal: Set<CGDirectDisplayID>,
+                                trackedExternal: Set<CGDirectDisplayID>) -> Bool {
+        activeExternal.isEmpty || !trackedExternal.isSubset(of: activeExternal)
+    }
+
     func disconnectExternalMonitors() {
         guard !isChangingDisplays else { return }
         let active = displayIDs(active: true)
@@ -61,15 +78,19 @@ final class ExternalMonitorController: ObservableObject {
 
     func reconnectMonitors() {
         guard !isChangingDisplays else { return }
-        let saved = UserDefaults.standard.stringArray(forKey: savedKey) ?? []
         var targets = Set(displayIDs(active: false).filter { CGDisplayIsBuiltin($0) == 0 })
-        for identity in saved {
-            guard let value = CFUUIDCreateFromString(nil, identity as CFString) else { continue }
-            let id = CGDisplayGetDisplayIDFromUUID(value)
-            if id != 0 && CGDisplayIsBuiltin(id) == 0 { targets.insert(id) }
-        }
+        targets.formUnion(savedExternalDisplayIDs())
         guard !targets.isEmpty else { fail("No monitor is available to reconnect. Check that the hub and VGA cable are plugged in."); return }
         apply(Array(targets), enabled: true)
+    }
+
+    private func savedExternalDisplayIDs() -> Set<CGDirectDisplayID> {
+        let saved = UserDefaults.standard.stringArray(forKey: savedKey) ?? []
+        return Set(saved.compactMap { identity in
+            guard let uuid = CFUUIDCreateFromString(nil, identity as CFString) else { return nil }
+            let id = CGDisplayGetDisplayIDFromUUID(uuid)
+            return id != 0 && CGDisplayIsBuiltin(id) == 0 ? id : nil
+        })
     }
 
     private func apply(_ ids: [CGDirectDisplayID], enabled: Bool) {

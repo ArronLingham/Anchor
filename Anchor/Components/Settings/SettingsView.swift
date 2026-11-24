@@ -796,6 +796,7 @@ struct SettingsView: View {
             SettingsSearchEntry(tab: .media, title: "Pin microphone", keywords: ["microphone", "mic", "input device", "default input", "pin mic", "airpods steal"], highlightID: SettingsTab.media.highlightID(for: "Pin microphone")),
             SettingsSearchEntry(tab: .media, title: "Audio device HUD", keywords: ["output device", "speaker switch", "audio hud"], highlightID: SettingsTab.media.highlightID(for: "Audio device HUD")),
             SettingsSearchEntry(tab: .shortcuts, title: "Next output device", keywords: ["cycle output", "switch speakers", "audio output shortcut"], highlightID: nil),
+            SettingsSearchEntry(tab: .shortcuts, title: "Toggle external monitors", keywords: ["disconnect", "reconnect", "external display", "monitor"], highlightID: SettingsTab.shortcuts.highlightID(for: "Toggle external monitors")),
             SettingsSearchEntry(tab: .shortcuts, title: "Mute all microphones", keywords: ["mute mic", "microphone mute", "mute all"], highlightID: nil),
             SettingsSearchEntry(tab: .general, title: "Menubar icon", keywords: ["menu bar", "status bar", "icon"], highlightID: SettingsTab.general.highlightID(for: "Menubar icon")),
             SettingsSearchEntry(tab: .general, title: "Launch at login", keywords: ["autostart", "startup"], highlightID: SettingsTab.general.highlightID(for: "Launch at login")),

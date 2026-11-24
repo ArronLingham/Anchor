@@ -1216,6 +1216,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             LauncherPanelManager.shared.toggle()
         }
 
+        KeyboardShortcuts.onKeyUp(for: .toggleExternalMonitors) {
+            guard Defaults[.enableShortcuts] else { return }
+            ExternalMonitorController.shared.toggleExternalMonitors()
+        }
+
         KeyboardShortcuts.onKeyDown(for: .showAllDesktopDocks) {
             guard Defaults[.enableShortcuts] else { return }
             DesktopWorkspaceManager.shared.toggleShowAllDocks()
