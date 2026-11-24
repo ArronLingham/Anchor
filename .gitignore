@@ -85,6 +85,8 @@ __pycache__/
 !/scripts/regen-settings-indexes.sh
 !/scripts/settings_index.py
 /tests/*
+!/tests/FinderCutPasteDisableLifecycleTests.swift
+!/tests/run_finder_cut_paste_disable_lifecycle_tests.sh
 !/tests/SoundOutputSwitcherLifecycleTests.swift
 !/tests/run_sound_output_switcher_lifecycle_tests.sh
 !/tests/WallpaperApplyLifecycleTests.swift

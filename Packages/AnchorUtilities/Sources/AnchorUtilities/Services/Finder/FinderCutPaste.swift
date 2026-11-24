@@ -72,6 +72,9 @@ final class FinderCutPaste: ObservableObject {
     private var resultDismiss: DispatchWorkItem?
     private var operationGeneration = 0
     private var moveInProgress = false
+    private var discardMarksAfterMove = false
+    private let cutGate = ClipboardPresentationGate()
+    private let imagePasteGate = ClipboardPresentationGate()
     private var cutPasteEnabled = false
     private var showHUD = true
     private var pasteImageAsFileEnabled = false
@@ -108,9 +111,13 @@ final class FinderCutPaste: ObservableObject {
         showHUD = UtilityPreferences.standard.object(forKey: DefaultsKey.finderCutPasteShowHUD) as? Bool ?? true
         pasteImageAsFileEnabled = available
             && UtilityPreferences.standard.bool(forKey: DefaultsKey.finderPasteImageAsFile)
-        if SessionActivitySupport.tapShouldRun(featureWanted: cutPasteEnabled || pasteImageAsFileEnabled,
-                                               accessibilityGranted: AXIsProcessTrusted(),
-                                               sessionIsActive: SessionActivity.shared.isActive) {
+        let wantsTap = SessionActivitySupport.tapShouldRun(
+            featureWanted: cutPasteEnabled || pasteImageAsFileEnabled,
+            accessibilityGranted: AXIsProcessTrusted(),
+            sessionIsActive: SessionActivity.shared.isActive)
+        cutGate.update(available: cutPasteEnabled && wantsTap)
+        imagePasteGate.update(available: pasteImageAsFileEnabled && wantsTap)
+        if wantsTap {
             installTap()
         } else {
             removeTap()
@@ -119,7 +126,7 @@ final class FinderCutPaste: ObservableObject {
             installAppObserver()
         } else {
             removeAppObserver()
-            clearMarks()
+            resetCutState(clearOwnedPasteboard: false)
         }
         refreshPanel()
     }
@@ -128,9 +135,13 @@ final class FinderCutPaste: ObservableObject {
     /// resets its own permissions, so a revoked Accessibility grant can never
     /// leave a live tap behind.
     func suspend() {
+        cutPasteEnabled = false
+        pasteImageAsFileEnabled = false
+        cutGate.update(available: false)
+        imagePasteGate.update(available: false)
         removeTap()
         removeAppObserver()
-        clearMarks()
+        resetCutState(clearOwnedPasteboard: false)
     }
 
     private func installAppObserver() {
@@ -305,8 +316,8 @@ final class FinderCutPaste: ObservableObject {
         case Key.x:
             guard cutPasteEnabled else { return Unmanaged.passUnretained(event) }
             // Finder has no native cut for files, so swallowing ⌘X is safe.
-            cutAsync()
-            return nil
+            if moveInProgress { return nil }
+            return cutAsync() ? nil : Unmanaged.passUnretained(event)
         case Key.c:
             // Copying something else supersedes a pending cut; let Finder copy.
             if cutPasteEnabled, !marked.isEmpty { clearMarks() }
@@ -314,25 +325,23 @@ final class FinderCutPaste: ObservableObject {
         case Key.v:
             if cutPasteEnabled, !marked.isEmpty {
                 if NSPasteboard.general.changeCount == markedChangeCount {
-                    guard !moveInProgress else { return nil }
-                    pasteAsync()
-                    return nil
+                    guard !moveInProgress, !imagePasteInProgress else { return nil }
+                    return pasteAsync() ? nil : Unmanaged.passUnretained(event)
                 }
                 // Something else wrote to the pasteboard since the cut. Drop
                 // the marks, then let the image path below inspect that new
                 // content before falling back to Finder's normal paste.
                 clearMarks()
             }
-            guard pasteImageAsFileEnabled,
+            guard pasteImageAsFileEnabled, !moveInProgress,
                   !flags.contains(.maskShift),
                   !imagePasteInProgress,
                   let targetPID = NSWorkspace.shared.frontmostApplication?.processIdentifier
             else {
                 return Unmanaged.passUnretained(event)
             }
-            pasteImageAsync(targetPID: targetPID,
-                            expectedChangeCount: NSPasteboard.general.changeCount)
-            return nil
+            return pasteImageAsync(targetPID: targetPID, expectedChangeCount: NSPasteboard.general.changeCount)
+                ? nil : Unmanaged.passUnretained(event)
         default:
             return Unmanaged.passUnretained(event)
         }
@@ -343,21 +352,33 @@ final class FinderCutPaste: ObservableObject {
     /// The event tap only queues the work. Pasteboard decoding, Finder IPC and
     /// disk writes stay off the main run loop; non-image content is handed
     /// back to Finder as the same standard paste shortcut.
-    private func pasteImageAsync(targetPID: pid_t, expectedChangeCount: Int) {
+    private static func shortcutWanted(_ key: String) -> Bool {
+        AppFeature.finderCutPaste.isAvailable && SessionActivity.shared.isActive
+            && UtilityPreferences.standard.bool(forKey: key)
+    }
+
+    private func pasteImageAsync(targetPID: pid_t, expectedChangeCount: Int) -> Bool {
+        let key = DefaultsKey.finderPasteImageAsFile
+        guard let ticket = imagePasteGate.capture(currentlyAvailable: Self.shortcutWanted(key)) else { return false }
         imagePasteInProgress = true
+        let gate = imagePasteGate
+        let accepts = { gate.accepts(ticket, currentlyAvailable: Self.shortcutWanted(key)) }
+        let finish: (ImagePasteResult) -> Void = { [weak self] result in
+            DispatchQueue.main.async {
+                self?.finishImagePaste(targetPID: targetPID, expectedChangeCount: expectedChangeCount,
+                                       result: result, accepts: accepts)
+            }
+        }
         GeneralPasteboardAccess.shared.async { [weak self] in
+            guard self != nil, accepts() else { finish(.cancelled); return }
             let pasteboard = NSPasteboard.general
             guard pasteboard.changeCount == expectedChangeCount else {
-                DispatchQueue.main.async {
-                    self?.finishImagePaste(targetPID: targetPID, result: .notImage)
-                }
+                finish(.cancelled)
                 return
             }
             let identifiers = (pasteboard.types ?? []).map(\.rawValue)
             guard let identifier = FinderPasteImageSupport.preferredImageType(in: identifiers) else {
-                DispatchQueue.main.async {
-                    self?.finishImagePaste(targetPID: targetPID, result: .notImage)
-                }
+                finish(.notImage)
                 return
             }
             guard let source = pasteboard.data(forType: NSPasteboard.PasteboardType(identifier)),
@@ -368,47 +389,45 @@ final class FinderCutPaste: ObservableObject {
                     : bitmap.representation(using: .png, properties: [:]),
                   png.count <= Self.maxRawImageBytes
             else {
-                DispatchQueue.main.async {
-                    self?.finishImagePaste(targetPID: targetPID, result: .failed)
-                }
+                finish(.failed)
                 return
             }
 
-            DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            DispatchQueue.global(qos: .userInitiated).async {
+                guard accepts() else { finish(.cancelled); return }
                 guard let path = FinderBridge.insertionLocationPath() else {
-                    DispatchQueue.main.async {
-                        self?.finishImagePaste(targetPID: targetPID, result: .failed)
-                    }
+                    finish(.failed)
                     return
                 }
                 let directory = URL(fileURLWithPath: path, isDirectory: true)
                 let name = FinderPasteImageSupport.fileName(for: Date())
                 let destination = Self.uniqueDestination(for: name, in: directory,
                                                          fm: FileManager.default)
+                guard accepts() else { finish(.cancelled); return }
                 do {
-                    try png.write(to: destination, options: .atomic)
-                    DispatchQueue.main.async {
-                        self?.finishImagePaste(targetPID: targetPID, result: .saved)
-                    }
+                    let saved = try Self.publishImage(png, to: destination, shouldPublish: accepts)
+                    finish(saved ? .saved : .cancelled)
                 } catch {
-                    DispatchQueue.main.async {
-                        self?.finishImagePaste(targetPID: targetPID, result: .failed)
-                    }
+                    finish(.failed)
                 }
             }
         }
+        return true
     }
 
     private enum ImagePasteResult {
-        case notImage, saved, failed
+        case notImage, saved, failed, cancelled
     }
 
-    private func finishImagePaste(targetPID: pid_t, result: ImagePasteResult) {
+    private func finishImagePaste(targetPID: pid_t, expectedChangeCount: Int,
+                                  result: ImagePasteResult, accepts: () -> Bool) {
         imagePasteInProgress = false
+        guard accepts() else { return }
         switch result {
         case .notImage:
+            guard NSPasteboard.general.changeCount == expectedChangeCount else { return }
             postNormalPaste(ifStillFrontmost: targetPID)
-        case .saved:
+        case .saved, .cancelled:
             break
         case .failed:
             NSSound.beep()
@@ -426,10 +445,28 @@ final class FinderCutPaste: ObservableObject {
         else { return }
         keyDown.flags = .maskCommand
         keyUp.flags = .maskCommand
-        keyDown.post(tap: .cghidEventTap)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.04) {
-            keyUp.post(tap: .cghidEventTap)
+        keyDown.postToPid(targetPID)
+        keyUp.postToPid(targetPID)
+    }
+
+    /// Stage in the same directory so publication can rename the complete
+    /// file without replacing a destination created by another operation.
+    private static func publishImage(_ data: Data, to destination: URL,
+                                     shouldPublish: () -> Bool) throws -> Bool {
+        guard shouldPublish() else { return false }
+        let files = FileManager.default
+        let staged = destination.deletingLastPathComponent()
+            .appendingPathComponent(".anchor-paste-\(UUID().uuidString).tmp")
+        do {
+            try data.write(to: staged, options: .withoutOverwriting)
+        } catch {
+            if (error as? CocoaError)?.code != .fileWriteFileExists { try? files.removeItem(at: staged) }
+            throw error
         }
+        defer { try? files.removeItem(at: staged) }
+        guard shouldPublish() else { return false }
+        try files.moveItem(at: staged, to: destination)
+        return true
     }
 
     /// True when the keyboard focus is in an editable text control, so cut/copy/
@@ -454,16 +491,24 @@ final class FinderCutPaste: ObservableObject {
 
     // MARK: - Cut
 
-    private func cutAsync() {
+    private func cutAsync() -> Bool {
+        let key = DefaultsKey.finderCutPasteEnabled
+        guard !moveInProgress,
+              let ticket = cutGate.capture(currentlyAvailable: Self.shortcutWanted(key)) else { return false }
+        let changeCount = NSPasteboard.general.changeCount
         operationGeneration += 1
         let generation = operationGeneration
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self, self.cutGate.accepts(ticket, currentlyAvailable: Self.shortcutWanted(key)) else { return }
             let urls = FinderBridge.selectionURLs()
-            DispatchQueue.main.async {
-                guard let self, generation == self.operationGeneration else { return }
+            DispatchQueue.main.async { [weak self] in
+                guard let self, generation == self.operationGeneration,
+                      NSPasteboard.general.changeCount == changeCount,
+                      self.cutGate.accepts(ticket, currentlyAvailable: Self.shortcutWanted(key)) else { return }
                 self.applyCut(urls)
             }
         }
+        return true
     }
 
     private func applyCut(_ urls: [URL]) {
@@ -483,9 +528,11 @@ final class FinderCutPaste: ObservableObject {
 
     // MARK: - Paste (move)
 
-    private func pasteAsync() {
-        guard !moveInProgress else { return }
+    private func pasteAsync() -> Bool {
+        guard !moveInProgress, !imagePasteInProgress,
+              Self.shortcutWanted(DefaultsKey.finderCutPasteEnabled) else { return false }
         moveInProgress = true
+        discardMarksAfterMove = false
         operationGeneration += 1
         let generation = operationGeneration
         let urls = marked.map(\.url)
@@ -546,6 +593,7 @@ final class FinderCutPaste: ObservableObject {
                                   stillCut: stillCut)
             }
         }
+        return true
     }
 
     /// Sizes up a batch before moving it. Progress only shows when at least
@@ -627,7 +675,11 @@ final class FinderCutPaste: ObservableObject {
         operationGeneration += 1
         moveInProgress = false
         moveProgress = nil
-        marked = stillCut.isEmpty ? [] : marked.filter { stillCut.contains($0.url) }
+        let retainMarks = !discardMarksAfterMove && cutPasteEnabled
+            && Self.shortcutWanted(DefaultsKey.finderCutPasteEnabled)
+            && NSPasteboard.general.changeCount == markedChangeCount
+        discardMarksAfterMove = false
+        marked = retainMarks ? marked.filter { stillCut.contains($0.url) } : []
         if marked.isEmpty {
             markedChangeCount = 0
         }
@@ -695,6 +747,12 @@ final class FinderCutPaste: ObservableObject {
     }
 
     private func resetCutState(clearOwnedPasteboard: Bool) {
+        if moveInProgress {
+            // The pasted batch owns its marks and progress until its worker
+            // returns. Disablement only retires any marks it would leave.
+            discardMarksAfterMove = true
+            return
+        }
         resultDismiss?.cancel()
         resultDismiss = nil
         let shouldClearPasteboard = clearOwnedPasteboard
@@ -723,6 +781,11 @@ final class FinderCutPaste: ObservableObject {
     }
 
     private func refreshPanel() {
+        if !cutPasteEnabled, !moveInProgress, lastResult == nil {
+            panel?.close()
+            panel = nil
+            return
+        }
         guard showHUD else {
             panel?.orderOut(nil)
             return
