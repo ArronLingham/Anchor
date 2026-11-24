@@ -22,14 +22,7 @@ import AnchorUtilities
 import Defaults
 import SwiftUI
 
-/// The Launchpad replacement: a paged grid of every installed application,
-/// shown when the search field is empty.
-///
-/// Deliberately no drag-to-reorder or folders in this version. Both are
-/// achievable but a paged, reorderable, folder-forming SwiftUI grid is a large
-/// amount of fiddly state for something you can also just search — and the
-/// layout could not be migrated from the old Launchpad anyway, since macOS 26
-/// removed the database it was stored in.
+/// The shared horizontal pager for categories and the application grid.
 struct LauncherGridView: View {
     let apps: [LauncherApp]
     /// Folder name -> its apps, resolved by the caller. Drawn before the loose
@@ -43,14 +36,51 @@ struct LauncherGridView: View {
     /// everything that did not match that one query.
     var allowsReorder: Bool = true
     @Binding var selection: Int
-    var onColumnsChanged: ((Int) -> Void)? = nil
+    let currentPage: Int
+    let keyboardSelection: Int?
+    let includesCategories: Bool
+    let widgetProfileID: String
+    let onPageChanged: (Int) -> Void
+    let onLayoutChanged: (LauncherGridLayout) -> Void
+    let onOpenCategory: (AppCategory) -> Void
     @Default(.launcherNavigationStyle) private var navigationStyle
     @Default(.launcherSortMode) private var sortMode
     @State private var draggingID: String?
     @State private var openFolder: String?
     @State private var renaming: String = ""
     let onLaunch: (LauncherApp) -> Void
+    @State private var scrollPosition: ScrollPosition
+    @State private var isScrubbing = false
+    @State private var isScrubberHovered = false
 
+    init(
+        apps: [LauncherApp],
+        folders: [(name: String, apps: [LauncherApp])],
+        allowsReorder: Bool,
+        selection: Binding<Int>,
+        currentPage: Int,
+        keyboardSelection: Int?,
+        includesCategories: Bool,
+        widgetProfileID: String,
+        onPageChanged: @escaping (Int) -> Void,
+        onLayoutChanged: @escaping (LauncherGridLayout) -> Void,
+        onOpenCategory: @escaping (AppCategory) -> Void,
+        onLaunch: @escaping (LauncherApp) -> Void
+    ) {
+        self.apps = apps
+        self.folders = folders
+        self.allowsReorder = allowsReorder
+        _selection = selection
+        self.currentPage = currentPage
+        self.keyboardSelection = keyboardSelection
+        self.includesCategories = includesCategories
+        self.widgetProfileID = widgetProfileID
+        self.onPageChanged = onPageChanged
+        self.onLayoutChanged = onLayoutChanged
+        self.onOpenCategory = onOpenCategory
+        self.onLaunch = onLaunch
+        _scrollPosition = State(initialValue: ScrollPosition(id: currentPage, anchor: .center))
+    }
 
     /// One grid slot: a folder tile or an app.
     private enum Slot: Identifiable {
@@ -79,80 +109,64 @@ struct LauncherGridView: View {
         }
     }
 
-    /// Moves the selection so `page` becomes the visible one.
-    private func goToPage(_ page: Int, layout: LauncherGridLayout) {
-        let pageList = pages(for: layout)
-        let last = max(0, pageList.count - 1)
-        let clamped = min(max(0, page), last)
-        currentPage = clamped
-        if let next = LauncherPaging.selection(
-            forPage: clamped, folderCount: folders.count,
-            perPage: layout.perPage, appCount: apps.count),
-           LauncherPaging.page(forSelection: next, folderCount: folders.count,
-                               perPage: layout.perPage) == clamped {
-            selection = next
-        }
-    }
-
-    /// The visible page, owned here rather than derived from `selection`.
-    @State private var currentPage: Int = 0
-    @State private var scrollPage: Int? = 0
-    @State private var isScrubbing = false
-    @State private var isScrubberHovered = false
-
-    /// Keeps the page in step when something else moves the selection — the
-    /// arrow keys, or a fresh search.
-    private func syncPageToSelection(layout: LauncherGridLayout) {
-        let p = LauncherPaging.page(
-            forSelection: selection, folderCount: folders.count, perPage: layout.perPage)
-        let clamped = min(p, max(0, pages(for: layout).count - 1))
-        if clamped != currentPage { currentPage = clamped }
-    }
-
     var body: some View {
         GeometryReader { geometry in
             let layout = LauncherGridLayout.calculate(for: geometry.size)
             let pageList = pages(for: layout)
+            let appPageCount = max(1, pageList.count)
+            let pageIDs = LauncherPaging.pageIDs(appPageCount: appPageCount, showCategories: includesCategories)
 
             VStack(spacing: 10) {
-                ScrollViewReader { proxy in
+                GeometryReader { viewport in
                     ScrollView(.horizontal) {
                         LazyHStack(spacing: 0) {
-                            ForEach(Array(pageList.enumerated()), id: \.offset) { pageIndex, page in
-                                page_(page, pageIndex: pageIndex, layout: layout, height: max(106, geometry.size.height - 68))
-                                    .id(pageIndex)
-                                    .frame(width: geometry.size.width)
+                            ForEach(pageIDs, id: \.self) { page in
+                                Group {
+                                    if page == LauncherPaging.categoriesPage {
+                                        LauncherCategoryPageView(
+                                            widgetProfileID: widgetProfileID,
+                                            appPageCount: appPageCount,
+                                            isPageActive: page == currentPage,
+                                            onOpenCategory: onOpenCategory,
+                                            onLaunch: onLaunch
+                                        )
+                                    } else {
+                                        appPage(
+                                            pageList.indices.contains(page) ? pageList[page] : [],
+                                            index: page,
+                                            appPageCount: appPageCount,
+                                            layout: layout,
+                                            height: viewport.size.height
+                                        )
+                                    }
+                                }
+                                .frame(width: viewport.size.width, height: viewport.size.height)
                             }
                         }
                         .scrollTargetLayout()
                     }
                     .scrollTargetBehavior(.paging)
-                    .scrollPosition(id: $scrollPage)
-                    .onChange(of: scrollPage) { _, page in
-                        if let page, page != currentPage { goToPage(page, layout: layout) }
-                    }
+                    .scrollPosition($scrollPosition, anchor: .center)
                     .scrollIndicators(.never)
+                    .onChange(of: scrollPosition.viewID(type: Int.self)) { _, page in
+                        guard scrollPosition.isPositionedByUser, let page, page != currentPage else { return }
+                        onPageChanged(page)
+                    }
                     .onChange(of: currentPage) { _, page in
-                        withAnimation(.easeInOut(duration: 0.2)) { proxy.scrollTo(page, anchor: .center) }
+                        guard scrollPosition.viewID(type: Int.self) != page else { return }
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            scrollPosition.scrollTo(id: page, anchor: .center)
+                        }
                     }
-                    .onChange(of: selection) { _, _ in syncPageToSelection(layout: layout) }
-                    .onChange(of: layout) { _, _ in
-                        syncPageToSelection(layout: layout)
-                        onColumnsChanged?(layout.columns)
-                    }
-                    .onChange(of: slots.count) { _, _ in syncPageToSelection(layout: layout) }
-                    .onAppear {
-                        syncPageToSelection(layout: layout)
-                        onColumnsChanged?(layout.columns)
-                    }
+                    .overlay(alignment: .trailing) { edgeAdvance(forward: true, pageIDs: pageIDs) }
+                    .overlay(alignment: .leading) { edgeAdvance(forward: false, pageIDs: pageIDs) }
                 }
 
-                navigationControls(pageList: pageList, layout: layout)
+                navigationControls(pageIDs: pageIDs)
             }
             .padding(.vertical, 12)
-            .overlay(alignment: .trailing) { edgeAdvance(forward: true, pageList: pageList, layout: layout) }
-            .overlay(alignment: .leading) { edgeAdvance(forward: false, pageList: pageList, layout: layout) }
             .overlay { folderOverlay }
+            .onChange(of: layout, initial: true) { _, layout in onLayoutChanged(layout) }
         }
     }
 
@@ -243,30 +257,22 @@ struct LauncherGridView: View {
         openFolder = trimmed
     }
 
-    /// Edge drop zones that navigate pages on hover or when dragging an app.
+    /// Advancing between app pages during a drag keeps the drop targets reachable.
     @ViewBuilder
-    private func edgeAdvance(forward: Bool, pageList: [[Slot]], layout: LauncherGridLayout) -> some View {
-        let canGo = forward ? currentPage < pageList.count - 1 : currentPage > 0
-        if pageList.count > 1 {
-            PageDropZone(
-                forward: forward,
-                canNavigate: canGo,
-                isDragging: draggingID != nil,
-                onNavigate: {
-                    goToPage(forward ? currentPage + 1 : currentPage - 1, layout: layout)
-                }
-            )
+    private func edgeAdvance(forward: Bool, pageIDs: Range<Int>) -> some View {
+        let page = currentPage + (forward ? 1 : -1)
+        if draggingID != nil, pageIDs.contains(page), page != LauncherPaging.categoriesPage {
+            PageDropZone(forward: forward, onNavigate: { onPageChanged(page) })
         }
     }
 
-    @ViewBuilder
-    private func navigationControls(pageList: [[Slot]], layout: LauncherGridLayout) -> some View {
+    private func navigationControls(pageIDs: Range<Int>) -> some View {
         VStack(spacing: 8) {
             if navigationStyle.showsBar {
-                pageScrubber(pageList: pageList, layout: layout)
+                pageScrubber(pageIDs: pageIDs)
             }
             if navigationStyle.showsDots {
-                pageDots(pageList: pageList, layout: layout)
+                pageDots(pageIDs: pageIDs)
             }
         }
         .padding(.top, 4)
@@ -274,13 +280,13 @@ struct LauncherGridView: View {
     }
 
     /// A macOS-styled draggable scroll bar for smooth page scrubbing.
-    private func pageScrubber(pageList: [[Slot]], layout: LauncherGridLayout) -> some View {
-        let totalPages = max(1, pageList.count)
+    private func pageScrubber(pageIDs: Range<Int>) -> some View {
+        let totalPages = pageIDs.count
         return GeometryReader { geo in
             let barWidth: CGFloat = min(320, max(180, geo.size.width * 0.35))
             let totalAvailable = barWidth
             let knobWidth: CGFloat = totalPages > 1 ? max(44, totalAvailable / CGFloat(totalPages)) : totalAvailable
-            let fraction: CGFloat = totalPages > 1 ? CGFloat(currentPage) / CGFloat(totalPages - 1) : 0
+            let fraction: CGFloat = totalPages > 1 ? CGFloat(currentPage - pageIDs.lowerBound) / CGFloat(totalPages - 1) : 0
             let knobOffset = (totalAvailable - knobWidth) * fraction
 
             HStack {
@@ -310,31 +316,78 @@ struct LauncherGridView: View {
                         .onChanged { drag in
                             isScrubbing = true
                             guard totalPages > 1 else { return }
-                            let x = max(0, min(totalAvailable, drag.location.x))
-                            let p = x / totalAvailable
-                            let target = Int((p * CGFloat(totalPages - 1)).rounded())
-                            let clampedTarget = max(0, min(totalPages - 1, target))
-                            if clampedTarget != currentPage {
-                                goToPage(clampedTarget, layout: layout)
-                            }
+                            let page = page(at: drag.location.x, trackWidth: totalAvailable, pages: pageIDs)
+                            if page != currentPage { onPageChanged(page) }
                         }
                         .onEnded { _ in
                             isScrubbing = false
                         }
                 )
+                .launcherWidgetPageDrop(
+                    profileID: widgetProfileID,
+                    pageAt: { page(at: $0.x, trackWidth: totalAvailable, pages: pageIDs) },
+                    onMove: onPageChanged
+                )
                 Spacer()
             }
         }
         .frame(height: 16)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Launchpad pages")
+        .accessibilityValue(pageLabel(currentPage))
+        .accessibilityAdjustableAction { direction in
+            switch direction {
+            case .increment:
+                if pageIDs.contains(currentPage + 1) { onPageChanged(currentPage + 1) }
+            case .decrement:
+                if pageIDs.contains(currentPage - 1) { onPageChanged(currentPage - 1) }
+            @unknown default:
+                break
+            }
+        }
     }
 
-    private func page_(_ page: [Slot], pageIndex: Int, layout: LauncherGridLayout, height: CGFloat) -> some View {
+    private func page(at x: CGFloat, trackWidth: CGFloat, pages: Range<Int>) -> Int {
+        let fraction = max(0, min(1, x / trackWidth))
+        return pages.lowerBound + Int((fraction * CGFloat(pages.count - 1)).rounded())
+    }
+
+    private func appPage(
+        _ slots: [Slot], index: Int, appPageCount: Int, layout: LauncherGridLayout, height: CGFloat
+    ) -> some View {
+        ScrollViewReader { proxy in
+            ScrollView(.vertical) {
+                LazyVStack(spacing: 0) {
+                    if allowsReorder {
+                        LauncherWidgetShelf(
+                            profileID: widgetProfileID,
+                            page: index,
+                            appPageCount: appPageCount,
+                            showCategories: includesCategories,
+                            isPageActive: index == currentPage
+                        )
+                    }
+                    appTiles(slots, layout: layout, height: height)
+                }
+                .padding(.horizontal, 20)
+            }
+            .scrollIndicators(.never)
+            .scrollBounceBehavior(.basedOnSize, axes: .vertical)
+            .onChange(of: index == currentPage ? keyboardSelection : nil, initial: true) { _, selection in
+                guard let selection, apps.indices.contains(selection) else { return }
+                proxy.scrollTo(apps[selection].id)
+            }
+        }
+    }
+
+    private func appTiles(_ slots: [Slot], layout: LauncherGridLayout, height: CGFloat) -> some View {
         LazyVGrid(
             columns: Array(
                 repeating: GridItem(.flexible(), spacing: 4), count: layout.columns),
-            spacing: layout.rows > 1 ? max(4, (height - CGFloat(layout.rows) * 106) / CGFloat(layout.rows - 1)) : 4
+            spacing: layout.rows > 1
+                ? min(24, max(4, (height - CGFloat(layout.rows) * 106) / CGFloat(layout.rows - 1))) : 4
         ) {
-            ForEach(page) { slot in
+            ForEach(slots) { slot in
                 switch slot {
                 case .folder(let name, let members):
                     LauncherFolderCell(name: name, apps: members)
@@ -363,11 +416,11 @@ struct LauncherGridView: View {
                         appID: app.id,
                         draggingID: $draggingID,
                         onDrop: { moved in dropped(moved, onto: app.id) }))
+                    .id(app.id)
                 }
             }
         }
-        .padding(.horizontal, 20)
-        .frame(height: height, alignment: .top)
+        .frame(maxWidth: .infinity, alignment: .top)
     }
 
     /// Reads one dragged app id off the pasteboard and hands it to `action`.
@@ -452,25 +505,37 @@ struct LauncherGridView: View {
         Defaults[.launcherCustomOrder] = order
     }
 
-    /// Interactive page indicator dots / pill.
-    private func pageDots(pageList: [[Slot]], layout: LauncherGridLayout) -> some View {
-        let totalPages = max(1, pageList.count)
-        return HStack(spacing: 8) {
-            ForEach(0..<totalPages, id: \.self) { index in
-                Capsule()
-                    .fill(index == currentPage ? Color.primary.opacity(0.85) : Color.primary.opacity(0.25))
-                    .frame(width: index == currentPage ? 16 : 7, height: 7)
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        guard index < pageList.count else { return }
-                        withAnimation(.spring(response: 0.25, dampingFraction: 0.75)) {
-                            goToPage(index, layout: layout)
+    private func pageLabel(_ page: Int) -> Text {
+        page == LauncherPaging.categoriesPage ? Text("Categories") : Text("Apps, page \(page + 1)")
+    }
+
+    private func pageDots(pageIDs: Range<Int>) -> some View {
+        HStack(spacing: 0) {
+            ForEach(pageIDs, id: \.self) { page in
+                Button {
+                    onPageChanged(page)
+                } label: {
+                    Group {
+                        if page == LauncherPaging.categoriesPage {
+                            Image(systemName: "square.grid.2x2")
+                                .font(.system(size: 11, weight: .semibold))
+                        } else {
+                            Capsule()
+                                .frame(width: page == currentPage ? 16 : 7, height: 7)
                         }
                     }
+                    .foregroundStyle(page == currentPage ? Color.primary.opacity(0.85) : Color.primary.opacity(0.35))
+                    .frame(minWidth: 20, minHeight: 20)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(pageLabel(page))
+                .accessibilityAddTraits(page == currentPage ? .isSelected : [])
+                .help(pageLabel(page))
+                .launcherWidgetPageDrop(profileID: widgetProfileID, page: page) { onPageChanged(page) }
             }
         }
         .padding(.horizontal, 14)
-        .padding(.vertical, 6)
         .animation(.spring(response: 0.28, dampingFraction: 0.75), value: currentPage)
     }
 }
@@ -628,55 +693,39 @@ private struct LauncherAppIcon: View {
     }
 }
 
-/// Active drop zone on the screen edge that flips pages when dragging or hovering.
+/// Advances an app drag to an adjacent page after the pointer rests at the edge.
 private struct PageDropZone: View {
     let forward: Bool
-    let canNavigate: Bool
-    let isDragging: Bool
     let onNavigate: () -> Void
 
     @State private var isTargeted = false
     @State private var timer: Timer?
 
     var body: some View {
-        if canNavigate {
-            ZStack {
-                Rectangle()
-                    .fill(isTargeted && isDragging ? Color.accentColor.opacity(0.2) : Color.clear)
-                    .frame(width: 52)
-                    .overlay(alignment: forward ? .trailing : .leading) {
-                        if isDragging && isTargeted {
-                            Image(systemName: forward ? "chevron.right" : "chevron.left")
-                                .font(.system(size: 22, weight: .bold))
-                                .foregroundStyle(Color.accentColor)
-                                .padding(forward ? .trailing : .leading, 14)
-                                .transition(.opacity)
-                        }
-                    }
+        Rectangle()
+            .fill(isTargeted ? Color.accentColor.opacity(0.2) : .clear)
+            .frame(width: 20)
+            .overlay {
+                if isTargeted {
+                    Image(systemName: forward ? "chevron.right" : "chevron.left")
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundStyle(Color.accentColor)
+                }
             }
             .contentShape(Rectangle())
-            .onHover { inside in
-                guard inside, !isDragging, canNavigate else { return }
-                onNavigate()
-            }
             .onDrop(of: [.text], isTargeted: $isTargeted) { _ in false }
             .onChange(of: isTargeted) { _, targeted in
-                if targeted && isDragging && canNavigate {
-                    timer?.invalidate()
+                timer?.invalidate()
+                timer = nil
+                if targeted {
                     timer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: false) { _ in
-                        DispatchQueue.main.async {
-                            onNavigate()
-                        }
+                        DispatchQueue.main.async { onNavigate() }
                     }
-                } else {
-                    timer?.invalidate()
-                    timer = nil
                 }
             }
             .onDisappear {
                 timer?.invalidate()
                 timer = nil
             }
-        }
     }
 }

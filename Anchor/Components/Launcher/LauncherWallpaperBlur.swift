@@ -20,169 +20,113 @@
 import AppKit
 import CoreImage
 import Defaults
+import ImageIO
+import AnchorUtilities
 import SwiftUI
 
-/// Pre-warms and caches edge-clamped Gaussian-blurred desktop wallpapers per display.
-final class LauncherWallpaperCache {
+/// Only wallpaper mode needs a bitmap. Decode a small thumbnail off the main actor
+/// and keep enough for two displays. The system material handles the live backdrop.
+private actor LauncherWallpaperCache {
     static let shared = LauncherWallpaperCache()
+    private final class Entry {
+        let modified: Date?
+        let image: CGImage
 
-    private struct Entry {
-        let url: URL
-        let image: NSImage
-    }
-
-    private var cache: [String: Entry] = [:]
-    private let lock = NSLock()
-    private let context = CIContext(options: [.useSoftwareRenderer: false])
-
-    private init() {
-        NSWorkspace.shared.notificationCenter.addObserver(
-            forName: NSWorkspace.activeSpaceDidChangeNotification,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            self?.prewarmAll()
-        }
-
-        NotificationCenter.default.addObserver(
-            forName: NSApplication.didChangeScreenParametersNotification,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            self?.prewarmAll()
+        init(modified: Date?, image: CGImage) {
+            self.modified = modified
+            self.image = image
         }
     }
 
-    func screenKey(for screen: NSScreen) -> String {
-        "\(screen.frame.origin.x)_\(screen.frame.origin.y)_\(screen.frame.size.width)x\(screen.frame.size.height)"
-    }
+    private let cache = NSCache<NSURL, Entry>()
+    private let context = CIContext(options: [.cacheIntermediates: false])
 
-    func image(for screen: NSScreen) -> NSImage? {
-        guard let currentURL = NSWorkspace.shared.desktopImageURL(for: screen) else { return nil }
-        lock.lock()
-        defer { lock.unlock() }
-        if let entry = cache[screenKey(for: screen)], entry.url == currentURL {
-            return entry.image
-        }
-        return nil
-    }
+    private init() { cache.countLimit = 2 }
 
-    func store(_ image: NSImage, url: URL, for screen: NSScreen) {
-        lock.lock()
-        defer { lock.unlock() }
-        cache[screenKey(for: screen)] = Entry(url: url, image: image)
-    }
-
-    func renderBlur(for screen: NSScreen) -> (URL, NSImage)? {
-        guard let url = NSWorkspace.shared.desktopImageURL(for: screen),
-              let ciImage = CIImage(contentsOf: url) else { return nil }
-
-        let scale = screen.backingScaleFactor
-        let targetSize = CGSize(width: screen.frame.width * scale, height: screen.frame.height * scale)
-        guard targetSize.width > 0, targetSize.height > 0, ciImage.extent.width > 0, ciImage.extent.height > 0 else { return nil }
-
-        let scaleX = targetSize.width / ciImage.extent.width
-        let scaleY = targetSize.height / ciImage.extent.height
-        let scaledImage = ciImage.transformed(by: CGAffineTransform(scaleX: scaleX, y: scaleY))
-
-        // Clamping to extent prevents edge bleed / border transparency
-        let clamped = scaledImage.clampedToExtent()
-        guard let filter = CIFilter(name: "CIGaussianBlur") else { return nil }
-        filter.setValue(clamped, forKey: kCIInputImageKey)
-        filter.setValue(45.0 * scale, forKey: kCIInputRadiusKey)
-
-        guard let output = filter.outputImage?.cropped(to: CGRect(origin: .zero, size: targetSize)),
-              let cgImage = context.createCGImage(output, from: CGRect(origin: .zero, size: targetSize)) else {
-            return nil
-        }
-        return (url, NSImage(cgImage: cgImage, size: screen.frame.size))
-    }
-
-    func prewarmAll() {
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            guard let self else { return }
-            for screen in NSScreen.screens {
-                if let (url, img) = self.renderBlur(for: screen) {
-                    self.store(img, url: url, for: screen)
-                }
-            }
-        }
+    func image(for url: URL) -> CGImage? {
+        guard !Task.isCancelled else { return nil }
+        let modified = try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate
+        if let cached = cache.object(forKey: url as NSURL), cached.modified == modified { return cached.image }
+        let options: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceThumbnailMaxPixelSize: 640
+        ]
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
+              let thumbnail = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary),
+              !Task.isCancelled else { return nil }
+        let input = CIImage(cgImage: thumbnail)
+        let blurred = input.clampedToExtent().applyingGaussianBlur(sigma: 10)
+        guard let output = context.createCGImage(blurred, from: input.extent), !Task.isCancelled else { return nil }
+        cache.setObject(Entry(modified: modified, image: output), forKey: url as NSURL)
+        return output
     }
 }
 
-/// Background presenter that provides true desktop wallpaper blur or live open windows blur.
-struct LauncherWallpaperBlur: View {
-    @Default(.launcherBackgroundStyle) private var backgroundStyle
-    @State private var wallpaperImage: NSImage?
-    @Environment(\.colorScheme) private var colorScheme
+struct LauncherBackdrop: View {
+    let mode: LauncherPresentationMode
+    let screen: NSScreen?
+    let onDismiss: () -> Void
+    @Default(.launcherBackgroundStyle) private var style
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.colorSchemeContrast) private var contrast
+    @State private var wallpaper: CGImage?
+
+    private var wallpaperURL: URL? {
+        guard style == .desktopWallpaper, !reduceTransparency, let screen else { return nil }
+        return NSWorkspace.shared.desktopImageURL(for: screen)
+    }
 
     var body: some View {
+        let radius: CGFloat = mode == .floaty ? 24 : 0
+        let shape = AnchorCorners.rectangle(cornerRadius: radius)
         ZStack {
-            if backgroundStyle == .desktopWallpaper {
-                if let wallpaperImage {
-                    Image(nsImage: wallpaperImage)
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                        .overlay(
-                            Color.black.opacity(colorScheme == .dark ? 0.35 : 0.18)
-                        )
-                } else {
-                    VisualEffectBlurView(material: .fullScreenUI, blendingMode: .behindWindow)
-                        .overlay(
-                            Color.black.opacity(colorScheme == .dark ? 0.30 : 0.15)
-                        )
-                }
+            if reduceTransparency {
+                AnchorDesign.canvas
             } else {
-                VisualEffectBlurView(material: .fullScreenUI, blendingMode: .behindWindow)
-                    .overlay(
-                        Color.black.opacity(colorScheme == .dark ? 0.28 : 0.14)
-                    )
+                LauncherGlass()
+                if style == .desktopWallpaper, let wallpaper {
+                    GeometryReader { geometry in
+                        Image(decorative: wallpaper, scale: 1)
+                            .resizable()
+                            .scaledToFill()
+                            .frame(width: geometry.size.width, height: geometry.size.height)
+                            .clipped()
+                    }
+                    .opacity(0.82)
+                }
+                LinearGradient(colors: [AnchorDesign.surface.opacity(0.24), AnchorDesign.canvas.opacity(0.48)],
+                               startPoint: .topLeading, endPoint: .bottomTrailing)
             }
+        }
+        .clipShape(shape)
+        .overlay {
+            if mode == .floaty {
+                shape.anchorStrokeBorder(Color.white.opacity(contrast == .increased ? 0.50 : 0.18), lineWidth: 1)
+            }
+        }
+        .contentShape(shape)
+        .onTapGesture { if mode == .fullscreen { onDismiss() } }
+        .accessibilityHidden(true)
+        .task(id: wallpaperURL) {
+            wallpaper = nil
+            guard let url = wallpaperURL else { return }
+            let image = await LauncherWallpaperCache.shared.image(for: url)
+            guard !Task.isCancelled else { return }
+            wallpaper = image
         }
         .ignoresSafeArea()
-        .onAppear {
-            loadWallpaper()
-        }
-        .onChange(of: backgroundStyle) { _, _ in
-            loadWallpaper()
-        }
-    }
-
-    private func loadWallpaper() {
-        guard backgroundStyle == .desktopWallpaper else { return }
-        let screen = NSScreen.screens.first { $0.frame.contains(NSEvent.mouseLocation) } ?? NSScreen.main
-        guard let targetScreen = screen else { return }
-
-        if let cached = LauncherWallpaperCache.shared.image(for: targetScreen) {
-            self.wallpaperImage = cached
-        } else {
-            Task.detached(priority: .userInitiated) {
-                if let (url, img) = LauncherWallpaperCache.shared.renderBlur(for: targetScreen) {
-                    LauncherWallpaperCache.shared.store(img, url: url, for: targetScreen)
-                    await MainActor.run {
-                        self.wallpaperImage = img
-                    }
-                }
-            }
-        }
     }
 }
 
-/// AppKit Visual Effect View representable for high performance system glass.
-struct VisualEffectBlurView: NSViewRepresentable {
-    var material: NSVisualEffectView.Material = .fullScreenUI
-    var blendingMode: NSVisualEffectView.BlendingMode = .behindWindow
-
+private struct LauncherGlass: NSViewRepresentable {
     func makeNSView(context: Context) -> NSVisualEffectView {
         let view = NSVisualEffectView()
-        view.material = material
-        view.blendingMode = blendingMode
+        view.material = .hudWindow
+        view.blendingMode = .behindWindow
         view.state = .active
         return view
     }
 
-    func updateNSView(_ nsView: NSVisualEffectView, context: Context) {
-        nsView.material = material
-        nsView.blendingMode = blendingMode
-    }
+    func updateNSView(_ nsView: NSVisualEffectView, context: Context) {}
 }

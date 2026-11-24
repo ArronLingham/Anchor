@@ -51,6 +51,7 @@ final class LauncherPanelManager: ObservableObject {
         let hosting = FirstMouseHostingView(
             rootView: LauncherView(
                 widgetProfileID: LauncherWidgetProfile.screenID(screen),
+                screen: screen,
                 onLaunch: { [weak self] app in
                     AppIndex.shared.launch(app)
                     // The launched app takes focus itself, so do not restore.
@@ -61,9 +62,8 @@ final class LauncherPanelManager: ObservableObject {
         hosting.frame = NSRect(origin: .zero, size: frame.size)
         hosting.autoresizingMask = [.width, .height]
 
-        let panel = LauncherPanel(contentView: hosting, mode: mode)
+        let panel = LauncherPanel(contentView: hosting, mode: mode, frame: frame)
         panel.onResignKey = { [weak self] in self?.hide() }
-        panel.positionOnActiveScreen(mode: mode)
         self.panel = panel
 
         // Order the panel front and nominate it as key BEFORE asking for
@@ -81,8 +81,8 @@ final class LauncherPanelManager: ObservableObject {
         self.previouslyActiveApp = nil
         self.panel = nil
 
-        panel.dismiss {
-            if restoringFocus, let appToRestore,
+        panel.dismiss { [weak self] in
+            if self?.panel == nil, restoringFocus, let appToRestore,
                 appToRestore.bundleIdentifier != Bundle.main.bundleIdentifier
             {
                 appToRestore.activate()

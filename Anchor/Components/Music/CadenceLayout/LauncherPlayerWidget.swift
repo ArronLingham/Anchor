@@ -21,21 +21,8 @@ import AnchorUtilities
 import Defaults
 import SwiftUI
 
-/// The now-playing card for Anchor's Option+Space launcher.
-///
-/// **Not reachable inside Cadence**, which has no launcher. It is built now,
-/// against the same engine as everything else, so that wiring it up at Anchor
-/// integration is a matter of placing this view in `LauncherWidgetStrip` rather
-/// than writing a fifth player.
-///
-/// It replaces `LauncherVinylWidget`, which draws a static 38pt circle that does
-/// not spin and carries no transport. Anchor's reason for that is recorded and
-/// was good: the launcher dismisses on tap, so a button you press vanishes
-/// before it does anything. Cadence's card **opens the desktop player** instead
-/// of dismissing, which is what makes transport worth having.
+/// Cadence playback controls and metadata for Anchor's Launchpad widget shelf.
 struct LauncherPlayerWidget: View {
-    /// Anchor's `WidgetCard` is `minWidth: 108, minHeight: 62`. These are the
-    /// sizes that fit its strip without reflowing it.
     enum Size: String, Codable, CaseIterable, Defaults.Serializable {
         case compact, regular, wide
 
@@ -44,6 +31,14 @@ struct LauncherPlayerWidget: View {
             case .compact: return 150
             case .regular: return 220
             case .wide: return 300
+            }
+        }
+
+        var profileValue: Int {
+            switch self {
+            case .compact: return 0
+            case .regular: return 1
+            case .wide: return 2
             }
         }
 
@@ -60,42 +55,37 @@ struct LauncherPlayerWidget: View {
     /// It was the latter while `launcherWidgetSize` existed and was documented
     /// as being read — a dead key whose own comment claimed otherwise.
     var size: Size = Defaults[.launcherWidgetSize]
+    var isPageActive = true
     /// Tapping the card. At integration this opens the desktop player; it is
     /// injected so the widget has no opinion about who hosts it.
     var onOpen: () -> Void = {}
 
     @Default(.playerLayouts) private var layouts
     @Default(.launcherAlwaysShowsControls) private var alwaysShowsControls
-    @Default(.sliderColor) private var sliderColour
-    @Default(.accentColor) private var accentColour
-    @ObservedObject private var music = MusicManager.shared
-
     @State private var isHovering = false
+    @State private var isVisible = false
 
     var body: some View {
         let layout = layouts.launcher
-        let height = GridSolver.intrinsicHeight(
-            layout: layout, width: size.width, hovering: showsControls)
-
-        PlayerSurfaceView(
-            layout: layout,
-            style: .forSurface(
-                .launcher, albumColor: music.avgColor, tinted: false,
-                scale: layout.geometry.contentScale,
-                sliderColor: sliderColour, accentColor: accentColour),
-            hovering: showsControls
-        )
-        .frame(width: size.width, height: height)
-        .background(
-            AnchorCorners.rectangle(cornerRadius: 14).fill(.regularMaterial)
-        )
-        .anchorCornerContainer(radius: 14)
+        LauncherPlayerSizing(layout: layout, width: size.width, showsControls: showsControls) {
+            if isPageActive && isVisible {
+                LauncherPlayerContent(layout: layout, showsControls: showsControls)
+            } else {
+                Color.clear
+            }
+        }
+        .background(AnchorSurface(radius: 16))
+        .anchorCornerContainer(radius: 16)
         .overlay(
-            AnchorCorners.rectangle(cornerRadius: 14)
+            AnchorCorners.rectangle(cornerRadius: 16)
                 .anchorStrokeBorder(Color.primary.opacity(0.08), lineWidth: 1)
         )
-        .contentShape(AnchorCorners.rectangle(cornerRadius: 14))
+        .contentShape(AnchorCorners.rectangle(cornerRadius: 16))
+        .onScrollVisibilityChange(threshold: 0.01) { isVisible = $0 }
         .onHover { isHovering = $0 }
+        .onChange(of: isPageActive) { _, active in
+            if !active { isHovering = false }
+        }
         .onTapGesture(perform: onOpen)
         .animation(.easeInOut(duration: 0.16), value: showsControls)
     }
@@ -105,4 +95,42 @@ struct LauncherPlayerWidget: View {
     /// second layout. The transport in the launcher default is marked
     /// `.onHover`; forcing `hovering: true` reveals it permanently.
     private var showsControls: Bool { alwaysShowsControls || isHovering }
+}
+
+private struct LauncherPlayerContent: View {
+    let layout: SurfaceLayout
+    let showsControls: Bool
+
+    @Default(.sliderColor) private var sliderColour
+    @Default(.accentColor) private var accentColour
+    @ObservedObject private var music = MusicManager.shared
+
+    var body: some View {
+        PlayerSurfaceView(
+            layout: layout,
+            style: .forSurface(
+                .launcher, albumColor: music.avgColor, tinted: false,
+                scale: layout.geometry.contentScale,
+                sliderColor: sliderColour, accentColor: accentColour
+            ),
+            hovering: showsControls
+        )
+    }
+}
+
+/// The grid's intrinsic height depends on the width available to the shelf.
+private struct LauncherPlayerSizing: Layout {
+    var layout: SurfaceLayout
+    var width: CGFloat
+    var showsControls: Bool
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let cardWidth = min(proposal.width ?? width, width)
+        let height = GridSolver.intrinsicHeight(layout: layout, width: cardWidth, hovering: showsControls)
+        return CGSize(width: cardWidth, height: max(96, height))
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        subviews.first?.place(at: bounds.origin, anchor: .topLeading, proposal: ProposedViewSize(bounds.size))
+    }
 }

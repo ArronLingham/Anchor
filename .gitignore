@@ -173,6 +173,7 @@ __pycache__/
 !/tests/run_icon_cache_tests.sh
 !/tests/run_launcher_experience_tests.sh
 !/tests/run_launcher_search_tests.sh
+!/tests/run_launcherpaging_tests.sh
 !/tests/run_liquid_glass_tests.sh
 !/tests/run_lock_sound_tests.sh
 !/tests/run_media_resource_tests.sh

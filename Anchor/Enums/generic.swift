@@ -486,8 +486,8 @@ enum LauncherPresentationMode: String, CaseIterable, Defaults.Serializable, Iden
     var id: String { rawValue }
     var localizedName: String {
         switch self {
-        case .fullscreen: return String(localized: "Fullscreen Launchpad")
-        case .floaty:     return String(localized: "Centered Floaty Panel")
+        case .fullscreen: return String(localized: "Full screen")
+        case .floaty:     return String(localized: "Compact panel")
         }
     }
 }

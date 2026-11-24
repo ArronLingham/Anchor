@@ -45,6 +45,25 @@ import Foundation
         storage = laptop.saving(in: storage, screen: "laptop")
         let repaired = LauncherWidgetProfile.load(storage, screen: "laptop")
         precondition(repaired.order.count == 5 && Set(repaired.order).count == 5 && repaired.order.first == "music")
-        print("Passed: fragmented/batched Lunar events, bounded invalid input, hot-plug/wake recovery, notification storms, rejected repair errors, per-display persistence, missing/corrupt profile recovery.")
+        let legacy = Data("""
+        {"laptop":{"order":["music","reminders","calendar","weather","clock"],"sizes":{"clock":2}}}
+        """.utf8)
+        var placed = LauncherWidgetProfile.load(legacy, screen: "laptop")
+        precondition(placed.order.first == "music" && placed.sizes["clock"] == 2)
+        precondition(placed.pages.isEmpty)
+        precondition(placed.page(for: .clock, appPageCount: 3, showCategories: true) == -1)
+        precondition(placed.page(for: .clock, appPageCount: 3, showCategories: false) == 0)
+        placed.pages = ["clock": -1, "weather": 2, "music": 0]
+        placed.swapWidgets(.weather, .music)
+        precondition(placed.order == ["weather", "reminders", "calendar", "music", "clock"])
+        precondition(placed.page(for: .weather, appPageCount: 3, showCategories: true) == 2)
+        precondition(placed.page(for: .weather, appPageCount: 2, showCategories: true) == 1)
+        precondition(placed.page(for: .weather, appPageCount: 0, showCategories: true) == -1)
+        precondition(placed.page(for: .clock, appPageCount: 3, showCategories: false) == 0)
+        precondition(placed.page(for: .clock, appPageCount: 3, showCategories: true) == -1)
+        storage = placed.saving(in: storage, screen: "laptop")
+        precondition(LauncherWidgetProfile.load(storage, screen: "laptop") == placed)
+        precondition(LauncherWidgetProfile.load(storage, screen: "monitor") == monitor)
+        print("Passed: Lunar stream and recovery, widget profile migration, per-display placement, and fallback as pages change.")
     }
 }

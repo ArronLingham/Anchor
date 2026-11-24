@@ -24,10 +24,12 @@ import SwiftUI
 
 /// Category library page: organizes all applications automatically into category tiles.
 struct LauncherCategoryPageView: View {
+    let widgetProfileID: String
+    let appPageCount: Int
+    let isPageActive: Bool
+    let onOpenCategory: (AppCategory) -> Void
     let onLaunch: (LauncherApp) -> Void
-    @State private var selectedCategory: AppCategory?
     @ObservedObject private var index = AppIndex.shared
-    @Environment(\.colorScheme) private var colorScheme
 
     private var activeCategories: [(category: AppCategory, apps: [LauncherApp])] {
         AppCategory.allCases.compactMap { cat in
@@ -37,46 +39,34 @@ struct LauncherCategoryPageView: View {
     }
 
     var body: some View {
-        ZStack {
-            ScrollView(.vertical, showsIndicators: false) {
+        ScrollView(.vertical) {
+            LazyVStack(spacing: 20) {
+                LauncherWidgetShelf(
+                    profileID: widgetProfileID,
+                    page: LauncherPaging.categoriesPage,
+                    appPageCount: appPageCount,
+                    showCategories: true,
+                    isPageActive: isPageActive
+                )
+
                 LazyVGrid(
-                    columns: [
-                        GridItem(.adaptive(minimum: 220, maximum: 280), spacing: 20)
-                    ],
-                    spacing: 20
+                    columns: [GridItem(.adaptive(minimum: 170, maximum: 260), spacing: 14)],
+                    spacing: 16
                 ) {
                     ForEach(activeCategories, id: \.category.id) { item in
                         LauncherCategoryBoxView(
                             category: item.category,
                             apps: item.apps,
-                            onOpenCategory: {
-                                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                                    selectedCategory = item.category
-                                }
-                            },
+                            onOpenCategory: { onOpenCategory(item.category) },
                             onLaunch: onLaunch
                         )
                     }
                 }
-                .padding(.horizontal, 40)
-                .padding(.vertical, 16)
             }
-
-            if let selected = selectedCategory {
-                LauncherCategoryDetailView(
-                    category: selected,
-                    apps: index.apps(in: selected),
-                    onClose: {
-                        withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
-                            selectedCategory = nil
-                        }
-                    },
-                    onLaunch: onLaunch
-                )
-                .transition(.opacity.combined(with: .scale(scale: 0.9)))
-                .zIndex(10)
-            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 12)
         }
+        .scrollIndicators(.never)
     }
 }
 
@@ -87,73 +77,57 @@ struct LauncherCategoryBoxView: View {
     let onOpenCategory: () -> Void
     let onLaunch: (LauncherApp) -> Void
 
-    @Environment(\.colorScheme) private var colorScheme
     @State private var isHovered = false
-
-    private var previewApps: [LauncherApp] {
-        Array(apps.prefix(4))
-    }
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.colorSchemeContrast) private var contrast
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 8) {
-                Image(systemName: category.symbolName)
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(.tint)
-
-                Text(category.rawValue)
-                    .font(.system(size: 14, weight: .bold))
-                    .foregroundStyle(.primary)
-                    .lineLimit(1)
-
-                Spacer()
-
-                Text("\(apps.count)")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(Capsule().fill(Color.primary.opacity(0.08)))
-            }
-
-            LazyVGrid(
-                columns: [GridItem(.flexible()), GridItem(.flexible())],
-                spacing: 8
-            ) {
-                ForEach(previewApps) { app in
-                    LauncherMiniAppIcon(app: app)
-                        .frame(height: 66)
-                        .onTapGesture {
-                            onLaunch(app)
-                        }
+        let shape = AnchorCorners.rectangle(cornerRadius: 18)
+        VStack(alignment: .leading, spacing: 8) {
+            Button(action: onOpenCategory) {
+                HStack(spacing: 7) {
+                    Image(systemName: category.symbolName)
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(AnchorDesign.muted)
+                    Text(category.rawValue)
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(AnchorDesign.text)
+                        .lineLimit(1)
+                    Spacer(minLength: 0)
+                    Text("\(apps.count)")
+                        .font(.system(size: 11).monospacedDigit())
+                        .foregroundStyle(AnchorDesign.muted)
                 }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Open \(category.rawValue), \(apps.count) apps")
 
-                ForEach(0..<max(0, 4 - previewApps.count), id: \.self) { _ in
-                    AnchorCorners.rectangle(cornerRadius: 10)
-                        .fill(Color.clear)
-                        .frame(height: 66)
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 4) {
+                ForEach(apps.prefix(4)) { app in
+                    Button { onLaunch(app) } label: {
+                        LauncherMiniAppIcon(app: app)
+                            .frame(height: 54)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Open \(app.name)")
                 }
             }
         }
-        .frame(height: 180, alignment: .top)
-        .padding(14)
-        .background(
-            AnchorSurface(depth: .inset, radius: 18)
-                .overlay(
-                    AnchorCorners.rectangle(cornerRadius: 18)
-                        .anchorStrokeBorder(
-                            Color.white.opacity(isHovered ? 0.22 : 0.06),
-                            lineWidth: 1
-                        )
-                )
-        )
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .frame(height: 144, alignment: .top)
+        .padding(12)
+        .background {
+            shape.fill(AnchorDesign.surface.opacity(reduceTransparency ? 1 : isHovered ? 0.80 : 0.64))
+                .overlay {
+                    shape.anchorStrokeBorder(.white.opacity(contrast == .increased ? 0.5 : isHovered ? 0.22 : 0.12),
+                                             lineWidth: 1)
+                }
+                .onTapGesture(perform: onOpenCategory)
+                .accessibilityHidden(true)
+        }
         .anchorCornerContainer(radius: 18)
-        .animation(.easeOut(duration: 0.15), value: isHovered)
         .onHover { isHovered = $0 }
-        .contentShape(AnchorCorners.rectangle(cornerRadius: 18))
-        .onTapGesture {
-            onOpenCategory()
-        }
     }
 }
 

@@ -29,25 +29,29 @@ import Foundation
 /// of folders and can run past the end of the app list. Second, it is pure, so
 /// it can be pinned by a harness where the view cannot be.
 enum LauncherPaging {
-    /// The page a given selection appears on.
-    ///
-    /// Folders occupy the first `folderCount` slots, so an app at index 0 is
-    /// not necessarily in slot 0.
-    static func page(forSelection selection: Int, folderCount: Int, perPage: Int) -> Int {
-        guard perPage > 0 else { return 0 }
-        let slot = max(0, selection) + max(0, folderCount)
-        return slot / perPage
+    static let categoriesPage = -1
+
+    static func landingPage(showCategories: Bool, startOnCategories: Bool) -> Int {
+        showCategories && startOnCategories ? categoriesPage : 0
     }
 
-    /// The selection that puts `page` on screen, clamped to the app list.
-    ///
-    /// Returns nil when there is nothing to select — an empty grid, or a
-    /// nonsense page size — so the caller leaves the selection alone rather
-    /// than moving it somewhere meaningless.
-    static func selection(forPage page: Int, folderCount: Int, perPage: Int, appCount: Int) -> Int? {
-        guard perPage > 0, appCount > 0 else { return nil }
-        let target = page * perPage - max(0, folderCount)
-        return min(max(0, target), appCount - 1)
+    /// App page indices stay the same when the categories page is hidden.
+    static func pageIDs(appPageCount: Int, showCategories: Bool) -> Range<Int> {
+        (showCategories ? categoriesPage : 0)..<max(1, appPageCount)
+    }
+
+    /// Folders occupy the first slots, before any app that can receive selection.
+    static func page(forSelection selection: Int, folderCount: Int, perPage: Int) -> Int {
+        guard perPage > 0 else { return 0 }
+        return (max(0, selection) + max(0, folderCount)) / perPage
+    }
+
+    /// The app indices visible on a page. Categories and folder-only pages have no selection.
+    static func selections(onPage page: Int, folderCount: Int, perPage: Int, appCount: Int) -> Range<Int> {
+        guard page >= 0, perPage > 0, appCount > 0 else { return 0..<0 }
+        let start = max(0, page * perPage - max(0, folderCount))
+        let end = min(appCount, (page + 1) * perPage - max(0, folderCount))
+        return start..<max(start, end)
     }
 
     /// How many pages the grid has, counting folder slots.

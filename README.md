@@ -83,16 +83,16 @@ Open it from Anchor’s menu, the notch’s dashboard button, or launcher search
 
 Search installed applications, built-in commands, Apple Shortcuts, and saved quicklinks in one interface. App matching supports prefixes, acronyms, accents, reordered words, and small typing mistakes. Exact and prefix matches take priority over usage history.
 
-The launcher also offers an application grid, categories, folders, sorting options, and optional widgets. A ring switcher provides forward and reverse application switching. Replacing macOS’s **Command-Space** or **Command-Tab** behavior is optional.
+Launchpad opens on Categories by default. Swipe horizontally to reach your app pages. **Add Widgets** on each page lets you place a clock, weather, calendar, reminders, or a music player there. Use **Edit Widgets** to move or resize cards. In **Settings → Launcher**, choose the opening page and a full-screen or compact presentation.
+
+A ring switcher provides forward and reverse application switching. Replacing macOS’s **Command-Space** or **Command-Tab** behavior is optional.
 
 Create movable desktop docks with their own apps, orientation, and size. Workspace Modes save combinations of app/window layouts, dock visibility, volume, and brightness. Display- and power-based rules are opt-in; configure them in **Settings → Workspace Modes**.
-
-![Anchor application launcher with search, tabs, and an app grid](media/launcher.jpg)
 
 ### Media and per-app sound
 
 - Control supported players, including Apple Music, Spotify, and YouTube Music integrations, with artwork, progress, lyrics, and playback controls. Available actions depend on the player and integration.
-- Use a floating player, desktop vinyl, or lock-screen player. Customize supported player layouts and visualizers.
+- Use a floating player, desktop vinyl, or lock-screen player. Open **Settings → Launcher → Customize all player layouts** to edit the desktop and lock-screen arrangements.
 - Control application volume and mute, route supported audio, and apply a 10-band equalizer, imported AutoEQ profiles, and loudness processing.
 - Choose audio devices, pin a microphone, or assign shortcuts for output switching and microphone mute.
 - Customize volume and brightness HUDs using notch, pill, circular, or vertical presentations. External-monitor controls depend on the display and connection; Lunar integration is available for supported setups.

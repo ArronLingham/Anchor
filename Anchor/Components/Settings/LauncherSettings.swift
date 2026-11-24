@@ -34,6 +34,7 @@ struct LauncherSettings: View {
     @Default(.launcherBackgroundStyle) private var backgroundStyle
     @Default(.launcherHotCorner) private var hotCorner
     @Default(.launcherShowCategoryPage) private var showCategoryPage
+    @Default(.launcherStartsOnCategories) private var startsOnCategories
     @Default(.launcherRecallSeconds) private var launcherRecallSeconds
     @Default(.launcherCustomOrder) private var launcherCustomOrder
     @Default(.launcherFolders) private var launcherFolders
@@ -174,7 +175,7 @@ struct LauncherSettings: View {
                     }
                     .disabled(!enableLauncher)
                     .settingsHighlight(id: highlightID("Paging"))
-                    .settingsInfo("Choose between interactive page dots, a macOS-style scroll bar, or both when deploying the launchpad.")
+                    .settingsInfo("Choose how to move between Launchpad pages.")
 
                     // Both of these are written by dragging in the grid, not
                     // by a control — so without a reset there is no way back
@@ -219,14 +220,13 @@ struct LauncherSettings: View {
             }
 
             Section {
-                Picker("Presentation mode", selection: $presentationMode) {
+                Picker("Launchpad size", selection: $presentationMode) {
                     ForEach(LauncherPresentationMode.allCases) { mode in
                         Text(mode.localizedName).tag(mode)
                     }
                 }
                 .disabled(!enableLauncher)
-                .settingsHighlight(id: highlightID("Presentation mode"))
-                .settingsInfo("Fullscreen Launchpad covers the display with an immersive grid. Floaty Panel floats a sleek centered window.")
+                .settingsHighlight(id: highlightID("Launchpad size"))
 
                 Picker("Background blur style", selection: $backgroundStyle) {
                     ForEach(LauncherBackgroundStyle.allCases) { style in
@@ -247,11 +247,20 @@ struct LauncherSettings: View {
                 .settingsInfo("Move the cursor into this screen corner to open the launcher effortlessly.")
 
                 Defaults.Toggle(key: .launcherShowCategoryPage) {
-                    Text("Show categories tab")
+                    Text("Show Categories page")
                 }
                 .disabled(!enableLauncher)
-                .settingsHighlight(id: highlightID("Show categories tab"))
-                .settingsInfo("Organizes apps into categorized library collections (Developer Tools, Productivity, Social, Games, etc.).")
+                .settingsHighlight(id: highlightID("Show Categories page"))
+                .settingsInfo("Places one page of app categories to the left of the app grid.")
+
+                if showCategoryPage && showGrid {
+                    Picker("Opening page", selection: $startsOnCategories) {
+                        Text("First app page").tag(false)
+                        Text("Categories").tag(true)
+                    }
+                    .disabled(!enableLauncher)
+                    .settingsHighlight(id: highlightID("Opening page"))
+                }
 
                 LabeledContent("Remember the last search for") {
                     Picker("", selection: $launcherRecallSeconds) {
@@ -335,6 +344,7 @@ struct LauncherSettings: View {
                 .sheet(isPresented: $showingPlayerLayoutEditor) {
                     LayoutEditorView()
                 }
+                .settingsHighlight(id: highlightID("Customize all player layouts"))
             }
 
             Section {

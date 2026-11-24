@@ -47,6 +47,7 @@ private enum LauncherSearchEntry: Identifiable {
 /// typing) or a Launchpad-style grid of everything (when the field is empty).
 struct LauncherView: View {
     var widgetProfileID: String = "default"
+    var screen: NSScreen? = nil
     let onLaunch: (LauncherApp) -> Void
     let onDismiss: () -> Void
 
@@ -72,13 +73,45 @@ struct LauncherView: View {
     @Default(.launcherFolders) private var folders
     @Default(.launcherEnableCalculator) private var calculatorEnabled
 
-    @State private var gridColumns: Int = LauncherGridLayout.calculate().columns
-    @State private var selectedTab: LauncherTab = .apps
+    @Default(.launcherSortMode) private var sortMode
+    @Default(.launcherCustomOrder) private var customOrder
 
-    private enum LauncherTab: String, CaseIterable {
-        case apps = "All Apps"
-        case categories = "Categories"
-        case widgets = "Widgets"
+    @State private var gridLayout = LauncherGridLayout.default
+    @State private var browsePage = LauncherPaging.landingPage(
+        showCategories: Defaults[.launcherShowCategoryPage],
+        startOnCategories: Defaults[.launcherStartsOnCategories]
+    )
+    @State private var searchPage = 0
+    @State private var keyboardSelection: Int?
+    @State private var selectedCategory: AppCategory?
+
+    private var includesCategories: Bool { showCategoryPage && !gridIsFiltered }
+
+    private var pageIDs: Range<Int> {
+        LauncherPaging.pageIDs(appPageCount: LauncherPaging.pageCount(
+            folderCount: resolvedFolders.count, appCount: ungroupedApps.count, perPage: gridLayout.perPage
+        ), showCategories: includesCategories)
+    }
+
+    private var currentPage: Int {
+        min(max(pageIDs.lowerBound, gridIsFiltered ? searchPage : browsePage), pageIDs.upperBound - 1)
+    }
+
+    private func selections(on page: Int) -> Range<Int> {
+        LauncherPaging.selections(onPage: page, folderCount: resolvedFolders.count,
+                                  perPage: gridLayout.perPage, appCount: ungroupedApps.count)
+    }
+
+    private func showPage(_ page: Int, selecting preferredSelection: Int? = nil, fromKeyboard: Bool = false) {
+        guard pageIDs.contains(page) else { return }
+        if gridIsFiltered { searchPage = page } else { browsePage = page }
+        let visibleSelections = selections(on: page)
+        if let preferredSelection, visibleSelections.contains(preferredSelection) {
+            selection = preferredSelection
+        } else if !visibleSelections.contains(selection), let first = visibleSelections.first {
+            selection = first
+        }
+        keyboardSelection = fromKeyboard && visibleSelections.contains(selection) ? selection : nil
     }
 
     private static let rowHeight: CGFloat = 50
@@ -107,23 +140,14 @@ struct LauncherView: View {
     }
 
 
-    /// Folders, resolved from stored ids to the apps that still exist.
-    ///
-    /// An id for an app that has since been uninstalled is dropped rather than
-    /// leaving a gap, and a folder left with nothing in it is not shown at all
-    /// — a tile you cannot open is worse than no tile.
-    /// True when the grid is showing search results rather than everything.
-    ///
-    /// Folders are a way of arranging the full set. While a query is filtering,
-    /// they get in the way: their tiles are not matches, and filing an app away
-    /// must not make it unfindable.
+    /// The filtered grid draws search matches without folder tiles.
     private var gridIsFiltered: Bool {
         !query.trimmingCharacters(in: .whitespaces).isEmpty
     }
 
+    /// Resolve only installed apps and omit folders left with no members.
     private var resolvedFolders: [(name: String, apps: [LauncherApp])] {
-        // No folder tiles among search results — they answer no query.
-        guard !gridIsFiltered else { return [] }
+        guard !gridIsFiltered, !folders.isEmpty else { return [] }
         let byID = Dictionary(uniqueKeysWithValues: index.openingApps.map { ($0.id, $0) })
         return folders
             .map { (name: $0.key, apps: $0.value.compactMap { byID[$0] }) }
@@ -140,7 +164,7 @@ struct LauncherView: View {
         // While searching, show every match. Excluding filed apps here made an
         // app impossible to find by name once it was in a folder — which is a
         // much worse outcome than a folder's contents appearing in results.
-        guard !gridIsFiltered else { return results.map(\.app) }
+        guard !gridIsFiltered, !folders.isEmpty else { return results.map(\.app) }
         let filed = Set(folders.values.flatMap { $0 })
         return results.map(\.app).filter { !filed.contains($0.id) }
     }
@@ -153,31 +177,13 @@ struct LauncherView: View {
     }
 
     var body: some View {
-        Group {
         VStack(spacing: 0) {
             searchField
-
-            if query.trimmingCharacters(in: .whitespaces).isEmpty && showingGrid {
-                tabSelector
-            }
 
             if let calculation {
                 calculatorRow(calculation)
             } else if showingGrid {
-                if selectedTab == .widgets && !gridIsFiltered {
-                    widgetsPage
-                } else if selectedTab == .categories && showCategoryPage && !gridIsFiltered {
-                    LauncherCategoryPageView(onLaunch: onLaunch)
-                } else {
-                    LauncherGridView(
-                        apps: ungroupedApps,
-                        folders: resolvedFolders,
-                        allowsReorder: !gridIsFiltered,
-                        selection: $selection,
-                        onColumnsChanged: { gridColumns = $0 },
-                        onLaunch: onLaunch
-                    )
-                }
+                grid
             } else if results.isEmpty && commands.isEmpty {
                 emptyState
             } else {
@@ -205,20 +211,7 @@ struct LauncherView: View {
             .padding(presentationMode == .fullscreen ? 22 : 12)
         }
         .background {
-            if presentationMode == .fullscreen {
-                ZStack { LauncherWallpaperBlur(); AnchorCanvas().opacity(0.92) }
-                    .onTapGesture { onDismiss() }
-            } else {
-                ZStack {
-                    LauncherWallpaperBlur()
-                    AnchorSurface(depth: .inset, radius: 26).opacity(0.95)
-                    AnchorCorners.rectangle(cornerRadius: 26)
-                        .anchorStrokeBorder(Color.white.opacity(0.14), lineWidth: 1)
-                }
-                .clipShape(AnchorCorners.rectangle(cornerRadius: 26))
-                .anchorCornerContainer(radius: 26)
-                .shadow(color: Color.black.opacity(0.25), radius: 28, y: 12)
-            }
+            LauncherBackdrop(mode: presentationMode, screen: screen, onDismiss: onDismiss)
         }
         .anchorCornerContainer(radius: presentationMode == .fullscreen ? 0 : 26)
         .transaction { if LauncherMotion.reduced { $0.animation = nil; $0.disablesAnimations = true } }
@@ -255,20 +248,68 @@ struct LauncherView: View {
         }
         .onDisappear { rememberQuery() }
         .onChange(of: query) { _, _ in
-            if gridIsFiltered { selectedTab = .apps }
+            closeCategory()
+            searchPage = 0
             recompute()
         }
+        .onChange(of: showCategoryPage) { _, enabled in
+            if !enabled {
+                closeCategory()
+                if browsePage == LauncherPaging.categoriesPage { browsePage = 0 }
+            }
+            if showingGrid { showPage(currentPage) }
+        }
+        .onChange(of: showGridWhenEmpty) { _, _ in recompute() }
+        .onChange(of: layoutMode) { _, _ in recompute() }
+        .onChange(of: folders) { _, _ in recompute(resetSelection: false) }
+        .onChange(of: sortMode) { _, _ in recompute(resetSelection: false) }
+        .onChange(of: customOrder) { _, _ in recompute(resetSelection: false) }
         .onChange(of: index.apps) { _, _ in recompute(resetSelection: false) }
         // `loadIfNeeded()` returns before the subprocess does. Without this the
         // results were computed once against an empty list and never revisited,
         // so the shortcuts existed, parsed correctly, and were simply never
         // shown.
         .onChange(of: shortcuts.names) { _, _ in recompute(resetSelection: false) }
-            }
         .anchorTheme()
     }
 
     // MARK: - Pieces
+
+    private var grid: some View {
+        LauncherGridView(
+            apps: ungroupedApps,
+            folders: resolvedFolders,
+            allowsReorder: !gridIsFiltered,
+            selection: $selection,
+            currentPage: currentPage,
+            keyboardSelection: keyboardSelection,
+            includesCategories: includesCategories,
+            widgetProfileID: widgetProfileID,
+            onPageChanged: { showPage($0) },
+            onLayoutChanged: { layout in
+                gridLayout = layout
+                showPage(currentPage)
+            },
+            onOpenCategory: { category in
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                    selectedCategory = category
+                }
+            },
+            onLaunch: onLaunch
+        )
+        .id(gridIsFiltered)
+        .overlay {
+            if let selectedCategory, includesCategories {
+                LauncherCategoryDetailView(
+                    category: selectedCategory,
+                    apps: index.apps(in: selectedCategory),
+                    onClose: closeCategory,
+                    onLaunch: onLaunch
+                )
+                .transition(.opacity.combined(with: .scale(scale: 0.9)))
+            }
+        }
+    }
 
     private var searchField: some View {
         HStack(spacing: 12) {
@@ -283,10 +324,18 @@ struct LauncherView: View {
                 .onSubmit(activateSelection)
                 .onKeyPress(.upArrow) { move(by: -stride); return .handled }
                 .onKeyPress(.downArrow) { move(by: stride); return .handled }
-                .onKeyPress(.leftArrow) { showingGrid ? move(by: -1) : nil; return showingGrid ? .handled : .ignored }
-                .onKeyPress(.rightArrow) { showingGrid ? move(by: 1) : nil; return showingGrid ? .handled : .ignored }
+                .onKeyPress(.leftArrow) {
+                    guard showingGrid else { return .ignored }
+                    move(by: -1, horizontally: true)
+                    return .handled
+                }
+                .onKeyPress(.rightArrow) {
+                    guard showingGrid else { return .ignored }
+                    move(by: 1, horizontally: true)
+                    return .handled
+                }
                 .onKeyPress(.escape) {
-                    onDismiss()
+                    if selectedCategory != nil { closeCategory() } else { onDismiss() }
                     return .handled
                 }
 
@@ -318,48 +367,14 @@ struct LauncherView: View {
         }
     }
 
-    private var tabSelector: some View {
-        HStack(spacing: 24) {
-            ForEach(LauncherTab.allCases.filter { $0 != .categories || showCategoryPage }, id: \.self) { tab in
-                Button { selectedTab = tab; queryFocused = true } label: {
-                    Text(tab.rawValue)
-                        .font(.system(size: 12, weight: selectedTab == tab ? .semibold : .medium))
-                        .foregroundStyle(selectedTab == tab ? .primary : .secondary)
-                        .padding(.vertical, 12)
-                        .overlay(alignment: .bottom) {
-                            if selectedTab == tab { Rectangle().fill(.primary.opacity(0.8)).frame(height: 2) }
-                        }
-                }
-                .buttonStyle(.plain)
-                .accessibilityAddTraits(selectedTab == tab ? .isSelected : [])
-            }
-            Spacer()
-            if selectedTab != .widgets {
-                Text("\(index.openingApps.count) apps").font(.system(size: 11)).foregroundStyle(.tertiary)
-            }
-        }
-        .padding(.horizontal, 20)
-        .overlay(alignment: .bottom) { Rectangle().fill(.white.opacity(0.07)).frame(height: 1) }
-        .padding(.bottom, 12)
-    }
-
-    private var widgetsPage: some View {
-        VStack {
-            if LauncherWidgetStrip(profileID: widgetProfileID).anyEnabled {
-                LauncherWidgetStrip(profileID: widgetProfileID)
-                    .frame(maxWidth: 900)
-            } else {
-                ContentUnavailableView("No widgets enabled", systemImage: "rectangle.3.group",
-                    description: Text("Choose widgets in Anchor’s Launcher settings."))
-            }
-            Spacer(minLength: 0)
-        }
-        .padding(.top, 16)
-        .padding(.horizontal, 20)
+    private func closeCategory() {
+        guard selectedCategory != nil else { return }
+        withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) { selectedCategory = nil }
+        queryFocused = true
     }
 
     /// In the grid, ↑/↓ move a whole row; in the list they move one item.
-    private var stride: Int { showingGrid ? gridColumns : 1 }
+    private var stride: Int { showingGrid ? gridLayout.columns : 1 }
 
     private func calculatorRow(_ value: String) -> some View {
         VStack(spacing: 10) {
@@ -450,40 +465,44 @@ struct LauncherView: View {
                                     score: $1.score, isApp: $1.isApp, id: $1.id, rhsSearchOnly: $1.isSearchOnly)
         }
 
-        if resetSelection || selectableCount == 0 {
-            selection = 0
-        } else {
-            selection = min(selection, selectableCount - 1)
-        }
-    }
-
-    /// How many things the arrow keys can address.
-    ///
-    /// In grid mode this MUST be the list the grid actually draws. The grid
-    /// lays out `ungroupedApps`, and its cells compare `index == selection`
-    /// against indices into that filtered array — so counting `results` here,
-    /// which still contains everything filed inside folders, makes the two
-    /// disagree the moment one folder exists: ↓ walks the selection past the
-    /// last drawn cell (no cursor anywhere) and Return launches an app that is
-    /// in a folder and not on screen.
-    private var selectableCount: Int {
-        showingGrid ? ungroupedApps.count : entries.count
-    }
-
-    private func move(by delta: Int) {
-        guard calculation == nil, selectableCount > 0 else { return }
-        let next = selection + delta
-        // Clamp in the grid so ↓ on the last row does not wrap to the start;
-        // wrap in the list, where it reads as a loop through a short set.
+        if resetSelection { selection = 0 }
         if showingGrid {
-            selection = max(0, min(selectableCount - 1, next))
+            showPage(currentPage)
         } else {
-            selection = (next + selectableCount) % selectableCount
+            selection = min(selection, max(0, entries.count - 1))
         }
+    }
+
+    private func move(by delta: Int, horizontally: Bool = false) {
+        guard calculation == nil, selectedCategory == nil else { return }
+        guard showingGrid else {
+            guard !entries.isEmpty else { return }
+            selection = (selection + delta + entries.count) % entries.count
+            return
+        }
+
+        let page = currentPage
+        let visibleSelections = selections(on: page)
+        guard visibleSelections.contains(selection) else {
+            if horizontally { showPage(page + delta, fromKeyboard: true) }
+            return
+        }
+
+        let next = selection + delta
+        if horizontally, next < 0, page > pageIDs.lowerBound {
+            showPage(page - 1, fromKeyboard: true)
+            return
+        }
+
+        let appSelection = min(max(0, next), ungroupedApps.count - 1)
+        let appPage = LauncherPaging.page(
+            forSelection: appSelection, folderCount: resolvedFolders.count, perPage: gridLayout.perPage
+        )
+        showPage(appPage, selecting: appSelection, fromKeyboard: true)
     }
 
     private func activateSelection() {
-        guard gridIsFiltered || selectedTab == .apps else { return }
+        guard selectedCategory == nil else { return }
         if let calculation {
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(calculation, forType: .string)
@@ -493,10 +512,8 @@ struct LauncherView: View {
             }
             return
         }
-        // Same index space as `selectableCount` — the grid addresses the apps
-        // it draws, which excludes anything filed in a folder.
         if showingGrid {
-            guard ungroupedApps.indices.contains(selection) else { return }
+            guard selections(on: currentPage).contains(selection) else { return }
             onLaunch(ungroupedApps[selection])
             return
         }

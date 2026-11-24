@@ -21,17 +21,12 @@ import AppKit
 import Defaults
 import SwiftUI
 
-/// Adaptable launcher window supporting Fullscreen Launchpad and Floaty Panel presentation.
+/// A single transparent window for either Launchpad presentation.
 final class LauncherPanel: NSPanel {
     var onResignKey: (() -> Void)?
-    private(set) var currentMode: LauncherPresentationMode = .fullscreen
     private var isDismissing = false
 
-    init(contentView: NSView, mode: LauncherPresentationMode) {
-        self.currentMode = mode
-        let screen = NSScreen.screens.first { $0.frame.contains(NSEvent.mouseLocation) } ?? NSScreen.main
-        let frame = Self.calculateFrame(for: mode, on: screen)
-
+    init(contentView: NSView, mode: LauncherPresentationMode, frame: NSRect) {
         super.init(
             contentRect: frame,
             styleMask: [.borderless, .nonactivatingPanel, .fullSizeContentView],
@@ -51,11 +46,11 @@ final class LauncherPanel: NSPanel {
         animationBehavior = .none
         collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .transient, .ignoresCycle]
 
+        alphaValue = LauncherMotion.reduced ? 1 : 0
         configureForMode(mode)
     }
 
     private func configureForMode(_ mode: LauncherPresentationMode) {
-        currentMode = mode
         switch mode {
         case .fullscreen:
             level = .statusBar + 1
@@ -68,7 +63,7 @@ final class LauncherPanel: NSPanel {
 
     static func calculateFrame(for mode: LauncherPresentationMode, on screen: NSScreen?) -> NSRect {
         guard let screen = screen ?? NSScreen.main else {
-            return NSRect(x: 0, y: 0, width: 1040, height: 830)
+            return NSRect(x: 0, y: 0, width: 820, height: 550)
         }
 
         switch mode {
@@ -76,8 +71,8 @@ final class LauncherPanel: NSPanel {
             return screen.frame
         case .floaty:
             let visible = screen.visibleFrame
-            let targetWidth = min(900, visible.width * 0.86)
-            let targetHeight = min(760, visible.height * 0.86)
+            let targetWidth = min(820, visible.width * 0.88)
+            let targetHeight = min(550, visible.height * 0.80)
             let x = visible.midX - targetWidth / 2
             let y = visible.midY - targetHeight / 2
             return NSRect(x: x, y: y, width: targetWidth, height: targetHeight)
@@ -98,23 +93,13 @@ final class LauncherPanel: NSPanel {
         onResignKey?()
     }
 
-    func positionOnActiveScreen(mode: LauncherPresentationMode) {
-        let screen = NSScreen.screens.first { $0.frame.contains(NSEvent.mouseLocation) } ?? NSScreen.main
-        let targetFrame = Self.calculateFrame(for: mode, on: screen)
-        configureForMode(mode)
-
-        setFrame(targetFrame, display: true)
-        contentView?.frame = NSRect(origin: .zero, size: targetFrame.size)
-        alphaValue = LauncherMotion.reduced ? 1 : 0
-    }
-
     /// Start once the panel is on screen. A short compositor fade avoids
     /// moving the entire SwiftUI layout and delaying keyboard focus.
     func animatePresentation() {
         guard !LauncherMotion.reduced else { alphaValue = 1; return }
         NSAnimationContext.runAnimationGroup { context in
-            context.duration = 0.09
-            context.timingFunction = CAMediaTimingFunction(controlPoints: 0.16, 1, 0.3, 1)
+            context.duration = 0.12
+            context.timingFunction = CAMediaTimingFunction(name: .easeOut)
             animator().alphaValue = 1
         }
     }

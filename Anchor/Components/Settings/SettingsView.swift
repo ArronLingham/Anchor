@@ -1132,8 +1132,8 @@ struct SettingsView: View {
             SettingsSearchEntry(tab: .launcher, title: "Reset custom order", keywords: ["reset", "custom", "order", "launcher"], highlightID: SettingsTab.launcher.highlightID(for: "Reset custom order")),
             SettingsSearchEntry(tab: .launcher, title: "Background style", keywords: ["background", "style", "launcher"], highlightID: SettingsTab.launcher.highlightID(for: "Background style")),
             SettingsSearchEntry(tab: .launcher, title: "Hot corner trigger", keywords: ["hot", "corner", "trigger", "launcher"], highlightID: SettingsTab.launcher.highlightID(for: "Hot corner trigger")),
-            SettingsSearchEntry(tab: .launcher, title: "Presentation mode", keywords: ["presentation", "mode", "launcher"], highlightID: SettingsTab.launcher.highlightID(for: "Presentation mode")),
-            SettingsSearchEntry(tab: .launcher, title: "Show categories tab", keywords: ["categories", "tab", "launcher"], highlightID: SettingsTab.launcher.highlightID(for: "Show categories tab")),
+            SettingsSearchEntry(tab: .launcher, title: "Launchpad size", keywords: ["presentation", "fullscreen", "compact", "panel", "launcher"], highlightID: SettingsTab.launcher.highlightID(for: "Launchpad size")),
+            SettingsSearchEntry(tab: .launcher, title: "Show Categories page", keywords: ["categories", "library", "launcher"], highlightID: SettingsTab.launcher.highlightID(for: "Show Categories page")),
             SettingsSearchEntry(tab: .menuBar, title: "Always-hidden", keywords: ["always-hidden", "menu bar"], highlightID: SettingsTab.menuBar.highlightID(for: "Always-hidden")),
             SettingsSearchEntry(tab: .menuBar, title: "Show Always-Hidden", keywords: ["always-hidden", "menu bar"], highlightID: SettingsTab.menuBar.highlightID(for: "Show Always-Hidden")),
             SettingsSearchEntry(tab: .todo, title: "Secondary direction", keywords: ["secondary", "direction", "todo"], highlightID: SettingsTab.todo.highlightID(for: "Secondary direction")),
@@ -1160,6 +1160,8 @@ struct SettingsView: View {
             SettingsSearchEntry(tab: .lockScreen, title: "Enable album art parallax", keywords: ["album", "art", "parallax", "lock screen"], highlightID: SettingsTab.lockScreen.highlightID(for: "Enable album art parallax")),
             SettingsSearchEntry(tab: .media, title: "Customize the lock screen player", keywords: ["customize", "lock", "screen", "player", "media"], highlightID: SettingsTab.media.highlightID(for: "Customize the lock screen player")),
             SettingsSearchEntry(tab: .workspaceModes, title: "Enable Workspace Modes", keywords: ["workspace", "modes", "workspace modes"], highlightID: SettingsTab.workspaceModes.highlightID(for: "Enable Workspace Modes")),
+            SettingsSearchEntry(tab: .launcher, title: "Opening page", keywords: ["opening", "page", "launcher"], highlightID: SettingsTab.launcher.highlightID(for: "Opening page")),
+            SettingsSearchEntry(tab: .launcher, title: "Customize all player layouts", keywords: ["customize", "all", "player", "layouts", "launcher"], highlightID: SettingsTab.launcher.highlightID(for: "Customize all player layouts")),
         ]
 
     private func isTabVisible(_ tab: SettingsTab) -> Bool {

@@ -20,179 +20,402 @@
 import AppKit
 import AnchorUtilities
 import Defaults
+import EventKit
 import SwiftUI
 
-/// The strip of widgets above the launcher grid.
-///
-/// All three default off — the launcher's job is finding an app, and anything
-/// permanently occupying the top of it has to earn the space. Each is a
-/// separate toggle for the same reason.
-///
-/// Nothing here polls. The clock is a `TimelineView`, which the system schedules
-/// and stops paying for when the view goes away; weather comes from the
-/// snapshot the lock screen already fetches; the record reads `MusicManager`,
-/// which is event-driven.
-struct LauncherWidgetStrip: View {
+/// Optional cards and their editor on each Launchpad page.
+struct LauncherWidgetShelf: View {
     let profileID: String
+    let page: Int
+    let appPageCount: Int
+    let showCategories: Bool
+    var isPageActive = true
+
     @AppStorage("launcherWidgetProfiles") private var profileData = Data()
-    @State private var editing = false
-    @State private var ready = false
+    @State private var arranging = false
+    @State private var dropTarget: Kind?
+    @Default(.launcherShowClockWidget) private var showClock
+    @Default(.launcherShowWeatherWidget) private var showWeather
+    @Default(.launcherShowCalendarWidget) private var showCalendar
+    @Default(.launcherShowRemindersWidget) private var showReminders
+    @Default(.launcherShowVinylWidget) private var showMusic
+    @Default(.launcherWidgetSize) private var defaultMusicSize
+
+    private typealias Kind = LauncherWidgetProfile.Widget
+
     private var profile: LauncherWidgetProfile { .load(profileData, screen: profileID) }
-    private var enabled: [String] {
-        profile.order.filter { id in
-            switch id {
-            case "clock": return showClock
-            case "weather": return showWeather
-            case "calendar": return showCalendar
-            case "reminders": return showReminders
-            case "music": return showVinyl
-            default: return false
+
+    private func isEnabled(_ kind: Kind) -> Bool {
+        switch kind {
+        case .clock: return showClock
+        case .weather: return showWeather
+        case .calendar: return showCalendar
+        case .reminders: return showReminders
+        case .music: return showMusic
+        }
+    }
+
+    var body: some View {
+        let layout = profile
+        let enabled = layout.order.compactMap(Kind.init(rawValue:)).filter(isEnabled)
+        let visible = enabled.filter { placement(of: $0, in: layout) == page }
+
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 10) {
+                Spacer(minLength: 0)
+                if arranging {
+                    Button("Done", action: { arranging = false })
+                        .buttonStyle(.plain)
+                        .font(.system(size: 12, weight: .medium))
+                }
+                editMenu(enabled, layout: layout, hasVisibleWidgets: !visible.isEmpty)
+            }
+
+            if !visible.isEmpty {
+                LauncherWidgetFlow(spacing: 12) {
+                    ForEach(visible) { kind in
+                        let size = size(for: kind, in: layout)
+                        widgetTile(kind, size: size)
+                            .layoutValue(key: LauncherWidgetWidth.self, value: size.width)
+                    }
+                }
             }
         }
+    }
+
+    private func editMenu(_ enabled: [Kind], layout: LauncherWidgetProfile, hasVisibleWidgets: Bool) -> some View {
+        Menu {
+            Section("Show in Launchpad") {
+                ForEach(Kind.allCases) { kind in
+                    Toggle(kind.title, isOn: Binding(
+                        get: { isEnabled(kind) },
+                        set: { show in
+                            if show {
+                                update { $0.pages[kind.rawValue] = page }
+                            }
+                            Defaults[kind.preference] = show
+                        }
+                    ))
+                }
+            }
+            if !enabled.isEmpty {
+                Section("Layout on This Display") {
+                    if hasVisibleWidgets && !arranging {
+                        Button("Arrange by Dragging", systemImage: "hand.point.up.left") {
+                            arranging = true
+                        }
+                    }
+                    ForEach(enabled) { kind in
+                        let currentPage = placement(of: kind, in: layout)
+                        let neighbors = enabled.filter { placement(of: $0, in: layout) == currentPage }
+                        Menu("\(kind.title) · \(pageTitle(currentPage))") {
+                            widgetLayoutMenu(kind, neighbors: neighbors)
+                        }
+                    }
+                }
+            }
+        } label: {
+            Label(
+                hasVisibleWidgets ? "Edit Widgets" : "Add Widgets",
+                systemImage: hasVisibleWidgets ? "slider.horizontal.3" : "plus"
+            )
+            .font(.system(size: 12, weight: .medium))
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+    }
+
+    @ViewBuilder
+    private func widgetLayoutMenu(_ kind: Kind, neighbors: [Kind]) -> some View {
+        Picker("Page", selection: Binding(
+            get: { placement(of: kind, in: profile) },
+            set: { target in update { $0.pages[kind.rawValue] = target } }
+        )) {
+            if showCategories {
+                Text("Categories").tag(LauncherWidgetProfile.categoriesPage)
+            }
+            ForEach(0..<appPageCount, id: \.self) { target in
+                Text(pageTitle(target)).tag(target)
+            }
+        }
+        Picker("Size", selection: Binding(
+            get: { size(for: kind, in: profile) },
+            set: { size in update { $0.sizes[kind.rawValue] = size.profileValue } }
+        )) {
+            ForEach(LauncherPlayerWidget.Size.allCases, id: \.self) { size in
+                Text(size.label).tag(size)
+            }
+        }
+        if let index = neighbors.firstIndex(of: kind) {
+            Button("Move Earlier", systemImage: "arrow.left") {
+                move(kind, to: index - 1, in: neighbors)
+            }
+            .disabled(index == 0)
+            Button("Move Later", systemImage: "arrow.right") {
+                move(kind, to: index + 1, in: neighbors)
+            }
+            .disabled(index == neighbors.count - 1)
+        }
+    }
+
+    private func placement(of kind: Kind, in layout: LauncherWidgetProfile) -> Int {
+        layout.page(for: kind, appPageCount: appPageCount, showCategories: showCategories)
+    }
+
+    private func pageTitle(_ page: Int) -> String {
+        page == LauncherWidgetProfile.categoriesPage
+            ? String(localized: "Categories")
+            : String(localized: "Apps Page \(page + 1)")
     }
 
     private func update(_ change: (inout LauncherWidgetProfile) -> Void) {
-        var value = profile
+        let previous = profile
+        var value = previous
         change(&value)
+        guard value != previous else { return }
         profileData = value.saving(in: profileData, screen: profileID)
     }
 
-    private func move(_ id: String, by offset: Int) {
-        guard let visibleIndex = enabled.firstIndex(of: id),
-              enabled.indices.contains(visibleIndex + offset),
-              let from = profile.order.firstIndex(of: id),
-              let to = profile.order.firstIndex(of: enabled[visibleIndex + offset]) else { return }
-        update { $0.order.swapAt(from, to) }
+    private func move(_ kind: Kind, to index: Int, in visible: [Kind]) {
+        guard visible.indices.contains(index) else { return }
+        update { $0.swapWidgets(kind, visible[index]) }
     }
 
-    @ViewBuilder private func widget(_ id: String) -> some View {
-        switch id {
-        case "clock": LauncherClockWidget()
-        case "weather": LauncherWeatherWidget()
-        case "calendar": LauncherCalendarWidget()
-        case "reminders": LauncherRemindersWidget()
-        default: LauncherVinylWidget(size: musicSize(id))
+    private func size(for kind: Kind, in layout: LauncherWidgetProfile) -> LauncherPlayerWidget.Size {
+        switch layout.sizes[kind.rawValue] {
+        case 0: return .compact
+        case 1: return .regular
+        case 2: return .wide
+        default: return kind == .music ? defaultMusicSize : .regular
         }
     }
 
-    private func musicSize(_ id: String) -> LauncherPlayerWidget.Size {
-        guard let size = profile.sizes[id] else { return Defaults[.launcherWidgetSize] }
-        return size == 0 ? .compact : size == 2 ? .wide : .regular
-    }
-
-    @Default(.launcherShowClockWidget) private var showClock
-    @Default(.launcherShowWeatherWidget) private var showWeather
-    @Default(.launcherShowVinylWidget) private var showVinyl
-    @Default(.launcherShowCalendarWidget) private var showCalendar
-    @Default(.launcherShowRemindersWidget) private var showReminders
-
-    var anyEnabled: Bool { showClock || showWeather || showVinyl || showCalendar || showReminders }
-
-    var body: some View {
-        if anyEnabled {
-            VStack(alignment: .trailing, spacing: 4) {
-                Button(editing ? "Done" : "Edit widgets") { editing.toggle() }
-                    .buttonStyle(.plain).font(.caption).foregroundStyle(.secondary)
-                ScrollView(.vertical) {
-                    LauncherWidgetFlow(spacing: 16) {
-                        ForEach(enabled, id: \.self) { id in
-                            VStack(spacing: 6) {
-                                if ready {
-                                    widget(id)
-                                        .environment(\.launcherWidgetWidth, width(id) - 28)
-                                } else {
-                                    AnchorCorners.rectangle(cornerRadius: 16)
-                                        .fill(.quaternary).frame(width: width(id), height: 90)
-                                }
-                                if editing {
-                                    HStack {
-                                        Button { move(id, by: -1) } label: { Image(systemName: "arrow.left") }
-                                            .disabled(enabled.first == id).accessibilityLabel("Move widget left")
-                                        Menu("Size") {
-                                            ForEach(0..<3) { size in
-                                                Button(["Compact", "Regular", "Wide"][size]) {
-                                                    update { $0.sizes[id] = size }
-                                                }
-                                            }
-                                        }
-                                        Button { move(id, by: 1) } label: { Image(systemName: "arrow.right") }
-                                            .disabled(enabled.last == id).accessibilityLabel("Move widget right")
-                                    }.controlSize(.small)
-                                }
-                            }
-                        }
-                    }
-                }.scrollIndicators(.never)
-                if editing { Text("Layout saved for this display").font(.caption2).foregroundStyle(.secondary) }
+    private func widgetTile(_ kind: Kind, size: LauncherPlayerWidget.Size) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            if arranging {
+                Label(kind.title, systemImage: "line.3.horizontal")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 5)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(AnchorSurface(radius: 8))
+                    .contentShape(Rectangle())
+                    .onDrag { LauncherWidgetDrop.itemProvider(for: kind, profileID: profileID) }
+                    .help("Drag to another widget or a page marker")
             }
-            .padding(.bottom, 12)
-            .task {
-                // Let search and app tiles present before constructing media/EventKit views.
-                await Task.yield()
-                guard !Task.isCancelled else { return }
-                ready = true
+            widget(kind, size: size)
+        }
+        .overlay {
+            if arranging && dropTarget == kind {
+                AnchorCorners.rectangle(cornerRadius: 16)
+                    .anchorStrokeBorder(Color.accentColor, lineWidth: 2)
+                    .allowsHitTesting(false)
+            }
+        }
+        .onDrop(of: [LauncherWidgetDrop.type], isTargeted: dropTargetBinding(for: kind)) { providers in
+            guard arranging, isPageActive else { return false }
+            return LauncherWidgetDrop.accept(providers, profileID: profileID) { dragged in
+                guard dragged != kind, isEnabled(dragged) else { return }
+                update { layout in
+                    guard placement(of: dragged, in: layout) == page,
+                          placement(of: kind, in: layout) == page else { return }
+                    layout.swapWidgets(dragged, kind)
+                }
             }
         }
     }
 
-    private func width(_ id: String) -> CGFloat {
-        switch profile.sizes[id] ?? 1 {
-        case 0: return 190
-        case 2: return 330
-        default: return 246
+    private func dropTargetBinding(for kind: Kind) -> Binding<Bool> {
+        Binding(
+            get: { dropTarget == kind },
+            set: { targeted in
+                if targeted {
+                    dropTarget = kind
+                } else if dropTarget == kind {
+                    dropTarget = nil
+                }
+            }
+        )
+    }
+
+    @ViewBuilder private func widget(_ kind: Kind, size: LauncherPlayerWidget.Size) -> some View {
+        switch kind {
+        case .clock: LauncherClockWidget(isPageActive: isPageActive)
+        case .weather: LauncherWeatherWidget(isPageActive: isPageActive)
+        case .calendar: LauncherCalendarWidget(isPageActive: isPageActive)
+        case .reminders: LauncherRemindersWidget(isPageActive: isPageActive)
+        case .music: LauncherPlayerWidget(size: size, isPageActive: isPageActive, onOpen: {
+            Defaults[.enablePlayerWidget] = true
+            PlayerWindowManager.shared.sync()
+        })
+        .help("Open the desktop player")
         }
     }
 }
 
-/// Wrap saved widget widths into rows instead of clipping the last widget off
-/// screen. The same stored order and size choices work in both launcher modes.
+/// The private drag type keeps widget moves out of app and folder drop handlers.
+private struct LauncherWidgetDrop: Codable {
+    static let type = "com.arronlingham.anchor.launchpad.widget"
+
+    let widget: String
+    let profileID: String
+
+    static func itemProvider(for widget: LauncherWidgetProfile.Widget, profileID: String) -> NSItemProvider {
+        let payload = Self(widget: widget.rawValue, profileID: profileID)
+        let provider = NSItemProvider()
+        provider.registerDataRepresentation(forTypeIdentifier: type, visibility: .ownProcess) { completion in
+            do {
+                completion(try JSONEncoder().encode(payload), nil)
+            } catch {
+                completion(nil, error)
+            }
+            return nil
+        }
+        return provider
+    }
+
+    static func accept(
+        _ providers: [NSItemProvider],
+        profileID: String,
+        onMove: @escaping @MainActor (LauncherWidgetProfile.Widget) -> Void
+    ) -> Bool {
+        guard let provider = providers.first(where: { $0.hasItemConformingToTypeIdentifier(type) })
+        else { return false }
+        provider.loadDataRepresentation(forTypeIdentifier: type) { data, _ in
+            guard let data,
+                  let payload = try? JSONDecoder().decode(Self.self, from: data),
+                  payload.profileID == profileID,
+                  let widget = LauncherWidgetProfile.Widget(rawValue: payload.widget)
+            else { return }
+            Task { @MainActor in onMove(widget) }
+        }
+        return true
+    }
+}
+
+extension View {
+    func launcherWidgetPageDrop(
+        profileID: String,
+        page: Int,
+        onMove: @escaping () -> Void = {}
+    ) -> some View {
+        launcherWidgetPageDrop(profileID: profileID, pageAt: { _ in page }, onMove: { _ in onMove() })
+    }
+
+    func launcherWidgetPageDrop(
+        profileID: String,
+        pageAt: @escaping (CGPoint) -> Int,
+        onMove: @escaping (Int) -> Void = { _ in }
+    ) -> some View {
+        modifier(LauncherWidgetPageDropTarget(profileID: profileID, pageAt: pageAt, onMove: onMove))
+    }
+}
+
+private struct LauncherWidgetPageDropTarget: ViewModifier {
+    let profileID: String
+    let pageAt: (CGPoint) -> Int
+    let onMove: (Int) -> Void
+
+    @AppStorage("launcherWidgetProfiles") private var profileData = Data()
+    @State private var targeted = false
+
+    func body(content: Content) -> some View {
+        content
+            .background {
+                if targeted {
+                    Capsule().fill(Color.accentColor.opacity(0.22))
+                }
+            }
+            .onDrop(of: [LauncherWidgetDrop.type], isTargeted: $targeted) { providers, location in
+                let page = pageAt(location)
+                return LauncherWidgetDrop.accept(providers, profileID: profileID) { widget in
+                    guard Defaults[widget.preference] else { return }
+                    var profile = LauncherWidgetProfile.load(profileData, screen: profileID)
+                    profile.pages[widget.rawValue] = page
+                    profileData = profile.saving(in: profileData, screen: profileID)
+                    onMove(page)
+                }
+            }
+    }
+}
+
+private extension LauncherWidgetProfile.Widget {
+    var title: String {
+        switch self {
+        case .clock: return String(localized: "Clock")
+        case .weather: return String(localized: "Weather")
+        case .calendar: return String(localized: "Calendar")
+        case .reminders: return String(localized: "Reminders")
+        case .music: return String(localized: "Now Playing")
+        }
+    }
+
+    var preference: Defaults.Key<Bool> {
+        switch self {
+        case .clock: return .launcherShowClockWidget
+        case .weather: return .launcherShowWeatherWidget
+        case .calendar: return .launcherShowCalendarWidget
+        case .reminders: return .launcherShowRemindersWidget
+        case .music: return .launcherShowVinylWidget
+        }
+    }
+}
+
+private struct LauncherWidgetWidth: LayoutValueKey {
+    static let defaultValue: CGFloat = 220
+}
+
+/// Use each card's preferred width when it fits, wrap rows, and constrain any
+/// card wider than the viewport. The surrounding page owns vertical scrolling.
 private struct LauncherWidgetFlow: Layout {
     var spacing: CGFloat
 
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
         let width = proposal.width ?? 900
-        return arrange(subviews, width: width).size
+        return CGSize(width: width, height: arrange(subviews, width: width).height)
     }
 
     func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        let positions = arrange(subviews, width: bounds.width).positions
-        for (index, subview) in subviews.enumerated() {
-            subview.place(at: CGPoint(x: bounds.minX + positions[index].x,
-                                     y: bounds.minY + positions[index].y),
-                          anchor: .topLeading, proposal: .unspecified)
+        let placements = arrange(subviews, width: bounds.width).placements
+        for (subview, placement) in zip(subviews, placements) {
+            subview.place(
+                at: CGPoint(x: bounds.minX + placement.origin.x, y: bounds.minY + placement.origin.y),
+                anchor: .topLeading,
+                proposal: ProposedViewSize(width: placement.width, height: nil)
+            )
         }
     }
 
-    private func arrange(_ subviews: Subviews, width: CGFloat) -> (size: CGSize, positions: [CGPoint]) {
+    private func arrange(_ subviews: Subviews, width: CGFloat) -> (height: CGFloat, placements: [CGRect]) {
         var x: CGFloat = 0
         var y: CGFloat = 0
         var rowHeight: CGFloat = 0
-        var positions: [CGPoint] = []
+        var placements: [CGRect] = []
         for subview in subviews {
-            let size = subview.sizeThatFits(.unspecified)
-            if x > 0 && x + size.width > width {
+            let cardWidth = min(width, subview[LauncherWidgetWidth.self])
+            let cardHeight = subview.sizeThatFits(ProposedViewSize(width: cardWidth, height: nil)).height
+            if x > 0 && x + cardWidth > width {
                 x = 0
                 y += rowHeight + spacing
                 rowHeight = 0
             }
-            positions.append(CGPoint(x: x, y: y))
-            x += size.width + spacing
-            rowHeight = max(rowHeight, size.height)
+            placements.append(CGRect(x: x, y: y, width: cardWidth, height: cardHeight))
+            x += cardWidth + spacing
+            rowHeight = max(rowHeight, cardHeight)
         }
-        return (CGSize(width: width, height: y + rowHeight), positions)
+        return (y + rowHeight, placements)
     }
 }
 
 private struct LauncherCalendarWidget: View {
-    @Environment(\.launcherWidgetWidth) private var width
+    let isPageActive: Bool
+    @State private var isVisible = false
     @ObservedObject private var calendar = CalendarManager.shared
 
     private var upcoming: [EventModel] {
-        calendar.launcherEvents
-            .filter { $0.type.isEvent && $0.end >= Date() }
-            .sorted { $0.start < $1.start }
-            .prefix(2)
-            .map { $0 }
+        let now = Date()
+        return Array(calendar.launcherEvents.lazy.filter { $0.end >= now }.prefix(2))
     }
 
     var body: some View {
@@ -210,50 +433,62 @@ private struct LauncherCalendarWidget: View {
                         .foregroundStyle(.secondary)
                 } else {
                     ForEach(upcoming) { event in
-                        HStack {
-                        Button {
-                            if let url = event.calendarAppURL() {
-                                _ = NSWorkspace.shared.open(url)
-                            } else {
-                                _ = NSWorkspace.shared.open(
-                                    URL(fileURLWithPath: "/System/Applications/Calendar.app"))
+                        HStack(spacing: 6) {
+                            Button {
+                                let url = event.calendarAppURL()
+                                    ?? URL(fileURLWithPath: "/System/Applications/Calendar.app")
+                                NSWorkspace.shared.open(url)
+                            } label: {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(event.title)
+                                        .font(.caption)
+                                        .lineLimit(1)
+                                    Text(eventDate(event))
+                                        .font(.caption2)
+                                        .foregroundStyle(.secondary)
+                                        .lineLimit(1)
+                                }
+                                .frame(maxWidth: .infinity, alignment: .leading)
                             }
-                        } label: {
-                            HStack(spacing: 8) {
-                                Text(event.isAllDay ? "All day" : event.start.formatted(date: .omitted, time: .shortened))
-                                    .font(.caption2)
-                                    .foregroundStyle(.secondary)
-                                    .frame(width: 58, alignment: .leading)
-                                Text(event.title)
-                                    .font(.caption)
-                                    .lineLimit(1)
-                                Spacer(minLength: 0)
+                            .buttonStyle(.plain)
+                            .help("Open \(event.title) in Calendar")
+                            if let url = event.conferenceURL {
+                                Button("Join") { NSWorkspace.shared.open(url) }
+                                    .buttonStyle(AnchorButtonStyle())
+                                    .controlSize(.small)
+                                    .help("Join \(event.title)")
                             }
-                        }
-                        .buttonStyle(.plain)
-                        .help("Open \(event.title) in Calendar")
-                        if let url = event.conferenceURL {
-                            Button("Join") { NSWorkspace.shared.open(url) }
-                                .buttonStyle(AnchorButtonStyle()).controlSize(.small)
-                                .help("Join \(event.title)")
-                        }
                         }
                     }
                 }
             }
-            .frame(width: width, alignment: .leading)
         }
-        .task {
+        .onScrollVisibilityChange(threshold: 0.01) { isVisible = $0 }
+        .task(id: isPageActive && isVisible) {
+            guard isPageActive, isVisible else { return }
             if !calendar.hasCalendarAccess {
                 await calendar.checkCalendarAuthorization()
             }
-            if calendar.hasCalendarAccess { await calendar.updateLauncherEvents() }
+            guard !Task.isCancelled, calendar.hasCalendarAccess else { return }
+            await calendar.updateLauncherEvents()
         }
+    }
+
+    private func eventDate(_ event: EventModel) -> String {
+        if Calendar.current.isDateInToday(event.start) {
+            return event.isAllDay ? String(localized: "All day")
+                : event.start.formatted(.dateTime.hour().minute())
+        }
+        if event.isAllDay {
+            return event.start.formatted(.dateTime.weekday(.abbreviated).day())
+        }
+        return event.start.formatted(.dateTime.weekday(.abbreviated).hour().minute())
     }
 }
 
 private struct LauncherRemindersWidget: View {
-    @Environment(\.launcherWidgetWidth) private var width
+    let isPageActive: Bool
+    @State private var isVisible = false
     @State private var saving = false
     @ObservedObject private var reminders = LauncherAppleReminders.shared
     @State private var newTask = ""
@@ -309,11 +544,15 @@ private struct LauncherRemindersWidget: View {
                     .accessibilityLabel("Add reminder")
                 }
             }
-            .frame(width: width, alignment: .leading)
         }
-        .task { await reminders.refresh() }
-        .onReceive(NotificationCenter.default.publisher(for: .EKEventStoreChanged)) { _ in
-            Task { await reminders.refresh(force: true) }
+        .onScrollVisibilityChange(threshold: 0.01) { isVisible = $0 }
+        .task(id: isPageActive && isVisible) {
+            guard isPageActive, isVisible else { return }
+            await reminders.refresh()
+            for await _ in NotificationCenter.default.notifications(named: .EKEventStoreChanged) {
+                guard !Task.isCancelled else { return }
+                await reminders.refresh(force: true)
+            }
         }
     }
 
@@ -328,49 +567,57 @@ private struct LauncherRemindersWidget: View {
     }
 }
 
-/// A widget's shared shell, so the three look like one set.
+/// Shared padding and surface for the system-information cards.
 private struct WidgetCard<Content: View>: View {
-    @Environment(\.launcherWidgetWidth) private var width
-    var onTap: (() -> Void)?
     @ViewBuilder var content: Content
 
     var body: some View {
         content
             .padding(.horizontal, 14)
             .padding(.vertical, 12)
-            .frame(width: width + 28, alignment: .leading)
-            .frame(minHeight: 86, alignment: .leading)
-            .background(AnchorSurface(radius: 18))
-            .anchorCornerContainer(radius: 18)
+            .frame(minWidth: 0, maxWidth: .infinity, minHeight: 96, alignment: .topLeading)
+            .background(AnchorSurface(radius: 16))
+            .anchorCornerContainer(radius: 16)
             .overlay {
                 AnchorCorners.rectangle(cornerRadius: 16)
                     .stroke(Color.primary.opacity(0.08), lineWidth: 1)
             }
-            .contentShape(AnchorCorners.rectangle(cornerRadius: 16))
-            .onTapGesture { onTap?() }
     }
 }
 
 private struct LauncherClockWidget: View {
+    let isPageActive: Bool
+    @State private var isVisible = false
+
     var body: some View {
         WidgetCard {
-            // Scheduled by the system on the minute rather than ticked by a
-            // timer, so an open launcher costs nothing while it sits there.
-            TimelineView(.everyMinute) { context in
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(context.date, format: .dateTime.hour().minute())
-                        .font(.system(size: 22, weight: .medium, design: .rounded))
-                        .monospacedDigit()
-                    Text(context.date, format: .dateTime.weekday(.abbreviated).day().month(.abbreviated))
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
-                }
+            if isPageActive && isVisible {
+                TimelineView(.everyMinute) { context in dateView(context.date) }
+            } else {
+                dateView(.now)
             }
+        }
+        .onScrollVisibilityChange(threshold: 0.01) { isVisible = $0 }
+    }
+
+    private func dateView(_ date: Date) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Label("Clock", systemImage: "clock")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.secondary)
+            Text(date, format: .dateTime.hour().minute())
+                .font(.system(size: 24, weight: .medium, design: .rounded))
+                .monospacedDigit()
+            Text(date, format: .dateTime.weekday(.abbreviated).day().month(.abbreviated))
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
     }
 }
 
 private struct LauncherWeatherWidget: View {
+    let isPageActive: Bool
+    @State private var isVisible = false
     @ObservedObject private var weather = LockScreenWeatherManager.shared
     @State private var consumerID = UUID()
 
@@ -401,23 +648,14 @@ private struct LauncherWeatherWidget: View {
                 }
             }
         }
-        .onAppear { weather.beginLauncher(consumerID) }
+        .onScrollVisibilityChange(threshold: 0.01) { isVisible = $0 }
+        .onChange(of: isPageActive && isVisible, initial: true) { _, active in
+            if active {
+                weather.beginLauncher(consumerID)
+            } else {
+                weather.endLauncher(consumerID)
+            }
+        }
         .onDisappear { weather.endLauncher(consumerID) }
-    }
-}
-
-/// The record, and a way into the full vinyl player.
-///
-/// Tapping opens the desktop player rather than duplicating its controls here:
-/// the launcher is dismissed by the tap anyway, so a transport built into this
-/// card would be gone the moment you used it.
-private struct LauncherVinylWidget: View {
-    var size: LauncherPlayerWidget.Size = .regular
-    var body: some View {
-        LauncherPlayerWidget(size: size, onOpen: {
-            Defaults[.enablePlayerWidget] = true
-            PlayerWindowManager.shared.sync()
-        })
-        .help("Open the desktop player")
     }
 }
