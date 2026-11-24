@@ -26,6 +26,7 @@ import Foundation
 /// but the dictation manager only talks to this protocol so a different engine —
 /// WhisperKit, whisper.cpp, a cloud API — can be swapped in without touching the
 /// audio capture, hotkey, or text-injection code.
+@MainActor
 protocol SpeechTranscribing: AnyObject {
     /// Audio format the backend wants buffers converted to, or nil for "any".
     var preferredFormat: AVAudioFormat? { get async }
@@ -43,7 +44,7 @@ protocol SpeechTranscribing: AnyObject {
     /// Deliberately synchronous and safe to call from the real-time audio thread:
     /// hopping through a `Task` would give no ordering guarantee between buffers,
     /// which scrambles the transcript. Implementations must not block.
-    func append(_ buffer: AVAudioPCMBuffer)
+    nonisolated func append(_ buffer: AVAudioPCMBuffer)
 
     /// Ends the session and returns the complete transcript.
     func finish() async throws -> String

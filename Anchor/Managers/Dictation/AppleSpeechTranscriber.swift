@@ -34,6 +34,7 @@ import Speech
 ///    each element is the whole in-flight utterance, not a delta — while finalized
 ///    results arrive once per utterance. Concatenating everything duplicates text,
 ///    so settled and volatile parts are tracked separately here.
+@MainActor
 final class AppleSpeechTranscriber: SpeechTranscribing {
     private var transcriber: SpeechTranscriber?
     private var analyzer: SpeechAnalyzer?
@@ -42,7 +43,7 @@ final class AppleSpeechTranscriber: SpeechTranscribing {
 
     /// Written on the main actor, read from the real-time audio thread, so it
     /// needs a lock rather than plain property access.
-    private let continuationLock = OSAllocatedUnfairLock<AsyncStream<AnalyzerInput>.Continuation?>(
+    private nonisolated let continuationLock = OSAllocatedUnfairLock<AsyncStream<AnalyzerInput>.Continuation?>(
         initialState: nil)
 
     private let state = TranscriptState()
@@ -61,13 +62,16 @@ final class AppleSpeechTranscriber: SpeechTranscribing {
         guard let locale = await Self.resolveLocale(preferred) else {
             throw SpeechTranscribingError.localeUnsupported(preferred.identifier)
         }
+        try Task.checkCancellation()
 
         let tempTranscriber = SpeechTranscriber(locale: locale, preset: .progressiveTranscription)
-
-        if await AssetInventory.status(forModules: [tempTranscriber]) != .installed {
+        let status = await AssetInventory.status(forModules: [tempTranscriber])
+        try Task.checkCancellation()
+        if status != .installed {
             do {
                 let request = try await AssetInventory.assetInstallationRequest(
                     supporting: [tempTranscriber])
+                try Task.checkCancellation()
                 try await request?.downloadAndInstall()
             } catch {
                 throw SpeechTranscribingError.assetInstallationFailed(error.localizedDescription)
@@ -97,6 +101,7 @@ final class AppleSpeechTranscriber: SpeechTranscribing {
         self.transcriber = transcriber
 
         await state.reset()
+        try Task.checkCancellation()
 
         let (stream, continuation) = AsyncStream<AnalyzerInput>.makeStream()
         inputStream = stream
@@ -107,7 +112,7 @@ final class AppleSpeechTranscriber: SpeechTranscribing {
 
         // Drain results concurrently — see the note in the type doc.
         let state = self.state
-        resultsTask = Task {
+        resultsTask = Task.detached {
             do {
                 for try await result in transcriber.results {
                     let text = String(result.text.characters)
@@ -124,7 +129,7 @@ final class AppleSpeechTranscriber: SpeechTranscribing {
 
     /// Safe to call from the audio thread: `yield` is thread-safe and preserves
     /// call order, so buffers reach the analyzer in the order they were captured.
-    func append(_ buffer: AVAudioPCMBuffer) {
+    nonisolated func append(_ buffer: AVAudioPCMBuffer) {
         continuationLock.withLock { continuation in
             // yield returns whether the value was enqueued. This stream is
             // unbounded, so it cannot drop — but the result is discarded

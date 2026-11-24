@@ -69,38 +69,52 @@ final class DictationManager: ObservableObject {
     }
 
     private let engine = AVAudioEngine()
-    private var backend: SpeechTranscribing
+    private let makeBackend: @MainActor () -> SpeechTranscribing
+    private var backend: SpeechTranscribing?
     private var converter: AVAudioConverter?
     private var targetFormat: AVAudioFormat?
     private var isPrepared = false
+    private var tapInstalled = false
+    private var sessionTask: Task<Void, Never>?
     private var errorResetTask: Task<Void, Never>?
     private var sessionToken = 0
+    private var preferenceObservers = Set<AnyCancellable>()
 
-    private init(backend: SpeechTranscribing = AppleSpeechTranscriber()) {
-        self.backend = backend
+    private init(makeBackend: @escaping @MainActor () -> SpeechTranscribing = { AppleSpeechTranscriber() }) {
+        self.makeBackend = makeBackend
+        Publishers.Merge(
+            Defaults.publisher(.enableDictation, options: []).map(\.newValue),
+            Defaults.publisher(.enableShortcuts, options: []).map(\.newValue)
+        )
+        .filter { !$0 }
+        .receive(on: DispatchQueue.main)
+        .sink { [weak self] _ in self?.cancelDictation() }
+        .store(in: &preferenceObservers)
     }
 
     // MARK: - Public API
 
     /// Called on hotkey press.
     func beginDictation() {
-        guard Defaults[.enableDictation] else { return }
-        guard !state.isActive else { return }
+        guard Self.isEnabled, !state.isActive else { return }
 
         errorResetTask?.cancel()
         live.transcript = ""
+        let backend = makeBackend()
+        self.backend = backend
         sessionToken += 1
         let token = sessionToken
         state = .preparing
 
-        Task { [weak self] in
-            guard let self else { return }
+        sessionTask = Task { [weak self] in
+            guard let self, self.acceptsSession(token) else { return }
             do {
-                try await self.startSession(token: token)
-                if self.sessionToken == token {
+                try await self.startSession(token: token, backend: backend)
+                if self.acceptsSession(token) {
                     self.state = .listening
                 }
             } catch {
+                guard self.acceptsSession(token) else { return }
                 self.fail(error.localizedDescription)
             }
         }
@@ -108,21 +122,23 @@ final class DictationManager: ObservableObject {
 
     /// Called on hotkey release.
     func endDictation() {
-        if state == .preparing {
-            sessionToken += 1
-            state = .idle
+        if !Self.isEnabled || state == .preparing {
+            cancelDictation()
             return
         }
-        guard state == .listening else { return }
+        guard state == .listening, let backend else { return }
+        let token = sessionToken
         state = .transcribing
         stopEngine()
 
-        Task { [weak self] in
-            guard let self else { return }
+        sessionTask = Task { [weak self] in
+            guard let self, self.acceptsSession(token) else { return }
             do {
-                let transcript = try await self.backend.finish()
-                await self.deliver(transcript)
+                let transcript = try await backend.finish()
+                guard self.acceptsSession(token) else { return }
+                await self.deliver(transcript, token: token)
             } catch {
+                guard self.acceptsSession(token) else { return }
                 self.fail(error.localizedDescription)
             }
         }
@@ -130,40 +146,54 @@ final class DictationManager: ObservableObject {
 
     /// Abandons an in-flight dictation without pasting.
     func cancelDictation() {
-        guard state.isActive else { return }
+        guard state != .idle else { return }
+        retireSession()
+        reset()
+    }
+
+    private func retireSession() {
         sessionToken += 1
+        sessionTask?.cancel()
+        sessionTask = nil
+        errorResetTask?.cancel()
+        errorResetTask = nil
         stopEngine()
-        Task { [weak self] in
-            await self?.backend.cancel()
-            self?.reset()
+        if let backend {
+            self.backend = nil
+            Task { await backend.cancel() }
         }
+    }
+
+    private static var isEnabled: Bool { Defaults[.enableDictation] && Defaults[.enableShortcuts] }
+
+    private func acceptsSession(_ token: Int) -> Bool {
+        sessionToken == token && Self.isEnabled && !Task.isCancelled
     }
 
     // MARK: - Session
 
-    private func startSession(token: Int) async throws {
+    private func startSession(token: Int, backend: SpeechTranscribing) async throws {
         if !isPrepared {
             try await backend.prepare()
-            guard sessionToken == token else { return }
+            guard acceptsSession(token) else { return }
             isPrepared = true
         }
 
         try await backend.start { [weak self] update in
-            Task { @MainActor in
-                self?.live.transcript = update.combined
+            Task { @MainActor [weak self] in
+                guard let self, self.acceptsSession(token), self.state.isActive else { return }
+                self.live.transcript = update.combined
             }
         }
-        
-        guard sessionToken == token else {
-            await backend.cancel()
-            return
-        }
 
-        targetFormat = await backend.preferredFormat
-        try startEngine()
+        guard acceptsSession(token) else { return }
+        let format = await backend.preferredFormat
+        guard acceptsSession(token) else { return }
+        targetFormat = format
+        try startEngine(backend: backend, token: token)
     }
 
-    private func startEngine() throws {
+    private func startEngine(backend: SpeechTranscribing, token: Int) throws {
         let input = engine.inputNode
         let inputFormat = input.outputFormat(forBus: 0)
 
@@ -174,14 +204,15 @@ final class DictationManager: ObservableObject {
         }
 
         // Captured by value so the audio thread never reads main-actor state.
-        let backend = self.backend
         let capturedConverter = converter
         let capturedTarget = targetFormat
 
-        input.removeTap(onBus: 0)
         input.installTap(onBus: 0, bufferSize: 4096, format: inputFormat) { [weak self] buffer, _ in
             let level = Self.peakLevel(of: buffer)
-            Task { @MainActor [weak self] in self?.updateLevel(level) }
+            Task { @MainActor [weak self] in
+                guard let self, self.acceptsSession(token), self.state == .listening else { return }
+                self.updateLevel(level)
+            }
 
             // Hand the analyzer a buffer we own. AVAudioEngine reuses the buffer it
             // gives the tap once this closure returns, and the analyzer consumes it
@@ -193,15 +224,20 @@ final class DictationManager: ObservableObject {
             // Synchronous, so buffers stay in capture order.
             backend.append(owned)
         }
+        tapInstalled = true
 
         engine.prepare()
         try engine.start()
     }
 
     private func stopEngine() {
-        guard engine.isRunning else { return }
-        engine.inputNode.removeTap(onBus: 0)
-        engine.stop()
+        if tapInstalled {
+            engine.inputNode.removeTap(onBus: 0)
+            tapInstalled = false
+        }
+        if engine.isRunning { engine.stop() }
+        converter = nil
+        targetFormat = nil
         live.inputLevel = 0
     }
 
@@ -272,7 +308,8 @@ final class DictationManager: ObservableObject {
 
     // MARK: - Delivery
 
-    private func deliver(_ transcript: String) async {
+    private func deliver(_ transcript: String, token: Int) async {
+        guard acceptsSession(token) else { return }
         var text = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
         if Defaults[.dictationTidyWhitespace] {
             text = text.replacingOccurrences(
@@ -294,10 +331,12 @@ final class DictationManager: ObservableObject {
         }
 
         do {
-            try await TextInjector.insert(text)
+            try await TextInjector.insert(text) { self.acceptsSession(token) }
+            guard acceptsSession(token) else { return }
             playFeedback()
             reset()
         } catch {
+            guard acceptsSession(token) else { return }
             fail(error.localizedDescription)
         }
     }
@@ -308,6 +347,8 @@ final class DictationManager: ObservableObject {
     }
 
     private func reset() {
+        sessionTask = nil
+        backend = nil
         state = .idle
         live.transcript = ""
         live.inputLevel = 0
@@ -315,8 +356,7 @@ final class DictationManager: ObservableObject {
 
     private func fail(_ message: String) {
         NSLog("DictationManager: \(message)")
-        sessionToken += 1
-        stopEngine()
+        retireSession()
         state = .failed(message)
         live.transcript = ""
         errorResetTask = Task { [weak self] in

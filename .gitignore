@@ -85,6 +85,8 @@ __pycache__/
 !/scripts/regen-settings-indexes.sh
 !/scripts/settings_index.py
 /tests/*
+!/tests/DictationDisableLifecycleTests.swift
+!/tests/run_dictation_disable_lifecycle_tests.sh
 !/tests/TodoRemindersDisableLifecycleTests.swift
 !/tests/run_todo_reminders_disable_lifecycle_tests.sh
 !/tests/AudioPriorityWriteLifecycleTests.swift

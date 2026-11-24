@@ -32,6 +32,7 @@ import Foundation
 /// is silently dropped by the window server.
 enum TextInjector {
     private static let virtualKeyV: CGKeyCode = 0x09
+    @MainActor private static var pendingRestore: Task<Void, Never>?
 
     enum InjectionError: LocalizedError {
         case accessibilityNotTrusted
@@ -63,7 +64,8 @@ enum TextInjector {
     ///
     /// Suspends for up to `modifierClearTimeout` waiting for the user's
     /// push-to-talk chord to be released — see `waitForModifiersToClear`.
-    static func insert(_ text: String) async throws {
+    @MainActor
+    static func insert(_ text: String, shouldPaste: () -> Bool = { true }) async throws {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         guard hasAccessibilityPermission else { throw InjectionError.accessibilityNotTrusted }
@@ -71,6 +73,11 @@ enum TextInjector {
         // Wait before touching the pasteboard, so a slow release does not leave
         // the transcript sitting on the user's clipboard any longer than needed.
         await waitForModifiersToClear()
+        while let pendingRestore {
+            guard !Task.isCancelled, shouldPaste() else { return }
+            await pendingRestore.value
+        }
+        guard !Task.isCancelled, shouldPaste() else { return }
 
         let pasteboard = NSPasteboard.general
         let saved = snapshot(of: pasteboard)
@@ -81,29 +88,36 @@ enum TextInjector {
         // The clipboard monitor polls every 500 ms and this transcript is only
         // on the pasteboard for ~250 ms, so without this it lands in clipboard
         // history perhaps half the time — and that history is written to disk.
-        await ignoreInClipboardHistory(ourChangeCount)
+        ignoreInClipboardHistory(ourChangeCount)
+
+        guard pasteboard.changeCount == ourChangeCount else { return }
+        guard shouldPaste() else {
+            restore(saved, to: pasteboard)
+            return
+        }
 
         do {
             try postPasteKeystroke()
         } catch {
-            await restore(saved, to: pasteboard)
+            if pasteboard.changeCount == ourChangeCount { restore(saved, to: pasteboard) }
             throw error
         }
 
-        // The paste is asynchronous from our point of view; give the target app a
-        // moment to read the pasteboard before putting the old contents back.
-        try? await Task.sleep(for: .milliseconds(250))
-
-        // Only restore if nothing else has written to the pasteboard since. If the
-        // user copied something in that window, theirs wins — silently reverting it
-        // would be data loss.
-        guard pasteboard.changeCount == ourChangeCount else { return }
-        await restore(saved, to: pasteboard)
+        // Give the target a full read window even if the caller is cancelled
+        // after posting the paste. Keep newer injections from snapshotting it.
+        let cleanup = Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(250))
+            if pasteboard.changeCount == ourChangeCount { restore(saved, to: pasteboard) }
+            pendingRestore = nil
+        }
+        pendingRestore = cleanup
+        await cleanup.value
     }
 
     /// Marks a pasteboard write as Anchor's own so the clipboard monitor skips it.
-    private static func ignoreInClipboardHistory(_ changeCount: Int) async {
-        await MainActor.run { ClipboardManager.shared.ignoreChangeCount(changeCount) }
+    @MainActor
+    private static func ignoreInClipboardHistory(_ changeCount: Int) {
+        ClipboardManager.shared.ignoreChangeCount(changeCount)
     }
 
     // MARK: - Keystroke
@@ -128,6 +142,7 @@ enum TextInjector {
     private static func waitForModifiersToClear() async -> Bool {
         var waited: Duration = .zero
         while waited < modifierClearTimeout {
+            if Task.isCancelled { return false }
             let flags = CGEventSource.flagsState(.combinedSessionState)
             if flags.intersection(pollutingModifiers).isEmpty { return true }
             try? await Task.sleep(for: modifierPollInterval)
@@ -176,7 +191,8 @@ enum TextInjector {
     /// Putting the user's own clipboard back is also our write, not theirs — the
     /// content is already at the top of their history, and re-filing it would
     /// duplicate the entry and reorder the list under them.
-    private static func restore(_ snapshot: PasteboardSnapshot, to pasteboard: NSPasteboard) async {
+    @MainActor
+    private static func restore(_ snapshot: PasteboardSnapshot, to pasteboard: NSPasteboard) {
         pasteboard.clearContents()
 
         if !snapshot.items.isEmpty {
@@ -190,6 +206,6 @@ enum TextInjector {
 
         // Read the count synchronously — deferring this to the async hop would
         // capture whatever the count had become by then, not what we just wrote.
-        await ignoreInClipboardHistory(pasteboard.changeCount)
+        ignoreInClipboardHistory(pasteboard.changeCount)
     }
 }

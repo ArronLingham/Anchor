@@ -1101,6 +1101,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }.store(in: &cancellables)
 
+        Defaults.publisher(.enableDictation, options: []).sink { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.updateFeatureShortcutAvailability()
+            }
+        }.store(in: &cancellables)
+
         Defaults.publisher(.enableClipboardManager, options: []).sink { [weak self] _ in
             Task { @MainActor [weak self] in
                 self?.updateFeatureShortcutAvailability()
@@ -1240,7 +1246,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             DictationManager.shared.beginDictation()
         }
         KeyboardShortcuts.onKeyUp(for: .pushToTalkDictation) {
-            guard Defaults[.enableShortcuts], Defaults[.enableDictation] else { return }
             DictationManager.shared.endDictation()
         }
 
@@ -1794,6 +1799,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         updateShortcut(.pickColor, isEnabled: Defaults[.enableShortcuts] && Defaults[.enableColorPickerFeature])
         updateShortcut(.clipboardHistoryPanel, isEnabled: Defaults[.enableShortcuts] && Defaults[.enableClipboardManager])
         updateShortcut(.toggleTerminalTab, isEnabled: Defaults[.enableShortcuts] && Defaults[.enableTerminalFeature])
+        updateShortcut(.pushToTalkDictation, isEnabled: Defaults[.enableShortcuts] && Defaults[.enableDictation])
         updateShortcut(.showAllDesktopDocks, isEnabled: Defaults[.enableShortcuts] && DesktopWorkspaceManager.shared.docksEnabled)
     }
 
