@@ -16,13 +16,10 @@ final class DesktopDockController {
         panels.removeAll()
     }
 
-    func reconcile() {
+    func reconcile(visible: [DesktopDock]) {
         guard !updating else { return }
         updating = true
         defer { updating = false }
-        let visible = manager.configuration.docks.filter { dock in
-            manager.forceShowAllDocks || (dock.enabled && (dock.workspaceModeIDs.isEmpty || manager.activeModeID.map(dock.workspaceModeIDs.contains) == true))
-        }
         let ids = Set(visible.map(\.id))
         for id in Array(panels.keys) where !ids.contains(id) {
             panels.removeValue(forKey: id)?.close()
@@ -42,8 +39,9 @@ final class DesktopDockController {
                 panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle]
                 panel.isMovableByWindowBackground = false
                 panels[dock.id] = panel
+                let session = manager.dockSession
                 (panel as? DesktopDockPanel)?.didDrag = { [weak self, weak panel] in
-                    guard let self, let panel else { return }
+                    guard let self, let panel, self.manager.acceptsDockSession(session) else { return }
                     self.manager.recordDockPosition(dock.id, frame: panel.frame)
                 }
             }
@@ -57,7 +55,7 @@ final class DesktopDockController {
             let origin = CGPoint(x: bounds.minX + max(0, bounds.width - size.width) * max(0, min(1, dock.x)),
                                  y: bounds.minY + max(0, bounds.height - size.height) * max(0, min(1, dock.y)))
             panel.title = dock.name
-            panel.contentView = FirstMouseHostingView(rootView: DesktopDockView(id: dock.id, manager: manager))
+            panel.contentView = FirstMouseHostingView(rootView: DesktopDockView(id: dock.id, session: manager.dockSession, manager: manager))
             panel.setFrame(CGRect(origin: origin, size: size), display: true)
             panel.orderFrontRegardless()
         }
@@ -95,13 +93,14 @@ private struct DockDragHandle: NSViewRepresentable {
 
 struct DesktopDockView: View {
     let id: UUID
+    let session: UUID
     @ObservedObject var manager: DesktopWorkspaceManager
     @State private var pointerInside = false
 
     private var dock: DesktopDock? { manager.configuration.docks.first { $0.id == id } }
 
     var body: some View {
-        if let dock {
+        if manager.acceptsDockSession(session), let dock {
             let icon = dock.standardIconSize ? 48.0 : dock.iconSize
             let columnCount = max(1, dock.gridColumns ?? (dock.vertical ? 1 : max(1, dock.apps.count)))
             let columns = Array(repeating: GridItem(.fixed(icon), spacing: 6), count: columnCount)
@@ -112,14 +111,20 @@ struct DesktopDockView: View {
                     .accessibilityLabel("Move \(dock.name)")
                 let entries = manager.dockEntries(for: id, includeRecent: dock.showsRecentApps)
                 if entries.isEmpty {
-                    Button { manager.chooseApps { apps in for app in apps { manager.addDockApp(app, to: id) } } } label: {
+                    Button {
+                        guard manager.acceptsDockSession(session) else { return }
+                        manager.chooseApps { apps in
+                            guard manager.acceptsDockSession(session) else { return }
+                            for app in apps { manager.addDockApp(app, to: id) }
+                        }
+                    } label: {
                         Image(systemName: "plus").frame(width: icon, height: icon)
                     }.buttonStyle(.plain).help("Add apps")
                 } else {
                     ScrollView(.vertical, showsIndicators: false) {
                         LazyVGrid(columns: columns, spacing: 6) {
                             ForEach(entries) { app in
-                                Button { manager.launch(app) } label: {
+                                Button { launch(app) } label: {
                                     ZStack(alignment: dock.vertical ? .leading : .bottom) {
                                         Image(nsImage: NSWorkspace.shared.icon(forFile: app.applicationURL?.path ?? app.path))
                                             .resizable().scaledToFit().frame(width: icon, height: icon)
@@ -132,9 +137,10 @@ struct DesktopDockView: View {
                                 }
                                 .buttonStyle(.plain).help(app.name).accessibilityLabel("Open \(app.name)")
                                 .contextMenu {
-                                    Button("Open \(app.name)") { manager.launch(app) }
+                                    Button("Open \(app.name)") { launch(app) }
                                     if dock.apps.contains(where: { $0.bundleID == app.bundleID }) { Button("Remove from Dock") {
-                                        if let index = manager.configuration.docks.firstIndex(where: { $0.id == id }) {
+                                        if manager.acceptsDockSession(session),
+                                           let index = manager.configuration.docks.firstIndex(where: { $0.id == id }) {
                                             manager.configuration.docks[index].apps.removeAll { $0.bundleID == app.bundleID }
                                         }
                                     } }
@@ -158,12 +164,14 @@ struct DesktopDockView: View {
             .contextMenu {
                 Button("Edit Docks…") { SettingsWindowController.shared.showWindow(tab: .docks) }
                 Button(dock.vertical ? "Make Horizontal" : "Make Vertical") {
-                    if let index = manager.configuration.docks.firstIndex(where: { $0.id == id }) {
+                    if manager.acceptsDockSession(session),
+                       let index = manager.configuration.docks.firstIndex(where: { $0.id == id }) {
                         manager.configuration.docks[index].vertical.toggle()
                     }
                 }
                 Button("Hide This Dock") {
-                    if let index = manager.configuration.docks.firstIndex(where: { $0.id == id }) {
+                    if manager.acceptsDockSession(session),
+                       let index = manager.configuration.docks.firstIndex(where: { $0.id == id }) {
                         manager.configuration.docks[index].enabled = false
                     }
                 }
@@ -173,6 +181,7 @@ struct DesktopDockView: View {
                     _ = provider.loadObject(ofClass: URL.self) { url, _ in
                         guard let url else { return }
                         Task { @MainActor in
+                            guard manager.acceptsDockSession(session) else { return }
                             if let app = WorkspaceApp(url: url) { manager.addDockApp(app, to: id) }
                         }
                     }
@@ -180,5 +189,10 @@ struct DesktopDockView: View {
                 return !providers.isEmpty
             }
         }
+    }
+
+    private func launch(_ app: WorkspaceApp) {
+        guard manager.acceptsDockSession(session) else { return }
+        manager.launch(app)
     }
 }

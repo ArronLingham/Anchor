@@ -8,7 +8,10 @@ struct SettingsDocks: View {
 
     var body: some View {
         Section {
+            Toggle("Enable Desktop Docks", isOn: $manager.docksEnabled)
+                .settingsHighlight(id: highlightID("Enable Desktop Docks"))
             KeyboardShortcuts.Recorder("Show all docks:", name: .showAllDesktopDocks)
+                .disabled(!manager.docksEnabled)
             HStack {
                 Text("Create separate docks for work, communication, or tools.")
                 Spacer()

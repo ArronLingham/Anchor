@@ -85,6 +85,8 @@ __pycache__/
 !/scripts/regen-settings-indexes.sh
 !/scripts/settings_index.py
 /tests/*
+!/tests/DesktopDocksDisableLifecycleTests.swift
+!/tests/run_desktop_docks_disable_lifecycle_tests.sh
 !/tests/DockClickDisableLifecycleTests.swift
 !/tests/run_dock_click_disable_lifecycle_tests.sh
 !/tests/MouseAccelerationRecoveryLifecycleTests.swift

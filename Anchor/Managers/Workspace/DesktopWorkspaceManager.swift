@@ -10,10 +10,25 @@ final class DesktopWorkspaceManager: ObservableObject {
     private let recentAppsStorageKey = "Anchor.desktopDock.recentApps.v1"
     private let preferences: UserDefaults
     private static let modesEnabledKey = "Anchor.workspaceModes.enabled"
+    private static let docksEnabledKey = "Anchor.desktopDocks.enabled"
+
+    @Published var docksEnabled: Bool {
+        didSet {
+            guard oldValue != docksEnabled else { return }
+            preferences.set(docksEnabled, forKey: Self.docksEnabledKey)
+            dockSession = UUID()
+            if forceShowAllDocks { forceShowAllDocks = false }
+            reconcileDocks()
+        }
+    }
+    private(set) var dockSession = UUID()
 
     @Published var modesEnabled: Bool {
         didSet {
+            guard oldValue != modesEnabled else { return }
             preferences.set(modesEnabled, forKey: Self.modesEnabledKey)
+            syncScreenObservation(hasVisibleDocks: !visibleDocks.isEmpty)
+            syncModeObservation()
             if modesEnabled {
                 automation.resume()
                 manualHold = false
@@ -33,14 +48,14 @@ final class DesktopWorkspaceManager: ObservableObject {
             do {
                 let data = try JSONEncoder().encode(configuration)
                 preferences.set(data, forKey: Self.storageKey)
-                if oldValue.docks != configuration.docks { dockController?.reconcile() }
+                if oldValue.docks != configuration.docks { reconcileDocks() }
                 if started && (oldValue.automationEnabled != configuration.automationEnabled || oldValue.modes.map(\.rule) != configuration.modes.map(\.rule) || oldValue.modes.map(\.id) != configuration.modes.map(\.id)) {
                     scheduleEnvironmentCheck()
                 }
             } catch { status = "Could not save workspace: \(error.localizedDescription)" }
         }
     }
-    @Published private(set) var activeModeID: UUID? { didSet { dockController?.reconcile() } }
+    @Published private(set) var activeModeID: UUID? { didSet { reconcileDocks() } }
     @Published private(set) var forceShowAllDocks = false
     @Published private(set) var applying = false
     @Published var status = "Choose a mode, or save your current layout."
@@ -49,7 +64,10 @@ final class DesktopWorkspaceManager: ObservableObject {
     @Published private(set) var environment = WorkspaceEnvironment(externalDisplayIDs: [], onAC: false, charging: false)
     @Published private(set) var runningBundleIDs: Set<String> = []
     private var automation = WorkspaceAutomationState()
-    private var observers: [(NotificationCenter, NSObjectProtocol)] = []
+    private var screenObserver: NSObjectProtocol?
+    private var wakeObserver: NSObjectProtocol?
+    private var runningAppObservers: [NSObjectProtocol] = []
+    private var recentsObserver: NSObjectProtocol?
     private var powerSource: CFRunLoopSource?
     private var environmentWork: DispatchWorkItem?
     private var applyTask: Task<Void, Never>?
@@ -59,6 +77,7 @@ final class DesktopWorkspaceManager: ObservableObject {
     init(preferences: UserDefaults = .standard) {
         self.preferences = preferences
         modesEnabled = (preferences.object(forKey: Self.modesEnabledKey) as? Bool) ?? true
+        docksEnabled = (preferences.object(forKey: Self.docksEnabledKey) as? Bool) ?? true
         if let data = preferences.data(forKey: Self.storageKey) {
             do { configuration = try JSONDecoder().decode(DesktopWorkspaceConfiguration.self, from: data) }
             catch {
@@ -71,27 +90,57 @@ final class DesktopWorkspaceManager: ObservableObject {
     func start() {
         guard !started else { return }
         started = true
-        dockController = DesktopDockController(manager: self)
-        dockController?.reconcile()
-        observe(.default, NSApplication.didChangeScreenParametersNotification) { [weak self] in
-            self?.dockController?.reconcile()
-            self?.scheduleEnvironmentCheck()
+        reconcileDocks()
+        syncModeObservation()
+        scheduleEnvironmentCheck()
+    }
+
+    private var visibleDocks: [DesktopDock] {
+        guard docksEnabled else { return [] }
+        return configuration.docks.filter { dock in
+            forceShowAllDocks || (dock.enabled && (dock.workspaceModeIDs.isEmpty
+                || activeModeID.map(dock.workspaceModeIDs.contains) == true))
         }
-        observe(NSWorkspace.shared.notificationCenter, NSWorkspace.didWakeNotification) { [weak self] in self?.scheduleEnvironmentCheck() }
-        for name in [NSWorkspace.didLaunchApplicationNotification, NSWorkspace.didTerminateApplicationNotification] {
-            observe(NSWorkspace.shared.notificationCenter, name) { [weak self] in self?.refreshRunningApps() }
+    }
+
+    private func reconcileDocks() {
+        guard started else { return }
+        let visible = visibleDocks
+        syncScreenObservation(hasVisibleDocks: !visible.isEmpty)
+        syncDockObservation(hasVisibleDocks: !visible.isEmpty, wantsRecents: visible.contains(where: \.showsRecentApps))
+        if visible.isEmpty {
+            dockController?.closeAll()
+            dockController = nil
+            return
         }
-        observe(NSWorkspace.shared.notificationCenter, NSWorkspace.didActivateApplicationNotification) { [weak self] in
-            guard let self,
-                  let app = NSWorkspace.shared.frontmostApplication,
-                  app.processIdentifier != ProcessInfo.processInfo.processIdentifier,
-                  let bundleID = app.bundleIdentifier else { return }
-            var recent = self.preferences.stringArray(forKey: self.recentAppsStorageKey) ?? []
-            recent.removeAll { $0 == bundleID }
-            recent.insert(bundleID, at: 0)
-            self.preferences.set(Array(recent.prefix(20)), forKey: self.recentAppsStorageKey)
-            self.dockController?.reconcile()
+        if dockController == nil { dockController = DesktopDockController(manager: self) }
+        dockController?.reconcile(visible: visible)
+    }
+
+    private func syncScreenObservation(hasVisibleDocks: Bool) {
+        if started && (modesEnabled || hasVisibleDocks) {
+            guard screenObserver == nil else { return }
+            screenObserver = observe(.default, NSApplication.didChangeScreenParametersNotification) { [weak self] in
+                self?.reconcileDocks()
+                self?.scheduleEnvironmentCheck()
+            }
+        } else if let screenObserver {
+            NotificationCenter.default.removeObserver(screenObserver)
+            self.screenObserver = nil
         }
+    }
+
+    private func syncModeObservation() {
+        let center = NSWorkspace.shared.notificationCenter
+        guard started, modesEnabled else {
+            if let wakeObserver { center.removeObserver(wakeObserver) }
+            wakeObserver = nil
+            if let powerSource { CFRunLoopRemoveSource(CFRunLoopGetMain(), powerSource, .commonModes) }
+            powerSource = nil
+            return
+        }
+        guard wakeObserver == nil else { return }
+        wakeObserver = observe(center, NSWorkspace.didWakeNotification) { [weak self] in self?.scheduleEnvironmentCheck() }
         if let source = IOPSNotificationCreateRunLoopSource({ context in
             guard let context else { return }
             let manager = Unmanaged<DesktopWorkspaceManager>.fromOpaque(context).takeUnretainedValue()
@@ -100,32 +149,77 @@ final class DesktopWorkspaceManager: ObservableObject {
             powerSource = source
             CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
         }
-        refreshRunningApps()
-        scheduleEnvironmentCheck()
+    }
+
+    private func syncDockObservation(hasVisibleDocks: Bool, wantsRecents: Bool) {
+        let center = NSWorkspace.shared.notificationCenter
+        if hasVisibleDocks {
+            if runningAppObservers.isEmpty {
+                let session = dockSession
+                runningBundleIDs = Set(NSWorkspace.shared.runningApplications.compactMap(\.bundleIdentifier))
+                runningAppObservers = [NSWorkspace.didLaunchApplicationNotification, NSWorkspace.didTerminateApplicationNotification]
+                    .map { name in
+                        observe(center, name) { [weak self] in
+                            guard let self, self.acceptsDockSession(session) else { return }
+                            self.refreshRunningApps()
+                        }
+                    }
+            }
+        } else {
+            for observer in runningAppObservers { center.removeObserver(observer) }
+            runningAppObservers.removeAll()
+            if !runningBundleIDs.isEmpty { runningBundleIDs.removeAll() }
+        }
+        if wantsRecents {
+            if recentsObserver == nil {
+                let session = dockSession
+                recentsObserver = observe(center, NSWorkspace.didActivateApplicationNotification) { [weak self] in
+                    guard let self, self.acceptsDockSession(session) else { return }
+                    self.recordRecentApp()
+                }
+            }
+        } else if let recentsObserver {
+            center.removeObserver(recentsObserver)
+            self.recentsObserver = nil
+        }
+    }
+
+    private func recordRecentApp() {
+        guard started, visibleDocks.contains(where: \.showsRecentApps),
+              let app = NSWorkspace.shared.frontmostApplication,
+              app.processIdentifier != ProcessInfo.processInfo.processIdentifier,
+              let bundleID = app.bundleIdentifier else { return }
+        var recent = preferences.stringArray(forKey: recentAppsStorageKey) ?? []
+        recent.removeAll { $0 == bundleID }
+        recent.insert(bundleID, at: 0)
+        preferences.set(Array(recent.prefix(20)), forKey: recentAppsStorageKey)
+        reconcileDocks()
     }
 
     func stop() {
+        started = false
+        dockSession = UUID()
+        if forceShowAllDocks { forceShowAllDocks = false }
         applyTask?.cancel()
         environmentWork?.cancel()
-        for (center, observer) in observers { center.removeObserver(observer) }
-        observers.removeAll()
-        if let powerSource { CFRunLoopRemoveSource(CFRunLoopGetMain(), powerSource, .commonModes) }
-        powerSource = nil
+        syncScreenObservation(hasVisibleDocks: false)
+        syncModeObservation()
+        syncDockObservation(hasVisibleDocks: false, wantsRecents: false)
         dockController?.closeAll()
         dockController = nil
-        started = false
     }
 
-    private func observe(_ center: NotificationCenter, _ name: Notification.Name, action: @escaping @MainActor () -> Void) {
-        let token = center.addObserver(forName: name, object: nil, queue: .main) { _ in
+    private func observe(_ center: NotificationCenter, _ name: Notification.Name, action: @escaping @MainActor () -> Void) -> NSObjectProtocol {
+        center.addObserver(forName: name, object: nil, queue: .main) { _ in
             MainActor.assumeIsolated { action() }
         }
-        observers.append((center, token))
     }
 
     private func refreshRunningApps() {
+        let visible = visibleDocks
+        guard started, !visible.isEmpty else { return }
         runningBundleIDs = Set(NSWorkspace.shared.runningApplications.compactMap(\.bundleIdentifier))
-        dockController?.reconcile()
+        if visible.contains(where: \.showsRecentApps) { dockController?.reconcile(visible: visible) }
     }
 
     func recentApps(for dockID: UUID) -> [WorkspaceApp] {
@@ -159,8 +253,13 @@ final class DesktopWorkspaceManager: ObservableObject {
     }
 
     func toggleShowAllDocks() {
+        guard started, docksEnabled else { return }
         forceShowAllDocks.toggle()
-        dockController?.reconcile()
+        reconcileDocks()
+    }
+
+    func acceptsDockSession(_ session: UUID) -> Bool {
+        started && docksEnabled && dockSession == session
     }
 
     func scheduleEnvironmentCheck() {
@@ -173,6 +272,7 @@ final class DesktopWorkspaceManager: ObservableObject {
     }
 
     private func evaluateEnvironment() {
+        guard started, modesEnabled else { return }
         let info = IOPSCopyPowerSourcesInfo().takeRetainedValue()
         let sourceType = IOPSGetProvidingPowerSourceType(info)?.takeUnretainedValue() as String?
         let sources = IOPSCopyPowerSourcesList(info).takeRetainedValue() as [CFTypeRef]

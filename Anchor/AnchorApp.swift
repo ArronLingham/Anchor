@@ -1113,6 +1113,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }.store(in: &cancellables)
 
+        DesktopWorkspaceManager.shared.$docksEnabled.removeDuplicates().dropFirst().sink { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.updateFeatureShortcutAvailability()
+            }
+        }.store(in: &cancellables)
+
         // Pin/unpin the notch above all spaces when the hide option, the
         // external-display setting, or the display arrangement changes.
         //
@@ -1788,6 +1794,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         updateShortcut(.pickColor, isEnabled: Defaults[.enableShortcuts] && Defaults[.enableColorPickerFeature])
         updateShortcut(.clipboardHistoryPanel, isEnabled: Defaults[.enableShortcuts] && Defaults[.enableClipboardManager])
         updateShortcut(.toggleTerminalTab, isEnabled: Defaults[.enableShortcuts] && Defaults[.enableTerminalFeature])
+        updateShortcut(.showAllDesktopDocks, isEnabled: Defaults[.enableShortcuts] && DesktopWorkspaceManager.shared.docksEnabled)
     }
 
     @MainActor

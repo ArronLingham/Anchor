@@ -748,6 +748,7 @@ struct SettingsView: View {
     }
 
     private static let settingsSearchIndex: [SettingsSearchEntry] = [
+            SettingsSearchEntry(tab: .docks, title: "Enable Desktop Docks", keywords: ["dock", "desktop", "hide", "show", "disable"], highlightID: SettingsTab.docks.highlightID(for: "Enable Desktop Docks")),
             SettingsSearchEntry(tab: .docks, title: "Add Dock", keywords: ["dock", "multiple", "left", "right", "floating", "vertical", "horizontal"], highlightID: SettingsTab.docks.highlightID(for: "Add Dock")),
             SettingsSearchEntry(tab: .workspaceModes, title: "Automatically switch modes", keywords: ["travel", "desktop", "monitor", "charging", "power", "automation"], highlightID: SettingsTab.workspaceModes.highlightID(for: "Automatically switch modes")),
             SettingsSearchEntry(tab: .workspaceModes, title: "Choose a mode", keywords: ["workspace", "apps", "layout", "capture", "sizing", "profile"], highlightID: SettingsTab.workspaceModes.highlightID(for: "Choose a mode")),
