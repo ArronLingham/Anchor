@@ -85,6 +85,8 @@ __pycache__/
 !/scripts/regen-settings-indexes.sh
 !/scripts/settings_index.py
 /tests/*
+!/tests/TodoRemindersDisableLifecycleTests.swift
+!/tests/run_todo_reminders_disable_lifecycle_tests.sh
 !/tests/AudioPriorityWriteLifecycleTests.swift
 !/tests/run_audio_priority_write_lifecycle_tests.sh
 !/tests/FinderCutPasteDisableLifecycleTests.swift

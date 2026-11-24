@@ -62,6 +62,8 @@ import CoreGraphics
         check("restore defaults", layout.cards(in: .overview) == DashboardSection.overview.defaultCards)
         let repaired = DashboardLayout.load(Data(#"{"sections":{"overview":["tasks","removed","tasks","soundDisplay"],"system":[]}}"#.utf8))
         check("stale and duplicate IDs", repaired.cards(in: .overview) == [.tasks, .soundDisplay])
+        check("disabled tasks filtered from rows", repaired.rows(in: .overview) { $0 != .tasks }.flatMap(\.cards) == [.soundDisplay])
+        check("task visibility setting is retained", DashboardLayout.load(repaired.data).cards(in: .overview) == [.tasks, .soundDisplay])
         check("missing tab gets defaults", repaired.cards(in: .media) == DashboardSection.media.defaultCards)
         check("stored empty tab stays empty", repaired.cards(in: .system).isEmpty)
         check("corrupt storage fallback", DashboardLayout.load(Data("broken".utf8)).cards(in: .overview) == DashboardSection.overview.defaultCards)

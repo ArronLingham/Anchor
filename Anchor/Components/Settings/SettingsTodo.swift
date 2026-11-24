@@ -57,7 +57,7 @@ struct TodoSettings: View {
                     Text("Enable to-do list")
                 }
                 .settingsHighlight(id: highlightID("Enable to-do list"))
-                .settingsInfo("Adds a To-Do tab to the notch.")
+                .settingsInfo("Shows To-Do in the notch and Dashboard. Turning it off pauses Reminders sync.")
             } footer: {
                 Text(
                     "Keep a checklist on this Mac, with optional iPhone access through Apple Reminders.")

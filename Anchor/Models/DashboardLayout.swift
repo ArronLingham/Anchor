@@ -101,10 +101,10 @@ struct DashboardLayout: Codable, Equatable {
     }
 
     /// The file shelf keeps the full row. Other cards pair up on wide windows.
-    func rows(in section: DashboardSection) -> [Row] {
+    func rows(in section: DashboardSection, including includes: (DashboardCard) -> Bool = { _ in true }) -> [Row] {
         var result: [Row] = []
         var pair: [DashboardCard] = []
-        for card in cards(in: section) {
+        for card in cards(in: section) where includes(card) {
             if card == .shelf {
                 if !pair.isEmpty { result.append(Row(cards: pair)); pair = [] }
                 result.append(Row(cards: [card]))

@@ -20,34 +20,84 @@ final class TodoRemindersSyncManager: ObservableObject {
     @Published private(set) var isSyncing = false
     @Published private(set) var status = "Choose a Reminders list to use on your iPhone."
     @Published private(set) var lastSync: Date?
-    private let store = EKEventStore()
+    private var store: EKEventStore?
+    private var activeListID: String?
+    private var generation = UUID()
+    private var loadListsID: UUID?
     private var cancellables = Set<AnyCancellable>()
+    private var syncObservers = Set<AnyCancellable>()
     private var scheduled: Task<Void, Never>?
+    private struct FetchRequest {
+        let id: UUID
+        let handle: Any
+        let continuation: CheckedContinuation<[EKReminder], Error>
+    }
+    private var fetchRequest: FetchRequest?
     private var repeatRequested = false
     private var applying = false
     private let checkpointURL = AppSupportDirectory.root.appendingPathComponent("todo-reminders-sync.json")
 
     private init() {
         guard !AppRuntimeEnvironment.isUITesting, UISnapshotHarness.requestedDirectory == nil else { return }
+        Publishers.Merge3(
+            Defaults.publisher(.enableTodoFeature, options: []).filter { $0.oldValue != $0.newValue }.map { !$0.newValue },
+            Defaults.publisher(.todoRemindersSyncEnabled, options: []).filter { $0.oldValue != $0.newValue }.map { _ in false },
+            Defaults.publisher(.todoRemindersListID, options: []).filter { $0.oldValue != $0.newValue }.map { _ in false }
+        )
+        .receive(on: DispatchQueue.main)
+        .sink { [weak self] tasksWereDisabled in
+            self?.reconcileSync(settingsChanged: true, tasksWereDisabled: tasksWereDisabled)
+        }
+        .store(in: &cancellables)
+        reconcileSync()
+    }
+
+    private var configuredListID: String? {
+        guard Defaults[.enableTodoFeature], Defaults[.todoRemindersSyncEnabled] else { return nil }
+        let id = Defaults[.todoRemindersListID]
+        return id.isEmpty ? nil : id
+    }
+
+    private func reconcileSync(settingsChanged: Bool = false, tasksWereDisabled: Bool = false) {
+        if tasksWereDisabled || !Defaults[.enableTodoFeature] {
+            loadListsID = nil
+            if !lists.isEmpty { lists = [] }
+        }
+        let configured = configuredListID
+        guard configured != activeListID || (settingsChanged && configured != nil) else { return }
+        generation = UUID()
+        scheduled?.cancel()
+        scheduled = nil
+        repeatRequested = false
+        syncObservers.removeAll()
+        cancelFetch()
+        store = nil
+        activeListID = configured
+        guard configured != nil else { return }
+
+        let store = EKEventStore()
+        self.store = store
         TodoManager.shared.$items.dropFirst().sink { [weak self] _ in
             guard let self, !self.applying else { return }
             self.requestSync()
-        }.store(in: &cancellables)
+        }.store(in: &syncObservers)
         NotificationCenter.default.publisher(for: .EKEventStoreChanged, object: store)
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in self?.requestSync() }.store(in: &cancellables)
+            .sink { [weak self] _ in self?.requestSync() }.store(in: &syncObservers)
         NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)
-            .sink { [weak self] _ in self?.requestSync() }.store(in: &cancellables)
-        Defaults.publisher(.todoRemindersSyncEnabled).receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in self?.requestSync() }.store(in: &cancellables)
-        Defaults.publisher(.todoRemindersListID).receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in self?.requestSync() }.store(in: &cancellables)
+            .sink { [weak self] _ in self?.requestSync() }.store(in: &syncObservers)
         requestSync()
     }
 
     func loadLists() async {
+        guard Defaults[.enableTodoFeature] else { return }
+        let token = UUID()
+        loadListsID = token
+        let store = self.store ?? EKEventStore()
         do {
-            guard try await store.requestFullAccessToReminders() else {
+            let granted = try await store.requestFullAccessToReminders()
+            guard loadListsID == token, Defaults[.enableTodoFeature] else { return }
+            guard granted else {
                 status = "Allow Reminders access in System Settings → Privacy & Security → Reminders."
                 return
             }
@@ -55,24 +105,29 @@ final class TodoRemindersSyncManager: ObservableObject {
                 .map { List(id: $0.calendarIdentifier, name: "\($0.title) — \($0.source.title)") }
                 .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
             if lists.isEmpty { status = "Create an iCloud list in Reminders, then refresh the lists here." }
-        } catch { status = error.localizedDescription }
+        } catch {
+            guard loadListsID == token, Defaults[.enableTodoFeature] else { return }
+            status = error.localizedDescription
+        }
     }
 
     func requestSync() {
-        guard Defaults[.todoRemindersSyncEnabled], !Defaults[.todoRemindersListID].isEmpty else { return }
+        guard let calendar = activeListID, calendar == configuredListID else { return }
         if isSyncing { repeatRequested = true; return }
         scheduled?.cancel()
+        let token = generation
         scheduled = Task {
             try? await Task.sleep(for: .milliseconds(500))
-            guard !Task.isCancelled else { return }
+            guard !Task.isCancelled, self.acceptsSync(token, calendar: calendar) else { return }
+            self.scheduled = nil
             await syncNow()
         }
     }
 
     func syncNow() async {
-        guard !isSyncing, Defaults[.todoRemindersSyncEnabled] else { return }
-        let calendarID = Defaults[.todoRemindersListID]
-        guard !calendarID.isEmpty else { return }
+        guard !isSyncing, let calendarID = activeListID, calendarID == configuredListID,
+              let store else { return }
+        let token = generation
         guard !TodoManager.shared.storageNeedsRecovery, TodoManager.shared.storageError == nil else {
             status = "Resolve the local storage error before syncing."
             return
@@ -97,15 +152,9 @@ final class TodoRemindersSyncManager: ObservableObject {
                 let saved = try JSONDecoder().decode(Checkpoint.self, from: Data(contentsOf: checkpointURL))
                 if saved.calendarID == calendarID { checkpoint = saved }
             }
-            let predicate = store.predicateForReminders(in: [calendar])
-            let reminders: [EKReminder] = try await withCheckedThrowingContinuation { continuation in
-                store.fetchReminders(matching: predicate) { result in
-                    if let result { continuation.resume(returning: result) }
-                    else { continuation.resume(throwing: SyncError.fetchFailed) }
-                }
-            }
+            let reminders = try await fetchReminders(in: calendar, from: store)
             // Fetch is asynchronous: settings and tasks may change while waiting.
-            guard Defaults[.todoRemindersSyncEnabled], Defaults[.todoRemindersListID] == calendarID,
+            guard acceptsSync(token, calendar: calendarID),
                   !TodoManager.shared.storageNeedsRecovery, TodoManager.shared.storageError == nil else { return }
             let remote = try reminders.map { reminder in
                 let key = checkpoint.remoteIDs.first(where: { $0.value == reminder.calendarItemIdentifier })?.key
@@ -146,10 +195,40 @@ final class TodoRemindersSyncManager: ObservableObject {
             lastSync = Date()
             status = "Synced with \(calendar.title). Use this list in Reminders on your iPhone."
         } catch {
+            guard acceptsSync(token, calendar: calendarID) else { return }
             store.reset()
             repeatRequested = false
             status = "Sync paused: \(error.localizedDescription) Your local tasks are kept."
         }
+    }
+
+    private func acceptsSync(_ token: UUID, calendar: String) -> Bool {
+        generation == token && activeListID == calendar && configuredListID == calendar
+    }
+
+    private func fetchReminders(in calendar: EKCalendar, from store: EKEventStore) async throws -> [EKReminder] {
+        let predicate = store.predicateForReminders(in: [calendar])
+        return try await withCheckedThrowingContinuation { continuation in
+            let id = UUID()
+            let handle = store.fetchReminders(matching: predicate) { [weak self] result in
+                Task { @MainActor [weak self] in self?.completeFetch(id, result: result) }
+            }
+            fetchRequest = FetchRequest(id: id, handle: handle, continuation: continuation)
+        }
+    }
+
+    private func cancelFetch() {
+        guard let request = fetchRequest else { return }
+        fetchRequest = nil
+        store?.cancelFetchRequest(request.handle)
+        request.continuation.resume(throwing: CancellationError())
+    }
+
+    private func completeFetch(_ id: UUID, result: [EKReminder]?) {
+        guard let request = fetchRequest, request.id == id else { return }
+        fetchRequest = nil
+        if let result { request.continuation.resume(returning: result) }
+        else { request.continuation.resume(throwing: SyncError.fetchFailed) }
     }
 
     private enum SyncError: LocalizedError {

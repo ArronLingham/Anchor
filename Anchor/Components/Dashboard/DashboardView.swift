@@ -11,6 +11,7 @@ extension EnvironmentValues {
 struct DashboardView: View {
     let hardware: DashboardHardwareState
     @State private var section: DashboardSection = .overview
+    @Default(.enableTodoFeature) private var tasksEnabled
     @Environment(\.dashboardIsActive) private var isActive
     var onSectionChange: (DashboardSection) -> Void = { _ in }
 
@@ -116,7 +117,7 @@ struct DashboardView: View {
     }
 
     @ViewBuilder private func sectionContent(isWide: Bool) -> some View {
-        let rows = layout.rows(in: section)
+        let rows = layout.rows(in: section) { $0 != .tasks || tasksEnabled }
         if rows.isEmpty {
             VStack(spacing: 12) {
                 Image(systemName: "square.grid.2x2").font(.largeTitle).foregroundStyle(.secondary)
@@ -482,6 +483,7 @@ private struct DashboardTaskCard: View {
     }
 
     private func add() {
+        guard Defaults[.enableTodoFeature] else { return }
         if todos.add(title, priority: draftPriority) != nil {
             title = ""
             draftPriority = 0
