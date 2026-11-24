@@ -41,6 +41,7 @@ final class WallpaperService: ObservableObject {
     // Apple catalog barely changes; keep after first scan to avoid tab hitch
     private var cachedApple: [WallpaperSupport.Entry]?
     private let galleryLifecycle = WallpaperGalleryLifecycle()
+    private var applyTask: Task<Void, Never>?
     private var applyToken = UUID()
     // lock-backed copy so detached apply-all can bail if a newer apply won
     private let applyGenerationLock = NSLock()
@@ -93,9 +94,8 @@ final class WallpaperService: ObservableObject {
         UtilityWorkspace.shared.prepareOwnership()
         if !isAvailable {
             galleryLifecycle.endAll()
-            let cancelled = UUID()
-            applyToken = cancelled
-            setApplyGeneration(cancelled)
+            closeOpenPanel()
+            cancelApply()
             stopAccessing()
             cachedApple = nil
             bumpThumbGeneration()
@@ -106,9 +106,6 @@ final class WallpaperService: ObservableObject {
             lastError = nil
             appliedPath = nil
             isLoading = false
-            isApplying = false
-            isDownloading = false
-            WallpaperStore.removeBackup()
             return
         }
         WallpaperStore.migrateLegacyBackupIfNeeded()
@@ -116,6 +113,8 @@ final class WallpaperService: ObservableObject {
     }
 
     func suspend() {
+        cancelApply()
+        closeOpenPanel()
         stopAccessing()
     }
 
@@ -227,29 +226,37 @@ final class WallpaperService: ObservableObject {
             return
         }
 
+        let previousApply = applyTask
+        previousApply?.cancel()
         let token = UUID()
         applyToken = token
         setApplyGeneration(token)
         let applyAll = applyAllDisplays
         isApplying = true
-        Task { @MainActor [weak self] in
+        isDownloading = false
+        applyTask = Task { @MainActor [weak self] in
+            // A committed all-Spaces store write must finish reloading before
+            // a newer request changes an individual display or the store.
+            await previousApply?.value
             guard let self else { return }
             defer {
                 if self.applyToken == token {
                     self.isApplying = false
                     self.isDownloading = false
+                    self.applyTask = nil
                 }
             }
+            guard self.acceptsApply(token) else { return }
 
             let localOK = await self.ensureLocalFile(url, token: token)
-            guard self.isAvailable, self.applyToken == token else { return }
+            guard self.acceptsApply(token) else { return }
             if !localOK {
                 self.lastError = FeatureStrings.wallpaper(L10n.shared.language).downloadFailed
                 return
             }
 
-            let currentOK = await self.setDesktopImage(url, on: chosen, token: token)
-            guard self.isAvailable, self.applyToken == token else { return }
+            let currentOK = self.setDesktopImage(url, on: chosen, token: token)
+            guard self.acceptsApply(token) else { return }
 
             if applyAll {
                 // plist + killall off main; bail if a newer apply superseded us
@@ -257,10 +264,10 @@ final class WallpaperService: ObservableObject {
                 let allOK = await Task.detached(priority: .userInitiated) { [weak self] in
                     guard let self else { return false }
                     return WallpaperStore.setImageOnAllSpaces(url) {
-                        self.currentApplyGeneration() == expected
+                        self.isAvailable && self.currentApplyGeneration() == expected
                     }
                 }.value
-                guard self.isAvailable, self.applyToken == token else { return }
+                guard self.acceptsApply(token) else { return }
                 if allOK || currentOK {
                     self.appliedPath = url.path
                 }
@@ -293,6 +300,7 @@ final class WallpaperService: ObservableObject {
 
     @MainActor
     private func ensureLocalFile(_ url: URL, token: UUID) async -> Bool {
+        guard acceptsApply(token) else { return false }
         guard Self.needsCloudDownload(url) else { return true }
         isDownloading = true
         do {
@@ -302,15 +310,29 @@ final class WallpaperService: ObservableObject {
         }
         let deadline = ContinuousClock.now + .seconds(60)
         while ContinuousClock.now < deadline {
-            guard isAvailable, applyToken == token else { return false }
+            guard acceptsApply(token) else { return false }
             if (try? url.resourceValues(forKeys: [.ubiquitousItemDownloadingErrorKey])
                 .ubiquitousItemDownloadingError) != nil {
                 return false
             }
             if !Self.needsCloudDownload(url) { return true }
-            try? await Task.sleep(for: .milliseconds(250))
+            do { try await Task.sleep(for: .milliseconds(250)) }
+            catch { return false }
         }
         return !Self.needsCloudDownload(url)
+    }
+
+    private func cancelApply() {
+        applyTask?.cancel()
+        let cancelled = UUID()
+        applyToken = cancelled
+        setApplyGeneration(cancelled)
+        isApplying = false
+        isDownloading = false
+    }
+
+    private func acceptsApply(_ token: UUID) -> Bool {
+        !Task.isCancelled && isAvailable && applyToken == token
     }
 
     private func setApplyGeneration(_ token: UUID) {
@@ -335,32 +357,15 @@ final class WallpaperService: ObservableObject {
         return NSScreen.screens.first.map { [$0] } ?? []
     }
 
-    // fill crop; clear same-URL first (macOS skips refresh otherwise).
-    // MainActor so NSWorkspace + applyToken/isAvailable stay on one thread; sleep still yields.
     @MainActor
-    private func setDesktopImage(_ url: URL, on screens: [NSScreen], token: UUID) async -> Bool {
+    private func setDesktopImage(_ url: URL, on screens: [NSScreen], token: UUID) -> Bool {
         let options: [NSWorkspace.DesktopImageOptionKey: Any] = [
             .imageScaling: NSImageScaling.scaleProportionallyUpOrDown.rawValue,
             .allowClipping: true,
         ]
-        var needsPause = false
-        for screen in screens {
-            if NSWorkspace.shared.desktopImageURL(for: screen)?.standardizedFileURL == url {
-                do {
-                    try NSWorkspace.shared.setDesktopImageURL(
-                        URL(fileURLWithPath: ""), for: screen, options: [:])
-                    needsPause = true
-                } catch {
-                    // still try the set below
-                }
-            }
-        }
-        if needsPause {
-            try? await Task.sleep(for: .milliseconds(400))
-            guard isAvailable, applyToken == token else { return false }
-        }
         var ok = true
         for screen in screens {
+            guard acceptsApply(token) else { return false }
             do {
                 try NSWorkspace.shared.setDesktopImageURL(url, for: screen, options: options)
             } catch {
@@ -409,12 +414,19 @@ final class WallpaperService: ObservableObject {
         // keep the menu panel up only while the picker is on screen
         PanelInteractionState.shared.isPresentingPopoverModal = true
         panel.begin { [weak self] response in
+            guard let self, self.openPanel === panel else { return }
             PanelInteractionState.shared.isPresentingPopoverModal = false
-            guard let self else { return }
             self.openPanel = nil
-            guard response == .OK else { return }
+            guard self.isAvailable, response == .OK else { return }
             completion(panel.urls)
         }
+    }
+
+    private func closeOpenPanel() {
+        guard let panel = openPanel else { return }
+        openPanel = nil
+        PanelInteractionState.shared.isPresentingPopoverModal = false
+        panel.cancel(nil)
     }
 
     private func remember(urls: [URL]) {

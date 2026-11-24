@@ -85,6 +85,10 @@ __pycache__/
 !/scripts/regen-settings-indexes.sh
 !/scripts/settings_index.py
 /tests/*
+!/tests/WallpaperApplyLifecycleTests.swift
+!/tests/run_wallpaper_apply_lifecycle_tests.sh
+!/tests/WallpaperPickerLifecycleTests.swift
+!/tests/run_wallpaper_picker_lifecycle_tests.sh
 !/tests/DesktopDocksDisableLifecycleTests.swift
 !/tests/run_desktop_docks_disable_lifecycle_tests.sh
 !/tests/DockClickDisableLifecycleTests.swift

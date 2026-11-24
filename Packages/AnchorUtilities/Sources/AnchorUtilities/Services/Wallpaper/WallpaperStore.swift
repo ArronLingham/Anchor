@@ -9,7 +9,7 @@ import Foundation
 // Backup policy:
 // - One-shot copy of Index.plist before the first apply-all write, kept under
 //   the app Application Support folder (cleared with the rest of the app).
-// - Feature uninstall deletes that copy. Later applies never overwrite it.
+// - Turning Wallpaper off preserves that copy. Later applies never overwrite it.
 // - No in-app restore path; AppKit current-space apply remains the soft fallback
 //   when the store patch cannot run.
 enum WallpaperStore {
@@ -89,16 +89,19 @@ enum WallpaperStore {
             fromPropertyList: root, format: .binary, options: 0
         ) else { return false }
 
-        guard shouldContinue() else { return false }
-        do {
-            try written.write(to: index, options: .atomic)
-        } catch {
-            return false
+        return commitPreparedIndex(written, replacing: data, at: index, shouldContinue: shouldContinue) {
+            _ = Shell.run("/usr/bin/killall", ["WallpaperAgent"])
         }
+    }
 
-        guard shouldContinue() else { return false }
-        // agent keeps the old tree until restarted
-        _ = Shell.run("/usr/bin/killall", ["WallpaperAgent"])
+    private static func commitPreparedIndex(_ prepared: Data, replacing original: Data, at index: URL,
+                                            shouldContinue: () -> Bool, reload: () -> Void) -> Bool {
+        // Settings may have changed since the store was read and patched.
+        guard (try? Data(contentsOf: index)) == original, shouldContinue() else { return false }
+        do { try prepared.write(to: index, options: .atomic) }
+        catch { return false }
+        // Once written, complete the accepted commit even if availability changes.
+        reload()
         return true
     }
 
@@ -115,16 +118,5 @@ enum WallpaperStore {
             return false
         }
         return FileManager.default.fileExists(atPath: backup.path)
-    }
-
-    static func removeBackup() {
-        let backup = backupURL
-        if FileManager.default.fileExists(atPath: backup.path) {
-            try? FileManager.default.removeItem(at: backup)
-        }
-        let legacy = legacySystemBackupURL
-        if FileManager.default.fileExists(atPath: legacy.path) {
-            try? FileManager.default.removeItem(at: legacy)
-        }
     }
 }
