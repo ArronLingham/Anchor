@@ -85,6 +85,8 @@ __pycache__/
 !/scripts/regen-settings-indexes.sh
 !/scripts/settings_index.py
 /tests/*
+!/tests/SoundOutputSwitcherLifecycleTests.swift
+!/tests/run_sound_output_switcher_lifecycle_tests.sh
 !/tests/WallpaperApplyLifecycleTests.swift
 !/tests/run_wallpaper_apply_lifecycle_tests.sh
 !/tests/WallpaperPickerLifecycleTests.swift

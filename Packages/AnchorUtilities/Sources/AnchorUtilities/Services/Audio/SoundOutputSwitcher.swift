@@ -21,15 +21,18 @@ final class SoundOutputSwitcher: ObservableObject {
     private var hotKeyRef: EventHotKeyRef?
     private var eventHandler: EventHandlerRef?
     private var registeredShortcut: GlobalShortcut?
+    private let shortcutGate = ClipboardPresentationGate()
 
     private init() {}
 
     func syncWithPreferences() {
         UtilityWorkspace.shared.prepareOwnership()
+        if Self.switcherWanted { registerHotkey() } else { unregisterHotkey() }
+    }
+
+    private static var switcherWanted: Bool {
         AppFeature.soundOutputSwitcher.isAvailable
             && UtilityPreferences.standard.bool(forKey: DefaultsKey.soundOutputSwitcherEnabled)
-            ? registerHotkey()
-            : unregisterHotkey()
     }
 
     func stop() {
@@ -52,11 +55,15 @@ final class SoundOutputSwitcher: ObservableObject {
         lastSwitchFailed = false
     }
 
-    @discardableResult
-    func switchToNextOutput() -> Bool {
-        let ok = AppVolumeMixer.shared.switchToNextSoundOutput(in: selectedDeviceUIDs())
-        lastSwitchFailed = !ok
-        return ok
+    private func scheduleSwitch() {
+        guard let ticket = shortcutGate.capture(currentlyAvailable: Self.switcherWanted),
+              let session = SessionActivity.shared.captureActiveSession() else { return }
+        DispatchQueue.main.async { [weak self] in
+            guard let self,
+                  self.shortcutGate.accepts(ticket, currentlyAvailable: Self.switcherWanted),
+                  SessionActivity.shared.acceptsSession(session) else { return }
+            self.lastSwitchFailed = !AppVolumeMixer.shared.switchToNextSoundOutput(in: self.selectedDeviceUIDs())
+        }
     }
 
     private func registerHotkey() {
@@ -67,7 +74,7 @@ final class SoundOutputSwitcher: ObservableObject {
         if eventHandler == nil {
             var spec = EventTypeSpec(eventClass: OSType(kEventClassKeyboard),
                                      eventKind: UInt32(kEventHotKeyPressed))
-            InstallEventHandler(GetEventDispatcherTarget(), { _, event, userData -> OSStatus in
+            let status = InstallEventHandler(GetEventDispatcherTarget(), { _, event, userData -> OSStatus in
                 guard let userData else { return OSStatus(eventNotHandledErr) }
                 var id = EventHotKeyID()
                 if let event {
@@ -78,9 +85,14 @@ final class SoundOutputSwitcher: ObservableObject {
                 guard id.signature == 0x5655_534F, id.id == 4
                 else { return OSStatus(eventNotHandledErr) }
                 let service = Unmanaged<SoundOutputSwitcher>.fromOpaque(userData).takeUnretainedValue()
-                DispatchQueue.main.async { service.switchToNextOutput() }
+                service.scheduleSwitch()
                 return noErr
             }, 1, &spec, Unmanaged.passUnretained(self).toOpaque(), &eventHandler)
+            guard status == noErr, eventHandler != nil else {
+                unregisterHotkey()
+                registrationFailed = true
+                return
+            }
         }
         let id = EventHotKeyID(signature: 0x5655_534F, id: 4) // 'VUSO'
         var ref: EventHotKeyRef?
@@ -93,11 +105,11 @@ final class SoundOutputSwitcher: ObservableObject {
         if status == noErr, let ref {
             hotKeyRef = ref
             registeredShortcut = shortcut
+            shortcutGate.update(available: true)
             registrationFailed = false
             SystemShortcutTakeover.claim(DefaultsKey.soundOutputSwitcherShortcut, shortcut: shortcut)
         } else {
-            hotKeyRef = nil
-            registeredShortcut = nil
+            unregisterHotkey()
             registrationFailed = true
         }
     }
@@ -108,9 +120,14 @@ final class SoundOutputSwitcher: ObservableObject {
     func suspendShortcut() { unregisterHotkey() }
 
     private func unregisterHotkey() {
+        shortcutGate.update(available: false)
         if let hotKeyRef {
             UnregisterEventHotKey(hotKeyRef)
             SystemShortcutTakeover.release(DefaultsKey.soundOutputSwitcherShortcut)
+        }
+        if let eventHandler {
+            RemoveEventHandler(eventHandler)
+            self.eventHandler = nil
         }
         hotKeyRef = nil
         registeredShortcut = nil
