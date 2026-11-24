@@ -81,7 +81,8 @@ final class NotificationMirrorManager: ObservableObject {
     private let maxRecent = 20
 
     private var watch: DispatchSourceFileSystemObject?
-    private var watchedDescriptor: CInt = -1
+    private var watchGeneration = UUID()
+    private var scheduledRearm: DispatchWorkItem?
     private var cancellables = Set<AnyCancellable>()
     private let queue = DispatchQueue(label: "com.arronlingham.Anchor.notificationMirror")
 
@@ -108,9 +109,11 @@ final class NotificationMirrorManager: ObservableObject {
         // Defer subscriptions until after the main run loop starts.
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
-            Defaults.publisher(.enableNotificationMirroring)
+            Defaults.publisher(.enableNotificationMirroring, options: [])
                 .receive(on: DispatchQueue.main)
-                .sink { [weak self] _ in self?.syncToSettings() }
+                .sink { [weak self] change in
+                    if change.newValue { self?.syncToSettings() } else { self?.stop() }
+                }
                 .store(in: &self.cancellables)
             self.syncToSettings()
         }
@@ -164,39 +167,51 @@ final class NotificationMirrorManager: ObservableObject {
             eventMask: [.write, .extend, .delete, .rename, .revoke],
             queue: queue)
 
-        source.setEventHandler { [weak self] in
-            guard let self, let current = self.watch else { return }
-            let mask = current.data
-            Task { @MainActor in
-                if mask.contains(.delete) || mask.contains(.rename)
-                    || mask.contains(.revoke)
-                {
-                    // Checkpoint replaced the log. Re-open, then read, so a
-                    // commit landing during the swap is not missed.
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                        guard Defaults[.enableNotificationMirroring] else { return }
-                        self.armWatch()
-                        self.drainNewRecords()
-                    }
-                } else {
-                    self.drainNewRecords()
-                }
+        let generation = watchGeneration
+        source.setEventHandler { [weak self, weak source] in
+            guard let mask = source?.data else { return }
+            Task { @MainActor [weak self] in
+                self?.handleWatchEvent(mask, generation: generation)
             }
         }
         source.setCancelHandler { close(descriptor) }
 
-        watchedDescriptor = descriptor
         watch = source
         source.resume()
         return true
     }
 
+    private func acceptsWatchEvent(_ generation: UUID) -> Bool {
+        Defaults[.enableNotificationMirroring] && watch != nil && watchGeneration == generation
+    }
+
+    private func handleWatchEvent(_ mask: DispatchSource.FileSystemEvent, generation: UUID) {
+        guard acceptsWatchEvent(generation), scheduledRearm == nil else { return }
+        if mask.intersection([.delete, .rename, .revoke]).isEmpty {
+            drainNewRecords()
+            return
+        }
+
+        // Checkpoint replaced the log. Re-open, then read, so a commit
+        // landing during the swap is not missed.
+        let rearm = DispatchWorkItem { [weak self] in
+            guard let self, self.acceptsWatchEvent(generation) else { return }
+            self.scheduledRearm = nil
+            guard self.armWatch() else { self.state = .off; return }
+            self.drainNewRecords()
+        }
+        scheduledRearm = rearm
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2, execute: rearm)
+    }
+
     private func disarmWatch() {
+        watchGeneration = UUID()
+        scheduledRearm?.cancel()
+        scheduledRearm = nil
         // The cancel handler closes the descriptor; doing it here as well
         // would close a number the system may already have reused.
         watch?.cancel()
         watch = nil
-        watchedDescriptor = -1
     }
 
     private func stop() {

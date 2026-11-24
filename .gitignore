@@ -85,6 +85,8 @@ __pycache__/
 !/scripts/regen-settings-indexes.sh
 !/scripts/settings_index.py
 /tests/*
+!/tests/NotificationMirrorDisableLifecycleTests.swift
+!/tests/run_notification_mirror_disable_lifecycle_tests.sh
 !/tests/DictationDisableLifecycleTests.swift
 !/tests/run_dictation_disable_lifecycle_tests.sh
 !/tests/TodoRemindersDisableLifecycleTests.swift
