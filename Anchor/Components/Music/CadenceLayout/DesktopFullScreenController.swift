@@ -98,7 +98,10 @@ private struct DesktopFullScreenView: View {
     var body: some View {
         Group {
         ZStack {
-            backdrop
+            PlayerFullscreenBackdrop(
+                background: background,
+                artwork: music.hasActiveSession ? music.albumArt : nil,
+                albumColor: music.avgColor)
             PlayerSurfaceView(
                 layout: GridSolver.fullscreenLayout(layouts.desktopFull,
                     lyricsVisible: enableLyrics && music.showLyrics && !music.syncedLyrics.isEmpty),
@@ -123,23 +126,6 @@ private struct DesktopFullScreenView: View {
         .anchorTheme()
     }
 
-    @ViewBuilder private var backdrop: some View {
-        switch background {
-        case .blurredArtwork:
-            if music.hasActiveSession {
-                Image(nsImage: music.albumArt)
-                    .resizable()
-                    .aspectRatio(contentMode: .fill)
-                    .blur(radius: 60, opaque: true)
-                    .overlay(Color.black.opacity(0.45))
-            } else {
-                Color(white: 0.08)
-            }
-        case .albumColour:
-            Color(nsColor: SurfaceStyle.muted(music.avgColor))
-                .overlay(Color.black.opacity(0.25))
-        }
-    }
 }
 
 enum LockFullBackground: String, Codable, CaseIterable, Defaults.Serializable {

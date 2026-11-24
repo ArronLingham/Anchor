@@ -17,6 +17,7 @@
  */
 
 import AppKit
+import AnchorUtilities
 import Defaults
 import SwiftUI
 
@@ -32,6 +33,7 @@ struct PlayerSurfaceView: View {
     let style: SurfaceStyle
     var fullscreen: Bool = false
     var hovering: Bool = false
+    var animationVisible: Bool = true
     /// Frozen data for the settings preview. `nil` means live playback.
     var snapshot: PlayerSnapshot?
     /// What a single click on the artwork does. Defaults to nothing, so a
@@ -48,10 +50,11 @@ struct PlayerSurfaceView: View {
         if let snapshot {
             SurfaceBody(
                 layout: layout, style: style, fullscreen: fullscreen, hovering: hovering,
-                data: snapshot, actions: .inert, isLive: false)
+                data: snapshot, actions: .inert, isLive: false, animationVisible: false)
         } else {
             LiveSurfaceBody(
-                layout: layout, style: style, fullscreen: fullscreen, hovering: hovering, onExpand: onExpand)
+                layout: layout, style: style, fullscreen: fullscreen, hovering: hovering,
+                animationVisible: animationVisible, onExpand: onExpand)
         }
             }
         .anchorTheme()
@@ -64,6 +67,7 @@ private struct LiveSurfaceBody: View {
     let style: SurfaceStyle
     var fullscreen: Bool = false
     let hovering: Bool
+    let animationVisible: Bool
     /// What clicking the artwork does. Supplied by the host, because only the
     /// host knows whether it owns a full-screen view.
     let onExpand: () -> Void
@@ -75,7 +79,7 @@ private struct LiveSurfaceBody: View {
         actions.expand = onExpand
         return SurfaceBody(
             layout: layout, style: style, fullscreen: fullscreen, hovering: hovering,
-            data: .live(music), actions: actions, isLive: true)
+            data: .live(music), actions: actions, isLive: true, animationVisible: animationVisible)
     }
 }
 
@@ -87,6 +91,7 @@ private struct SurfaceBody: View {
     let data: PlayerSnapshot
     let actions: PlayerActions
     let isLive: Bool
+    let animationVisible: Bool
 
     var body: some View {
         GeometryReader { geo in
@@ -99,7 +104,7 @@ private struct SurfaceBody: View {
                 ForEach(resolved.elements, id: \.placement.id) { element in
                     PlayerElementView(
                         placement: element.placement, style: style, data: data,
-                        actions: actions, isLive: isLive
+                        actions: actions, isLive: isLive, animationVisible: animationVisible
                     )
                     .frame(width: element.frame.width, height: element.frame.height)
                     .offset(x: element.frame.minX, y: element.frame.minY)
@@ -107,6 +112,42 @@ private struct SurfaceBody: View {
             }
             .frame(width: geo.size.width, height: geo.size.height, alignment: .topLeading)
         }
+    }
+}
+
+struct PlayerFullscreenBackdrop: View {
+    let background: LockFullBackground
+    let artwork: NSImage?
+    let albumColor: NSColor
+
+    var body: some View {
+        GeometryReader { geometry in
+            ZStack {
+                AnchorDesign.canvas
+                switch background {
+                case .blurredArtwork:
+                    if let artwork {
+                        Image(nsImage: artwork)
+                            .resizable()
+                            .scaledToFill()
+                            .frame(width: geometry.size.width / 10, height: geometry.size.height / 10)
+                            .clipped()
+                            .blur(radius: 14, opaque: true)
+                            .scaleEffect(10)
+                            .saturation(0.7)
+                            .opacity(0.34)
+                    }
+                case .albumColour:
+                    Color(nsColor: SurfaceStyle.muted(albumColor)).opacity(0.26)
+                }
+                LinearGradient(
+                    colors: [.clear, AnchorDesign.canvas.opacity(0.76)],
+                    startPoint: .center, endPoint: .bottom)
+            }
+            .frame(width: geometry.size.width, height: geometry.size.height)
+            .clipped()
+        }
+        .accessibilityHidden(true)
     }
 }
 
@@ -129,6 +170,8 @@ struct SurfaceStyle {
     /// `GridGeometry.contentScale`, which also drives the row heights — two
     /// separate constants is how a 24pt title ended up in a 20pt row.
     var textScale: CGFloat
+    var metadataAlignment: Alignment = .center
+    var emphasizesPlayButton: Bool = true
 
     /// `sliderColor` is a PARAMETER, not a `Defaults` read inside this function.
     ///
@@ -151,7 +194,9 @@ struct SurfaceStyle {
         }
         return SurfaceStyle(
             ink: ink, subtleInk: AnchorDesign.muted, accent: AnchorDesign.accent,
-            progress: progress, textScale: scale)
+            progress: progress, textScale: scale,
+            metadataAlignment: surface == .lockWidget || surface == .launcher ? .leading : .center,
+            emphasizesPlayButton: surface != .launcher)
     }
 
     /// The album colour with enough saturation left to read as a colour.
@@ -208,6 +253,7 @@ struct PlayerElementView: View {
     let data: PlayerSnapshot
     let actions: PlayerActions
     var isLive: Bool = true
+    var animationVisible: Bool = true
 
     @State private var showingRemaining = false
     /// Non-nil only while the scrubber is being dragged. The bar follows the
@@ -231,16 +277,18 @@ struct PlayerElementView: View {
 
         case .playPause:
             button(
-                data.isPlaying ? "pause.fill" : "play.fill", scale: 1.25, action: actions.playPause)
-        case .next: button("forward.end.fill", action: actions.next)
-        case .previous: button("backward.end.fill", action: actions.previous)
-        case .seekForward: button("goforward.10") { actions.seekBy(10) }
-        case .seekBackward: button("gobackward.10") { actions.seekBy(-10) }
+                data.isPlaying ? "pause.fill" : "play.fill",
+                label: data.isPlaying ? "Pause" : "Play",
+                primary: style.emphasizesPlayButton, action: actions.playPause)
+        case .next: button("forward.end.fill", label: "Next track", action: actions.next)
+        case .previous: button("backward.end.fill", label: "Previous track", action: actions.previous)
+        case .seekForward: button("goforward.10", label: "Forward 10 seconds") { actions.seekBy(10) }
+        case .seekBackward: button("gobackward.10", label: "Back 10 seconds") { actions.seekBy(-10) }
         case .shuffle:
-            button("shuffle", active: data.isShuffled, action: actions.toggleShuffle)
+            button("shuffle", label: "Shuffle", active: data.isShuffled, action: actions.toggleShuffle)
         case .repeatMode:
             button(
-                data.repeatMode == .one ? "repeat.1" : "repeat",
+                data.repeatMode == .one ? "repeat.1" : "repeat", label: "Repeat",
                 active: data.repeatMode != .off, action: actions.toggleRepeat)
 
         case .progressBar: progressBar
@@ -292,7 +340,7 @@ struct PlayerElementView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         } else {
-            button("quote.bubble", active: data.showLyrics, action: actions.toggleLyrics)
+            button("quote.bubble", label: "Lyrics", active: data.showLyrics, action: actions.toggleLyrics)
         }
     }
 
@@ -311,7 +359,7 @@ struct PlayerElementView: View {
                     // the view's own default of 0.38 is for a smaller record.
                     VinylRecordRepresentable(
                         artwork: data.hasTrack ? data.artwork : nil,
-                        isPlaying: data.isPlaying, labelFraction: 0.46)
+                        isPlaying: animationVisible && data.isPlaying, labelFraction: 0.46)
                         .frame(width: discSide, height: discSide)
                     if placement.artworkStyle.showsStylus { tonearm(side: side) }
                 case .cover:
@@ -320,10 +368,14 @@ struct PlayerElementView: View {
                             .resizable()
                             .aspectRatio(contentMode: .fill)
                             .frame(width: side, height: side)
-                            .clipShape(
-                                RoundedRectangle(cornerRadius: side * 0.06, style: .continuous))
+                            .clipShape(AnchorCorners.rectangle(cornerRadius: coverRadius(side: side)))
+                            .overlay {
+                                AnchorCorners.rectangle(cornerRadius: coverRadius(side: side))
+                                    .anchorStrokeBorder(AnchorDesign.edge, lineWidth: 1)
+                                    .allowsHitTesting(false)
+                            }
                     } else {
-                        RoundedRectangle(cornerRadius: side * 0.06, style: .continuous)
+                        AnchorCorners.rectangle(cornerRadius: coverRadius(side: side))
                             .fill(style.ink.opacity(0.08))
                             .overlay(
                                 Image(systemName: "music.note")
@@ -348,6 +400,10 @@ struct PlayerElementView: View {
             // job now and every default layout has one.
             .onTapGesture(perform: actions.expand)
         }
+    }
+
+    private func coverRadius(side: CGFloat) -> CGFloat {
+        min(24, side * 0.12)
     }
 
     /// The ring reported as "appears around the vinyl and expands in size".
@@ -448,22 +504,31 @@ struct PlayerElementView: View {
             .foregroundStyle(subtle ? style.subtleInk : style.ink)
             .lineLimit(1)
             .truncationMode(.tail)
-            .frame(maxWidth: .infinity, alignment: .center)
+            .frame(maxWidth: .infinity, alignment: style.metadataAlignment)
     }
 
     // MARK: Buttons
 
     private func button(
-        _ symbol: String, scale: CGFloat = 1, active: Bool = false, action: @escaping () -> Void
+        _ symbol: String, label: LocalizedStringKey, active: Bool = false,
+        primary: Bool = false, action: @escaping () -> Void
     ) -> some View {
-        Button(action: action) {
+        let circleSize = (primary ? 34 : 24) * style.textScale
+        return Button(action: action) {
             Image(systemName: symbol)
-                .font(.system(size: 13 * scale * style.textScale, weight: .medium))
-                .foregroundStyle(active ? style.accent : style.ink)
+                .font(.system(size: (primary ? 15 : 13) * style.textScale, weight: .semibold))
+                .foregroundStyle(primary ? AnchorDesign.canvas : active ? style.accent : style.ink)
+                .frame(width: circleSize, height: circleSize)
+                .background {
+                    if primary || active {
+                        Circle().fill(style.accent.opacity(primary ? 1 : 0.14))
+                    }
+                }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(Text(label))
     }
 
     // MARK: Progress and time
@@ -483,14 +548,18 @@ struct PlayerElementView: View {
     private var progressBar: some View {
         TimelineView(.periodic(from: Self.scheduleAnchor, by: data.isPlaying ? 0.25 : 60)) { context in
             GeometryReader { geo in
+                let playedWidth = geo.size.width * (scrubFraction ?? fraction(at: context.date))
                 ZStack(alignment: .leading) {
-                    Capsule().fill(style.ink.opacity(0.22))
-                    Capsule().fill(style.progress.opacity(0.9))
-                        .frame(
-                            width: geo.size.width
-                                * (scrubFraction ?? fraction(at: context.date)))
+                    Capsule().fill(style.ink.opacity(0.18))
+                    Capsule().fill(style.progress)
+                        .frame(width: playedWidth)
+                    if scrubFraction != nil {
+                        Circle().fill(style.progress)
+                            .frame(width: 9, height: 9)
+                            .offset(x: max(0, min(playedWidth - 4.5, geo.size.width - 9)))
+                    }
                 }
-                .frame(height: 3)
+                .frame(height: 4)
                 .frame(maxHeight: .infinity)
                 .contentShape(Rectangle())
                 // `minimumDistance: 0` fires `onChanged` on the initial press,
@@ -561,14 +630,11 @@ struct PlayerElementView: View {
     // MARK: Extras
 
     private var visualizer: some View {
-        // `AudioVisualizerView` takes a Binding because Anchor's callers own the
-        // state. Nothing here writes it back, so a constant is honest — and it
-        // matters that this view is only constructed when the element is placed:
-        // the real-time variant acquires the CoreAudio process tap, which is
-        // reference-counted and must not be held by a surface nobody is looking
-        // at. That single mistake was worth 12x Anchor's idle CPU.
-        AudioVisualizerView(isPlaying: .constant(data.isPlaying))
+        AudioVisualizerView(isPlaying: .constant(animationVisible && data.isPlaying))
+            .frame(maxWidth: 48 * style.textScale, maxHeight: 18 * style.textScale)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .accessibilityHidden(true)
+            .allowsHitTesting(false)
     }
 
     @ViewBuilder private var appIcon: some View {

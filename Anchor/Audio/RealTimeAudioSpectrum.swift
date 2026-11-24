@@ -26,11 +26,10 @@ import simd
 import Defaults
 
 /// NSView-based real-time audio spectrum visualizer
-class RealTimeAudioSpectrum: NSView {
+class RealTimeAudioSpectrum: AudioSpectrumVisibilityView {
     private var barLayers: [CAShapeLayer] = []
-    private var isPlaying: Bool = true
+    private var isPlaying = false
     private var animationTimer: Timer?
-    private var visibilityObservers: [NSObjectProtocol] = []
     
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -39,7 +38,6 @@ class RealTimeAudioSpectrum: NSView {
     }
 
     deinit {
-        visibilityObservers.forEach(NotificationCenter.default.removeObserver)
         stopAnimating()
     }
     
@@ -77,6 +75,7 @@ class RealTimeAudioSpectrum: NSView {
             barLayer.frame = CGRect(x: xPosition, y: 0, width: barWidth, height: height)
             barLayer.position = CGPoint(x: xPosition + barWidth / 2, y: height / 2)
             barLayer.fillColor = colour
+            barLayer.transform = CATransform3DMakeScale(1, Self.minimumScale, 1)
 
             let path = NSBezierPath(
                 roundedRect: CGRect(x: 0, y: 0, width: barWidth, height: height),
@@ -86,15 +85,6 @@ class RealTimeAudioSpectrum: NSView {
             barLayers.append(barLayer)
             layer?.addSublayer(barLayer)
         }
-    }
-
-    /// White, or the album's colour when `coloredSpectrogram` is on — which is
-    /// what that setting has always claimed to do and never did. It gated
-    /// album-colour EXTRACTION in `MusicManager` instead, so the one control
-    /// named after the visualiser was the one thing it did not affect.
-    private var barColor: NSColor {
-        Defaults[.coloredSpectrogram]
-            ? SurfaceStyle.vivid(MusicManager.shared.avgColor) : .white
     }
 
     private var lastLaidOutSize: CGSize = .zero
@@ -136,32 +126,14 @@ class RealTimeAudioSpectrum: NSView {
         CATransaction.commit()
     }
     
-    override func viewDidMoveToWindow() {
-        super.viewDidMoveToWindow()
-        visibilityObservers.forEach(NotificationCenter.default.removeObserver)
-        visibilityObservers.removeAll()
-        if let window {
-            for name in [NSWindow.didChangeOcclusionStateNotification, NSWindow.didMiniaturizeNotification,
-                         NSWindow.didDeminiaturizeNotification] {
-                visibilityObservers.append(NotificationCenter.default.addObserver(forName: name, object: window,
-                    queue: .main) { [weak self] _ in self?.refreshAnimationDemand() })
-            }
-            for name in [NSApplication.didHideNotification, NSApplication.didUnhideNotification] {
-                visibilityObservers.append(NotificationCenter.default.addObserver(forName: name, object: nil,
-                    queue: .main) { [weak self] _ in self?.refreshAnimationDemand() })
-            }
-        }
-        refreshAnimationDemand()
-    }
+    private static let minimumScale: CGFloat = 0.2
 
-    override func viewDidHide() { super.viewDidHide(); refreshAnimationDemand() }
-    override func viewDidUnhide() { super.viewDidUnhide(); refreshAnimationDemand() }
-
-    private func refreshAnimationDemand() {
-        if isPlaying, let window, window.isVisible, !window.isMiniaturized,
-           window.occlusionState.contains(.visible), !isHiddenOrHasHiddenAncestor, !NSApp.isHidden {
+    override func refreshAnimationDemand() {
+        if isPlaying && isVisibleForAnimation {
             startAnimating()
-        } else { stopAnimating() }
+        } else {
+            stopAnimating()
+        }
     }
 
     private func startAnimating() {
@@ -203,7 +175,7 @@ class RealTimeAudioSpectrum: NSView {
             guard index < magnitudes.count else { break }
             let magnitude = magnitudes[index]
             // Map magnitude (0-1) to scale (0.2 - 1.0) for visual appeal
-            let scale = max(0.2, min(1.0, CGFloat(magnitude) * 1.5 + 0.2))
+            let scale = max(Self.minimumScale, min(1, CGFloat(magnitude) * 1.5 + Self.minimumScale))
             
             barLayer.transform = CATransform3DMakeScale(1, scale, 1)
         }
@@ -214,7 +186,7 @@ class RealTimeAudioSpectrum: NSView {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         for barLayer in barLayers {
-            barLayer.transform = CATransform3DMakeScale(1, 0.2, 1)
+            barLayer.transform = CATransform3DMakeScale(1, Self.minimumScale, 1)
         }
         CATransaction.commit()
     }

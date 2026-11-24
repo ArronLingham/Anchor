@@ -26,58 +26,112 @@ import Cocoa
 import SwiftUI
 import Defaults
 
-class AudioSpectrum: NSView {
+class AudioSpectrumVisibilityView: NSView {
+    private var observers: [NSObjectProtocol] = []
+
+    deinit {
+        observers.forEach(NotificationCenter.default.removeObserver)
+    }
+
+    var barColor: NSColor {
+        Defaults[.coloredSpectrogram] ? SurfaceStyle.vivid(MusicManager.shared.avgColor) : .white
+    }
+
+    var isVisibleForAnimation: Bool {
+        guard let window else { return false }
+        return window.isVisible && !window.isMiniaturized
+            && window.occlusionState.contains(.visible)
+            && !isHiddenOrHasHiddenAncestor && !NSApp.isHidden
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        let center = NotificationCenter.default
+        observers.forEach(center.removeObserver)
+        observers.removeAll()
+        if let window {
+            for name in [NSWindow.didChangeOcclusionStateNotification, NSWindow.didMiniaturizeNotification,
+                         NSWindow.didDeminiaturizeNotification] {
+                observers.append(center.addObserver(forName: name, object: window, queue: .main) {
+                    [weak self] _ in self?.refreshAnimationDemand()
+                })
+            }
+            for name in [NSApplication.didHideNotification, NSApplication.didUnhideNotification] {
+                observers.append(center.addObserver(forName: name, object: nil, queue: .main) {
+                    [weak self] _ in self?.refreshAnimationDemand()
+                })
+            }
+        }
+        refreshAnimationDemand()
+    }
+
+    override func viewDidHide() {
+        super.viewDidHide()
+        refreshAnimationDemand()
+    }
+
+    override func viewDidUnhide() {
+        super.viewDidUnhide()
+        refreshAnimationDemand()
+    }
+
+    func refreshAnimationDemand() {}
+}
+
+class AudioSpectrum: AudioSpectrumVisibilityView {
     private var barLayers: [CAShapeLayer] = []
-    private var isPlaying: Bool = true
+    private static let minimumScale: CGFloat = 0.2
+    private var isPlaying = false
+    private var lastBoundsSize = CGSize.zero
+    private var appliedBarCount = 0
+    private var appliedBarColor: NSColor?
     private var animationTimer: Timer?
     
-    override init(frame frameRect: NSRect) {
-        super.init(frame: frameRect)
+    override func layout() {
+        super.layout()
+        refreshAppearance()
+    }
+
+    func refreshAppearance() {
+        let barCount = min(128, max(1, Defaults[.visualizerBarCount]))
+        let color = barColor
+        guard bounds.size != lastBoundsSize || barCount != appliedBarCount || color != appliedBarColor else { return }
+        lastBoundsSize = bounds.size
+        appliedBarCount = barCount
+        appliedBarColor = color
+
         wantsLayer = true
-        setupBars()
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        barLayers.forEach { $0.removeFromSuperlayer() }
+        barLayers.removeAll(keepingCapacity: true)
+
+        let slot = bounds.width / CGFloat(barCount)
+        let barWidth = slot * 0.5
+        for index in 0..<barCount {
+            let bar = CAShapeLayer()
+            bar.frame = CGRect(
+                x: CGFloat(index) * slot + (slot - barWidth) / 2, y: 0,
+                width: barWidth, height: bounds.height)
+            bar.fillColor = color.cgColor
+            bar.path = CGPath(roundedRect: bar.bounds, cornerWidth: barWidth / 2,
+                              cornerHeight: barWidth / 2, transform: nil)
+            bar.transform = CATransform3DMakeScale(1, Self.minimumScale, 1)
+            barLayers.append(bar)
+            layer?.addSublayer(bar)
+        }
+        CATransaction.commit()
     }
 
     deinit {
         animationTimer?.invalidate()
     }
-    
-    required init?(coder: NSCoder) {
-        super.init(coder: coder)
-        wantsLayer = true
-        setupBars()
-    }
 
-    private func setupBars() {
-        let barWidth: CGFloat = 2
-        let barCount = Defaults[.visualizerBarCount]
-        let spacing: CGFloat = barWidth
-        let totalWidth = CGFloat(barCount) * (barWidth + spacing)
-        let totalHeight: CGFloat = 14
-        frame.size = CGSize(width: totalWidth, height: totalHeight)
-
-        for i in 0 ..< barCount {
-            let xPosition = CGFloat(i) * (barWidth + spacing)
-            let barLayer = CAShapeLayer()
-            barLayer.frame = CGRect(x: xPosition, y: 0, width: barWidth, height: totalHeight)
-            barLayer.position = CGPoint(x: xPosition + barWidth / 2, y: totalHeight / 2)
-            barLayer.fillColor = NSColor.white.cgColor
-            
-            let path = NSBezierPath(roundedRect: CGRect(x: 0, y: 0, width: barWidth, height: totalHeight),
-                                    xRadius: barWidth / 2,
-                                    yRadius: barWidth / 2)
-            barLayer.path = path.cgPath
-            
-            barLayers.append(barLayer)
-            layer?.addSublayer(barLayer)
-        }
-    }
-    
-    override func viewDidMoveToWindow() {
-        super.viewDidMoveToWindow()
-        if window == nil {
-            stopAnimating()
-        } else if isPlaying {
+    override func refreshAnimationDemand() {
+        if isPlaying && isVisibleForAnimation {
             startAnimating()
+        } else {
+            stopAnimating()
         }
     }
 
@@ -92,6 +146,7 @@ class AudioSpectrum: NSView {
     }
     
     private func stopAnimating() {
+        guard animationTimer != nil else { return }
         animationTimer?.invalidate()
         animationTimer = nil
         resetBars()
@@ -100,8 +155,8 @@ class AudioSpectrum: NSView {
     private func updateBars() {
         for barLayer in barLayers {
             let animation = CABasicAnimation(keyPath: "transform.scale.y")
-            animation.fromValue = barLayer.presentation()?.value(forKeyPath: "transform.scale.y") ?? 0.35
-            animation.toValue = CGFloat.random(in: 0.35 ... 1.0)
+            animation.fromValue = barLayer.presentation()?.value(forKeyPath: "transform.scale.y") ?? Self.minimumScale
+            animation.toValue = CGFloat.random(in: Self.minimumScale ... 1)
             animation.duration = 0.3
             animation.autoreverses = true
             animation.fillMode = .forwards
@@ -114,24 +169,24 @@ class AudioSpectrum: NSView {
     }
     
     private func resetBars() {
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
         for barLayer in barLayers {
             barLayer.removeAllAnimations()
-            barLayer.transform = CATransform3DMakeScale(1, 0.35, 1)
+            barLayer.transform = CATransform3DMakeScale(1, Self.minimumScale, 1)
         }
+        CATransaction.commit()
     }
     
     func setPlaying(_ playing: Bool) {
         isPlaying = playing
-        if isPlaying {
-            startAnimating()
-        } else {
-            stopAnimating()
-        }
+        refreshAnimationDemand()
     }
 }
 
 struct AudioSpectrumView: NSViewRepresentable {
     @Binding var isPlaying: Bool
+    @Default(.visualizerBarCount) private var barCount
     
     func makeNSView(context: Context) -> AudioSpectrum {
         let spectrum = AudioSpectrum()
@@ -141,6 +196,7 @@ struct AudioSpectrumView: NSViewRepresentable {
     
     func updateNSView(_ nsView: AudioSpectrum, context: Context) {
         nsView.setPlaying(isPlaying)
+        nsView.refreshAppearance()
     }
 
     static func dismantleNSView(_ nsView: AudioSpectrum, coordinator: ()) {

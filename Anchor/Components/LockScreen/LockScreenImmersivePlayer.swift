@@ -17,6 +17,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
+import AnchorUtilities
 import Defaults
 import SwiftUI
 
@@ -88,35 +89,12 @@ struct LockScreenImmersivePlayer: View {
 
     // MARK: - Background
 
-    /// The artwork again, filled to the whole area and blurred. `scaledToFill`
-    /// on a square image in a landscape frame crops the top and bottom rather
-    /// than letterboxing, which is what makes it read as a wash of the track's
-    /// colour rather than a picture.
     private func background(size: CGSize) -> some View {
-        ZStack {
-            Image(nsImage: musicManager.albumArt)
-                .resizable()
-                .scaledToFill()
-                // Rendered tiny and then scaled back up, so the blur has almost
-                // no detail left to preserve. Blurring the full-resolution cover
-                // directly leaves it plainly readable — faces, lettering and
-                // edges all survive a large radius — and it competes with the
-                // lyrics sitting on top of it.
-                .frame(width: size.width / 14, height: size.height / 14)
-                .blur(radius: 26, opaque: true)
-                .scaleEffect(14)
-                .frame(width: size.width, height: size.height)
-                .saturation(1.7)
-
-            // Flat scrim for overall contrast, then a heavier wash toward the
-            // bottom where the title and transport sit.
-            Color.black.opacity(0.62)
-            LinearGradient(
-                colors: [.black.opacity(0.2), .black.opacity(0.85)],
-                startPoint: .center, endPoint: .bottom)
-        }
-        .clipped()
-        .ignoresSafeArea()
+        PlayerFullscreenBackdrop(
+            background: .blurredArtwork, artwork: musicManager.albumArt,
+            albumColor: musicManager.avgColor)
+            .frame(width: size.width, height: size.height)
+            .ignoresSafeArea()
     }
 
     // MARK: - Artwork
@@ -126,14 +104,14 @@ struct LockScreenImmersivePlayer: View {
             .resizable()
             .aspectRatio(contentMode: .fill)
             .frame(width: side, height: side)
-            .clipShape(RoundedRectangle(cornerRadius: side * 0.045, style: .continuous))
+            .clipShape(AnchorCorners.rectangle(cornerRadius: min(24, side * 0.12)))
             // A dark sleeve on a blurred version of itself has no visible edge —
             // the cover dissolves into the backdrop and reads as a hole rather
             // than as artwork. The hairline gives it one, and the shadow lifts
             // it off the background.
             .overlay(
-                RoundedRectangle(cornerRadius: side * 0.045, style: .continuous)
-                    .strokeBorder(Color.white.opacity(0.14), lineWidth: 1)
+                AnchorCorners.rectangle(cornerRadius: min(24, side * 0.12))
+                    .anchorStrokeBorder(AnchorDesign.edge, lineWidth: 1)
             )
             .shadow(color: .black.opacity(0.7), radius: 40, y: 18)
             .scaleEffect(musicManager.isPlaying ? 1 : 0.94)
@@ -154,13 +132,13 @@ struct LockScreenImmersivePlayer: View {
                     .lineLimit(1)
                 Text(musicManager.artistName)
                     .font(.system(size: 16))
-                    .foregroundStyle(.white.opacity(0.7))
+                    .foregroundStyle(AnchorDesign.muted)
                     .lineLimit(1)
             }
 
             HStack(spacing: 34) {
                 transportButton("backward.fill", size: 26) { musicManager.previousTrack() }
-                transportButton(musicManager.isPlaying ? "pause.fill" : "play.fill", size: 34) {
+                transportButton(musicManager.isPlaying ? "pause.fill" : "play.fill", size: 30, primary: true) {
                     musicManager.togglePlay()
                 }
                 transportButton("forward.fill", size: 26) { musicManager.nextTrack() }
@@ -169,12 +147,17 @@ struct LockScreenImmersivePlayer: View {
         .frame(maxWidth: .infinity)
     }
 
-    private func transportButton(_ icon: String, size: CGFloat, action: @escaping () -> Void) -> some View {
+    private func transportButton(
+        _ icon: String, size: CGFloat, primary: Bool = false, action: @escaping () -> Void
+    ) -> some View {
         Button(action: action) {
             Image(systemName: icon)
                 .font(.system(size: size, weight: .medium))
-                .foregroundStyle(.white)
+                .foregroundStyle(primary ? AnchorDesign.canvas : AnchorDesign.text)
                 .frame(width: size * 1.8, height: size * 1.8)
+                .background {
+                    if primary { Circle().fill(AnchorDesign.accent) }
+                }
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)

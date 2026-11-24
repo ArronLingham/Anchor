@@ -23,8 +23,7 @@ import SwiftUI
 
 /// Arrange a surface by dragging its elements around.
 ///
-/// The preview is the **real** `PlayerSurfaceView` — real glass, real album
-/// tint, a really spinning record — with a grid and a drag layer over the top.
+/// The preview is the **real** `PlayerSurfaceView` — shared player styling and artwork — with a grid and a drag layer over the top.
 /// Anchor's `MusicSlotConfigurationView` draws grey rounded rects instead,
 /// which cannot show you any of that, so you arrange blind and check on the
 /// real thing.

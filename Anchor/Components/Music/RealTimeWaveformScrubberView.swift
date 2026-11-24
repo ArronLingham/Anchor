@@ -15,17 +15,25 @@ struct RealTimeWaveformScrubberView: View {
     @ObservedObject private var musicManager = MusicManager.shared
 
     @State private var timer: Timer? = nil
-    @State private var magnitudes: [Float] = Array(repeating: 0.1, count: 6)
+    @Default(.visualizerBarCount) private var barCount
+    @State private var magnitudes: [Float] = []
+    @State private var isVisible = false
+
+    private var displayedMagnitudes: [Float] {
+        let count = min(128, max(1, barCount))
+        if musicManager.isPlaying && magnitudes.count == count { return magnitudes }
+        return Array(repeating: 0, count: count)
+    }
 
     var body: some View {
         GeometryReader { geometry in
             ZStack(alignment: .leading) {
                 // Background (Unplayed portion)
-                WaveformShape(magnitudes: magnitudes, minHeight: minHeight)
+                WaveformShape(magnitudes: displayedMagnitudes, minHeight: minHeight)
                     .fill(Color.gray.opacity(0.3))
                 
                 // Foreground (Played portion)
-                WaveformShape(magnitudes: magnitudes, minHeight: minHeight)
+                WaveformShape(magnitudes: displayedMagnitudes, minHeight: minHeight)
                     .fill(Defaults[.sliderColor] == .albumArt && Defaults[.colorExtractionMode] == .vibrant ? AnyShapeStyle(color.spectrogramGradient(secondary: secondaryColor)) : AnyShapeStyle(color))
                     .opacity(0.8)
                     .mask(
@@ -43,10 +51,18 @@ struct RealTimeWaveformScrubberView: View {
             if playing { startTimer() } else { stopTimer() }
         }
         .onAppear {
+            isVisible = true
             startTimer()
         }
         .onDisappear {
+            isVisible = false
             stopTimer()
+        }
+        .transaction { transaction in
+            if !musicManager.isPlaying {
+                transaction.animation = nil
+                transaction.disablesAnimations = true
+            }
         }
     }
     
@@ -56,30 +72,19 @@ struct RealTimeWaveformScrubberView: View {
         // view only exists while the pointer is over the progress bar, so the
         // window is short — but it is still thirty transactions a second over
         // a flat vector.
-        guard musicManager.isPlaying else { return }
+        guard isVisible, musicManager.isPlaying else { return }
         // Starts the CoreAudio process tap if this is the only consumer on screen.
         AudioTap.shared.acquire()
         // 30 Hz, not 60: each tick runs a full SwiftUI transaction over an
         // animatable vector, and a waveform at 30 fps is indistinguishable.
         let newTimer = Timer.scheduledTimer(withTimeInterval: Self.frameInterval, repeats: true) { _ in
+            guard musicManager.isPlaying else { return }
             let tapMagnitudes = AudioTap.shared.getSmoothedMagnitudes()
-            let barCount = Defaults[.visualizerBarCount]
-            var newMags: [Float] = []
-            if tapMagnitudes.count >= barCount {
-                newMags = Array(tapMagnitudes.prefix(barCount))
-            } else {
-                newMags = tapMagnitudes
-            }
-            
-            var smoothedMags = [Float](repeating: 0.1, count: newMags.count)
-            for i in 0..<newMags.count {
-                if i < magnitudes.count {
-                    // 0.85/0.15 per frame at 60 Hz, squared for the halved rate
-                    // so the decay looks the same.
-                    smoothedMags[i] = magnitudes[i] * 0.7225 + newMags[i] * 0.2775
-                } else {
-                    smoothedMags[i] = newMags[i]
-                }
+            let barCount = min(128, max(1, Defaults[.visualizerBarCount]))
+            let smoothedMags: [Float] = (0..<barCount).map { index in
+                let previous = index < magnitudes.count ? magnitudes[index] : 0
+                let current = index < tapMagnitudes.count ? tapMagnitudes[index] : 0
+                return previous * 0.7225 + current * 0.2775
             }
             
             // Smoothly animate the path update
@@ -97,6 +102,7 @@ struct RealTimeWaveformScrubberView: View {
         timer?.invalidate()
         timer = nil
         AudioTap.shared.release()
+        magnitudes = []
     }
 
     private static let frameInterval: TimeInterval = 1.0 / 30.0

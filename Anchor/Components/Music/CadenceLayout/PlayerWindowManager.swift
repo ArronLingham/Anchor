@@ -333,35 +333,24 @@ private struct PlayerRootView: View {
             hovering: manager.isHovering,
             onExpand: { DesktopFullScreenController.shared.toggle() }
         )
-        .background(AnchorSurface(depth: usesGlass ? .glass : .raised, radius: 22).opacity(backgroundOpacity))
-        .anchorCornerContainer(radius: 22)
-        .overlay(AnchorCorners.rectangle(cornerRadius: 22).fill(cardColor.opacity(tinted && music.hasActiveSession ? 0.08 : 0)).allowsHitTesting(false))
+        .background {
+            AnchorSurface(depth: usesGlass ? .glass : .raised, radius: AnchorDesign.radius)
+                .overlay {
+                    if tinted, music.hasActiveSession {
+                        AnchorCorners.rectangle(cornerRadius: AnchorDesign.radius)
+                            .fill(LinearGradient(
+                                colors: [cardColor.opacity(0.16), .clear],
+                                startPoint: .topLeading, endPoint: .bottomTrailing))
+                    }
+                }
+                .opacity(backgroundOpacity)
+        }
+        .anchorCornerContainer(radius: AnchorDesign.radius)
         .overlay(alignment: .topTrailing) { closeButton }
         .contextMenu { menu }
         .animation(.easeInOut(duration: 0.35), value: music.avgColor)
             }
         .anchorTheme()
-    }
-
-    @ViewBuilder private var card: some View {
-        // Liquid glass is the same public `glassEffect` the lock screen uses —
-        // the API the macOS 26 floor was chosen for — which had exactly one
-        // caller and was unreachable from the surface people actually look at.
-        // The tint still applies over the top, at a low opacity, so an album
-        // still colours the card without turning the glass into a flat fill.
-        if usesGlass, #available(macOS 26.0, *) {
-            Color.clear
-                .anchorLiquidGlass(.regular, in: AnchorCorners.rectangle(cornerRadius: 18))
-                .overlay(
-                    AnchorCorners.rectangle(cornerRadius: 18)
-                        .fill(cardColor.opacity(backgroundOpacity * 0.35)))
-        } else {
-            AnchorCorners.rectangle(cornerRadius: 18)
-                .fill(cardColor.opacity(backgroundOpacity))
-                .overlay(
-                    AnchorCorners.rectangle(cornerRadius: 18)
-                        .anchorStrokeBorder(Color.white.opacity(0.08), lineWidth: 1))
-        }
     }
 
     private var cardColor: Color {
@@ -427,14 +416,10 @@ private struct PlayerRootView: View {
             get: { Defaults[.hoverGrowsWidget] },
             set: { Defaults[.hoverGrowsWidget] = $0 }))
         Divider()
-        Button("Player settings…") {
-            // Through SettingsWindowController, like the menu bar item. This
-            // was still calling `showSettingsWindow:`, which finds no responder
-            // in an LSUIElement app — so right-clicking the player and choosing
-            // Player settings did nothing at all. The menu bar path was fixed
-            // and this one was missed, which is the hazard of having two doors
-            // to the same room.
-            SettingsWindowController.shared.showWindow(tab: .media)
+        Button("Customize player layouts…") {
+            SettingsWindowController.shared.showWindow(
+                tab: .launcher,
+                highlightID: SettingsTab.launcher.highlightID(for: "Customize all player layouts"))
         }
     }
 }

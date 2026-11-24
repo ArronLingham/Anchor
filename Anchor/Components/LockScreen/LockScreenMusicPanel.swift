@@ -71,6 +71,9 @@ struct LockScreenMusicPanel: View {
     @Default(.lockScreenPanelUsesBlur) var enableBlur
     @Default(.showMediaOutputControl) private var showMediaOutputControl
     @Default(.showShuffleAndRepeat) private var showShuffleAndRepeat
+    @Default(.useMusicVisualizer) private var useMusicVisualizer
+    @Default(.visualizerBarCount) private var visualizerBarCount
+    @Default(.coloredSpectrogram) private var coloredSpectrogram
     @Default(.musicControlSlots) private var slotConfig
     @Default(.musicSkipBehavior) private var musicSkipBehavior
     @Default(.lockScreenMusicMergedAirPlayOutput) private var mergedAirPlayOutput
@@ -326,6 +329,7 @@ struct LockScreenMusicPanel: View {
                         .lockWidget, albumColor: musicManager.avgColor, tinted: false,
                         scale: cadenceLayouts.lockWidget.geometry.contentScale,
                         sliderColor: cadenceSliderColor, accentColor: cadenceAccentColor),
+                    animationVisible: animator.isPresented && !isImmersive,
                     onExpand: { setImmersive(true) })
             } else if isExpanded {
                 expandedLayout
@@ -394,8 +398,8 @@ struct LockScreenMusicPanel: View {
                     MusicTitleMarqueeView(
                         text: musicManager.songTitle.isEmpty ? "No Music Playing" : musicManager.songTitle,
                         isExplicit: !musicManager.songTitle.isEmpty && musicManager.isCurrentTrackExplicit,
-                        font: .system(size: 12, weight: .semibold),
-                        nsFont: .subheadline,
+                        font: .system(size: 15, weight: .semibold),
+                        nsFont: .headline,
                         textColor: .white,
                         minDuration: 0.45,
                         frameWidth: geo.size.width,
@@ -410,13 +414,13 @@ struct LockScreenMusicPanel: View {
                     )
 
                     Text(musicManager.artistName.isEmpty ? "Unknown Artist" : musicManager.artistName)
-                        .font(.system(size: 10, weight: .regular))
-                        .foregroundColor(Defaults[.playerColorTinting] ? Color(nsColor: musicManager.avgColor).ensureMinimumBrightness(factor: 0.6) : .gray)
+                        .font(.system(size: 12, weight: .regular))
+                        .foregroundColor(Defaults[.playerColorTinting] ? Color(nsColor: musicManager.avgColor).ensureMinimumBrightness(factor: 0.6) : AnchorDesign.muted)
                         .lineLimit(1)
                 }
                 .frame(width: geo.size.width, height: geo.size.height, alignment: .leading)
             }
-            .frame(maxWidth: .infinity, minHeight: 30, maxHeight: 30, alignment: .leading)
+            .frame(maxWidth: .infinity, minHeight: 36, maxHeight: 36, alignment: .leading)
 
             visualizer(height: 16)
         }
@@ -447,7 +451,7 @@ struct LockScreenMusicPanel: View {
 
                     Text(musicManager.artistName.isEmpty ? "Unknown Artist" : musicManager.artistName)
                         .font(.system(size: 13, weight: .medium))
-                        .foregroundColor(Defaults[.playerColorTinting] ? Color(nsColor: musicManager.avgColor).ensureMinimumBrightness(factor: 0.7) : .gray)
+                        .foregroundColor(Defaults[.playerColorTinting] ? Color(nsColor: musicManager.avgColor).ensureMinimumBrightness(factor: 0.7) : AnchorDesign.muted)
                         .lineLimit(2)
                 }
                 .frame(width: geo.size.width, height: geo.size.height, alignment: .leading)
@@ -506,12 +510,12 @@ struct LockScreenMusicPanel: View {
 
     @ViewBuilder
     private func visualizer(height: CGFloat) -> some View {
-        let width = CGFloat(Defaults[.visualizerBarCount]) * 4
-        if Defaults[.useMusicVisualizer] {
+        let width = CGFloat(visualizerBarCount) * 4
+        if useMusicVisualizer {
             Rectangle()
-                .fill((Defaults[.coloredSpectrogram] ? Color(nsColor: musicManager.avgColor) : Color.gray).spectrogramGradient())
+                .fill((coloredSpectrogram ? Color(nsColor: musicManager.avgColor) : AnchorDesign.muted).spectrogramGradient())
                 .mask {
-                    AudioVisualizerView(isPlaying: .constant(musicManager.isPlaying))
+                    AudioVisualizerView(isPlaying: .constant(animator.isPresented && !isImmersive && musicManager.isPlaying))
                         .frame(width: width, height: height)
                 }
                 .frame(width: width, height: height)

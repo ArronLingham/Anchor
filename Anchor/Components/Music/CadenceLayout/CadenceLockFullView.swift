@@ -22,7 +22,10 @@ struct CadenceLockFullView: View {
     var body: some View {
         Group {
         ZStack {
-            background
+            PlayerFullscreenBackdrop(
+                background: backgroundStyle,
+                artwork: music.hasActiveSession ? music.albumArt : nil,
+                albumColor: music.avgColor)
                 .contentShape(Rectangle())
                 .onTapGesture(perform: onDismiss)
 
@@ -43,18 +46,4 @@ struct CadenceLockFullView: View {
         .anchorTheme()
     }
 
-    @ViewBuilder
-    private var background: some View {
-        switch backgroundStyle {
-        case .blurredArtwork:
-            Image(nsImage: music.albumArt)
-                .resizable()
-                .scaledToFill()
-                .blur(radius: 60, opaque: true)
-                .overlay(Color.black.opacity(0.50))
-        case .albumColour:
-            Color(nsColor: SurfaceStyle.muted(music.avgColor))
-                .overlay(Color.black.opacity(0.30))
-        }
-    }
 }

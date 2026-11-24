@@ -191,7 +191,7 @@ extension SurfaceLayout {
             // affects layout.
             ElementPlacement(
                 id: UUID(uuidString: "10cbd000-0000-4000-8000-000000000000")!,
-                element: .artwork, col: 0, row: 0, colSpan: 1,
+                element: .artwork, col: 0, row: 0, colSpan: 1, rowSpan: 2,
                 layer: .base, visibility: .always, priority: 0, artworkStyle: .cover),
             // MusicTitleMarqueeView, .system(size: 12, weight: .semibold), single
             // line, marquees when the measured text exceeds the frame. Spans 4 cols
@@ -210,18 +210,11 @@ extension SurfaceLayout {
                 id: UUID(uuidString: "10cbd000-0000-4000-8000-000000000002")!,
                 element: .visualizer, col: 5, row: 0, colSpan: 1,
                 layer: .base, visibility: .always, priority: 5),
-            // MISMATCH: today this is not an independently positioned element. It is
-            // drawn inside MusicTitleMarqueeView's own HStack(spacing: 5), trailing
-            // the title text, and the title's usable width is reduced by badgeHeight +
-            // badgeHeight*0.7 + spacing (~27pt) — MarqueeTextView.swift:242. Overlay
-            // on the trailing title column is the closest grid expression: it consumes
-            // no base cell and adds no width, matching the fact that the badge never
-            // makes the panel grow. It only renders when
-            // musicManager.isCurrentTrackExplicit.
+            // The badge has its own space beneath the visualizer so it never covers the title.
             ElementPlacement(
                 id: UUID(uuidString: "10cbd000-0000-4000-8000-000000000003")!,
-                element: .explicitBadge, col: 4, row: 0, colSpan: 1,
-                layer: .overlay, visibility: .always, priority: 5),
+                element: .explicitBadge, col: 5, row: 1, colSpan: 1,
+                layer: .base, visibility: .always, priority: 5),
             // .system(size: 10, weight: .regular), lineLimit(1), sitting 1pt under the
             // title inside a 30pt-tall block. Tinted from album art when
             // playerColorTinting is on, else .gray.
