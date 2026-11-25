@@ -149,19 +149,18 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     //
     // SwiftUI builds the delegate during App.main(), on the main thread and
     // *before* the run loop starts. Several of these singletons block in their
-    // initialiser — IOBluetooth waits on a semaphore only the main queue can
-    // signal, DownloadManager reads ~/Downloads and blocks on a TCC prompt — so
+    // initialiser. DownloadManager reads ~/Downloads and can block on a TCC prompt, so
     // constructing them as stored properties deadlocks the whole app at launch
     // and applicationDidFinishLaunching is never called. Lazy defers each one to
     // first use, which happens after the run loop is up.
     lazy var calendarManager = CalendarManager.shared
     lazy var dndManager = DoNotDisturbManager.shared
-    lazy var bluetoothAudioManager = BluetoothAudioManager.shared
     lazy var idleAnimationManager = IdleAnimationManager.shared
     lazy var downloadManager = DownloadManager.shared
     lazy var lockScreenPanelManager = LockScreenPanelManager.shared
     lazy var mediaControlsStateCoordinator = MediaControlsStateCoordinator.shared
     lazy var systemTimerBridge = SystemTimerBridge.shared
+    private var bluetoothAudioManager: BluetoothAudioManager?
     var closeNotchWorkItem: DispatchWorkItem?
     private var previousScreens: [NSScreen]?
     private var onboardingWindowController: NSWindowController?
@@ -279,6 +278,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
     
     func applicationWillTerminate(_ notification: Notification) {
+        bluetoothAudioManager?.stopMonitoring()
         DesktopWorkspaceManager.shared.stop()
         PrivacyIndicatorManager.shared.stopMonitoring()
         UtilityIntegration.shared.stop()
@@ -827,6 +827,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         #endif
 
         if !AppRuntimeEnvironment.isUITesting {
+            bluetoothAudioManager = BluetoothAudioManager.shared
             UtilityIntegration.shared.start(delegate: self)
             DesktopWorkspaceManager.shared.start()
         }

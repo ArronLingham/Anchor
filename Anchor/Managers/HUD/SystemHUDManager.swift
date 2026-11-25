@@ -223,7 +223,10 @@ final class SystemHUDManager {
         switch style {
         case .notch:
             let generation = presentationGeneration
-            coordinator?.toggleSneakPeek(status: true, type: type, value: value, icon: icon, onScreen: screen) { [weak self] in
+            let notchIcon = type == .volume && icon.isEmpty && BluetoothAudioManager.shared.activeDeviceIconSymbol() != nil
+                ? (value > 0 ? "headphones" : "headphones.slash")
+                : icon
+            coordinator?.toggleSneakPeek(status: true, type: type, value: value, icon: notchIcon, onScreen: screen) { [weak self] in
                 self?.presentationGeneration == generation
             }
         case .floating:

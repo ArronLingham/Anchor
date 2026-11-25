@@ -37,7 +37,25 @@ class BluetoothAudioManager: ObservableObject {
     @Published private(set) var activeListeningModeEvent: AirPodsListeningModeEvent?
     
     // MARK: - Private Properties
-    private var observers: [NSObjectProtocol] = []
+    private var deviceObservers: [NSObjectProtocol] = []
+    private var listeningModeObservers: [NSObjectProtocol] = []
+    private var activitySubscription: AnyCancellable?
+    private var showsConnectionAlerts = false
+    private var tracksListeningMode = false
+    private var showsLockScreenBattery = false
+    private var stopped = false
+    private var needsDeviceSnapshot = true
+    private var batteryGeneration = UUID()
+    private var connectionAlertGeneration = UUID()
+    private var listeningModeGeneration = UUID()
+
+    private var needsDeviceObservation: Bool {
+        showsConnectionAlerts || tracksListeningMode || showsLockScreenBattery
+    }
+
+    private var needsBatteryRefresh: Bool {
+        showsConnectionAlerts || showsLockScreenBattery
+    }
     private var cancellables = Set<AnyCancellable>()
     // `lazy` rather than a stored-property initializer: constructing a
     // main-actor singleton in a property initializer can deadlock startup.
@@ -51,7 +69,7 @@ class BluetoothAudioManager: ObservableObject {
     private lazy var coordinator = AnchorViewCoordinator.shared
     private var pollingTimer: Timer?
     private let bluetoothPreferencesSuite = "/Library/Preferences/com.apple.Bluetooth"
-    private let batteryReader = BluetoothLEBatteryReader()
+    private var batteryReader: BluetoothLEBatteryReader?
     private var isLiveBatteryRefreshInFlight = false
 
     private let appleVendorID: UInt16 = 0x05AC
@@ -81,7 +99,7 @@ class BluetoothAudioManager: ObservableObject {
     private var lastBatteryStatusUpdate: Date?
     private let batteryStatusUpdateInterval: TimeInterval = 20
     private let pmsetFetchQueue = DispatchQueue(label: "com.dynamicisland.bluetooth.pmset", qos: .utility)
-    private var isPmsetRefreshInFlight = false
+    private var pmsetRefresh: DispatchWorkItem?
     private var lastPmsetRefreshDate: Date?
     private let pmsetRefreshCooldown: TimeInterval = 5
     private var hudBatteryWaitTasks: [UUID: Task<Void, Never>] = [:]
@@ -91,7 +109,7 @@ class BluetoothAudioManager: ObservableObject {
     private var listeningModePresentationTask: Task<Void, Never>?
     private var lastListeningModeByAddress: [String: AirPodsListeningMode] = [:]
     private var listeningModeRefreshTask: Task<Void, Never>?
-    private let listeningModeLogObserver = AirPodsListeningModeLogObserver()
+    private var listeningModeLogObserver: AirPodsListeningModeLogObserver?
     private let listeningModeNotificationNames: [Notification.Name] = [
         Notification.Name("com.apple.AudioAccessory.prefsChanged"),
         Notification.Name("com.apple.AudioAccessory.daemonStarted"),
@@ -112,60 +130,109 @@ class BluetoothAudioManager: ObservableObject {
     
     // MARK: - Initialization
     private init() {
-        print("🎧 [BluetoothAudioManager] Initializing...")
-        setupBluetoothObservers()
-        setupAirPodsListeningModeObservers()
-        setupAirPodsListeningModeLogObserver()
+        Defaults.publisher(.showBluetoothDeviceConnections, options: [])
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] change in self?.setConnectionAlertsEnabled(change.newValue) }
+            .store(in: &cancellables)
+        Defaults.publisher(.showAirPodsListeningModeChanges, options: [])
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] change in self?.setListeningModeEnabled(change.newValue) }
+            .store(in: &cancellables)
 
-        // IOBluetooth must NOT be touched from here.
-        //
-        // `IOBluetoothHostController.default()` builds
-        // IOBluetoothCoreBluetoothCoordinator, whose initialiser blocks on a
-        // semaphore that is only signalled by work dispatched to the main queue.
-        // This singleton is reached from AppDelegate's stored properties, i.e. on
-        // the main thread *before* the run loop is running — so that semaphore
-        // can never be signalled and the whole app deadlocks at launch, with
-        // applicationDidFinishLaunching never called.
-        //
-        // Deferring to the main queue lets the run loop start first, at which
-        // point the coordinator initialises normally.
+        // IOBluetooth's first initialization needs a running main loop.
         DispatchQueue.main.async { [weak self] in
-            guard let self else { return }
-            self.checkInitialDevices()
-            self.startPollingForChanges()
+            self?.setConnectionAlertsEnabled(Defaults[.showBluetoothDeviceConnections])
+            self?.setListeningModeEnabled(Defaults[.showAirPodsListeningModeChanges])
         }
     }
-    
-    deinit {
-        cleanup()
+
+    @MainActor
+    func setLockScreenBatteryVisible(_ visible: Bool) {
+        guard !stopped, showsLockScreenBattery != visible else { return }
+        let needsNewBatteryRead = visible && !needsBatteryRefresh && !needsDeviceSnapshot
+        showsLockScreenBattery = visible
+        syncDeviceObservation()
+        if needsNewBatteryRead { refreshConnectedDeviceBatteries() }
     }
-    
-    // MARK: - Setup Methods
-    
-    /// Sets up observers for Bluetooth device connection/disconnection events
-    private func setupBluetoothObservers() {
-        print("🎧 [BluetoothAudioManager] Setting up Bluetooth observers...")
-        
-        // Use DistributedNotificationCenter for IOBluetooth notifications
-        let dnc = DistributedNotificationCenter.default()
-        
-        // Observe device connected notifications
-        dnc.addObserver(
-            self,
-            selector: #selector(handleDeviceConnectedNotification(_:)),
-            name: NSNotification.Name("IOBluetoothDeviceConnectedNotification"),
-            object: nil
-        )
-        
-        // Observe device disconnected notifications
-        dnc.addObserver(
-            self,
-            selector: #selector(handleDeviceDisconnectedNotification(_:)),
-            name: NSNotification.Name("IOBluetoothDeviceDisconnectedNotification"),
-            object: nil
-        )
-        
-        print("🎧 [BluetoothAudioManager] ✅ Observers registered with DistributedNotificationCenter")
+
+    @MainActor
+    func stopMonitoring() {
+        setLockScreenBatteryVisible(false)
+        setConnectionAlertsEnabled(false)
+        setListeningModeEnabled(false)
+        stopped = true
+        cancellables.removeAll()
+    }
+
+    private func setConnectionAlertsEnabled(_ enabled: Bool) {
+        guard !stopped, showsConnectionAlerts != enabled else { return }
+        showsConnectionAlerts = enabled
+        if !enabled {
+            connectionAlertGeneration = UUID()
+            hudBatteryWaitTasks.values.forEach { $0.cancel() }
+            hudBatteryWaitTasks.removeAll()
+            HUDSuppressionCoordinator.shared.releaseVolumeHUDSuppression(source: .bluetoothConnection)
+            dismissBluetoothHUD(listeningMode: false)
+        }
+        syncDeviceObservation()
+    }
+
+    private func setListeningModeEnabled(_ enabled: Bool) {
+        guard !stopped, tracksListeningMode != enabled else { return }
+        tracksListeningMode = enabled
+        if enabled {
+            syncDeviceObservation()
+            setupAirPodsListeningModeObservers()
+            startListeningModeLogObserver()
+        } else {
+            stopListeningModeObservation()
+            syncDeviceObservation()
+        }
+    }
+
+    private func syncDeviceObservation() {
+        if !needsBatteryRefresh {
+            stopBatteryRefresh()
+        }
+        guard needsDeviceObservation else {
+            stopDeviceObservation()
+            return
+        }
+        guard deviceObservers.isEmpty else {
+            syncPolling(suspended: SystemActivityGate.shared.shouldSuspendBackgroundWork)
+            return
+        }
+
+        let center = DistributedNotificationCenter.default()
+        deviceObservers = [
+            center.addObserver(forName: Notification.Name("IOBluetoothDeviceConnectedNotification"),
+                               object: nil, queue: .main) { [weak self] _ in
+                guard let self, self.needsDeviceObservation else { return }
+                self.checkForNewlyConnectedDevices()
+                self.adjustPollingCadence()
+            },
+            center.addObserver(forName: Notification.Name("IOBluetoothDeviceDisconnectedNotification"),
+                               object: nil, queue: .main) { [weak self] _ in
+                guard let self, self.needsDeviceObservation else { return }
+                self.updateConnectedDevices()
+                self.adjustPollingCadence()
+            }
+        ]
+        activitySubscription = SystemActivityGate.shared.$shouldSuspendBackgroundWork
+            .removeDuplicates()
+            .sink { [weak self] suspended in self?.syncPolling(suspended: suspended) }
+    }
+
+    private func stopDeviceObservation() {
+        stopPolling()
+        activitySubscription = nil
+        let center = DistributedNotificationCenter.default()
+        deviceObservers.forEach { center.removeObserver($0) }
+        deviceObservers.removeAll()
+        needsDeviceSnapshot = true
+        if !connectedDevices.isEmpty { connectedDevices.removeAll() }
+        if lastConnectedDevice != nil { lastConnectedDevice = nil }
+        if isBluetoothAudioConnected { isBluetoothAudioConnected = false }
     }
 
     /// Watches private Bluetooth/Control Center notifications that Apple posts
@@ -175,20 +242,15 @@ class BluetoothAudioManager: ObservableObject {
     private func setupAirPodsListeningModeObservers() {
         let dnc = DistributedNotificationCenter.default()
 
-        for name in listeningModeNotificationNames {
-            dnc.addObserver(
-                self,
-                selector: #selector(handleAirPodsListeningModeNotification(_:)),
-                name: name,
-                object: nil
-            )
+        listeningModeObservers = listeningModeNotificationNames.map { name in
+            dnc.addObserver(forName: name, object: nil, queue: .main) { [weak self] notification in
+                self?.handleAirPodsListeningModeNotification(notification)
+            }
         }
-
-        dnc.addObserver(
-            self,
-            selector: #selector(handlePotentialAirPodsListeningModeNotification(_:)),
-            name: nil,
-            object: nil
+        listeningModeObservers.append(
+            dnc.addObserver(forName: nil, object: nil, queue: .main) { [weak self] notification in
+                self?.handlePotentialAirPodsListeningModeNotification(notification)
+            }
         )
 
         let darwinCenter = CFNotificationCenterGetDarwinNotifyCenter()
@@ -200,7 +262,9 @@ class BluetoothAudioManager: ObservableObject {
                     guard let observer, let cfName else { return }
                     let manager = Unmanaged<BluetoothAudioManager>.fromOpaque(observer).takeUnretainedValue()
                     let name = cfName.rawValue as String
-                    manager.handleAirPodsListeningModeDarwinNotification(name)
+                    DispatchQueue.main.async {
+                        manager.handleAirPodsListeningModeDarwinNotification(name)
+                    }
                 },
                 name.rawValue as CFString,
                 nil,
@@ -209,62 +273,84 @@ class BluetoothAudioManager: ObservableObject {
         }
     }
 
-    private func setupAirPodsListeningModeLogObserver() {
-        listeningModeLogObserver.onModeChange = { [weak self] mode, address in
+    private func startListeningModeLogObserver() {
+        let observer = AirPodsListeningModeLogObserver()
+        let generation = listeningModeGeneration
+        observer.onModeChange = { [weak self] mode, address in
             Task { @MainActor in
-                self?.handleListeningMode(mode, address: address)
+                guard let self, self.listeningModeGeneration == generation else { return }
+                self.handleListeningMode(mode, address: address)
             }
         }
-
-        if Defaults[.showAirPodsListeningModeChanges] {
-            listeningModeLogObserver.start()
-        }
-
-        Defaults.publisher(.showAirPodsListeningModeChanges, options: [])
-            .sink { [weak self] change in
-                if change.newValue {
-                    self?.listeningModeLogObserver.start()
-                } else {
-                    self?.listeningModeLogObserver.stop()
-                }
-            }
-            .store(in: &cancellables)
+        listeningModeLogObserver = observer
+        observer.start()
     }
-    
-    // This poll is only a fallback — DistributedNotificationCenter observers are
-    // the primary path. Poll at the responsive rate while an audio device is
-    // actually connected, and back right off otherwise (Bluetooth off, or
-    // nothing paired and connected), which is the common idle case.
+
+    private func stopListeningModeObservation() {
+        listeningModeGeneration = UUID()
+        let center = DistributedNotificationCenter.default()
+        listeningModeObservers.forEach { center.removeObserver($0) }
+        listeningModeObservers.removeAll()
+        CFNotificationCenterRemoveEveryObserver(
+            CFNotificationCenterGetDarwinNotifyCenter(), Unmanaged.passUnretained(self).toOpaque()
+        )
+        listeningModeLogObserver?.stop()
+        listeningModeLogObserver = nil
+        listeningModeRefreshTask?.cancel()
+        listeningModeRefreshTask = nil
+        listeningModeClearTask?.cancel()
+        listeningModeClearTask = nil
+        listeningModePresentationTask?.cancel()
+        listeningModePresentationTask = nil
+        lastListeningModeByAddress.removeAll()
+        if activeListeningModeEvent != nil { activeListeningModeEvent = nil }
+        HUDSuppressionCoordinator.shared.releaseVolumeHUDSuppression(source: .airPodsListeningMode)
+        dismissBluetoothHUD(listeningMode: true)
+    }
+
+    // Distributed notifications are the primary path. The fallback checks
+    // more often while an audio device is connected.
     private static let connectedPollInterval: TimeInterval = 3.0
     private static let idlePollInterval: TimeInterval = 15.0
 
-    /// Starts polling for device connection changes (fallback mechanism)
-    private func startPollingForChanges() {
-        SystemActivityGate.shared.$shouldSuspendBackgroundWork
-            .removeDuplicates()
-            .sink { [weak self] suspend in
-                guard let self else { return }
-                if suspend {
-                    self.pollingTimer?.invalidate()
-                    self.pollingTimer = nil
-                } else if self.pollingTimer == nil {
-                    // Re-sync immediately — devices may have changed while parked.
-                    self.checkForDeviceChanges()
-                    self.adjustPollingCadence()
-                    if self.pollingTimer == nil {
-                        self.schedulePollingTimer(interval: Self.idlePollInterval)
-                    }
-                }
-            }
-            .store(in: &cancellables)
+    private var pollingInterval: TimeInterval {
+        isBluetoothAudioConnected ? Self.connectedPollInterval : Self.idlePollInterval
+    }
 
-        schedulePollingTimer(interval: Self.idlePollInterval)
+    private func syncPolling(suspended: Bool) {
+        guard needsDeviceObservation else { return }
+        if suspended {
+            stopPolling()
+            // The lock-screen battery is visible even while background
+            // polling is paused. Seed it once and use notifications after that.
+            if showsLockScreenBattery && needsDeviceSnapshot {
+                seedConnectedDevices()
+            }
+            return
+        }
+        guard pollingTimer == nil else { return }
+        if needsDeviceSnapshot {
+            seedConnectedDevices()
+        } else {
+            checkForDeviceChanges()
+        }
+        schedulePollingTimer(interval: pollingInterval)
+    }
+
+    private func stopPolling() {
+        pollingTimer?.invalidate()
+        pollingTimer = nil
+    }
+
+    private func seedConnectedDevices() {
+        needsDeviceSnapshot = false
+        checkInitialDevices()
     }
 
     private func schedulePollingTimer(interval: TimeInterval) {
         pollingTimer?.invalidate()
         let timer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
-            guard let self else { return }
+            guard let self, self.needsDeviceObservation else { return }
             self.checkForDeviceChanges()
             self.adjustPollingCadence()
         }
@@ -275,11 +361,8 @@ class BluetoothAudioManager: ObservableObject {
     }
 
     private func adjustPollingCadence() {
-        let wanted = isBluetoothAudioConnected
-            ? Self.connectedPollInterval
-            : Self.idlePollInterval
-        guard let current = pollingTimer?.timeInterval, abs(current - wanted) > 0.01 else { return }
-        schedulePollingTimer(interval: wanted)
+        guard let current = pollingTimer?.timeInterval, current != pollingInterval else { return }
+        schedulePollingTimer(interval: pollingInterval)
     }
     
     /// Checks for device connection/disconnection changes
@@ -291,6 +374,7 @@ class BluetoothAudioManager: ObservableObject {
                 print("🎧 [BluetoothAudioManager] ⚠️ Bluetooth powered off - clearing connected devices")
                 connectedDevices.removeAll()
                 isBluetoothAudioConnected = false
+                lastConnectedDevice = nil
             }
             return
         }
@@ -360,24 +444,8 @@ class BluetoothAudioManager: ObservableObject {
     
     // MARK: - Device Event Handlers
     
-    /// Handles Bluetooth device connection notification from DistributedNotificationCenter
-    @objc private func handleDeviceConnectedNotification(_ notification: Notification) {
-        print("🎧 [BluetoothAudioManager] 📡 Device connection notification received")
-        
-        // Re-check all devices since distributed notification doesn't contain device object
-        checkForNewlyConnectedDevices()
-    }
-    
-    /// Handles Bluetooth device disconnection notification from DistributedNotificationCenter
-    @objc private func handleDeviceDisconnectedNotification(_ notification: Notification) {
-        print("🎧 [BluetoothAudioManager] 📡 Device disconnection notification received")
-        
-        // Re-check all devices to update connection state
-        updateConnectedDevices()
-    }
-
-    @objc private func handleAirPodsListeningModeNotification(_ notification: Notification) {
-        guard Defaults[.showAirPodsListeningModeChanges] else { return }
+    private func handleAirPodsListeningModeNotification(_ notification: Notification) {
+        guard tracksListeningMode, Defaults[.showAirPodsListeningModeChanges] else { return }
         if let event = listeningModeEvent(from: notification.userInfo) {
             presentListeningModeIfChanged(event)
             return
@@ -385,8 +453,8 @@ class BluetoothAudioManager: ObservableObject {
         scheduleEventDrivenListeningModeRefresh(reason: notification.name.rawValue)
     }
 
-    @objc private func handlePotentialAirPodsListeningModeNotification(_ notification: Notification) {
-        guard Defaults[.showAirPodsListeningModeChanges] else { return }
+    private func handlePotentialAirPodsListeningModeNotification(_ notification: Notification) {
+        guard tracksListeningMode, Defaults[.showAirPodsListeningModeChanges] else { return }
         let name = notification.name.rawValue.lowercased()
         let payload = notification.userInfo?
             .map { "\($0.key)=\($0.value)" }
@@ -410,13 +478,13 @@ class BluetoothAudioManager: ObservableObject {
     }
 
     private func handleAirPodsListeningModeDarwinNotification(_ name: String) {
-        guard Defaults[.showAirPodsListeningModeChanges] else { return }
+        guard tracksListeningMode, Defaults[.showAirPodsListeningModeChanges] else { return }
         scheduleEventDrivenListeningModeRefresh(reason: name)
     }
 
     @MainActor
     private func handleListeningMode(_ mode: AirPodsListeningMode, address: String?) {
-        guard Defaults[.showAirPodsListeningModeChanges] else { return }
+        guard tracksListeningMode, Defaults[.showAirPodsListeningModeChanges] else { return }
 
         let normalizedAddress = address.map(normalizeBluetoothIdentifier)
         let device = connectedDevices.first { candidate in
@@ -500,7 +568,7 @@ class BluetoothAudioManager: ObservableObject {
         }
         
         isBluetoothAudioConnected = !connectedDevices.isEmpty
-
+        lastConnectedDevice = connectedDevices.last
         refreshBatteryLevelsForConnectedDevices()
     }
     
@@ -588,7 +656,7 @@ class BluetoothAudioManager: ObservableObject {
     private func createBluetoothAudioDevice(from device: IOBluetoothDevice) -> BluetoothAudioDevice? {
         let name = device.name ?? "Bluetooth Device"
         let address = device.addressString ?? "Unknown"
-        let batteryLevel = getBatteryLevel(from: device)
+        let batteryLevel = needsBatteryRefresh ? getBatteryLevel(from: device) : nil
         let deviceType = detectDeviceType(from: device, name: name)
         
         return BluetoothAudioDevice(
@@ -890,6 +958,7 @@ class BluetoothAudioManager: ObservableObject {
     }
 
     private func refreshBatteryLevelsForConnectedDevices(forceCacheRefresh: Bool = true) {
+        guard needsBatteryRefresh, !connectedDevices.isEmpty else { return }
         if forceCacheRefresh {
             updateBatteryStatuses(force: true)
         }
@@ -938,7 +1007,7 @@ class BluetoothAudioManager: ObservableObject {
 
     private func requestPmsetFallback(reason: String) {
         guard connectedDevices.contains(where: { $0.batteryLevel == nil }) else { return }
-        guard !isPmsetRefreshInFlight else { return }
+        guard needsBatteryRefresh, pmsetRefresh == nil else { return }
 
         let now = Date()
         if let lastPmsetRefreshDate,
@@ -946,19 +1015,22 @@ class BluetoothAudioManager: ObservableObject {
             return
         }
 
-        isPmsetRefreshInFlight = true
-        print("🎧 [BluetoothAudioManager] 🔄 Triggering pmset fallback (\(reason))")
-        pmsetFetchQueue.async { [weak self] in
+        let generation = batteryGeneration
+        let work = DispatchWorkItem { [weak self] in
             guard let self else { return }
             let entries = self.collectPmsetAccessoryBatteryEntries()
             DispatchQueue.main.async {
+                guard self.batteryGeneration == generation else { return }
                 self.handlePmsetFallbackResults(entries)
             }
         }
+        pmsetRefresh = work
+        print("🎧 [BluetoothAudioManager] 🔄 Triggering pmset fallback (\(reason))")
+        pmsetFetchQueue.async(execute: work)
     }
 
     private func handlePmsetFallbackResults(_ entries: [PmsetAccessoryBatteryEntry]) {
-        isPmsetRefreshInFlight = false
+        pmsetRefresh = nil
         lastPmsetRefreshDate = Date()
         guard !entries.isEmpty else { return }
 
@@ -983,9 +1055,13 @@ class BluetoothAudioManager: ObservableObject {
         guard !lookups.isEmpty else { return }
 
         isLiveBatteryRefreshInFlight = true
-        batteryReader.fetchBatteryLevels(for: lookups) { [weak self] results in
+        let generation = batteryGeneration
+        let reader = batteryReader ?? BluetoothLEBatteryReader()
+        batteryReader = reader
+        reader.fetchBatteryLevels(for: lookups) { [weak self] results in
             guard let self else { return }
             DispatchQueue.main.async {
+                guard self.batteryGeneration == generation else { return }
                 self.isLiveBatteryRefreshInFlight = false
                 self.handleLiveBatteryResults(results)
             }
@@ -1058,10 +1134,14 @@ class BluetoothAudioManager: ObservableObject {
     }
 
     private func updateActiveBluetoothHUDBattery(with level: Int?) {
-        guard let level else { return }
+        guard showsConnectionAlerts, let level else { return }
+        let generation = connectionAlertGeneration
         DispatchQueue.main.async {
-            guard self.coordinator.sneakPeek.show,
-                  self.coordinator.sneakPeek.type == .bluetoothAudio else { return }
+            guard Defaults[.showBluetoothDeviceConnections],
+                  self.connectionAlertGeneration == generation,
+                  self.coordinator.sneakPeek.show,
+                  self.coordinator.sneakPeek.type == .bluetoothAudio,
+                  self.coordinator.sneakPeek.value >= 0 else { return }
             self.coordinator.sneakPeek.value = CGFloat(level) / 100.0
         }
     }
@@ -1830,7 +1910,7 @@ class BluetoothAudioManager: ObservableObject {
     
     /// Shows HUD notification for newly connected audio device
     private func showDeviceConnectedHUD(_ device: BluetoothAudioDevice) {
-        guard Defaults[.showBluetoothDeviceConnections] else { return }
+        guard showsConnectionAlerts, Defaults[.showBluetoothDeviceConnections] else { return }
 
         cancelHUDBatteryWait(for: device)
 
@@ -1841,42 +1921,31 @@ class BluetoothAudioManager: ObservableObject {
 
         requestPmsetFallback(reason: "hud missing battery")
 
-        let task = Task.detached(priority: .utility) { [weak self] in
+        let generation = connectionAlertGeneration
+        let task = Task { @MainActor [weak self] in
             guard let self else { return }
             let deadline = Date().addingTimeInterval(self.hudBatteryWaitTimeout)
             while Date() < deadline {
                 try? await Task.sleep(nanoseconds: UInt64(self.hudBatteryWaitInterval * 1_000_000_000))
-                guard !Task.isCancelled else { return }
-
-                let batteryInfo = await MainActor.run { () -> (BluetoothAudioDevice, Int)? in
-                    guard let refreshedDevice = self.connectedDevices.first(where: { $0.id == device.id }),
-                          let battery = self.bestBatteryLevel(for: refreshedDevice) else {
-                        return nil
-                    }
-                    return (refreshedDevice, battery)
-                }
-
-                if let (refreshedDevice, battery) = batteryInfo {
-                    await MainActor.run {
-                        self.presentDeviceConnectedHUD(device: refreshedDevice, batteryLevel: battery)
-                    }
-                    self.cancelHUDBatteryWait(for: device)
+                guard !Task.isCancelled, self.connectionAlertGeneration == generation,
+                      let refreshedDevice = self.connectedDevices.first(where: { $0.id == device.id })
+                else { return }
+                if let battery = self.bestBatteryLevel(for: refreshedDevice) {
+                    self.presentDeviceConnectedHUD(device: refreshedDevice, batteryLevel: battery)
+                    self.hudBatteryWaitTasks[device.id] = nil
                     return
                 }
             }
 
-            guard !Task.isCancelled else { return }
-            await MainActor.run {
-                self.presentDeviceConnectedHUD(device: device, batteryLevel: nil)
-            }
-            self.cancelHUDBatteryWait(for: device)
+            self.presentDeviceConnectedHUD(device: device, batteryLevel: nil)
+            self.hudBatteryWaitTasks[device.id] = nil
         }
 
         hudBatteryWaitTasks[device.id] = task
     }
 
     private func presentDeviceConnectedHUD(device: BluetoothAudioDevice, batteryLevel: Int?) {
-        guard Defaults[.showBluetoothDeviceConnections] else { return }
+        guard showsConnectionAlerts, Defaults[.showBluetoothDeviceConnections] else { return }
 
         print("🎧 [BluetoothAudioManager] 📱 Showing device connected HUD")
 
@@ -1886,16 +1955,30 @@ class BluetoothAudioManager: ObservableObject {
             0.0
         }
 
-        HUDSuppressionCoordinator.shared.suppressVolumeHUD(for: 1.5)
-
-        Task { @MainActor in
-            coordinator.toggleSneakPeek(
+        let generation = connectionAlertGeneration
+        Task { @MainActor [weak self] in
+            self?.coordinator.toggleSneakPeek(
                 status: true,
                 type: .bluetoothAudio,
                 duration: 2.5,
                 value: batteryValue,
                 icon: device.deviceType.sfSymbol
-            )
+            ) { [weak self] in
+                guard let self, self.connectionAlertGeneration == generation,
+                      Defaults[.showBluetoothDeviceConnections],
+                      self.connectedDevices.contains(where: { $0.id == device.id })
+                else { return false }
+                HUDSuppressionCoordinator.shared.suppressVolumeHUD(for: 1.5, source: .bluetoothConnection)
+                return true
+            }
+        }
+    }
+
+    private func dismissBluetoothHUD(listeningMode: Bool) {
+        MainActor.assumeIsolated {
+            guard coordinator.sneakPeek.show, coordinator.sneakPeek.type == .bluetoothAudio,
+                  (coordinator.sneakPeek.value < 0) == listeningMode else { return }
+            coordinator.sneakPeek.show = false
         }
     }
 
@@ -1920,7 +2003,7 @@ class BluetoothAudioManager: ObservableObject {
     }
 
     private func presentListeningModeIfChanged(_ event: AirPodsListeningModeEvent) {
-        guard Defaults[.showAirPodsListeningModeChanges] else { return }
+        guard tracksListeningMode, Defaults[.showAirPodsListeningModeChanges] else { return }
         guard event.device.deviceType.isAirPods else { return }
 
         let address = event.device.address
@@ -1935,7 +2018,7 @@ class BluetoothAudioManager: ObservableObject {
     }
 
     private func presentStableListeningMode(_ event: AirPodsListeningModeEvent) {
-        guard Defaults[.showAirPodsListeningModeChanges] else { return }
+        guard tracksListeningMode, Defaults[.showAirPodsListeningModeChanges] else { return }
         guard event.device.deviceType.isAirPods else { return }
 
         let address = event.device.address
@@ -1945,16 +2028,21 @@ class BluetoothAudioManager: ObservableObject {
 
         print("🎧 [BluetoothAudioManager] 🎚️ AirPods listening mode changed: \(event.mode.displayName)")
 
-        HUDSuppressionCoordinator.shared.suppressVolumeHUD(for: 1.5)
-
-        Task { @MainActor in
-            coordinator.toggleSneakPeek(
+        let generation = listeningModeGeneration
+        Task { @MainActor [weak self] in
+            self?.coordinator.toggleSneakPeek(
                 status: true,
                 type: .bluetoothAudio,
                 duration: 2.5,
                 value: -1,
                 icon: event.mode.sfSymbol
-            )
+            ) { [weak self] in
+                guard let self, self.listeningModeGeneration == generation,
+                      Defaults[.showAirPodsListeningModeChanges],
+                      self.activeListeningModeEvent?.id == event.id else { return false }
+                HUDSuppressionCoordinator.shared.suppressVolumeHUD(for: 1.5, source: .airPodsListeningMode)
+                return true
+            }
         }
 
         listeningModeClearTask?.cancel()
@@ -2081,25 +2169,14 @@ class BluetoothAudioManager: ObservableObject {
     
     // MARK: - Cleanup
     
-    private func cleanup() {
-        print("🎧 [BluetoothAudioManager] Cleaning up observers...")
-        
-        pollingTimer?.invalidate()
-        pollingTimer = nil
-        
-        let dnc = DistributedNotificationCenter.default()
-        dnc.removeObserver(self)
-        observers.removeAll()
-        cancellables.removeAll()
-        hudBatteryWaitTasks.values.forEach { $0.cancel() }
-        hudBatteryWaitTasks.removeAll()
-        listeningModeRefreshTask?.cancel()
-        listeningModeClearTask?.cancel()
-        listeningModePresentationTask?.cancel()
-        listeningModeLogObserver.stop()
-
-        let darwinCenter = CFNotificationCenterGetDarwinNotifyCenter()
-        CFNotificationCenterRemoveEveryObserver(darwinCenter, Unmanaged.passUnretained(self).toOpaque())
+    private func stopBatteryRefresh() {
+        batteryGeneration = UUID()
+        pmsetRefresh?.cancel()
+        pmsetRefresh = nil
+        lastPmsetRefreshDate = nil
+        batteryReader?.cancel()
+        batteryReader = nil
+        isLiveBatteryRefreshInFlight = false
     }
 
     @MainActor
@@ -2109,10 +2186,15 @@ class BluetoothAudioManager: ObservableObject {
 
     @MainActor
     func activeDeviceIconSymbol() -> String? {
-        if let prioritizedDevice = connectedDevices.last ?? lastConnectedDevice {
-            return prioritizedDevice.deviceType.sfSymbol
+        if needsDeviceObservation && !needsDeviceSnapshot {
+            return connectedDevices.last?.deviceType.sfSymbol
         }
-        return nil
+        // The volume HUD needs a symbol only when it is shown.
+        guard IOBluetoothHostController.default()?.powerState == kBluetoothHCIPowerStateON,
+              let pairedDevices = IOBluetoothDevice.pairedDevices() as? [IOBluetoothDevice],
+              let device = pairedDevices.last(where: { $0.isConnected() && isAudioDevice($0) })
+        else { return nil }
+        return detectDeviceType(from: device, name: device.name ?? "").sfSymbol
     }
 }
 
@@ -2120,6 +2202,7 @@ private final class AirPodsListeningModeLogObserver {
     var onModeChange: ((AirPodsListeningMode, String?) -> Void)?
 
     private var process: Process?
+    private var outputPipe: Pipe?
     private let queue = DispatchQueue(label: "com.dynamicisland.airpods-listening-log", qos: .utility)
     private var lineBuffer = ""
 
@@ -2138,7 +2221,7 @@ private final class AirPodsListeningModeLogObserver {
 
         let outputPipe = Pipe()
         process.standardOutput = outputPipe
-        process.standardError = Pipe()
+        process.standardError = FileHandle.nullDevice
 
         outputPipe.fileHandleForReading.readabilityHandler = { [weak self] handle in
             let data = handle.availableData
@@ -2151,6 +2234,7 @@ private final class AirPodsListeningModeLogObserver {
         do {
             try process.run()
             self.process = process
+            self.outputPipe = outputPipe
             print("🎧 [BluetoothAudioManager] AirPods listening mode log observer started")
         } catch {
             outputPipe.fileHandleForReading.readabilityHandler = nil
@@ -2159,7 +2243,9 @@ private final class AirPodsListeningModeLogObserver {
     }
 
     func stop() {
-        process?.terminate()
+        outputPipe?.fileHandleForReading.readabilityHandler = nil
+        outputPipe = nil
+        if let process, process.isRunning { process.terminate() }
         process = nil
     }
 
@@ -2276,6 +2362,16 @@ private final class BluetoothLEBatteryReader: NSObject, CBCentralManagerDelegate
         default:
             break
         }
+    }
+
+    func cancel() {
+        for peripheral in pendingPeripherals.values {
+            peripheral.delegate = nil
+            if peripheral.state == .connecting {
+                central.cancelPeripheralConnection(peripheral)
+            }
+        }
+        complete(with: [])
     }
 
     // MARK: - CBCentralManagerDelegate

@@ -115,7 +115,7 @@ final class LockScreenWeatherManager: ObservableObject {
         demand.endLock()
         lockSettingTicket = nil
         accessoryCancellables.removeAll()
-        bluetoothCancellables.removeAll()
+        syncBluetoothObservation()
         LockScreenWeatherPanelManager.existing?.hide()
         stopIfUnused()
     }
@@ -325,8 +325,9 @@ final class LockScreenWeatherManager: ObservableObject {
         let wanted = hasCurrentLockDemand && Defaults[.lockScreenBatteryShowsBluetooth]
         guard wanted != !bluetoothCancellables.isEmpty else { return }
         bluetoothCancellables.removeAll()
-        guard wanted else { return }
         let bluetooth = BluetoothAudioManager.shared
+        bluetooth.setLockScreenBatteryVisible(wanted)
+        guard wanted else { return }
         bluetooth.$connectedDevices.receive(on: RunLoop.main)
             .sink { [weak self] _ in self?.handleAccessoryUpdate(triggerBluetoothRefresh: false) }
             .store(in: &bluetoothCancellables)

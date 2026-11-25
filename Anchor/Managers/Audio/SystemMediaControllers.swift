@@ -32,31 +32,33 @@ extension Notification.Name {
 final class HUDSuppressionCoordinator {
     static let shared = HUDSuppressionCoordinator()
 
-    private let queue = DispatchQueue(label: "com.dynamicisland.hud-suppression")
-    private var volumeSuppressedUntil: Date?
+    enum Source {
+        case bluetoothConnection
+        case airPodsListeningMode
+    }
 
-    func suppressVolumeHUD(for interval: TimeInterval) {
+    private let queue = DispatchQueue(label: "com.dynamicisland.hud-suppression")
+    private var volumeSuppressedUntil: [Source: Date] = [:]
+
+    func suppressVolumeHUD(for interval: TimeInterval, source: Source) {
         guard interval > 0 else { return }
         queue.sync {
             let proposed = Date().addingTimeInterval(interval)
-            if let current = volumeSuppressedUntil {
-                volumeSuppressedUntil = max(current, proposed)
-            } else {
-                volumeSuppressedUntil = proposed
-            }
+            volumeSuppressedUntil[source] = max(volumeSuppressedUntil[source] ?? proposed, proposed)
+        }
+    }
+
+    func releaseVolumeHUDSuppression(source: Source) {
+        queue.sync {
+            volumeSuppressedUntil[source] = nil
         }
     }
 
     var shouldSuppressVolumeHUD: Bool {
         queue.sync {
-            guard let expiration = volumeSuppressedUntil else {
-                return false
-            }
-            if Date() < expiration {
-                return true
-            }
-            volumeSuppressedUntil = nil
-            return false
+            let now = Date()
+            volumeSuppressedUntil = volumeSuppressedUntil.filter { $0.value > now }
+            return !volumeSuppressedUntil.isEmpty
         }
     }
 }

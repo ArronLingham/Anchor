@@ -240,9 +240,7 @@ struct InlineHUD: View {
                     switch (type) {
                         case .volume:
                             if icon.isEmpty {
-                                // Show headphone icon if Bluetooth audio is connected, otherwise speaker
-                                let baseIcon = bluetoothManager.isBluetoothAudioConnected ? "headphones" : SpeakerSymbol(value)
-                                Image(systemName: baseIcon)
+                                Image(systemName: SpeakerSymbol(value))
                                     .contentTransition(.interpolate)
                                     .symbolVariant(value > 0 ? .none : .slash)
                                     .frame(width: 20, height: 15, alignment: .leading)

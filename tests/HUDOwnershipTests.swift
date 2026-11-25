@@ -59,7 +59,17 @@ enum HUDOwnershipTests {
         tap.dispatchMuteCommand()
         await settle()
         precondition(mediaCommands.muteCommands == 1)
-        print("HUD ownership, partial replacement, last-owner release, and stale media keys checks passed")
+
+        precondition(BluetoothAudioManager.shared.lookups == 0)
+        Defaults[.enableSystemHUD] = true
+        manager.present(type: .brightness, value: 0.5)
+        precondition(BluetoothAudioManager.shared.lookups == 0)
+        BluetoothAudioManager.shared.symbol = "airpodspro"
+        manager.present(type: .volume, value: 0.5)
+        manager.present(type: .volume, value: 0)
+        precondition(BluetoothAudioManager.shared.lookups == 2)
+        precondition(coordinator.icons.suffix(2) == ["headphones", "headphones.slash"])
+        print("HUD ownership, stale media keys, and on-demand Bluetooth icons passed")
     }
 
     private static func settle() async {
@@ -149,8 +159,21 @@ enum SystemOSDManager {
 enum SneakContentType { case volume, brightness, contrast, backlight, reminder }
 final class AnchorViewCoordinator {
     var sneakPeek = (show: false, type: SneakContentType.reminder)
+    var icons: [String] = []
     func toggleSneakPeek(status: Bool, type: SneakContentType, value: CGFloat = 0, icon: String = "",
-                         onScreen screen: NSScreen? = nil, shouldDeliver: (() -> Bool)? = nil) {}
+                         onScreen screen: NSScreen? = nil, shouldDeliver: (() -> Bool)? = nil) {
+        if shouldDeliver?() != false { icons.append(icon) }
+    }
+}
+
+final class BluetoothAudioManager {
+    static let shared = BluetoothAudioManager()
+    var lookups = 0
+    var symbol: String?
+    func activeDeviceIconSymbol() -> String? {
+        lookups += 1
+        return symbol
+    }
 }
 
 final class CircularHUDWindowManager {
