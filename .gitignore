@@ -213,3 +213,5 @@ __pycache__/
 !/tests/run_bluetooth_audio_demand_tests.sh
 !/tests/WaveformCaptureLifecycleTests.swift
 !/tests/run_waveform_capture_lifecycle_tests.sh
+!/tests/DownloadWatchLifecycleTests.swift
+!/tests/run_download_watch_lifecycle_tests.sh

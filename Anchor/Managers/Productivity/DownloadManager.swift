@@ -45,6 +45,8 @@ class DownloadManager {
     /// instant it is created.
     private var cancellables = Set<AnyCancellable>()
 
+    private let watchEpoch = DownloadWatchEpoch()
+    private var watchTicket: UUID?
     private var source: DispatchSourceFileSystemObject?
     private let queue = DispatchQueue(label: "com.dynamicisland.downloads.monitor", qos: .utility)
     private var completionTimer: Timer?
@@ -58,111 +60,99 @@ class DownloadManager {
     }
     
     init() {
-        // Deferred: reading ~/Downloads can block on a TCC prompt, which cannot
-        // be answered if this runs on the main thread before the run loop.
-        DispatchQueue.main.async { [weak self] in
-            self?.requestDownloadsPermissionIfNeeded()
-            self?.startMonitoringIfNeeded()
-        }
-        
-        // The AnyCancellable this returns was previously discarded, which
-        // cancels the subscription immediately — so toggling the download
-        // listener in Settings did nothing until the app was restarted.
-        Defaults.publisher(.enableDownloadListener)
-            .sink { [weak self] _ in
-                guard let self else { return }
-                Task { @MainActor in
-                    self.startMonitoringIfNeeded()
-                }
+        Defaults.publisher(.enableDownloadListener, options: [])
+            .map(\.newValue)
+            .removeDuplicates()
+            .sink { [weak self, watchEpoch] _ in
+                watchEpoch.invalidate()
+                DispatchQueue.main.async { self?.reconcileMonitor() }
             }
             .store(in: &cancellables)
+
+        DispatchQueue.main.async { [weak self] in self?.reconcileMonitor() }
     }
-    
-    private func startMonitoringIfNeeded() {
-        if Defaults[.enableDownloadListener] {
-            startMonitoring()
-        } else {
+
+    private func reconcileMonitor() {
+        let ticket = watchEpoch.current()
+        if watchTicket != nil && (watchTicket != ticket || !Defaults[.enableDownloadListener]) {
             stopMonitoring()
-            updateDownloadingState(isActive: false)
+        }
+        guard watchTicket == nil, Defaults[.enableDownloadListener], let directory = downloadsDirectory else { return }
+        watchTicket = ticket
+
+        queue.async { [weak self, watchEpoch] in
+            guard watchEpoch.accepts(ticket) else { return }
+            let fd = Self.openWatch(directory, ticket: ticket, epoch: watchEpoch)
+            DispatchQueue.main.async { [weak self] in
+                guard let self, self.accepts(ticket) else {
+                    if fd >= 0 { close(fd) }
+                    return
+                }
+                guard fd >= 0 else {
+                    self.watchTicket = nil
+                    return
+                }
+                self.installMonitor(fd: fd, directory: directory, ticket: ticket)
+            }
         }
     }
-    
-    private func startMonitoring() {
-        guard source == nil, let downloadsDirectory else { return }
-        
-        hasPerformedInitialScan = false
-        initialCrDownloadFiles.removeAll()
-        previousAllFiles.removeAll()
-        ignoredFiles.removeAll()
-        isDownloading = false
-        
-        let path = downloadsDirectory.path
-        let fd = open(path, O_EVTONLY)
-        guard fd >= 0 else { return }
-        
+
+    nonisolated private static func openWatch(_ directory: URL, ticket: UUID, epoch: DownloadWatchEpoch) -> Int32 {
+        let fd = open(directory.path, O_EVTONLY)
+        guard fd < 0, epoch.accepts(ticket) else { return fd }
+        // Preserve the explicit access attempt if the watcher cannot open the
+        // directory until the user answers the Downloads permission prompt.
+        guard (try? FileManager.default.contentsOfDirectory(atPath: directory.path)) != nil,
+              epoch.accepts(ticket) else { return -1 }
+        return open(directory.path, O_EVTONLY)
+    }
+
+    private func accepts(_ ticket: UUID) -> Bool {
+        watchTicket == ticket && Defaults[.enableDownloadListener] && watchEpoch.accepts(ticket)
+    }
+
+    private func installMonitor(fd: Int32, directory: URL, ticket: UUID) {
         let src = DispatchSource.makeFileSystemObjectSource(
             fileDescriptor: fd,
             eventMask: [.write, .rename, .delete, .attrib],
             queue: queue
         )
-        
-        src.setEventHandler { [weak self] in
-            self?.scanDownloadsDirectory()
+        let scan: @Sendable () -> Void = { [weak self, watchEpoch] in
+            guard watchEpoch.accepts(ticket),
+                  let files = try? FileManager.default.contentsOfDirectory(atPath: directory.path)
+            else { return }
+            let downloads = Set(files.filter { name in
+                let ext = (name as NSString).pathExtension.lowercased()
+                return ext == "crdownload" || ext == "download"
+            })
+            let allFiles = Set(files)
+            DispatchQueue.main.async { [weak self] in
+                self?.processDownloadFiles(downloads, allFiles: allFiles, ticket: ticket)
+            }
         }
-        
-        src.setCancelHandler {
-            close(fd)
-        }
-        
+        src.setEventHandler(handler: scan)
+        src.setCancelHandler { close(fd) }
+
         source = src
+        // Queue the initial baseline before the source can enqueue change events.
+        queue.async(execute: scan)
         src.resume()
-        
-        scanDownloadsDirectory()
     }
-    
+
     private func stopMonitoring() {
+        watchTicket = nil
         source?.cancel()
         source = nil
-        
         hasPerformedInitialScan = false
         initialCrDownloadFiles.removeAll()
+        previousAllFiles.removeAll()
         ignoredFiles.removeAll()
-        isDownloading = false
+        closeDownloadViewImmediately()
     }
-    
-    private func scanDownloadsDirectory() {
-        guard let downloadsDirectory else { return }
-        
-        let crDownloadFiles: Set<String>
-        let allFiles: Set<String>
-        
-        do {
-            let contents = try FileManager.default.contentsOfDirectory(
-                at: downloadsDirectory,
-                includingPropertiesForKeys: [.creationDateKey]
-            )
-            
-            crDownloadFiles = Set(contents
-                .filter {
-                    let ext = $0.pathExtension.lowercased()
-                    return ext == "crdownload" || ext == "download"
-                }
-                .map { $0.lastPathComponent }
-            )
-            
-            allFiles = Set(contents.map { $0.lastPathComponent })
-            
-        } catch {
-            return
-        }
-        
-        Task { @MainActor in
-            self.processDownloadFiles(crDownloadFiles, allFiles: allFiles)
-        }
-    }
-    
-    private func processDownloadFiles(_ crDownloadFiles: Set<String>, allFiles: Set<String>) {
-        
+
+    private func processDownloadFiles(_ crDownloadFiles: Set<String>, allFiles: Set<String>, ticket: UUID) {
+        guard accepts(ticket) else { return }
+
         if !hasPerformedInitialScan {
             hasPerformedInitialScan = true
             initialCrDownloadFiles = crDownloadFiles
@@ -185,7 +175,7 @@ class DownloadManager {
         if !newFiles.isEmpty {
             let newActiveFiles = newFiles.subtracting(ignoredFiles)
             if !newActiveFiles.isEmpty {
-                if !isDownloading {
+                if !isDownloading || isDownloadCompleted {
                     updateDownloadingState(isActive: true, fileName: newActiveFiles.sorted().first)
                 }
             }
@@ -211,11 +201,6 @@ class DownloadManager {
         }
     }
     
-    private func requestDownloadsPermissionIfNeeded() {
-        guard let downloadsDirectory else { return }
-        _ = try? FileManager.default.contentsOfDirectory(at: downloadsDirectory, includingPropertiesForKeys: nil)
-    }
-    
     /// The name of an in-flight download ends in .crdownload or .download;
     /// the icon we want is for the real extension underneath.
     private func resolveFileIcon(for inFlight: String?) -> NSImage? {
@@ -235,19 +220,15 @@ class DownloadManager {
         completionTimer = nil
         
         if isActive {
+            let shouldPresent = !isDownloading || isDownloadCompleted
             isDownloadCompleted = false
             
-            if !isDownloading {
+            if shouldPresent {
+                activeFileIcon = resolveFileIcon(for: fileName)
                 withAnimation(.smooth) {
                     isDownloading = true
+                    coordinator.expandingView = ExpandedItem(show: true, type: .download)
                 }
-                activeFileIcon = resolveFileIcon(for: fileName)
-                coordinator.toggleExpandingView(
-                    status: true,
-                    type: .download,
-                    value: 0,
-                    browser: .chromium
-                )
             }
             
         } else {
@@ -256,43 +237,40 @@ class DownloadManager {
                     isDownloadCompleted = true
                 }
                 
-                completionTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: false) { [weak self] _ in
-                    Task { @MainActor in
-                        self?.closeDownloadView()
+                guard let ticket = watchTicket else { return }
+                completionTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: false) { [weak self] timer in
+                    MainActor.assumeIsolated {
+                        guard let self, self.completionTimer === timer,
+                              self.accepts(ticket) else { return }
+                        self.closeDownloadViewImmediately()
                     }
                 }
             }
         }
     }
     
-    private func closeDownloadView() {
-        withAnimation(.smooth) {
-            isDownloading = false
-            isDownloadCompleted = false
-        }
-        
-        coordinator.toggleExpandingView(
-            status: false,
-            type: .download,
-            value: 0,
-            browser: .chromium
-        )
-    }
-    
     private func closeDownloadViewImmediately() {
         completionTimer?.invalidate()
         completionTimer = nil
-        
+        activeFileIcon = nil
+
         withAnimation(.smooth) {
             isDownloading = false
             isDownloadCompleted = false
+            if coordinator.expandingView.show && coordinator.expandingView.type == .download {
+                coordinator.expandingView.show = false
+            }
         }
-        
-        coordinator.toggleExpandingView(
-            status: false,
-            type: .download,
-            value: 0,
-            browser: .chromium
-        )
     }
+}
+
+/// Preference callbacks retire a watch before the main queue reconciles the
+/// source. A worker may finish an existing OS read after its ticket expires.
+private final class DownloadWatchEpoch: @unchecked Sendable {
+    private let lock = NSLock()
+    private var ticket = UUID()
+
+    func current() -> UUID { lock.withLock { ticket } }
+    func invalidate() { lock.withLock { ticket = UUID() } }
+    func accepts(_ candidate: UUID) -> Bool { lock.withLock { ticket == candidate } }
 }
