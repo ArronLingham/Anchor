@@ -227,6 +227,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         bluetoothAudioManager?.stopMonitoring()
         NotchHoverManager.shared.stop()
+        MenuBarShrinkManager.shared.stop()
         DesktopWorkspaceManager.shared.stop()
         PrivacyIndicatorManager.shared.stopMonitoring()
         UtilityIntegration.shared.stop()
@@ -1050,6 +1051,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }.store(in: &cancellables)
 
+        Defaults.publisher(.enableMenuBarShrink, options: [])
+            .map { _ in () }
+            .merge(with: Defaults.publisher(.menuBarAlwaysHiddenSection, options: []).map { _ in () })
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] in self?.updateFeatureShortcutAvailability() }
+            .store(in: &cancellables)
+
         DesktopWorkspaceManager.shared.$docksEnabled.removeDuplicates().dropFirst().sink { [weak self] _ in
             Task { @MainActor [weak self] in
                 self?.updateFeatureShortcutAvailability()
@@ -1624,10 +1632,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         KeyboardShortcuts.onKeyDown(for: .toggleMenuBarSection) {
+            guard Defaults[.enableShortcuts] else { return }
             MenuBarShrinkManager.shared.toggle()
         }
 
         KeyboardShortcuts.onKeyDown(for: .toggleAlwaysHiddenSection) {
+            guard Defaults[.enableShortcuts] else { return }
             MenuBarShrinkManager.shared.toggleAlwaysHidden()
         }
 
@@ -1731,6 +1741,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         updateShortcut(.toggleTerminalTab, isEnabled: Defaults[.enableShortcuts] && Defaults[.enableTerminalFeature])
         updateShortcut(.pushToTalkDictation, isEnabled: Defaults[.enableShortcuts] && Defaults[.enableDictation])
         updateShortcut(.showAllDesktopDocks, isEnabled: Defaults[.enableShortcuts] && DesktopWorkspaceManager.shared.docksEnabled)
+        let menuBarShortcuts = Defaults[.enableShortcuts] && Defaults[.enableMenuBarShrink]
+        updateShortcut(.toggleMenuBarSection, isEnabled: menuBarShortcuts)
+        updateShortcut(.toggleAlwaysHiddenSection, isEnabled: menuBarShortcuts && Defaults[.menuBarAlwaysHiddenSection])
     }
 
     @MainActor

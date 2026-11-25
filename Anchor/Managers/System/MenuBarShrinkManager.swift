@@ -21,6 +21,7 @@ import AppKit
 import Combine
 import Defaults
 import Foundation
+import os
 
 /// Hides menu bar items behind a divider, the way Ice, Bartender and Hidden Bar
 /// do.
@@ -86,11 +87,22 @@ final class MenuBarShrinkManager: NSResponder, ObservableObject {
     private var lastKnownAlwaysHiddenPos: CGFloat?
     private var rehideMonitor: Any?
     private var rehideTimer: DispatchSourceTimer?
+    private var autoHideGeneration = UUID()
+    private var rehideTimerID: UUID?
     private var hoverTracking: NSTrackingArea?
     private var chevronMovementCancellable: AnyCancellable?
     private var alwaysHiddenMovementCancellable: AnyCancellable?
-    private var cancellables = Set<AnyCancellable>()
+    private let activationEpoch = OSAllocatedUnfairLock(initialState: UUID())
+    private var activation: UUID?
+    private var enablementSubscription: AnyCancellable?
+    private var activeSubscriptions = Set<AnyCancellable>()
     private var started = false
+
+    var currentSession: UUID? {
+        guard isActive, Defaults[.enableMenuBarShrink], let activation,
+              activationEpoch.withLock({ $0 == activation }) else { return nil }
+        return activation
+    }
 
     private override init() {
         super.init()
@@ -105,37 +117,66 @@ final class MenuBarShrinkManager: NSResponder, ObservableObject {
         guard !started else { return }
         started = true
 
-        Defaults.publisher(.enableMenuBarShrink)
-            .sink { [weak self] change in
-                Task { @MainActor in
-                    change.newValue ? self?.activate() : self?.deactivate()
-                }
+        enablementSubscription = Defaults.publisher(.enableMenuBarShrink, options: [])
+            .map(\.newValue)
+            .removeDuplicates()
+            .sink { [weak self, activationEpoch] _ in
+                activationEpoch.withLock { $0 = UUID() }
+                DispatchQueue.main.async { self?.reconcileActivation() }
             }
-            .store(in: &cancellables)
+        reconcileActivation()
+    }
 
-        Defaults.publisher(.menuBarAlwaysHiddenSection)
+    func stop() {
+        started = false
+        enablementSubscription = nil
+        activationEpoch.withLock { $0 = UUID() }
+        deactivate()
+    }
+
+    private func reconcileActivation() {
+        let generation = activationEpoch.withLock { $0 }
+        let enabled = started && Defaults[.enableMenuBarShrink]
+        if let activation, activation != generation || !enabled {
+            deactivate()
+        }
+        if enabled {
+            activate(generation: generation)
+        }
+    }
+
+    private func observeWhileActive(_ generation: UUID) {
+        Defaults.publisher(.menuBarAlwaysHiddenSection, options: [])
+            .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in
-                Task { @MainActor in self?.syncAlwaysHiddenDivider() }
+                guard let self, self.currentSession == generation else { return }
+                self.syncAlwaysHiddenDivider()
             }
-            .store(in: &cancellables)
+            .store(in: &activeSubscriptions)
 
-        Defaults.publisher(.menuBarExpandOnHover)
+        Defaults.publisher(.menuBarExpandOnHover, options: [])
+            .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in
-                Task { @MainActor in self?.syncHoverTracking() }
+                guard let self, self.currentSession == generation else { return }
+                self.syncHoverTracking()
             }
-            .store(in: &cancellables)
+            .store(in: &activeSubscriptions)
 
-        // Re-assert lengths on display/resolution changes
+        Defaults.publisher(.menuBarAutoHideSeconds, options: [])
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                guard let self, self.currentSession == generation, !self.isCollapsed else { return }
+                self.scheduleAutoHide()
+            }
+            .store(in: &activeSubscriptions)
+
         NotificationCenter.default.publisher(for: NSApplication.didChangeScreenParametersNotification)
             .debounce(for: .milliseconds(200), scheduler: RunLoop.main)
             .sink { [weak self] _ in
-                Task { @MainActor in
-                    self?.applyLengths()
-                }
+                guard let self, self.currentSession == generation else { return }
+                self.applyLengths()
             }
-            .store(in: &cancellables)
-
-        if Defaults[.enableMenuBarShrink] { activate() }
+            .store(in: &activeSubscriptions)
     }
 
     /// Pre-seeds preferred positions before any scene or status item is created.
@@ -175,8 +216,10 @@ final class MenuBarShrinkManager: NSResponder, ObservableObject {
     static let alwaysHiddenAutosaveName = "AnchorMenuBarAlwaysHiddenDivider"
     static let alwaysHiddenExpanderAutosaveName = "AnchorMenuBarAlwaysHiddenExpander"
 
-    private func activate() {
-        guard chevronItem == nil else { return }
+    private func activate(generation: UUID) {
+        guard started, Defaults[.enableMenuBarShrink], activation == nil,
+              activationEpoch.withLock({ $0 == generation }) else { return }
+        activation = generation
 
         let chevronPos = StatusItemDefaults[.preferredPosition, Self.chevronAutosaveName] ?? 1
         StatusItemDefaults[.preferredPosition, Self.chevronAutosaveName] = chevronPos
@@ -210,12 +253,15 @@ final class MenuBarShrinkManager: NSResponder, ObservableObject {
         cacheExpanderWidthConstraint()
 
         isActive = true
+        observeWhileActive(generation)
         applyLengths()
         syncAlwaysHiddenDivider()
         syncHoverTracking()
     }
 
     private func deactivate() {
+        activation = nil
+        activeSubscriptions.removeAll()
         arrangementState = nil
         cancelAutoHide()
         removeHoverTracking()
@@ -235,7 +281,7 @@ final class MenuBarShrinkManager: NSResponder, ObservableObject {
     }
 
     private func syncAlwaysHiddenDivider() {
-        guard isActive else { return }
+        guard currentSession != nil else { return }
 
         if Defaults[.menuBarAlwaysHiddenSection] {
             guard alwaysHiddenItem == nil else { return }
@@ -297,7 +343,7 @@ final class MenuBarShrinkManager: NSResponder, ObservableObject {
     /// Observes chevron window movement to immediately realign the expander when dragged.
     private func observeChevronMovement() {
         chevronMovementCancellable?.cancel()
-        guard let window = chevronItem?.button?.window else { return }
+        guard let generation = activation, let window = chevronItem?.button?.window else { return }
 
         let moveNotification = NotificationCenter.default
             .publisher(for: NSWindow.didMoveNotification, object: window)
@@ -309,13 +355,14 @@ final class MenuBarShrinkManager: NSResponder, ObservableObject {
         chevronMovementCancellable = Publishers.Merge(moveNotification, framePublisher)
             .debounce(for: .milliseconds(150), scheduler: RunLoop.main)
             .sink { [weak self] in
-                self?.syncExpanderPositionIfChevronMoved()
+                guard let self, self.currentSession == generation else { return }
+                self.syncExpanderPositionIfChevronMoved()
             }
     }
 
     private func observeAlwaysHiddenMovement() {
         alwaysHiddenMovementCancellable?.cancel()
-        guard let window = alwaysHiddenItem?.button?.window else { return }
+        guard let generation = activation, let window = alwaysHiddenItem?.button?.window else { return }
 
         let moveNotification = NotificationCenter.default
             .publisher(for: NSWindow.didMoveNotification, object: window)
@@ -327,7 +374,8 @@ final class MenuBarShrinkManager: NSResponder, ObservableObject {
         alwaysHiddenMovementCancellable = Publishers.Merge(moveNotification, framePublisher)
             .debounce(for: .milliseconds(150), scheduler: RunLoop.main)
             .sink { [weak self] in
-                self?.syncAlwaysHiddenExpanderPositionIfMoved()
+                guard let self, self.currentSession == generation else { return }
+                self.syncAlwaysHiddenExpanderPositionIfMoved()
             }
     }
 
@@ -342,7 +390,7 @@ final class MenuBarShrinkManager: NSResponder, ObservableObject {
     /// This is invoked when the chevron is clicked or toggled, safely updating
     /// the divider position if the user ⌘-dragged the chevron to a new location.
     func syncExpanderPositionIfChevronMoved() {
-        guard isActive else { return }
+        guard currentSession != nil else { return }
 
         let currentChevronPos = StatusItemDefaults[.preferredPosition, Self.chevronAutosaveName] ?? 1
         let last = lastKnownChevronPos ?? currentChevronPos
@@ -377,7 +425,7 @@ final class MenuBarShrinkManager: NSResponder, ObservableObject {
     }
 
     func syncAlwaysHiddenExpanderPositionIfMoved() {
-        guard isActive, Defaults[.menuBarAlwaysHiddenSection] else { return }
+        guard currentSession != nil, Defaults[.menuBarAlwaysHiddenSection] else { return }
 
         let currentPos = StatusItemDefaults[.preferredPosition, Self.alwaysHiddenAutosaveName]
             ?? (lastKnownAlwaysHiddenPos ?? ((lastKnownChevronPos ?? 1) + 200))
@@ -416,7 +464,7 @@ final class MenuBarShrinkManager: NSResponder, ObservableObject {
 
     private func syncHoverTracking() {
         removeHoverTracking()
-        guard isActive, Defaults[.menuBarExpandOnHover],
+        guard currentSession != nil, Defaults[.menuBarExpandOnHover],
               let button = chevronItem?.button
         else { return }
 
@@ -437,12 +485,14 @@ final class MenuBarShrinkManager: NSResponder, ObservableObject {
     }
 
     override func mouseEntered(with event: NSEvent) {
-        guard Defaults[.menuBarExpandOnHover], isCollapsed else { return }
+        guard currentSession != nil, let hoverTracking, event.trackingArea === hoverTracking,
+              Defaults[.menuBarExpandOnHover], isCollapsed else { return }
         setCollapsed(false)
     }
 
     override func mouseExited(with event: NSEvent) {
-        guard Defaults[.menuBarExpandOnHover] else { return }
+        guard currentSession != nil, let hoverTracking, event.trackingArea === hoverTracking,
+              Defaults[.menuBarExpandOnHover] else { return }
         // The auto-hide timer already handles re-collapsing; leaving on exit
         // would make the section impossible to click into.
         scheduleAutoHide()
@@ -465,15 +515,16 @@ final class MenuBarShrinkManager: NSResponder, ObservableObject {
     }
 
     func toggle() {
-        guard isActive else { return }
+        guard let generation = currentSession else { return }
         let nextCollapsed = !isCollapsed
         if !nextCollapsed {
             // Unhiding: switch to expanded state immediately for instant, zero-lag animation.
             setCollapsed(false)
             // If the chevron shifted, ensure the divider position is synced asynchronously.
             DispatchQueue.main.async { [weak self] in
-                self?.syncExpanderPositionIfChevronMoved()
-                self?.syncAlwaysHiddenExpanderPositionIfMoved()
+                guard let self, self.currentSession == generation else { return }
+                self.syncExpanderPositionIfChevronMoved()
+                self.syncAlwaysHiddenExpanderPositionIfMoved()
             }
         } else {
             // Collapsing: ensure divider is positioned before expanding.
@@ -483,15 +534,16 @@ final class MenuBarShrinkManager: NSResponder, ObservableObject {
     }
 
     func toggleAlwaysHidden() {
-        guard isActive, Defaults[.menuBarAlwaysHiddenSection] else { return }
+        guard let generation = currentSession, Defaults[.menuBarAlwaysHiddenSection] else { return }
         if isCollapsed {
             isCollapsed = false
             isAlwaysHiddenRevealed = true
             applyLengths()
             scheduleAutoHide()
             DispatchQueue.main.async { [weak self] in
-                self?.syncExpanderPositionIfChevronMoved()
-                self?.syncAlwaysHiddenExpanderPositionIfMoved()
+                guard let self, self.currentSession == generation else { return }
+                self.syncExpanderPositionIfChevronMoved()
+                self.syncAlwaysHiddenExpanderPositionIfMoved()
             }
         } else {
             isAlwaysHiddenRevealed.toggle()
@@ -499,14 +551,15 @@ final class MenuBarShrinkManager: NSResponder, ObservableObject {
             if isAlwaysHiddenRevealed {
                 scheduleAutoHide()
                 DispatchQueue.main.async { [weak self] in
-                    self?.syncAlwaysHiddenExpanderPositionIfMoved()
+                    guard let self, self.currentSession == generation else { return }
+                    self.syncAlwaysHiddenExpanderPositionIfMoved()
                 }
             }
         }
     }
 
     func collapse() {
-        guard isActive, !isCollapsed else { return }
+        guard currentSession != nil, !isCollapsed else { return }
         setCollapsed(true)
     }
 
@@ -538,6 +591,7 @@ final class MenuBarShrinkManager: NSResponder, ObservableObject {
     }
 
     private func applyLengths() {
+        guard currentSession != nil else { return }
         // The chevron always maintains standard length so it is ALWAYS visible.
         chevronItem?.button?.image = Self.chevron(collapsed: isCollapsed)
         chevronItem?.button?.toolTip = isCollapsed
@@ -586,7 +640,7 @@ final class MenuBarShrinkManager: NSResponder, ObservableObject {
     }
 
     private func applyAlwaysHiddenLengths() {
-        guard Defaults[.menuBarAlwaysHiddenSection], isActive else { return }
+        guard Defaults[.menuBarAlwaysHiddenSection], currentSession != nil else { return }
 
         alwaysHiddenItem?.button?.image = Self.alwaysHiddenGlyph(expanded: isAlwaysHiddenRevealed)
         alwaysHiddenItem?.button?.toolTip = isAlwaysHiddenRevealed
@@ -632,7 +686,7 @@ final class MenuBarShrinkManager: NSResponder, ObservableObject {
     private var arrangementState: (collapsed: Bool, revealed: Bool)?
 
     func beginArrangingItems() {
-        guard isActive, arrangementState == nil else { return }
+        guard currentSession != nil, arrangementState == nil else { return }
         arrangementState = (isCollapsed, isAlwaysHiddenRevealed)
         cancelAutoHide()
         isCollapsed = false
@@ -682,12 +736,14 @@ final class MenuBarShrinkManager: NSResponder, ObservableObject {
     /// Re-hides the section after the user leaves the menu bar, matching Ice's rehide strategy.
     private func scheduleAutoHide() {
         cancelAutoHide()
-        guard arrangementState == nil else { return }
+        guard let session = currentSession, arrangementState == nil else { return }
+        let generation = autoHideGeneration
         let seconds = Defaults[.menuBarAutoHideSeconds]
         guard seconds > 0 else { return }
 
         rehideMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.mouseMoved]) { [weak self] _ in
-            guard let self, !self.isCollapsed else { return }
+            guard let self, self.currentSession == session, self.autoHideGeneration == generation,
+                  Defaults[.menuBarAutoHideSeconds] == seconds, !self.isCollapsed else { return }
             let mouseLoc = NSEvent.mouseLocation
             let screen = NSScreen.screens.first { $0.frame.contains(mouseLoc) } ?? NSScreen.main
             guard let screen else { return }
@@ -697,8 +753,7 @@ final class MenuBarShrinkManager: NSResponder, ObservableObject {
                     self.armRehideTimer(seconds: seconds, screen: screen)
                 }
             } else {
-                self.rehideTimer?.cancel()
-                self.rehideTimer = nil
+                self.cancelRehideTimer()
             }
         }
 
@@ -710,29 +765,37 @@ final class MenuBarShrinkManager: NSResponder, ObservableObject {
     }
 
     private func armRehideTimer(seconds: Int, screen: NSScreen) {
+        guard let session = currentSession else { return }
+        let id = UUID()
         let timer = DispatchSource.makeTimerSource(queue: .main)
         timer.schedule(deadline: .now() + Double(seconds), leeway: .milliseconds(200))
         timer.setEventHandler { [weak self] in
-            guard let self, !self.isCollapsed else { return }
-            let mouseLoc = NSEvent.mouseLocation
-            if mouseLoc.y < screen.visibleFrame.maxY {
+            guard let self, self.currentSession == session, self.rehideTimerID == id,
+                  Defaults[.menuBarAutoHideSeconds] == seconds, !self.isCollapsed else { return }
+            if NSEvent.mouseLocation.y < screen.visibleFrame.maxY {
                 self.collapse()
             } else {
-                self.rehideTimer = nil
                 self.scheduleAutoHide()
             }
         }
         rehideTimer = timer
+        rehideTimerID = id
         timer.resume()
     }
 
+    private func cancelRehideTimer() {
+        rehideTimerID = nil
+        rehideTimer?.cancel()
+        rehideTimer = nil
+    }
+
     private func cancelAutoHide() {
+        autoHideGeneration = UUID()
         if let monitor = rehideMonitor {
             NSEvent.removeMonitor(monitor)
             rehideMonitor = nil
         }
-        rehideTimer?.cancel()
-        rehideTimer = nil
+        cancelRehideTimer()
     }
 
     // MARK: - Glyph

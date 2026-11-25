@@ -1,6 +1,7 @@
 import AppKit
 import ApplicationServices
 import Combine
+import Defaults
 
 /// Settings-side inventory and Command-dragging of macOS menu extras.
 /// Placement is owned and persisted by macOS, just as with a manual Command-drag.
@@ -33,8 +34,14 @@ final class MenuBarItemArranger: ObservableObject {
     @Published private(set) var isArranging = false
     private var operation: Task<Void, Never>?
 
+    private func holdsArrangement(_ session: UUID) -> Bool {
+        isArranging && !Task.isCancelled && Defaults[.menuBarAlwaysHiddenSection]
+            && MenuBarShrinkManager.shared.currentSession == session
+    }
+
     func begin() {
-        guard !isMoving, !isRefreshing, MenuBarShrinkManager.shared.isActive else { return }
+        guard !isMoving, !isRefreshing, Defaults[.menuBarAlwaysHiddenSection],
+              let session = MenuBarShrinkManager.shared.currentSession else { return }
         guard AXIsProcessTrusted() else {
             let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
             _ = AXIsProcessTrustedWithOptions(options)
@@ -46,8 +53,7 @@ final class MenuBarItemArranger: ObservableObject {
         operation?.cancel()
         operation = Task {
             try? await Task.sleep(for: .milliseconds(350))
-            guard !Task.isCancelled else { return }
-            await refresh()
+            await refresh(session: session)
         }
     }
 
@@ -59,12 +65,12 @@ final class MenuBarItemArranger: ObservableObject {
         if !isMoving { MenuBarShrinkManager.shared.endArrangingItems() }
     }
 
-    private func refresh() async {
-        guard isArranging else { return }
+    private func refresh(session: UUID) async {
+        guard holdsArrangement(session) else { return }
         isRefreshing = true
         defer { isRefreshing = false }
         let found = await Task.detached(priority: .userInitiated) { Self.discoverItems() }.value
-        guard isArranging, !Task.isCancelled else { return }
+        guard holdsArrangement(session) else { return }
         items = found.compactMap { item in
             let rect = item.bounds
             if item.id.hasPrefix("\(ProcessInfo.processInfo.processIdentifier)-"),
@@ -105,7 +111,8 @@ final class MenuBarItemArranger: ObservableObject {
     }
 
     func move(_ item: Item, to section: Section) {
-        guard !isMoving, isArranging, section != item.section else { return }
+        guard !isMoving, let session = MenuBarShrinkManager.shared.currentSession,
+              holdsArrangement(session), section != item.section else { return }
         guard let source = Self.frame(item.element),
               let destination = MenuBarShrinkManager.shared.destination(for: section),
               Self.sameDisplay(source: CGPoint(x: source.midX, y: source.midY), destination: destination) else {
@@ -115,6 +122,7 @@ final class MenuBarItemArranger: ObservableObject {
         isMoving = true
         error = nil
         operation = Task {
+            guard holdsArrangement(session) else { isMoving = false; return }
             let start = CGPoint(x: source.midX, y: source.midY)
             let eventSource = CGEventSource(stateID: .hidSystemState)
             func post(_ type: CGEventType, _ point: CGPoint) {
@@ -124,25 +132,29 @@ final class MenuBarItemArranger: ObservableObject {
                 event?.post(tap: .cghidEventTap)
             }
             var mouseIsDown = true
+            var dragPoint = start
             post(.leftMouseDown, start)
             defer {
-                if mouseIsDown { post(.leftMouseUp, destination) }
+                if mouseIsDown { post(.leftMouseUp, dragPoint) }
                 isMoving = false
-                if !isArranging { MenuBarShrinkManager.shared.endArrangingItems() }
+                if !isArranging && MenuBarShrinkManager.shared.currentSession == session {
+                    MenuBarShrinkManager.shared.endArrangingItems()
+                }
             }
             try? await Task.sleep(for: .milliseconds(150))
-            guard !Task.isCancelled else { return }
             for step in 1...12 {
+                guard holdsArrangement(session) else { return }
                 let fraction = CGFloat(step) / 12
-                post(.leftMouseDragged, CGPoint(x: start.x + (destination.x - start.x) * fraction, y: start.y))
+                dragPoint = CGPoint(x: start.x + (destination.x - start.x) * fraction, y: start.y)
+                post(.leftMouseDragged, dragPoint)
                 try? await Task.sleep(for: .milliseconds(20))
-                if Task.isCancelled { return }
             }
+            guard holdsArrangement(session) else { return }
             post(.leftMouseUp, destination)
             mouseIsDown = false
             try? await Task.sleep(for: .milliseconds(400))
-            guard !Task.isCancelled else { return }
-            await refresh()
+            await refresh(session: session)
+            guard holdsArrangement(session) else { return }
             if let rect = Self.frame(item.element), MenuBarShrinkManager.shared.section(for: rect) != section {
                 error = "macOS did not move this icon. Try ⌘-dragging it, or change its visibility in the app that owns it."
             }
