@@ -457,6 +457,7 @@ struct CalendarView: View {
         // events are visible at 120 than before, but we no longer enlarge the
         // window or touch the music player's layout.
         .frame(height: 120)
+        .calendarConsumer(.glance)
         .onChange(of: selectedDate) {
             Task {
                 await calendarManager.updateCurrentDate(selectedDate)
@@ -567,6 +568,7 @@ struct StandaloneCalendarView: View {
         }
         .frame(height: maxTabContentHeight)
         .clipped()
+        .calendarConsumer(.glance)
         .onAppear {
             selectedDate = Date.now
             displayedMonth = selectedDate.startOfMonth

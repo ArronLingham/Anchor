@@ -464,14 +464,7 @@ private struct LauncherCalendarWidget: View {
             }
         }
         .onScrollVisibilityChange(threshold: 0.01) { isVisible = $0 }
-        .task(id: isPageActive && isVisible) {
-            guard isPageActive, isVisible else { return }
-            if !calendar.hasCalendarAccess {
-                await calendar.checkCalendarAuthorization()
-            }
-            guard !Task.isCancelled, calendar.hasCalendarAccess else { return }
-            await calendar.updateLauncherEvents()
-        }
+        .calendarConsumer(.launcher, enabled: isPageActive && isVisible)
     }
 
     private func eventDate(_ event: EventModel) -> String {
@@ -489,7 +482,7 @@ private struct LauncherCalendarWidget: View {
 private struct LauncherRemindersWidget: View {
     let isPageActive: Bool
     @State private var isVisible = false
-    @State private var saving = false
+    @State private var consumer = UUID()
     @ObservedObject private var reminders = LauncherAppleReminders.shared
     @State private var newTask = ""
 
@@ -505,7 +498,7 @@ private struct LauncherRemindersWidget: View {
                         .foregroundStyle(.secondary)
                 }
                 if !reminders.hasAccess {
-                    Text("Allow Reminders access")
+                    Text("Allow Reminders access in Settings")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 } else if reminders.items.isEmpty {
@@ -515,7 +508,8 @@ private struct LauncherRemindersWidget: View {
                 } else {
                     ForEach(Array(reminders.items.prefix(2))) { item in
                         Button {
-                            Task { await reminders.complete(item) }
+                            guard let session = reminders.session(for: consumer) else { return }
+                            reminders.complete(item, consumer: consumer, session: session)
                         } label: {
                             HStack(spacing: 7) {
                                 Image(systemName: "circle")
@@ -540,30 +534,22 @@ private struct LauncherRemindersWidget: View {
                         Image(systemName: "plus.circle.fill")
                     }
                     .buttonStyle(.plain)
-                    .disabled(saving || !reminders.hasAccess || newTask.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .disabled(!reminders.hasAccess || newTask.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                     .accessibilityLabel("Add reminder")
                 }
             }
         }
         .onScrollVisibilityChange(threshold: 0.01) { isVisible = $0 }
-        .task(id: isPageActive && isVisible) {
-            guard isPageActive, isVisible else { return }
-            await reminders.refresh()
-            for await _ in NotificationCenter.default.notifications(named: .EKEventStoreChanged) {
-                guard !Task.isCancelled else { return }
-                await reminders.refresh(force: true)
-            }
+        .onAppear { reminders.setVisible(isPageActive && isVisible, id: consumer) }
+        .onChange(of: isPageActive && isVisible) { _, visible in
+            reminders.setVisible(visible, id: consumer)
         }
+        .onDisappear { reminders.setVisible(false, id: consumer) }
     }
 
     private func addTask() {
-        guard reminders.hasAccess, !saving else { return }
-        let title = newTask
-        saving = true
-        Task {
-            if await reminders.add(title), newTask == title { newTask = "" }
-            saving = false
-        }
+        guard let session = reminders.session(for: consumer) else { return }
+        if reminders.add(newTask, consumer: consumer, session: session) { newTask = "" }
     }
 }
 

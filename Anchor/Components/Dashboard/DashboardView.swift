@@ -513,14 +513,17 @@ private struct DashboardCalendarCard: View {
     @ObservedObject private var calendar = CalendarManager.shared
     @Environment(\.dashboardIsActive) private var isActive
     var body: some View {
-        if isActive {
-            TimelineView(.everyMinute) { context in
-                content(at: context.date)
-                    .task(id: Int(context.date.timeIntervalSince1970 / 60)) {
-                        await calendar.updateLauncherEvents()
-                    }
-            }
-        } else { content(at: .now) }
+        Group {
+            if isActive {
+                TimelineView(.everyMinute) { context in
+                    content(at: context.date)
+                        .task(id: Int(context.date.timeIntervalSince1970 / 60)) {
+                            await calendar.updateLauncherEvents()
+                        }
+                }
+            } else { content(at: .now) }
+        }
+        .calendarConsumer(.dashboard, enabled: isActive)
     }
 
     private func content(at now: Date) -> some View {
@@ -528,7 +531,7 @@ private struct DashboardCalendarCard: View {
             let events = calendar.launcherEvents.filter { $0.end > now }
             if !calendar.hasCalendarAccess {
                 Text("Connect your calendar to see upcoming events.").font(.callout).foregroundStyle(.secondary)
-                Button("Connect calendar") { Task { await calendar.checkCalendarAuthorization(); await calendar.updateLauncherEvents(force: true) } }
+                Button("Connect calendar") { Task { await calendar.checkCalendarAuthorization() } }
             } else if events.isEmpty {
                 Text("No upcoming events in the next seven days.").font(.callout).foregroundStyle(.secondary)
             }
@@ -551,11 +554,7 @@ private struct DashboardCalendarCard: View {
                 }
             }.font(.caption)
         }
-        .onReceive(NotificationCenter.default.publisher(for: .EKEventStoreChanged)
-            .debounce(for: .milliseconds(500), scheduler: RunLoop.main)) { _ in
-            guard isActive else { return }
-            Task { await calendar.updateLauncherEvents(force: true) }
-        }
+
     }
 }
 

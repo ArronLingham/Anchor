@@ -7,7 +7,6 @@ struct SettingsIntegrations: View {
     @ObservedObject private var lunar = LunarManager.shared
     @ObservedObject private var spotify = SpotifyAuthManager.shared
     @ObservedObject private var calendar = CalendarManager.shared
-    @ObservedObject private var reminders = LauncherAppleReminders.shared
     @Default(.enableThirdPartyDDCIntegration) private var ddcEnabled
     @Default(.thirdPartyDDCProvider) private var provider
     @State private var showingSpotify = false
@@ -44,7 +43,6 @@ struct SettingsIntegrations: View {
                         if calendarStatus == .denied || calendarStatus == .restricted { openPrivacy("Calendars") }
                         else {
                             await calendar.checkCalendarAuthorization()
-                            await calendar.updateLauncherEvents(force: true)
                         }
                         refreshStatuses()
                     }
@@ -52,11 +50,10 @@ struct SettingsIntegrations: View {
             }
             Section("Reminders") {
                 status(reminderStatus == .fullAccess, accessText(reminderStatus))
-                if let error = reminders.errorMessage { Text(error).font(.caption).foregroundStyle(.red) }
                 Button("Repair Reminders access") {
                     repair("reminders") {
                         if reminderStatus == .denied || reminderStatus == .restricted { openPrivacy("Reminders") }
-                        else { await reminders.refresh(force: true) }
+                        else { await calendar.checkReminderAuthorization() }
                         refreshStatuses()
                     }
                 }.disabled(repairing.contains("reminders"))

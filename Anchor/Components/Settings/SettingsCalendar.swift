@@ -266,6 +266,7 @@ struct CalendarSettings: View {
                 }
             }
         }
+        .calendarConsumer(.settings)
         .onAppear {
             calendarManager.refreshAuthorizationStatus()
         }

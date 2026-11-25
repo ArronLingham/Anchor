@@ -428,7 +428,7 @@ private struct LockScreenPreviewScene: View {
                     }
 
                     if showsWeather {
-                        LockScreenWeatherWidget(snapshot: weatherSnapshot)
+                        LockScreenWeatherWidget(snapshot: weatherSnapshot, isPreview: true)
                             .fixedSize()
                             .background(PreviewSizeReader(size: $weatherSize))
                             .position(centerPoint(for: swiftUIFrame(for: weatherFrame)))

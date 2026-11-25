@@ -27,8 +27,8 @@ import EventKit
 protocol CalendarServiceProviding {
     func requestAccess() async -> Bool
     func requestAccess(to type: EKEntityType) async -> Bool
-    func calendars() async -> [CalendarModel]
-    func events(from start: Date, to end: Date, calendars: [String]) async -> [EventModel]
+    func calendars(includeReminders: Bool) async -> [CalendarModel]
+    func events(from start: Date, to end: Date, calendars: Set<String>?, includeReminders: Bool) async -> [EventModel]
     func setReminderCompleted(reminderID: String, completed: Bool) async
 }
 
@@ -68,65 +68,47 @@ class CalendarService: CalendarServiceProviding {
         return status == .fullAccess
     }
     
-    func calendars() async -> [CalendarModel] {
+    func calendars(includeReminders: Bool) async -> [CalendarModel] {
         var calendars: [EKCalendar] = []
         
-        for type in [EKEntityType.event, .reminder] where hasAccess(to: type) {
+        let types: [EKEntityType] = includeReminders ? [.event, .reminder] : [.event]
+        for type in types where hasAccess(to: type) {
             calendars.append(contentsOf: store.calendars(for: type))
         }
         
         return calendars.map { CalendarModel(from: $0) }
     }
     
-    func events(from start: Date, to end: Date, calendars ids: [String]) async -> [EventModel] {
-        let allCalendars = await self.calendars()
-        let filteredCalendars = allCalendars.filter { ids.isEmpty || ids.contains($0.id) }
-        let ekCalendars = filteredCalendars.compactMap { calendarModel in
-            store.calendars(for: .event).first { $0.calendarIdentifier == calendarModel.id } ??
-            store.calendars(for: .reminder).first { $0.calendarIdentifier == calendarModel.id }
+    func events(from start: Date, to end: Date, calendars ids: Set<String>?, includeReminders: Bool) async -> [EventModel] {
+        func includedCalendars(for type: EKEntityType) -> [EKCalendar] {
+            store.calendars(for: type).filter { ids?.contains($0.calendarIdentifier) ?? true }
         }
-        
+
         var events: [EventModel] = []
-        
-        // Fetch regular events
-        if hasAccess(to: .event) {
-            let eventCalendars = ekCalendars.filter { store.calendars(for: .event).contains($0) }
-            let predicate = store.predicateForEvents(withStart: start, end: end, calendars: eventCalendars)
-            let ekEvents = store.events(matching: predicate)
-            events.append(contentsOf: ekEvents.compactMap { EventModel(from: $0) })
+        if !Task.isCancelled, hasAccess(to: .event) {
+            let calendars = includedCalendars(for: .event)
+            if !calendars.isEmpty {
+                let predicate = store.predicateForEvents(withStart: start, end: end, calendars: calendars)
+                events = store.events(matching: predicate).compactMap { EventModel(from: $0) }
+            }
         }
-        
-        // Fetch reminders
-        if hasAccess(to: .reminder) {
-            let reminderCalendars = ekCalendars.filter { store.calendars(for: .reminder).contains($0) }
-            events.append(contentsOf: await fetchReminders(from: start, to: end, calendars: reminderCalendars))
+
+        if includeReminders, !Task.isCancelled, hasAccess(to: .reminder) {
+            events.append(contentsOf: await fetchReminders(
+                from: start, to: end, calendars: includedCalendars(for: .reminder)))
         }
-        
         return events.sorted { $0.start < $1.start }
     }
-    
+
     private func fetchReminders(from start: Date, to end: Date, calendars: [EKCalendar]) async -> [EventModel] {
         guard !calendars.isEmpty else { return [] }
 
-        return await withCheckedContinuation { continuation in
-            let predicate = store.predicateForReminders(in: calendars)
-            store.fetchReminders(matching: predicate) { reminders in
-                guard let reminders else {
-                    continuation.resume(returning: [])
-                    return
-                }
-
-                let filtered = reminders.compactMap { reminder -> EventModel? in
-                    guard let dueDate = reminder.dueDateComponents?.date,
-                          dueDate >= start,
-                          dueDate <= end else {
-                        return nil
-                    }
-                    return EventModel(from: reminder)
-                }
-
-                continuation.resume(returning: filtered)
-            }
+        let predicate = store.predicateForReminders(in: calendars)
+        let reminders = await store.anchorFetchReminders(matching: predicate)
+        guard !Task.isCancelled else { return [] }
+        return reminders.compactMap { reminder in
+            guard let dueDate = reminder.dueDateComponents?.date, dueDate >= start, dueDate <= end else { return nil }
+            return EventModel(from: reminder)
         }
     }
 
@@ -139,6 +121,54 @@ class CalendarService: CalendarServiceProviding {
         } catch {
             print("Failed to update reminder completion: \(error)")
         }
+    }
+}
+
+extension EKEventStore {
+    @MainActor
+    func anchorFetchReminders(matching predicate: NSPredicate) async -> [EKReminder] {
+        let request = CalendarReminderFetch(store: self)
+        return await withTaskCancellationHandler {
+            await withCheckedContinuation { continuation in
+                guard !Task.isCancelled else {
+                    continuation.resume(returning: [])
+                    return
+                }
+                request.start(predicate: predicate, continuation: continuation)
+            }
+        } onCancel: {
+            Task { @MainActor in request.cancel() }
+        }
+    }
+}
+
+@MainActor
+private final class CalendarReminderFetch {
+    let store: EKEventStore
+    private var handle: Any?
+    private var continuation: CheckedContinuation<[EKReminder], Never>?
+
+    init(store: EKEventStore) {
+        self.store = store
+    }
+
+    func start(predicate: NSPredicate, continuation: CheckedContinuation<[EKReminder], Never>) {
+        self.continuation = continuation
+        handle = store.fetchReminders(matching: predicate) { [weak self] reminders in
+            Task { @MainActor [weak self] in self?.finish(reminders ?? []) }
+        }
+    }
+
+    func cancel() {
+        if let handle { store.cancelFetchRequest(handle) }
+        finish([])
+    }
+
+    private func finish(_ reminders: [EKReminder]) {
+        let continuation = continuation
+        self.continuation = nil
+        handle = nil
+        continuation?.resume(returning: reminders)
     }
 }
 

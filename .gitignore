@@ -182,6 +182,8 @@ __pycache__/
 !/tests/run_launcher_shortcuts_lifecycle_tests.sh
 !/tests/NavigationDisablementTests.swift
 !/tests/run_navigation_disablement_tests.sh
+!/tests/CalendarDemandTests.swift
+!/tests/run_calendar_demand_tests.sh
 !/tests/run_liquid_glass_tests.sh
 !/tests/run_lock_sound_tests.sh
 !/tests/run_media_resource_tests.sh

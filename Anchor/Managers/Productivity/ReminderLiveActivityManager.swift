@@ -52,6 +52,8 @@ final class ReminderLiveActivityManager: ObservableObject {
 
     private var nextReminder: ReminderEntry?
     private var cancellables = Set<AnyCancellable>()
+    private var activityObservers = Set<AnyCancellable>()
+    private var activityGeneration = UUID()
     private var tickerTask: Task<Void, Never>? { didSet { oldValue?.cancel() } }
     private var evaluationTask: Task<Void, Never>?
     private var hasShownCriticalSneakPeek = false
@@ -86,22 +88,18 @@ final class ReminderLiveActivityManager: ObservableObject {
     var isActive: Bool { activeReminder != nil }
 
     private init() {
-        latestEvents = calendarManager.events
-        lastEventsSignature = makeEventsSignature(for: latestEvents)
         setupObservers()
-        if !latestEvents.isEmpty {
-            recalculateUpcomingEntries(reason: "initialization")
-        }
+        if Defaults[.enableReminderLiveActivity] { startActivity() }
     }
 
     private func setupObservers() {
         Defaults.publisher(.enableReminderLiveActivity, options: [])
             .sink { [weak self] change in
-                guard let self else { return }
-                if change.newValue {
-                    self.recalculateUpcomingEntries(reason: "defaults-toggle")
+                let enabled = change.newValue
+                if Thread.isMainThread {
+                    MainActor.assumeIsolated { self?.syncActivity(enabled: enabled) }
                 } else {
-                    self.deactivateReminder()
+                    DispatchQueue.main.async { self?.syncActivity(enabled: enabled) }
                 }
             }
             .store(in: &cancellables)
@@ -149,24 +147,63 @@ final class ReminderLiveActivityManager: ObservableObject {
             }
             .store(in: &cancellables)
 
+    }
+
+    private func syncActivity(enabled: Bool) {
+        if enabled, Defaults[.enableReminderLiveActivity] {
+            startActivity()
+        } else {
+            activityGeneration = UUID()
+            activityObservers.removeAll()
+            eventsUpdateDebounceTask = nil
+            upcomingComputationTask = nil
+            settingsUpdateTask = nil
+            deferredLockResumeTask = nil
+            latestEvents = []
+            pendingEventsSnapshot = nil
+            pendingEventsSignature = nil
+            lastEventsSignature = nil
+            pendingSettingsAction = nil
+            pendingSettingsReason = nil
+            nextAllowedLockResumeRefresh = .distantPast
+            deactivateReminder()
+        }
+    }
+
+    private func startActivity() {
+        guard activityObservers.isEmpty else { return }
+        let generation = activityGeneration
+        let lockScreen = LockScreenManager.shared
+        suppressUpdatesForLock = lockScreen.isLocked
+        latestEvents = calendarManager.events
+        lastEventsSignature = makeEventsSignature(for: latestEvents)
         calendarManager.$events
+            .dropFirst()
             .removeDuplicates()
             .receive(on: RunLoop.main)
             .sink { [weak self] events in
-                self?.handleCalendarEventsUpdate(events)
+                guard let self, self.activityGeneration == generation,
+                      Defaults[.enableReminderLiveActivity] else { return }
+                self.handleCalendarEventsUpdate(events)
             }
-            .store(in: &cancellables)
+            .store(in: &activityObservers)
 
-        LockScreenManager.shared.$isLocked
+        lockScreen.$isLocked
+            .dropFirst()
             .removeDuplicates()
             .receive(on: RunLoop.main)
             .sink { [weak self] locked in
-                self?.handleLockStateChange(isLocked: locked)
+                guard let self, self.activityGeneration == generation,
+                      Defaults[.enableReminderLiveActivity] else { return }
+                self.handleLockStateChange(isLocked: locked)
             }
-            .store(in: &cancellables)
+            .store(in: &activityObservers)
+
+        if !latestEvents.isEmpty { recalculateUpcomingEntries(reason: "activity-start") }
     }
 
     private func scheduleSettingsRecalculation(reason: String, action: @escaping () -> Void) {
+        guard Defaults[.enableReminderLiveActivity] else { return }
         pendingSettingsAction = action
         pendingSettingsReason = reason
         settingsUpdateTask = Task { [weak self] in
@@ -326,6 +363,7 @@ final class ReminderLiveActivityManager: ObservableObject {
             return
         }
         let snapshot = latestEvents
+        let generation = activityGeneration
         let leadMinutes = Defaults[.reminderLeadTime]
         let hideAllDay = Defaults[.hideAllDayEvents]
         let hideCompleted = Defaults[.hideCompletedReminders]
@@ -341,12 +379,15 @@ final class ReminderLiveActivityManager: ObservableObject {
                 hideCompletedReminders: hideCompleted
             )
             guard !Task.isCancelled else { return }
-            await self.publishUpcomingEntries(upcoming, referenceDate: referenceDate, reason: reason)
+            await self.publishUpcomingEntries(upcoming, referenceDate: referenceDate, reason: reason, generation: generation)
         }
     }
 
     @MainActor
-    private func publishUpcomingEntries(_ upcoming: [ReminderEntry], referenceDate: Date, reason: String) {
+    private func publishUpcomingEntries(
+        _ upcoming: [ReminderEntry], referenceDate: Date, reason: String, generation: UUID
+    ) {
+        guard generation == activityGeneration else { return }
         guard Defaults[.enableReminderLiveActivity] else {
             deactivateReminder()
             return

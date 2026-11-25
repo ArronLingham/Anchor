@@ -706,6 +706,7 @@ struct LockScreenSettings: View {
                 Text("Collect the latest crash report to share with the developer when reporting lock screen or overlay issues.")
             }
         }
+        .calendarConsumer(.lockScreenSettings)
         .onAppear {
             enforceLockScreenGlassConsistency()
             calendarManager.refreshAuthorizationStatus()

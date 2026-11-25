@@ -25,6 +25,7 @@ import CoreGraphics
 
 struct LockScreenWeatherWidget: View {
 	let snapshot: LockScreenWeatherSnapshot
+	var isPreview = false
 	@ObservedObject private var focusManager = DoNotDisturbManager.shared
 	@ObservedObject private var calendarManager = CalendarManager.shared
 	@Default(.enableDoNotDisturbDetection) private var focusDetectionEnabled
@@ -511,20 +512,19 @@ struct LockScreenWeatherWidget: View {
 		.background(Color.clear)
 		.shadow(color: .black.opacity(0.35), radius: 8, x: 0, y: 3)
 		.onReceive(minuteTicker.$now) { currentTime = $0 }
-        .task(id: lockScreenShowCalendarEvent ? Int(currentTime.timeIntervalSince1970 / 60) : nil) {
-            guard lockScreenShowCalendarEvent, calendarManager.hasCalendarAccess else { return }
-            await calendarManager.updateLockScreenEvents()
+        .calendarConsumer(.lockScreen, enabled: !isPreview && lockScreenShowCalendarEvent)
+        .task(id: !isPreview && lockScreenShowCalendarEvent ? [
+            String(Int(currentTime.timeIntervalSince1970 / 60)),
+            lockScreenCalendarEventLookaheadWindow
+        ] : nil) {
+            guard !isPreview, lockScreenShowCalendarEvent else { return }
+            await calendarManager.updateLockScreenEvents(force: true)
         }
 		.onAppear {
 			minuteTicker.start()
 			minuteTicker.setMinuteAlignedEnabled(lockScreenShowCalendarEvent)
 			currentTime = Date()
 			calendarRowVisible = shouldShowCalendarRow
-			calendarManager.refreshAuthorizationStatus()
-			Task {
-				guard Defaults[.lockScreenShowCalendarEvent], calendarManager.hasCalendarAccess else { return }
-				await calendarManager.updateLockScreenEvents(force: true)
-			}
 
 			if let event = nextCalendarEvent {
 				lastCalendarLine = eventLineText(for: event)
@@ -534,24 +534,7 @@ struct LockScreenWeatherWidget: View {
 		.onChange(of: lockScreenShowCalendarEvent) { _, enabled in
 			minuteTicker.setMinuteAlignedEnabled(enabled)
 		}
-		.onChange(of: lockScreenCalendarEventLookaheadWindow) { _, _ in
-			Task {
-				guard Defaults[.lockScreenShowCalendarEvent], calendarManager.hasCalendarAccess else { return }
-				await calendarManager.updateLockScreenEvents(force: true)
-			}
-		}
-		.onChange(of: lockScreenCalendarSelectionMode) { _, _ in
-			Task {
-				guard Defaults[.lockScreenShowCalendarEvent], calendarManager.hasCalendarAccess else { return }
-				await calendarManager.updateLockScreenEvents(force: true)
-			}
-		}
-		.onChange(of: lockScreenSelectedCalendarIDs) { _, _ in
-			Task {
-				guard Defaults[.lockScreenShowCalendarEvent], calendarManager.hasCalendarAccess else { return }
-				await calendarManager.updateLockScreenEvents(force: true)
-			}
-		}
+
 		.onDisappear { minuteTicker.stop() }
 		.onChange(of: currentCalendarEventID) { _, _ in
 			calendarRowRenderToken &+= 1
