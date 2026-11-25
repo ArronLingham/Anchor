@@ -19,46 +19,71 @@
 
 import Foundation
 import Combine
+import Darwin
 import AppKit
 import Defaults
 import SwiftUI
 
-// MARK: - Private API Declarations
-// These private APIs provide direct screen capture detection
-// Use at your own risk - may break in future macOS versions
+// Both private entry points must be available so a registration can be removed.
+private typealias ScreenCaptureCallback = @convention(c) (Int32, UnsafeRawPointer?, UInt32, UnsafeMutableRawPointer?) -> Void
+private typealias ScreenCaptureRegistration = @convention(c) (ScreenCaptureCallback, Int32, UnsafeMutableRawPointer?) -> Int32
 
 @_silgen_name("CGSIsScreenWatcherPresent")
-func CGSIsScreenWatcherPresent() -> Bool
+private func CGSIsScreenWatcherPresent() -> Bool
 
-@_silgen_name("CGSRegisterNotifyProc")
-func CGSRegisterNotifyProc(
-    _ callback: (@convention(c) (Int32, Int32, Int32, UnsafeMutableRawPointer?) -> Void)?,
-    _ event: Int32,
-    _ context: UnsafeMutableRawPointer?
-) -> Bool
+private enum ScreenCaptureNotifications {
+    static let backend: ScreenRecordingManager.Notifications? = {
+        guard let handle = dlopen("/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics", RTLD_LAZY) else {
+            return nil
+        }
+        guard let add = dlsym(handle, "CGSRegisterNotifyProc"),
+              let remove = dlsym(handle, "CGSRemoveNotifyProc") else {
+            dlclose(handle)
+            return nil
+        }
+        let register = unsafeBitCast(add, to: ScreenCaptureRegistration.self)
+        let unregister = unsafeBitCast(remove, to: ScreenCaptureRegistration.self)
+        return .init(
+            add: { register(screenCaptureEventCallback, $0, UnsafeMutableRawPointer(bitPattern: $1)) },
+            remove: { unregister(screenCaptureEventCallback, $0, UnsafeMutableRawPointer(bitPattern: $1)) }
+        )
+    }()
+}
 
-// MARK: - Global Callback Function
-// C function pointer cannot capture context, so we need a global function
-private func screenCaptureEventCallback(eventType: Int32, _: Int32, _: Int32, context: UnsafeMutableRawPointer?) {
-    guard let context = context else { return }
-    let manager = Unmanaged<ScreenRecordingManager>.fromOpaque(context).takeUnretainedValue()
-    
+private func screenCaptureEventCallback(
+    event: Int32, _: UnsafeRawPointer?, _: UInt32, context: UnsafeMutableRawPointer?
+) {
+    // The context is an opaque generation number. It never points to Swift memory.
+    guard let context else { return }
+    let generation = UInt(bitPattern: context)
     DispatchQueue.main.async {
-        print("ScreenRecordingManager: 📢 Screen capture event received (type: \(eventType))")
-        manager.checkRecordingStatus()
+        ScreenRecordingManager.shared.handleCaptureEvent(generation: generation)
     }
 }
 
 @MainActor
 class ScreenRecordingManager: ObservableObject {
-    static let shared = ScreenRecordingManager()
-    
-    // MARK: - Coordinator
+    struct Notifications {
+        var add: (Int32, UInt) -> Int32
+        var remove: (Int32, UInt) -> Int32
+    }
+
+    static let shared = ScreenRecordingManager(
+        notifications: ScreenCaptureNotifications.backend,
+        isEnabled: { Defaults[.enableScreenRecordingDetection] && !AppRuntimeEnvironment.isUITesting },
+        isBeingRecorded: CGSIsScreenWatcherPresent
+    )
+
     private let coordinator = AnchorViewCoordinator.shared
+    private let notifications: Notifications?
+    private let isEnabled: () -> Bool
+    private let isBeingRecorded: () -> Bool
+    private var generation: UInt = 0
+    private var registrations: [Int32: UInt] = [:]
     
     // MARK: - Published Properties
     @Published var isRecording: Bool = false
-    @Published var isMonitoring: Bool = false
+    @Published private(set) var isMonitoring: Bool = false
     /// Derived on demand: a duration read must not invalidate every notch view.
     var recordingDuration: TimeInterval {
         recordingStartTime.map { Date().timeIntervalSince($0) } ?? lastRecordingDuration
@@ -67,141 +92,95 @@ class ScreenRecordingManager: ObservableObject {
     @Published var lastUpdated: Date = .distantPast
     
     // MARK: - Private Properties
-    private var cancellables = Set<AnyCancellable>()
     private var recordingStartTime: Date?
     private var lastRecordingDuration: TimeInterval = 0
     private var debounceIdleTask: Task<Void, Never>?
+    private var durationResetTask: Task<Void, Never>?
     
-    // MARK: - Configuration
-    private let debounceDelay: TimeInterval = 0.2 // Debounce rapid changes
-    
-    // MARK: - Initialization
-    private init() {
-        // No initial setup needed
+    init(notifications: Notifications?, isEnabled: @escaping () -> Bool, isBeingRecorded: @escaping () -> Bool) {
+        self.notifications = notifications
+        self.isEnabled = isEnabled
+        self.isBeingRecorded = isBeingRecorded
     }
-    
+
     deinit {
-        // Clean up monitoring state
-        // Note: We can't call async methods in deinit, so we just clean up local state
         debounceIdleTask?.cancel()
+        durationResetTask?.cancel()
     }
-    
-    // MARK: - Public Methods
-    
-    /// Start monitoring for screen recording activity
+
     func startMonitoring() {
-        guard !isMonitoring else { 
-            print("ScreenRecordingManager: Already monitoring, skipping start")
-            return 
+        guard !isMonitoring, isEnabled(), let notifications else { return }
+        removeCaptureNotifications()
+        generation += 1
+        for event: Int32 in [1502, 1503] where registrations[event] == nil {
+            let status = notifications.add(event, generation)
+            if status == 0 {
+                registrations[event] = generation
+            } else {
+                NSLog("Screen recording detection: could not register event \(event) (\(status))")
+            }
         }
-        
+        guard registrations.values.contains(generation) else { return }
         isMonitoring = true
-        
-        print("ScreenRecordingManager: 🟢 Starting screen capture monitoring (Private API)...")
-        
-        // Setup event-driven capture detection using private CoreGraphics APIs
-        setupPrivateAPINotifications()
-        
-        // Check initial state
         checkRecordingStatus()
-        
-        print("ScreenRecordingManager: ✅ Started monitoring (event-driven, no polling)")
     }
-    
-    /// Stop monitoring for screen recording activity
+
     func stopMonitoring() {
-        guard isMonitoring else { 
-            print("ScreenRecordingManager: Not monitoring, skipping stop")
-            return 
-        }
-        
-        print("ScreenRecordingManager: 🛑 Stopping monitoring...")
-        
         isMonitoring = false
-        
-        // Note: We don't unregister the callback as there's no CGSUnregisterNotifyProc API
-        // The callback will simply not be processed when isMonitoring is false
-        
-        // Stop duration tracking
-        stopDurationTracking()
-        
-        // Reset recording state when stopping
-        if isRecording {
-            print("ScreenRecordingManager: Resetting isRecording from true to false")
-        }
+        removeCaptureNotifications()
+        debounceIdleTask?.cancel()
+        debounceIdleTask = nil
+        durationResetTask?.cancel()
+        durationResetTask = nil
+        recordingStartTime = nil
+        lastRecordingDuration = 0
+        isRecorderIdle = true
         isRecording = false
-        
-        print("ScreenRecordingManager: ✅ Stopped monitoring")
-    }
-    
-    /// Toggle monitoring state
-    func toggleMonitoring() {
-        if isMonitoring {
-            stopMonitoring()
-        } else {
-            startMonitoring()
+        if coordinator.expandingView.type == .recording, coordinator.expandingView.show {
+            withAnimation(.smooth) { coordinator.expandingView.show = false }
         }
     }
-    
-    // MARK: - Private Methods
-    
-    /// Setup private API notifications for screen capture events
-    private func setupPrivateAPINotifications() {
-        // Pass self as context to the global callback function
-        let context = Unmanaged.passUnretained(self).toOpaque()
-        
-        // Register for remote session events (screen capture start/stop)
-        // kCGSessionRemoteConnect - fires when screen sharing/recording starts
-        let registered1 = CGSRegisterNotifyProc(screenCaptureEventCallback, 1502, context)
-        
-        // kCGSessionRemoteDisconnect - fires when screen sharing/recording stops
-        let registered2 = CGSRegisterNotifyProc(screenCaptureEventCallback, 1503, context)
-        
-        if registered1 && registered2 {
-            print("ScreenRecordingManager: ✅ Private API notifications registered")
-        } else {
-            print("ScreenRecordingManager: ⚠️ Failed to register private API notifications")
-        }
-    }
-    
-    /// Check current recording status using private API
-    func checkRecordingStatus() {
-        guard isMonitoring else { return }
-        let currentRecordingState = CGSIsScreenWatcherPresent()
-        
-        // Debug: Always log current check
-        print("ScreenRecordingManager: 🔍 Checking... current=\(isRecording), detected=\(currentRecordingState)")
-        
-        // Debounce changes to avoid flickering
-        if currentRecordingState != isRecording {
-            print("ScreenRecordingManager: 🔄 State change detected (\(isRecording) -> \(currentRecordingState))")
-            
-            if currentRecordingState && !isRecording {
-                // Started recording
-                lastUpdated = Date()
-                startDurationTracking()
-                updateIdleState(recording: true)
-                // Trigger expanding view like music activity
-                coordinator.toggleExpandingView(status: true, type: .recording)
-                withAnimation(.smooth) {
-                    isRecording = currentRecordingState
-                }
-                print("ScreenRecordingManager: 🔴 Screen recording STARTED")
-            } else if !currentRecordingState && isRecording {
-                // Stopped recording - let expanding view auto-collapse naturally (like music)
-                lastUpdated = Date()
-                stopDurationTracking()
-                updateIdleState(recording: false)
-                withAnimation(.smooth) {
-                    isRecording = currentRecordingState
-                }
-                print("ScreenRecordingManager: ⚪ Screen recording STOPPED")
+
+    private func removeCaptureNotifications() {
+        guard let notifications else { return }
+        for (event, generation) in registrations {
+            let status = notifications.remove(event, generation)
+            if status == 0 {
+                registrations.removeValue(forKey: event)
+            } else {
+                NSLog("Screen recording detection: could not remove event \(event) (\(status))")
             }
         }
     }
-    
+
+    fileprivate func handleCaptureEvent(generation: UInt) {
+        guard generation == self.generation else { return }
+        checkRecordingStatus()
+    }
+
+    private func checkRecordingStatus() {
+        guard isMonitoring, isEnabled() else { return }
+        let recording = isBeingRecorded()
+        guard recording != isRecording else { return }
+        lastUpdated = Date()
+        if recording {
+            startDurationTracking()
+            // Main-actor publication is synchronous, so an old notification
+            // cannot queue an expansion that appears after disablement.
+            withAnimation(.smooth) {
+                coordinator.expandingView = .init(show: true, type: .recording)
+            }
+        } else {
+            stopDurationTracking()
+        }
+        updateIdleState(recording: recording)
+        withAnimation(.smooth) { isRecording = recording }
+    }
+
     /// Keep timestamps without scheduling updates for a readout that is not visible.
     private func startDurationTracking() {
+        durationResetTask?.cancel()
+        durationResetTask = nil
         recordingStartTime = Date()
         lastRecordingDuration = 0
     }
@@ -210,13 +189,16 @@ class ScreenRecordingManager: ObservableObject {
         lastRecordingDuration = recordingDuration
         recordingStartTime = nil
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
-            guard let self, self.recordingStartTime == nil else { return }
+        durationResetTask?.cancel()
+        durationResetTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(2))
+            guard let self, !Task.isCancelled else { return }
             self.lastRecordingDuration = 0
+            self.durationResetTask = nil
         }
     }
 
-    /// Copy EXACT music idle state logic
+    /// Briefly hold the recording live activity after capture ends.
     private func updateIdleState(recording: Bool) {
         if recording {
             isRecorderIdle = false
@@ -241,16 +223,6 @@ class ScreenRecordingManager: ObservableObject {
 // MARK: - Extensions
 
 extension ScreenRecordingManager {
-    /// Get current recording status without async
-    var currentRecordingStatus: Bool {
-        return isRecording
-    }
-    
-    /// Check if monitoring is available (for settings UI)
-    var isMonitoringAvailable: Bool {
-        return true // Window-based monitoring is always available
-    }
-    
     /// Get formatted recording duration string
     var formattedDuration: String {
         let totalSeconds = Int(recordingDuration)

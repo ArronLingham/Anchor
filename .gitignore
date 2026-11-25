@@ -90,6 +90,8 @@ __pycache__/
 !/tests/HostObservationDisableLifecycleTests.swift
 !/tests/MicrophoneDetectionLifecycleTests.swift
 !/tests/run_microphone_detection_lifecycle_tests.sh
+!/tests/ScreenRecordingDetectionLifecycleTests.swift
+!/tests/run_screen_recording_detection_lifecycle_tests.sh
 !/tests/run_host_observation_disable_lifecycle_tests.sh
 !/tests/NotificationMirrorDisableLifecycleTests.swift
 !/tests/run_notification_mirror_disable_lifecycle_tests.sh
