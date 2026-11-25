@@ -231,51 +231,46 @@ final class ClipboardHistoryService: ObservableObject {
     }
 
     func copy(_ entry: ClipboardHistoryEntry, completion: @escaping (Bool) -> Void) {
-        writeToPasteboard([entry]) { [weak self] copied in
-            if copied {
-                self?.touch([entry.id])
-                self?.latestPasteboardEntry = entry
-            }
-            completion(copied)
-        }
+        copy([entry], completion: completion)
     }
 
     func copy(_ selectedEntries: [ClipboardHistoryEntry], completion: @escaping (Bool) -> Void) {
-        guard !selectedEntries.isEmpty else {
+        guard let ticket = Self.availabilityTicket() else {
             completion(false)
             return
         }
-        writeToPasteboard(selectedEntries) { [weak self] copied in
-            if copied {
-                self?.touch(selectedEntries.map(\.id))
-                // A single-entry selection mirrors the entry above; a real
-                // batch no longer matches any one saved entry's text, so the
-                // menu bar preview goes blank instead of keeping a stale
-                // single-entry snapshot on display.
-                self?.latestPasteboardEntry = selectedEntries.count == 1 ? selectedEntries[0] : nil
-            }
-            completion(copied)
+        copyForPaste(selectedEntries, whileAllowed: { Self.acceptsAvailabilityTicket(ticket) }) {
+            completion($0 != nil)
         }
     }
 
-    /// Failure includes an expired request. The lane remains serialized and
-    /// admission stays occupied until the underlying operation actually ends.
-    private func writeToPasteboard(_ list: [ClipboardHistoryEntry],
-                                   completion: @escaping (Bool) -> Void) {
-        guard !copyInFlight, let write = Self.plannedWrite(for: list) else {
-            completion(false)
+    /// The same write backs copy-only and paste actions. The count lets a
+    /// later paste verify that it still refers to the copy this action made.
+    func copyForPaste(_ selection: [ClipboardHistoryEntry], whileAllowed: @escaping () -> Bool,
+                      completion: @escaping (Int?) -> Void) {
+        guard whileAllowed(), !copyInFlight, !selection.isEmpty,
+              let write = Self.plannedWrite(for: selection) else {
+            completion(nil)
             return
         }
         copyInFlight = true
         GeneralPasteboardAccess.shared.async(timeout: Self.pasteboardTimeout, { isExpired in
-            write.write(to: NSPasteboard.general, isExpired: isExpired)
-        }, then: { result in
-            completion(result?.succeeded == true)
+            write.write(to: NSPasteboard.general, isExpired: isExpired, isAuthorized: whileAllowed)
+        }, then: { [weak self] result in
+            guard let result, result.succeeded else {
+                completion(nil)
+                return
+            }
+            if whileAllowed() {
+                self?.touch(selection.map(\.id))
+                // A batch no longer matches any one saved entry's text.
+                self?.latestPasteboardEntry = selection.count == 1 ? selection[0] : nil
+            }
+            completion(result.changeCount)
         }, didFinish: { [weak self] result in
             guard let self else { return }
+            // The lane stays occupied until its work ends, even on timeout.
             self.copyInFlight = false
-            // Consume our mutation even if result delivery already expired.
-            // This also excludes a partial write whose required format failed.
             if let result {
                 self.lastChangeCount = max(self.lastChangeCount, result.changeCount)
             }
@@ -666,28 +661,30 @@ final class ClipboardHistoryService: ObservableObject {
     /// copied before. A stale entry leaves the clipboard untouched and pastes
     /// nothing at all.
     func copyQuickEntry(_ entry: ClipboardHistoryEntry) {
-        let target = pasteTargetApp
-        hideHistoryWindow()
-        pasteTargetApp = nil
-        copy(entry) { [weak self] copied in
-            guard copied else {
-                NSSound.beep()
-                return
-            }
-            self?.pasteIntoPreviousApp(target)
-        }
+        copyQuickEntries([entry])
     }
 
     func copyQuickEntries(_ selectedEntries: [ClipboardHistoryEntry]) {
+        guard let ticket = Self.availabilityTicket() else { return }
         let target = pasteTargetApp
         hideHistoryWindow()
         pasteTargetApp = nil
-        copy(selectedEntries) { [weak self] copied in
-            guard copied else {
-                NSSound.beep()
+        let whileAllowed = { Self.acceptsAvailabilityTicket(ticket) }
+        copyForPaste(selectedEntries, whileAllowed: whileAllowed) { [weak self] count in
+            guard whileAllowed() else { return }
+            guard let count else { NSSound.beep(); return }
+            guard let self, let target, ClipboardHistoryPaste.isFrontmost(target) else { return }
+            guard AXIsProcessTrusted() else {
+                if self.promptedForAccessibility {
+                    NSSound.beep()
+                } else {
+                    self.promptedForAccessibility = true
+                    Permissions.shared.requestAccessibility()
+                }
                 return
             }
-            self?.pasteIntoPreviousApp(target)
+            ClipboardHistoryPaste.schedule(to: target, expectedChangeCount: count,
+                                          whileAllowed: whileAllowed)
         }
     }
 
@@ -1366,46 +1363,6 @@ final class ClipboardHistoryService: ObservableObject {
             return
         }
         pasteTargetApp = app
-    }
-
-    /// The entry is already on the clipboard, so a paste that cannot follow
-    /// says so the way Paste as Plain Text does (#186) instead of doing nothing.
-    /// No target means the window opened over Vorssaint itself or an app
-    /// without a Dock icon, where a pick is only a copy and stays silent.
-    private func pasteIntoPreviousApp(_ app: NSRunningApplication?) {
-        guard let app else { return }
-        guard !app.isTerminated else {
-            NSSound.beep()
-            return
-        }
-        app.activate(options: [])
-        guard AXIsProcessTrusted() else {
-            if promptedForAccessibility {
-                NSSound.beep()
-            } else {
-                promptedForAccessibility = true
-                Permissions.shared.requestAccessibility()
-            }
-            return
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
-            Self.postPasteShortcut()
-        }
-    }
-
-    private static func postPasteShortcut() {
-        guard let source = CGEventSource(stateID: .hidSystemState),
-              let keyDown = CGEvent(keyboardEventSource: source,
-                                    virtualKey: CGKeyCode(kVK_ANSI_V),
-                                    keyDown: true),
-              let keyUp = CGEvent(keyboardEventSource: source,
-                                  virtualKey: CGKeyCode(kVK_ANSI_V),
-                                  keyDown: false)
-        else { return }
-        keyDown.flags = .maskCommand
-        keyUp.flags = .maskCommand
-        keyDown.post(tap: .cghidEventTap)
-        keyUp.post(tap: .cghidEventTap)
     }
 
     private func ensurePanel() -> NSPanel {

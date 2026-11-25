@@ -247,6 +247,7 @@ final class CommandBarService: ObservableObject {
     /// The system only shows its Accessibility prompt once; after that a
     /// refusal is a beep, the pattern the other quick tools follow.
     private var promptedForAccessibility = false
+    private let clipboardPasteGate = ClipboardPresentationGate()
     private var restartObserver: NSObjectProtocol?
     private var restartPID: pid_t?
     private var restartURL: URL?
@@ -263,6 +264,7 @@ final class CommandBarService: ObservableObject {
     func syncWithPreferences() {
         UtilityWorkspace.shared.prepareOwnership()
         let available = AppFeature.commandBar.isAvailable
+        clipboardPasteGate.update(available: available)
         let enabled = available
             && UtilityPreferences.standard.bool(forKey: DefaultsKey.commandBarShortcutEnabled)
         let shortcut = GlobalShortcut.saved(for: DefaultsKey.commandBarShortcut,
@@ -2828,12 +2830,12 @@ final class CommandBarService: ObservableObject {
     /// the target app still has focus; all this does is put the item on the
     /// clipboard, wait for a clean keyboard and press ⌘V for the person.
     private func paste(_ entry: ClipboardHistoryEntry) {
+        guard let ticket = ClipboardHistoryService.availabilityTicket(),
+              let commandBarTicket = clipboardPasteGate.capture(currentlyAvailable: AppFeature.commandBar.isAvailable),
+              let target = NSWorkspace.shared.frontmostApplication,
+              target.processIdentifier != ProcessInfo.processInfo.processIdentifier else { return }
         hide()
-        if NSWorkspace.shared.frontmostApplication?.processIdentifier
-            == ProcessInfo.processInfo.processIdentifier {
-            NSSound.beep()
-            return
-        }
+        guard ClipboardHistoryPaste.isFrontmost(target) else { return }
         // Without Accessibility the synthetic paste is dropped by the system.
         // Asking first matters: writing the item to the clipboard and then
         // failing would throw away what the person had copied, for nothing.
@@ -2846,51 +2848,15 @@ final class CommandBarService: ObservableObject {
             }
             return
         }
-        ClipboardHistoryService.shared.copy(entry) { copied in
-            guard copied else {
-                NSSound.beep()
-                return
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                Self.postPasteWhenModifiersReleased(attempt: 0)
-            }
+        let whileAllowed = { [clipboardPasteGate] in
+            clipboardPasteGate.accepts(commandBarTicket, currentlyAvailable: AppFeature.commandBar.isAvailable)
+                && ClipboardHistoryService.acceptsAvailabilityTicket(ticket)
         }
-    }
-
-    /// The proven dance: ⌘V posted while the summoning chord is still held
-    /// merges with those modifiers and stops being a paste in the target
-    /// app, so wait for a clean keyboard first (15 ms polls, ~1.5 s cap,
-    /// then a settle beat). Secure input means a password field; leave it be.
-    private static func postPasteWhenModifiersReleased(attempt: Int) {
-        let held = CGEventSource.flagsState(.combinedSessionState)
-            .intersection([.maskCommand, .maskAlternate, .maskShift, .maskControl])
-        if attempt >= 100 {
-            NSSound.beep()
-            return
-        }
-        guard held.isEmpty else {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.015) {
-                postPasteWhenModifiersReleased(attempt: attempt + 1)
-            }
-            return
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.06) {
-            guard !IsSecureEventInputEnabled() else {
-                NSSound.beep()
-                return
-            }
-            guard let source = CGEventSource(stateID: .hidSystemState),
-                  let keyDown = CGEvent(keyboardEventSource: source,
-                                        virtualKey: CGKeyCode(kVK_ANSI_V),
-                                        keyDown: true),
-                  let keyUp = CGEvent(keyboardEventSource: source,
-                                      virtualKey: CGKeyCode(kVK_ANSI_V),
-                                      keyDown: false)
-            else { return }
-            keyDown.flags = .maskCommand
-            keyUp.flags = .maskCommand
-            keyDown.post(tap: .cghidEventTap)
-            keyUp.post(tap: .cghidEventTap)
+        ClipboardHistoryService.shared.copyForPaste([entry], whileAllowed: whileAllowed) { count in
+            guard whileAllowed() else { return }
+            guard let count else { NSSound.beep(); return }
+            ClipboardHistoryPaste.schedule(to: target, expectedChangeCount: count,
+                                          whileAllowed: whileAllowed)
         }
     }
 

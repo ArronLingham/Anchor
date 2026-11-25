@@ -373,7 +373,7 @@ enum CommandBarCatalog {
                 shortcut: roleShortcut(.colorPicker),
                 run: { _ in afterBeat { ColorSamplerService.shared.pick() } }))
         }
-        if AppFeature.clipboardHistory.isAvailable {
+        if let clipboardTicket = ClipboardHistoryService.availabilityTicket() {
             let clipboard = FeatureStrings.clipboard(language)
             let keepsHistory = UtilityPreferences.standard.bool(forKey: DefaultsKey.clipboardHistoryEnabled)
             let canUseHistory = CommandBarClipboardAccess.canUseHistory(
@@ -404,7 +404,7 @@ enum CommandBarCatalog {
                     : .needsSetup(featureTitle: clipboard.title, page: .clipboard),
                 confirmationPrompt: String(format: clipboard.clearRecentConfirmFormat, recentIDs.count),
                 run: { _ in
-                    guard AppFeature.clipboardHistory.isAvailable else { return }
+                    guard ClipboardHistoryService.acceptsAvailabilityTicket(clipboardTicket) else { return }
                     ClipboardHistoryService.shared.clearRecent(recentIDs)
                 }))
         }

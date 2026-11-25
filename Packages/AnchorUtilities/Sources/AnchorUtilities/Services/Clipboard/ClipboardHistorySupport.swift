@@ -2,10 +2,11 @@
 // Copyright (C) 2026 Vorssaint
 
 import AppKit
+import ApplicationServices
 import Carbon.HIToolbox
 import SwiftUI
 
-/// Tickets for queued history presentations. This holds no clipboard data and
+/// Tickets for queued clipboard actions. This holds no clipboard data and
 /// does not construct the history service while it is unavailable.
 final class ClipboardPresentationGate {
     private let lock = NSLock()
@@ -1126,5 +1127,62 @@ enum ClipboardHistoryImageSupport {
     static func isImageFilePath(_ path: String, fileManager: FileManager = .default) -> Bool {
         guard isImageFileName(path) else { return false }
         return fileManager.fileExists(atPath: path)
+    }
+}
+
+/// Delivers a history paste to the app that was focused when it was chosen.
+/// Check the pasteboard on its own lane, without blocking keyboard handling.
+enum ClipboardHistoryPaste {
+    static func isFrontmost(_ app: NSRunningApplication) -> Bool {
+        !app.isTerminated && NSWorkspace.shared.frontmostApplication?.processIdentifier == app.processIdentifier
+    }
+
+    static func schedule(to app: NSRunningApplication, expectedChangeCount: Int,
+                         whileAllowed: @escaping () -> Bool) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
+            waitForModifiers(remaining: 100, app: app, expectedChangeCount: expectedChangeCount,
+                             whileAllowed: whileAllowed)
+        }
+    }
+
+    private static var modifiersHeld: Bool {
+        !CGEventSource.flagsState(.combinedSessionState)
+            .intersection([.maskCommand, .maskAlternate, .maskShift, .maskControl]).isEmpty
+    }
+
+    private static func waitForModifiers(remaining: Int, app: NSRunningApplication, expectedChangeCount: Int,
+                                         whileAllowed: @escaping () -> Bool) {
+        guard whileAllowed(), isFrontmost(app) else { return }
+        guard remaining > 0 else { NSSound.beep(); return }
+        if modifiersHeld {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.015) {
+                waitForModifiers(remaining: remaining - 1, app: app, expectedChangeCount: expectedChangeCount,
+                                 whileAllowed: whileAllowed)
+            }
+            return
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.06) {
+            guard whileAllowed(), isFrontmost(app) else { return }
+            GeneralPasteboardAccess.shared.async(timeout: 1, { _ in
+                guard whileAllowed() else { return nil }
+                return NSPasteboard.general.changeCount
+            }, then: { (changeCount: Int?) in
+                guard changeCount == expectedChangeCount, whileAllowed(), isFrontmost(app),
+                      !modifiersHeld, AXIsProcessTrusted(), !IsSecureEventInputEnabled()
+                else { return }
+                postPaste(to: app.processIdentifier)
+            })
+        }
+    }
+
+    private static func postPaste(to pid: pid_t) {
+        guard let source = CGEventSource(stateID: .hidSystemState),
+              let keyDown = CGEvent(keyboardEventSource: source, virtualKey: CGKeyCode(kVK_ANSI_V), keyDown: true),
+              let keyUp = CGEvent(keyboardEventSource: source, virtualKey: CGKeyCode(kVK_ANSI_V), keyDown: false)
+        else { return }
+        keyDown.flags = .maskCommand
+        keyUp.flags = .maskCommand
+        keyDown.postToPid(pid)
+        keyUp.postToPid(pid)
     }
 }

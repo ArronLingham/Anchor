@@ -26,10 +26,12 @@ enum ClipboardHistoryWrite {
 
     /// Expiry stops subsequent writes. Once cleared, always read the final
     /// change count so history can exclude our mutation, even after timeout.
-    /// A call in progress cannot be cancelled or a partial write undone.
+    /// Authorization is checked before starting. Once accepted, finish the
+    /// write even if the feature leaves the current session.
     func write(to pasteboard: any ClipboardHistoryPasteboard,
-               isExpired: () -> Bool) -> ClipboardHistoryWriteResult? {
-        guard !isExpired() else { return nil }
+               isExpired: () -> Bool,
+               isAuthorized: () -> Bool = { true }) -> ClipboardHistoryWriteResult? {
+        guard !isExpired(), isAuthorized() else { return nil }
         _ = pasteboard.clearContents()
 
         var succeeded = false
