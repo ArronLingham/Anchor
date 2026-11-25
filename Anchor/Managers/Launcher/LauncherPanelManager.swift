@@ -18,6 +18,7 @@
  */
 
 import AppKit
+import Combine
 import Defaults
 import SwiftUI
 
@@ -32,7 +33,15 @@ final class LauncherPanelManager: ObservableObject {
     /// without launching returns the user exactly where they were.
     private var previouslyActiveApp: NSRunningApplication?
 
-    private init() {}
+    private var availability: AnyCancellable?
+
+    private init() {
+        availability = Defaults.publisher(.enableLauncher, options: [])
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] change in
+                if !change.newValue { self?.hide() }
+            }
+    }
 
     var isVisible: Bool { panel?.isVisible ?? false }
 
@@ -41,7 +50,7 @@ final class LauncherPanelManager: ObservableObject {
     }
 
     func show() {
-        guard panel == nil else { return }
+        guard Defaults[.enableLauncher], panel == nil else { return }
 
         previouslyActiveApp = NSWorkspace.shared.frontmostApplication
         let mode = Defaults[.launcherPresentationMode]
@@ -53,6 +62,7 @@ final class LauncherPanelManager: ObservableObject {
                 widgetProfileID: LauncherWidgetProfile.screenID(screen),
                 screen: screen,
                 onLaunch: { [weak self] app in
+                    guard Defaults[.enableLauncher], self?.panel != nil else { return }
                     AppIndex.shared.launch(app)
                     // The launched app takes focus itself, so do not restore.
                     self?.hide(restoringFocus: false)
@@ -80,6 +90,7 @@ final class LauncherPanelManager: ObservableObject {
         let appToRestore = previouslyActiveApp
         self.previouslyActiveApp = nil
         self.panel = nil
+        AppleShortcutsManager.shared.cancelLoading()
 
         panel.dismiss { [weak self] in
             if self?.panel == nil, restoringFocus, let appToRestore,

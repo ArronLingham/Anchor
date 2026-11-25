@@ -17,7 +17,6 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-import AppKit
 import Combine
 import Defaults
 import Foundation
@@ -77,93 +76,110 @@ enum ShortcutsCatalog {
 
 // MARK: - Manager
 
-/// Runs Apple Shortcuts from the launcher.
-///
-/// ## Cost
-///
-/// The list is fetched once on first use and then only when the user asks for a
-/// refresh. `shortcuts list` spawns a process, so it is not something to do on
-/// a timer or on every keystroke — the launcher searches the cached names.
+/// Discovers Apple Shortcuts for Launchpad and runs a selected shortcut.
 @MainActor
 final class AppleShortcutsManager: ObservableObject {
     static let shared = AppleShortcutsManager()
 
     @Published private(set) var names: [String] = []
-    @Published private(set) var isLoading = false
-    /// Nil until a load has been attempted.
-    @Published private(set) var isAvailable: Bool?
-
     private var hasLoaded = false
-    private init() {}
+    private var loadingProcess: Process?
+    private var catalogID = UUID()
+    private var subscriptions = Set<AnyCancellable>()
 
-    /// `nonisolated`: a constant path, read from the detached list task.
-    nonisolated private static let binary = "/usr/bin/shortcuts"
+    private let binary: URL
 
-    /// Loads the list if it has not been loaded yet.
+    init(binary: URL = URL(fileURLWithPath: "/usr/bin/shortcuts")) {
+        self.binary = binary
+        for key in [Defaults.Key<Bool>.enableLauncher, .enableShortcutsLauncher] {
+            Defaults.publisher(key, options: [])
+                .sink { [weak self] change in
+                    guard !change.newValue else { return }
+                    if Thread.isMainThread {
+                        MainActor.assumeIsolated { self?.resetCatalog() }
+                    } else {
+                        DispatchQueue.main.async { self?.resetCatalog() }
+                    }
+                }
+                .store(in: &subscriptions)
+        }
+    }
+
+    private var isEnabled: Bool {
+        Defaults[.enableLauncher] && Defaults[.enableShortcutsLauncher]
+    }
+
     func loadIfNeeded() {
-        guard !hasLoaded, !isLoading else { return }
-        Task { await refresh() }
-    }
+        guard isEnabled, !hasLoaded, loadingProcess == nil else { return }
+        let process = makeProcess(arguments: ["list"])
+        let pipe = Pipe()
+        process.standardOutput = pipe
 
-    func refresh() async {
-        isLoading = true
-        defer { isLoading = false; hasLoaded = true }
-
-        guard FileManager.default.isExecutableFile(atPath: Self.binary) else {
-            isAvailable = false
-            names = []
-            return
-        }
-
-        let output = await Task.detached(priority: .utility) { () -> String? in
-            let process = Process()
-            process.executableURL = URL(fileURLWithPath: Self.binary)
-            process.arguments = ["list"]
-            let pipe = Pipe()
-            process.standardOutput = pipe
-            process.standardError = Pipe()
-            guard (try? process.run()) != nil else { return nil }
-            let data = pipe.fileHandleForReading.readDataToEndOfFile()
-            process.waitUntilExit()
-            guard process.terminationStatus == 0 else { return nil }
-            return String(data: data, encoding: .utf8)
-        }.value
-
-        guard let output else {
-            isAvailable = false
-            names = []
-            return
-        }
-        isAvailable = true
-        names = ShortcutsCatalog.parse(output).filter(ShortcutsCatalog.isRunnable)
-    }
-
-    /// Runs a shortcut by name.
-    ///
-    /// The name goes into `Process.arguments` as one element. There is no
-    /// shell anywhere in this path, so a shortcut named `rm -rf /` is just a
-    /// shortcut with an odd name — `shortcuts` receives it as a single
-    /// argument and looks it up.
-    func run(_ name: String) {
-        guard let arguments = ShortcutsCatalog.runArguments(for: name),
-              FileManager.default.isExecutableFile(atPath: Self.binary)
-        else { return }
-
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: Self.binary)
-        process.arguments = arguments
-        process.standardOutput = Pipe()
-        process.standardError = Pipe()
         do {
             try process.run()
         } catch {
-            NSLog("⚠️ AppleShortcuts: could not run \(name): \(error)")
+            hasLoaded = true
+            return
+        }
+        loadingProcess = process
+
+        let reader = Task.detached(priority: .utility) { () -> [String] in
+            let data = try? pipe.fileHandleForReading.readToEnd()
+            process.waitUntilExit()
+            guard process.terminationStatus == 0, let data,
+                  let output = String(data: data, encoding: .utf8) else { return [] }
+            return ShortcutsCatalog.parse(output).filter(ShortcutsCatalog.isRunnable)
+        }
+
+        Task { [weak self] in
+            let result = await reader.value
+            guard let self, self.loadingProcess === process else { return }
+            self.loadingProcess = nil
+            guard self.isEnabled else { return }
+            self.hasLoaded = true
+            self.names = result
         }
     }
 
-    /// Launcher entries for the cached shortcuts.
+    /// Closing Launchpad ends unfinished discovery. A completed catalog can
+    /// still be reused when Launchpad next opens.
+    func cancelLoading() {
+        let process = loadingProcess
+        loadingProcess = nil
+        if let process, process.isRunning { process.terminate() }
+    }
+
+    private func resetCatalog() {
+        catalogID = UUID()
+        cancelLoading()
+        hasLoaded = false
+        if !names.isEmpty { names = [] }
+    }
+
+    private func makeProcess(arguments: [String]) -> Process {
+        let process = Process()
+        process.executableURL = binary
+        process.arguments = arguments
+        process.standardInput = FileHandle.nullDevice
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
+        return process
+    }
+
+    private func run(_ name: String, from catalog: UUID) {
+        guard isEnabled, catalogID == catalog,
+              let arguments = ShortcutsCatalog.runArguments(for: name) else { return }
+        do {
+            try makeProcess(arguments: arguments).run()
+        } catch {
+            NSLog("AppleShortcuts: could not run shortcut: \(error)")
+        }
+    }
+
     func launcherCommands() -> [LauncherCommand] {
-        names.map { name in
+        guard isEnabled else { return [] }
+        let catalog = catalogID
+        return names.map { name in
             LauncherCommand(
                 id: "shortcut." + name,
                 title: name,
@@ -171,7 +187,7 @@ final class AppleShortcutsManager: ObservableObject {
                 symbolName: "square.stack.3d.up",
                 keywords: ["shortcut", "shortcuts", "workflow", "automation"]
             ) { [weak self] in
-                self?.run(name)
+                self?.run(name, from: catalog)
             }
         }
     }

@@ -65,6 +65,7 @@ struct LauncherView: View {
     @State private var calculation: String?
     @State private var copiedFlash = false
     @FocusState private var queryFocused: Bool
+    @Default(.enableShortcutsLauncher) private var showAppleShortcuts
     @Default(.launcherShowGridWhenEmpty) private var showGridWhenEmpty
     @Default(.launcherLayoutMode) private var layoutMode
     @Default(.launcherPresentationMode) private var presentationMode
@@ -222,9 +223,7 @@ struct LauncherView: View {
             // Start the shortcuts subprocess as the panel opens rather than
             // lazily on the first keystroke, so it has a chance to finish
             // before the user has typed anything worth matching.
-            if Defaults[.enableShortcutsLauncher] {
-                AppleShortcutsManager.shared.loadIfNeeded()
-            }
+            shortcuts.loadIfNeeded()
             recompute()
             queryFocused = true
             DispatchQueue.main.async {
@@ -269,6 +268,10 @@ struct LauncherView: View {
         // results were computed once against an empty list and never revisited,
         // so the shortcuts existed, parsed correctly, and were simply never
         // shown.
+        .onChange(of: showAppleShortcuts) { _, enabled in
+            if enabled { shortcuts.loadIfNeeded() }
+            recompute(resetSelection: false)
+        }
         .onChange(of: shortcuts.names) { _, _ in recompute(resetSelection: false) }
         .anchorTheme()
     }
@@ -502,6 +505,7 @@ struct LauncherView: View {
     }
 
     private func activateSelection() {
+        guard Defaults[.enableLauncher] else { return }
         guard selectedCategory == nil else { return }
         if let calculation {
             NSPasteboard.general.clearContents()

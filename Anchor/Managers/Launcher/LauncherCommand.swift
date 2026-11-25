@@ -275,7 +275,6 @@ struct LauncherCommand: Identifiable {
             }
         }
         if Defaults[.enableShortcutsLauncher] {
-            AppleShortcutsManager.shared.loadIfNeeded()
             candidates += AppleShortcutsManager.shared.launcherCommands()
         }
 
