@@ -280,6 +280,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     
     func applicationWillTerminate(_ notification: Notification) {
         DesktopWorkspaceManager.shared.stop()
+        PrivacyIndicatorManager.shared.stopMonitoring()
         UtilityIntegration.shared.stop()
         SystemNavigationShortcutManager.shared.stop()
         // Guarantee the native OSD is usable after we exit: if we were
@@ -896,7 +897,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             dndManager.startMonitoring()
         }
 
-        // Setup Privacy Indicator Manager (camera/mic; skipped under UI testing).
+        // Set up the microphone detection preference observer.
         if !AppRuntimeEnvironment.isUITesting {
             PrivacyIndicatorManager.shared.startMonitoring()
         }

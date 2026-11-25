@@ -236,7 +236,7 @@ struct LiveActivitiesSettings: View {
             } header: {
                 Text("Privacy Indicators")
             } footer: {
-                Text("Shows green camera icon and yellow microphone icon when in use. Uses event-driven CoreAudio and CoreMediaIO APIs.")
+                Text("Shows a yellow icon when your default microphone is in use.")
             }
 
             Section {

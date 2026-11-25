@@ -88,6 +88,8 @@ __pycache__/
 !/tests/AnimatedArtworkDemandTests.swift
 !/tests/run_animated_artwork_demand_tests.sh
 !/tests/HostObservationDisableLifecycleTests.swift
+!/tests/MicrophoneDetectionLifecycleTests.swift
+!/tests/run_microphone_detection_lifecycle_tests.sh
 !/tests/run_host_observation_disable_lifecycle_tests.sh
 !/tests/NotificationMirrorDisableLifecycleTests.swift
 !/tests/run_notification_mirror_disable_lifecycle_tests.sh

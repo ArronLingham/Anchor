@@ -17,310 +17,130 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-import Foundation
-import CoreAudio
-import SwiftUI
 import Combine
+import CoreAudio
+import Foundation
 
-// MARK: - CoreAudio Callback Function
-// C function pointer for CoreAudio property listener
-private func microphonePropertyListener(
-    inObjectID: AudioObjectID,
-    inNumberAddresses: UInt32,
-    inAddresses: UnsafePointer<AudioObjectPropertyAddress>,
-    inClientData: UnsafeMutableRawPointer?
-) -> OSStatus {
-    guard let context = inClientData else { return noErr }
-    let monitor = Unmanaged<MicrophoneMonitor>.fromOpaque(context).takeUnretainedValue()
-    
-    DispatchQueue.main.async {
-        print("MicrophoneMonitor: 📢 Microphone property changed")
-        monitor.checkMicrophoneStatus()
-    }
-    
-    return noErr
-}
-
+/// Observes whether the default input device is in use. This does not open an audio stream.
 @MainActor
-class MicrophoneMonitor: ObservableObject {
-    // MARK: - Published Properties
-    @Published var isMicActive: Bool = false
-    @Published var activeApp: String? = nil
-    @Published var isMonitoring: Bool = false
-    
-    // MARK: - Private Properties
-    private var defaultInputDevice: AudioDeviceID = 0
-    private var isListenerRegistered: Bool = false
-    private var cancellables = Set<AnyCancellable>()
-    
-    // MARK: - Configuration
-    // Pure event-driven - no polling
-    
-    // MARK: - Initialization
-    init() {
-        // No initial setup needed
+final class MicrophoneMonitor: ObservableObject {
+    struct Backend {
+        var defaultInput: () -> AudioDeviceID
+        var isRunning: (AudioDeviceID) -> Bool
+        var observe: (AudioObjectID, AudioObjectPropertySelector, @escaping @MainActor () -> Void) -> AnyCancellable?
     }
-    
-    deinit {
-        // Clean up listener synchronously
-        // Remove property listener
-        if isListenerRegistered, defaultInputDevice != 0 {
-            var address = AudioObjectPropertyAddress(
-                mSelector: kAudioDevicePropertyDeviceIsRunningSomewhere,
-                mScope: kAudioObjectPropertyScopeGlobal,
-                mElement: kAudioObjectPropertyElementMain
-            )
-            
-            let context = Unmanaged.passUnretained(self).toOpaque()
-            
-            AudioObjectRemovePropertyListener(
-                defaultInputDevice,
-                &address,
-                microphonePropertyListener,
-                context
-            )
-        }
+
+    @Published private(set) var isMicActive = false
+
+    private let backend: Backend
+    private let isEnabled: () -> Bool
+    private var session: UUID?
+    private var inputObservation: AnyCancellable?
+    private var deviceObservation: AnyCancellable?
+    private var observedDevice: AudioDeviceID = kAudioObjectUnknown
+    private var deviceSession = UUID()
+
+    init(backend: Backend? = nil, isEnabled: @escaping () -> Bool) {
+        self.backend = backend ?? Self.coreAudio
+        self.isEnabled = isEnabled
     }
-    
-    // MARK: - Public Methods
-    
-    /// Start monitoring microphone usage
+
     func startMonitoring() {
-        guard !isMonitoring else {
-            print("MicrophoneMonitor: Already monitoring, skipping start")
-            return
+        guard session == nil, isEnabled() else { return }
+        let session = UUID()
+        self.session = session
+        // Keep watching the route even when there is no default input yet.
+        inputObservation = backend.observe(
+            AudioObjectID(kAudioObjectSystemObject), kAudioHardwarePropertyDefaultInputDevice
+        ) { [weak self] in
+            guard let self, self.session == session, self.isEnabled() else { return }
+            self.refreshInputDevice()
         }
-        
-        print("MicrophoneMonitor: 🟢 Starting microphone monitoring...")
-        
-        isMonitoring = true
-        
-        // Get default input device
-        defaultInputDevice = getDefaultInputDevice()
-        guard defaultInputDevice != 0 else {
-            print("MicrophoneMonitor: ⚠️ No input device found")
-            return
-        }
-        
-        print("MicrophoneMonitor: 🎤 Found input device ID: \(defaultInputDevice)")
-        
-        // Check if property exists
-        let propertyExists = checkPropertyExists()
-        print("MicrophoneMonitor: Property exists: \(propertyExists)")
-        
-        // Setup event listener
-        setupPropertyListener()
-        
-        // Check initial state
-        checkMicrophoneStatus()
-        
-        print("MicrophoneMonitor: ✅ Started monitoring (event-driven only)")
+        refreshInputDevice()
     }
-    
-    /// Stop monitoring microphone usage
+
     func stopMonitoring() {
-        guard isMonitoring else {
-            print("MicrophoneMonitor: Not monitoring, skipping stop")
-            return
-        }
-        
-        print("MicrophoneMonitor: 🛑 Stopping monitoring...")
-        
-        isMonitoring = false
-        
-        // Remove property listener
-        if isListenerRegistered {
-            removePropertyListener()
-        }
-        
-        // Reset state
-        if isMicActive {
-            isMicActive = false
-        }
-        activeApp = nil
-        
-        print("MicrophoneMonitor: ✅ Stopped monitoring")
+        session = nil
+        deviceSession = UUID()
+        inputObservation = nil
+        deviceObservation = nil
+        observedDevice = kAudioObjectUnknown
+        setActive(false)
     }
-    
-    /// Toggle monitoring state
-    func toggleMonitoring() {
-        if isMonitoring {
-            stopMonitoring()
-        } else {
-            startMonitoring()
-        }
-    }
-    
-    // MARK: - Private Methods
-    
-    /// Get default input device ID
-    private func getDefaultInputDevice() -> AudioDeviceID {
-        var deviceID: AudioDeviceID = 0
-        var size = UInt32(MemoryLayout<AudioDeviceID>.size)
-        
-        var address = AudioObjectPropertyAddress(
-            mSelector: kAudioHardwarePropertyDefaultInputDevice,
-            mScope: kAudioObjectPropertyScopeGlobal,
-            mElement: kAudioObjectPropertyElementMain
-        )
-        
-        let status = AudioObjectGetPropertyData(
-            AudioObjectID(kAudioObjectSystemObject),
-            &address,
-            0,
-            nil,
-            &size,
-            &deviceID
-        )
-        
-        if status != noErr {
-            print("MicrophoneMonitor: ⚠️ Failed to get default input device (status: \(status))")
-            return 0
-        }
-        
-        return deviceID
-    }
-    
-    /// Check if the property exists on the device
-    private func checkPropertyExists() -> Bool {
-        guard defaultInputDevice != 0 else { return false }
-        
-        var address = AudioObjectPropertyAddress(
-            mSelector: kAudioDevicePropertyDeviceIsRunningSomewhere,
-            mScope: kAudioObjectPropertyScopeGlobal,
-            mElement: kAudioObjectPropertyElementMain
-        )
-        
-        let hasProperty = AudioObjectHasProperty(defaultInputDevice, &address)
-        print("MicrophoneMonitor: Device \(defaultInputDevice) has property: \(hasProperty)")
-        
-        return hasProperty
-    }
-    
-    /// Setup CoreAudio property listener
-    private func setupPropertyListener() {
-        guard defaultInputDevice != 0 else { return }
-        
-        // Use kAudioDevicePropertyDeviceIsRunningSomewhere (tracks when device is in use anywhere)
-        var address = AudioObjectPropertyAddress(
-            mSelector: kAudioDevicePropertyDeviceIsRunningSomewhere,
-            mScope: kAudioObjectPropertyScopeGlobal,
-            mElement: kAudioObjectPropertyElementMain
-        )
-        
-        // Pass self as context
-        let context = Unmanaged.passUnretained(self).toOpaque()
-        
-        let status = AudioObjectAddPropertyListener(
-            defaultInputDevice,
-            &address,
-            microphonePropertyListener,
-            context
-        )
-        
-        if status == noErr {
-            isListenerRegistered = true
-            print("MicrophoneMonitor: ✅ Property listener registered")
-        } else {
-            print("MicrophoneMonitor: ⚠️ Failed to register property listener (status: \(status))")
-        }
-    }
-    
-    /// Remove CoreAudio property listener
-    private func removePropertyListener() {
-        guard defaultInputDevice != 0, isListenerRegistered else { return }
-        
-        var address = AudioObjectPropertyAddress(
-            mSelector: kAudioDevicePropertyDeviceIsRunningSomewhere,
-            mScope: kAudioObjectPropertyScopeGlobal,
-            mElement: kAudioObjectPropertyElementMain
-        )
-        
-        let context = Unmanaged.passUnretained(self).toOpaque()
-        
-        let status = AudioObjectRemovePropertyListener(
-            defaultInputDevice,
-            &address,
-            microphonePropertyListener,
-            context
-        )
-        
-        if status == noErr {
-            isListenerRegistered = false
-            print("MicrophoneMonitor: ✅ Property listener removed")
-        } else {
-            print("MicrophoneMonitor: ⚠️ Failed to remove property listener (status: \(status))")
-        }
-    }
-    
-    /// Check current microphone status
-    func checkMicrophoneStatus() {
-        guard defaultInputDevice != 0 else { return }
-        
-        let isRunning = isDeviceRunning(defaultInputDevice)
-        
-        // Debug logging
-        print("MicrophoneMonitor: 🔍 Checking... current=\(isMicActive), detected=\(isRunning)")
-        
-        // Update state if changed
-        if isRunning != isMicActive {
-            print("MicrophoneMonitor: 🔄 State change detected (\(isMicActive) -> \(isRunning))")
-            
-            withAnimation(.smooth) {
-                isMicActive = isRunning
-            }
-            
-            if isRunning {
-                print("MicrophoneMonitor: 🎤 Microphone ACTIVE")
-                // Could try to identify app here (TODO: investigate)
-                activeApp = "Unknown App"
-            } else {
-                print("MicrophoneMonitor: ⚪ Microphone INACTIVE")
-                activeApp = nil
+
+    private func refreshInputDevice() {
+        let device = backend.defaultInput()
+        if observedDevice != device || deviceObservation == nil {
+            let deviceSession = UUID()
+            self.deviceSession = deviceSession
+            deviceObservation = nil
+            observedDevice = device
+            if device != kAudioObjectUnknown {
+                deviceObservation = backend.observe(device, kAudioDevicePropertyDeviceIsRunningSomewhere) { [weak self] in
+                    guard let self, self.deviceSession == deviceSession, self.isEnabled() else { return }
+                    // A route event and a device event can arrive in either order.
+                    if self.backend.defaultInput() == device {
+                        self.setActive(self.backend.isRunning(device))
+                    } else {
+                        self.refreshInputDevice()
+                    }
+                }
             }
         }
+        setActive(device != kAudioObjectUnknown && backend.isRunning(device))
     }
-    
-    /// Check if audio device is running
-    private func isDeviceRunning(_ deviceID: AudioDeviceID) -> Bool {
-        var address = AudioObjectPropertyAddress(
-            mSelector: kAudioDevicePropertyDeviceIsRunningSomewhere,
+
+    private func setActive(_ active: Bool) {
+        if isMicActive != active { isMicActive = active }
+    }
+
+    private static var coreAudio: Backend {
+        Backend(
+            defaultInput: {
+                read(AudioObjectID(kAudioObjectSystemObject), kAudioHardwarePropertyDefaultInputDevice)
+                    ?? kAudioObjectUnknown
+            },
+            isRunning: { device in
+                (read(device, kAudioDevicePropertyDeviceIsRunningSomewhere) ?? 0) != 0
+            },
+            observe: { object, selector, onChange in
+                var address = property(selector)
+                let queue = DispatchQueue.main
+                let listener: AudioObjectPropertyListenerBlock = { _, _ in
+                    MainActor.assumeIsolated { onChange() }
+                }
+                guard AudioObjectHasProperty(object, &address) else { return nil }
+                let added = AudioObjectAddPropertyListenerBlock(object, &address, queue, listener)
+                guard added == noErr else {
+                    NSLog("Microphone detection: could not observe audio object \(object) (\(added))")
+                    return nil
+                }
+                return AnyCancellable {
+                    var address = property(selector)
+                    let removed = AudioObjectRemovePropertyListenerBlock(object, &address, queue, listener)
+                    // The HAL drops a device's properties when the device disappears.
+                    if removed != noErr && removed != kAudioHardwareBadObjectError
+                        && removed != kAudioHardwareUnknownPropertyError {
+                        NSLog("Microphone detection: could not remove listener for audio object \(object) (\(removed))")
+                    }
+                }
+            }
+        )
+    }
+
+    nonisolated private static func property(_ selector: AudioObjectPropertySelector) -> AudioObjectPropertyAddress {
+        AudioObjectPropertyAddress(
+            mSelector: selector,
             mScope: kAudioObjectPropertyScopeGlobal,
             mElement: kAudioObjectPropertyElementMain
         )
-        
-        var isRunning: UInt32 = 0
-        var size = UInt32(MemoryLayout<UInt32>.size)
-        
-        let status = AudioObjectGetPropertyData(
-            deviceID,
-            &address,
-            0,
-            nil,
-            &size,
-            &isRunning
-        )
-        
-        if status != noErr {
-            print("MicrophoneMonitor: ⚠️ Failed to check device running status (status: \(status))")
-            return false
-        }
-        
-        return isRunning != 0
     }
 
-}
-
-// MARK: - Extensions
-
-extension MicrophoneMonitor {
-    /// Get current microphone status without async
-    var currentMicStatus: Bool {
-        return isMicActive
-    }
-    
-    /// Check if monitoring is available
-    var isMonitoringAvailable: Bool {
-        return getDefaultInputDevice() != 0
+    nonisolated private static func read(_ object: AudioObjectID, _ selector: AudioObjectPropertySelector) -> UInt32? {
+        var address = property(selector)
+        var value: UInt32 = 0
+        var size = UInt32(MemoryLayout.size(ofValue: value))
+        let status = AudioObjectGetPropertyData(object, &address, 0, nil, &size, &value)
+        return status == noErr ? value : nil
     }
 }

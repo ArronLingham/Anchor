@@ -83,13 +83,13 @@ class PrivacyIndicatorManager: ObservableObject {
     static let shared = PrivacyIndicatorManager()
     
     // MARK: - Published Properties
-    @Published var microphoneActive: Bool = false
-    @Published var screenRecordingActive: Bool = false
-    @Published var isMonitoring: Bool = false
+    @Published private(set) var microphoneActive: Bool = false
+    @Published private(set) var screenRecordingActive: Bool = false
+    @Published private(set) var isMonitoring: Bool = false
     
     // MARK: - Child Monitors
-    private let microphoneMonitor = MicrophoneMonitor()
-    private var screenRecordingManager: ScreenRecordingManager?
+    private let microphoneMonitor = MicrophoneMonitor { Defaults[.enableMicrophoneDetection] }
+    private var microphonePreference: AnyCancellable?
     
     // MARK: - Cancellables
     private var cancellables = Set<AnyCancellable>()
@@ -131,117 +131,48 @@ class PrivacyIndicatorManager: ObservableObject {
         return showCamera || showMic || screenRecordingActive
     }
     
-    // MARK: - Initialization
     private init() {
-        print("PrivacyIndicatorManager: 🚀 Initializing...")
-        setupBindings()
-    }
-    
-    // MARK: - Setup Methods
-    
-    /// Setup bindings to child monitors
-    private func setupBindings() {
-        // Bind microphone monitor
+        // MicrophoneMonitor publishes on the main actor. Forward synchronously
+        // so a queued value cannot restore an indicator after disablement.
         microphoneMonitor.$isMicActive
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] isActive in
-                guard let self = self else { return }
-                if self.microphoneActive != isActive {
-                    print("PrivacyIndicatorManager: 🎤 Microphone state: \(isActive)")
-                    withAnimation(.smooth) {
-                        self.microphoneActive = isActive
-                    }
-                    self.logLayoutChange()
-                }
+            .sink { [weak self] active in
+                guard let self, self.microphoneActive != active else { return }
+                withAnimation(.smooth) { self.microphoneActive = active }
             }
             .store(in: &cancellables)
-        
-        // Bind screen recording manager
-        let screenRecManager = ScreenRecordingManager.shared
-        screenRecordingManager = screenRecManager
-        
-        screenRecManager.$isRecording
+
+        ScreenRecordingManager.shared.$isRecording
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] isRecording in
-                guard let self = self else { return }
-                if self.screenRecordingActive != isRecording {
-                    print("PrivacyIndicatorManager: 📹 Screen recording state: \(isRecording)")
-                    withAnimation(.smooth) {
-                        self.screenRecordingActive = isRecording
-                    }
-                    self.logLayoutChange()
-                }
+            .sink { [weak self] recording in
+                guard let self, self.screenRecordingActive != recording else { return }
+                withAnimation(.smooth) { self.screenRecordingActive = recording }
             }
             .store(in: &cancellables)
     }
-    
-    /// Log layout changes for debugging
-    private func logLayoutChange() {
-        print("PrivacyIndicatorManager: 🔄 Layout changed to: \(indicatorLayout.description)")
-        print("PrivacyIndicatorManager: 📊 States - Mic: \(microphoneActive), Recording: \(screenRecordingActive)")
-    }
-    
-    // MARK: - Public Methods
-    
-    /// Start monitoring all privacy indicators
+
     func startMonitoring() {
-        print("PrivacyIndicatorManager: 🟢 Starting all monitors...")
-        
-        isMonitoring = true
-        
-        // Start microphone monitoring
-        if microphoneMonitor.isMonitoringAvailable {
-            microphoneMonitor.startMonitoring()
-        } else {
-            print("PrivacyIndicatorManager: ⚠️ Microphone monitoring not available")
-        }
-        
-        // Screen recording is already monitored by ScreenRecordingManager
-        print("PrivacyIndicatorManager: ✅ All monitors started")
+        guard microphonePreference == nil else { return }
+        microphonePreference = Defaults.publisher(.enableMicrophoneDetection, options: [])
+            .sink { [weak self] change in
+                let enabled = change.newValue
+                if Thread.isMainThread {
+                    MainActor.assumeIsolated { self?.syncMicrophone(enabled: enabled) }
+                } else {
+                    DispatchQueue.main.async { self?.syncMicrophone(enabled: enabled) }
+                }
+            }
+        syncMicrophone(enabled: Defaults[.enableMicrophoneDetection])
     }
-    
-    /// Stop monitoring all privacy indicators
+
     func stopMonitoring() {
-        print("PrivacyIndicatorManager: 🛑 Stopping all monitors...")
-        
-        isMonitoring = false
-        
-        microphoneMonitor.stopMonitoring()
-        
-        print("PrivacyIndicatorManager: ✅ All monitors stopped")
+        microphonePreference = nil
+        syncMicrophone(enabled: false)
     }
-    
-    /// Toggle monitoring state
-    func toggleMonitoring() {
-        if microphoneMonitor.isMonitoring {
-            stopMonitoring()
-        } else {
-            startMonitoring()
-        }
-    }
-    
-    /// Get detailed status string for debugging
-    func getStatusString() -> String {
-        var status = "Privacy Indicators:\n"
-        status += "  Microphone: \(microphoneActive ? "🟢 Active" : "⚪ Inactive")\n"
-        status += "  Screen Recording: \(screenRecordingActive ? "🟢 Active" : "⚪ Inactive")\n"
-        status += "  Layout: \(indicatorLayout.description)"
-        return status
+
+    private func syncMicrophone(enabled: Bool) {
+        let wanted = enabled && microphonePreference != nil && Defaults[.enableMicrophoneDetection]
+        if wanted { microphoneMonitor.startMonitoring() }
+        else { microphoneMonitor.stopMonitoring() }
+        if isMonitoring != wanted { isMonitoring = wanted }
     }
 }
-
-// MARK: - Extensions
-
-extension PrivacyIndicatorManager {
-    /// Get microphone monitor instance
-    var microphone: MicrophoneMonitor {
-        return microphoneMonitor
-    }
-    
-    /// Get screen recording manager instance
-    var screenRecording: ScreenRecordingManager? {
-        return screenRecordingManager
-    }
-}
-
-
