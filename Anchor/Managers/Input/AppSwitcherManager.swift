@@ -66,7 +66,8 @@ final class AppSwitcherManager: ObservableObject {
     private var unfilteredApps: [SwitchableApp] = []
     private var icons: [pid_t: NSImage] = [:]
     private var recency: [pid_t] = []
-    private var observersInstalled = false
+    private var trackingObservers: [NSObjectProtocol] = []
+    private var trackingGeneration = UUID()
 
     /// Whatever was frontmost the moment the ring opened. Reversing back onto
     /// this entry — e.g. Shift+Tab past your own app — is a dismiss, not a
@@ -92,8 +93,8 @@ final class AppSwitcherManager: ObservableObject {
 
     /// Starts tracking which app was last in front. Cheap: one notification.
     func startTracking() {
-        guard !observersInstalled else { return }
-        observersInstalled = true
+        guard trackingObservers.isEmpty else { return }
+        let generation = trackingGeneration
         NSWorkspace.shared.runningApplications.forEach { cacheIcon($0) }
 
         // Seed with whatever is frontmost now, so the very first invocation
@@ -103,12 +104,13 @@ final class AppSwitcherManager: ObservableObject {
         }
 
         let center = NSWorkspace.shared.notificationCenter
-        center.addObserver(
+        trackingObservers.append(center.addObserver(
             forName: NSWorkspace.didActivateApplicationNotification,
             object: nil, queue: .main
         ) { [weak self] note in
             MainActor.assumeIsolated {
-                guard let app = note.userInfo?[NSWorkspace.applicationUserInfoKey]
+                guard let self, self.trackingGeneration == generation,
+                      let app = note.userInfo?[NSWorkspace.applicationUserInfoKey]
                     as? NSRunningApplication else { return }
                 // `activateSelection()` briefly calls `NSApp.activate()` on
                 // Anchor itself before handing off to the target app (the
@@ -122,21 +124,37 @@ final class AppSwitcherManager: ObservableObject {
                 // guard in `activateSelection()` could never match anything,
                 // silently defeating it every time.
                 guard app.processIdentifier != ProcessInfo.processInfo.processIdentifier else { return }
-                self?.cacheIcon(app)
-                self?.noteActivation(app.processIdentifier)
+                self.cacheIcon(app)
+                self.noteActivation(app.processIdentifier)
             }
-        }
-        center.addObserver(
+        })
+        trackingObservers.append(center.addObserver(
             forName: NSWorkspace.didTerminateApplicationNotification,
             object: nil, queue: .main
         ) { [weak self] note in
             MainActor.assumeIsolated {
-                guard let app = note.userInfo?[NSWorkspace.applicationUserInfoKey]
+                guard let self, self.trackingGeneration == generation,
+                      let app = note.userInfo?[NSWorkspace.applicationUserInfoKey]
                     as? NSRunningApplication else { return }
-                self?.recency.removeAll { $0 == app.processIdentifier }
-                self?.icons.removeValue(forKey: app.processIdentifier)
+                self.recency.removeAll { $0 == app.processIdentifier }
+                self.icons.removeValue(forKey: app.processIdentifier)
             }
-        }
+        })
+    }
+
+    func stopTracking() {
+        guard !trackingObservers.isEmpty else { return }
+        trackingGeneration = UUID()
+        let center = NSWorkspace.shared.notificationCenter
+        trackingObservers.forEach(center.removeObserver)
+        trackingObservers.removeAll()
+        recency.removeAll()
+        icons.removeAll()
+        unfilteredApps.removeAll()
+        apps.removeAll()
+        query = ""
+        originalFrontmostPID = nil
+        hide()
     }
 
     private func cacheIcon(_ app: NSRunningApplication) {
@@ -146,8 +164,9 @@ final class AppSwitcherManager: ObservableObject {
         guard app.activationPolicy == .regular, pid != ProcessInfo.processInfo.processIdentifier,
               icons[pid] == nil, let url = app.bundleURL else { return }
         let entry = LauncherApp(url: url, name: app.localizedName ?? "", bundleIdentifier: app.bundleIdentifier)
+        let generation = trackingGeneration
         if let cached = AppIconCache.shared.icon(for: entry, completion: { [weak self] image in
-            guard let self, !app.isTerminated else { return }
+            guard let self, self.trackingGeneration == generation, !app.isTerminated else { return }
             self.icons[pid] = image
             if let index = self.apps.firstIndex(where: { $0.pid == pid }) {
                 let old = self.apps[index]

@@ -17,3 +17,19 @@ enum SystemNavigationShortcut: Equatable {
         return nil
     }
 }
+
+/// Retains only presses that actually reached an Anchor action. A key-up
+/// corresponding to a press passed to macOS must also pass through.
+struct NavigationKeyPresses {
+    private var keys = Set<UInt16>()
+
+    var isEmpty: Bool { keys.isEmpty }
+
+    func contains(_ key: UInt16) -> Bool { keys.contains(key) }
+    mutating func capture(_ key: UInt16) { keys.insert(key) }
+    mutating func release(_ key: UInt16) -> Bool { keys.remove(key) != nil }
+
+    mutating func discardReleased(isHeld: (UInt16) -> Bool) {
+        keys = Set(keys.filter(isHeld))
+    }
+}

@@ -18,6 +18,7 @@
  */
 
 import AppKit
+import Combine
 import Defaults
 
 /// Monitors screen corners and triggers the launcher when cursor enters the configured hot corner.
@@ -31,91 +32,92 @@ final class LauncherHotCornerMonitor {
     private var globalMouseMonitor: Any?
     private var localMouseMonitor: Any?
     private var screenChangeObserver: NSObjectProtocol?
+    private var subscriptions = Set<AnyCancellable>()
+    private var generation = UUID()
     private var lastTriggerDate: Date?
     private var isEvalPending = false
     private var cachedCornerRects: [CGRect] = []
 
     private init() {}
 
-    /// Starts or stops monitoring based on current settings.
     func setup() {
-        Defaults.observe(.launcherHotCorner) { [weak self] change in
-            self?.update(corner: change.newValue)
-        }.tieToLifetime(of: self)
-
-        update(corner: Defaults[.launcherHotCorner])
+        guard subscriptions.isEmpty else { return }
+        Defaults.publisher(.enableLauncher, options: [])
+            .sink { [weak self] _ in self?.preferenceChanged() }
+            .store(in: &subscriptions)
+        Defaults.publisher(.launcherHotCorner, options: [])
+            .sink { [weak self] _ in self?.preferenceChanged() }
+            .store(in: &subscriptions)
+        sync()
     }
 
-    func update(corner: LauncherHotCorner) {
-        if corner == .none {
-            stopMonitoring()
+    nonisolated private func preferenceChanged() {
+        if Thread.isMainThread {
+            MainActor.assumeIsolated { reconcilePreferenceChange() }
         } else {
-            updateCachedCornerRects(corner: corner)
-            startMonitoringIfNeeded(corner: corner)
+            DispatchQueue.main.async { [weak self] in self?.reconcilePreferenceChange() }
         }
     }
 
-    func stopMonitoring() {
-        if let monitor = globalMouseMonitor {
-            NSEvent.removeMonitor(monitor)
-            globalMouseMonitor = nil
+    private func reconcilePreferenceChange() {
+        guard !subscriptions.isEmpty else { return }
+        stopMonitoring()
+        sync()
+    }
+
+    func stop() {
+        subscriptions.removeAll()
+        stopMonitoring()
+    }
+
+    private func sync() {
+        let corner = Defaults[.launcherHotCorner]
+        guard screenChangeObserver == nil, Defaults[.enableLauncher], corner != .none else { return }
+        let generation = generation
+        updateCachedCornerRects(corner: corner)
+
+        screenChangeObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self, self.isCurrent(generation, corner: corner) else { return }
+                self.updateCachedCornerRects(corner: corner)
+            }
         }
-        if let monitor = localMouseMonitor {
-            NSEvent.removeMonitor(monitor)
-            localMouseMonitor = nil
+        globalMouseMonitor = NSEvent.addGlobalMonitorForEvents(matching: .mouseMoved) { [weak self] _ in
+            MainActor.assumeIsolated { self?.scheduleEvaluation(generation: generation, corner: corner) }
         }
-        if let obs = screenChangeObserver {
-            NotificationCenter.default.removeObserver(obs)
-            screenChangeObserver = nil
+        localMouseMonitor = NSEvent.addLocalMonitorForEvents(matching: .mouseMoved) { [weak self] event in
+            self?.scheduleEvaluation(generation: generation, corner: corner)
+            return event
         }
+    }
+
+    private func stopMonitoring() {
+        generation = UUID()
+        isEvalPending = false
+        if let monitor = globalMouseMonitor { NSEvent.removeMonitor(monitor) }
+        if let monitor = localMouseMonitor { NSEvent.removeMonitor(monitor) }
+        if let observer = screenChangeObserver { NotificationCenter.default.removeObserver(observer) }
+        globalMouseMonitor = nil
+        localMouseMonitor = nil
+        screenChangeObserver = nil
         cachedCornerRects = []
         lastTriggerDate = nil
     }
 
-    private func startMonitoringIfNeeded(corner: LauncherHotCorner) {
-        updateCachedCornerRects(corner: corner)
+    private func isCurrent(_ generation: UUID, corner: LauncherHotCorner) -> Bool {
+        self.generation == generation && Defaults[.enableLauncher] && Defaults[.launcherHotCorner] == corner
+    }
 
-        if screenChangeObserver == nil {
-            screenChangeObserver = NotificationCenter.default.addObserver(
-                forName: NSApplication.didChangeScreenParametersNotification,
-                object: nil,
-                queue: .main
-            ) { [weak self] _ in
-                Task { @MainActor [weak self] in
-                    self?.updateCachedCornerRects(corner: Defaults[.launcherHotCorner])
-                }
-            }
-        }
-
-        if globalMouseMonitor == nil {
-            globalMouseMonitor = NSEvent.addGlobalMonitorForEvents(matching: .mouseMoved) { [weak self] _ in
-                guard let self, !self.isEvalPending else { return }
-                let location = NSEvent.mouseLocation
-                let rects = self.cachedCornerRects
-                guard rects.contains(where: { $0.contains(location) }) else { return }
-                self.isEvalPending = true
-                DispatchQueue.main.async { [weak self] in
-                    self?.isEvalPending = false
-                    self?.evaluateCursorLocation(corner: Defaults[.launcherHotCorner])
-                }
-            }
-        }
-
-        if localMouseMonitor == nil {
-            localMouseMonitor = NSEvent.addLocalMonitorForEvents(matching: .mouseMoved) { [weak self] event in
-                if let self, !self.isEvalPending {
-                    let location = NSEvent.mouseLocation
-                    let rects = self.cachedCornerRects
-                    if rects.contains(where: { $0.contains(location) }) {
-                        self.isEvalPending = true
-                        DispatchQueue.main.async { [weak self] in
-                            self?.isEvalPending = false
-                            self?.evaluateCursorLocation(corner: Defaults[.launcherHotCorner])
-                        }
-                    }
-                }
-                return event
-            }
+    private func scheduleEvaluation(generation: UUID, corner: LauncherHotCorner) {
+        guard !isEvalPending, isCurrent(generation, corner: corner),
+              cachedCornerRects.contains(where: { $0.contains(NSEvent.mouseLocation) }) else { return }
+        isEvalPending = true
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.isCurrent(generation, corner: corner) else { return }
+            self.isEvalPending = false
+            self.evaluateCursorLocation()
         }
     }
 
@@ -150,8 +152,7 @@ final class LauncherHotCornerMonitor {
         }
     }
 
-    private func evaluateCursorLocation(corner: LauncherHotCorner) {
-        guard corner != .none else { return }
+    private func evaluateCursorLocation() {
         let currentLocation = NSEvent.mouseLocation
 
         let now = Date()

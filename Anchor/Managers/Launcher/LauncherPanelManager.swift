@@ -37,9 +37,13 @@ final class LauncherPanelManager: ObservableObject {
 
     private init() {
         availability = Defaults.publisher(.enableLauncher, options: [])
-            .receive(on: DispatchQueue.main)
             .sink { [weak self] change in
-                if !change.newValue { self?.hide() }
+                guard !change.newValue else { return }
+                if Thread.isMainThread {
+                    MainActor.assumeIsolated { self?.hide() }
+                } else {
+                    DispatchQueue.main.async { self?.hide() }
+                }
             }
     }
 

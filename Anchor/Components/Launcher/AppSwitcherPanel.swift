@@ -20,7 +20,6 @@
 import AppKit
 import CoreGraphics
 import Defaults
-import KeyboardShortcuts
 import SwiftUI
 
 /// The floating window the app ring is drawn in.
@@ -78,6 +77,8 @@ final class AppSwitcherPanelManager {
     private var keyTapRunLoopSource: CFRunLoopSource?
     private var flagsMonitor: Any?
     private var releaseWatch: Timer?
+    private var systemInvocation = false
+    private var session = UUID()
     private var invocationModifiers: NSEvent.ModifierFlags = []
 
     /// The ring's own navigation keys — everything else passes through the
@@ -89,16 +90,27 @@ final class AppSwitcherPanelManager {
 
     private init() {}
 
+    private var canUsePanel: Bool {
+        Defaults[.enableShortcuts] && Defaults[.enableAppSwitcher]
+            && (!systemInvocation || Defaults[.appSwitcherUsesCommandTab])
+    }
+
+    func cancelSystemInvocation() {
+        if systemInvocation { dismiss(activating: false) }
+    }
+
     // MARK: - Invocation
 
     /// The shortcut fired. Opens the ring, or advances it if already open —
     /// which is what makes holding the modifier and tapping Tab feel like ⌘Tab.
-    func invoke(reverse: Bool = false, holding modifiers: NSEvent.ModifierFlags? = nil) {
+    func invoke(reverse: Bool, holding modifiers: NSEvent.ModifierFlags, systemInvocation: Bool = false) {
         guard Defaults[.enableShortcuts], Defaults[.enableAppSwitcher] else { return }
         switcher.startTracking()
 
         if panel == nil {
-            invocationModifiers = modifiers ?? Self.configuredHoldModifiers()
+            self.systemInvocation = systemInvocation
+            invocationModifiers = modifiers
+            session = UUID()
             switcher.show(startingReversed: reverse)
             guard !switcher.apps.isEmpty else { return }
             present()
@@ -147,10 +159,13 @@ final class AppSwitcherPanelManager {
         // Both the flags monitor and the release watch can land on the same
         // release; whichever gets here first wins and the other no-ops.
         guard panel != nil else { return }
+        let shouldActivate = activating && canUsePanel
+        session = UUID()
         removeMonitors()
         panel?.orderOut(nil)
         panel = nil
-        if activating {
+        systemInvocation = false
+        if shouldActivate {
             switcher.activateSelection()
         } else {
             switcher.hide()
@@ -170,13 +185,17 @@ final class AppSwitcherPanelManager {
         // Modifier-only changes don't type anything into a focused text
         // field, so this stays a plain observing monitor — only the actual
         // navigation keys need the tap's ability to swallow.
+        let session = session
         let flags: (NSEvent) -> Void = { [weak self] event in
-            MainActor.assumeIsolated { self?.handleFlags(event) }
+            MainActor.assumeIsolated {
+                guard let self, self.session == session else { return }
+                self.handleFlags(event)
+            }
         }
         flagsMonitor = NSEvent.addGlobalMonitorForEvents(
             matching: [.flagsChanged], handler: flags)
 
-        startReleaseWatch()
+        if !invocationModifiers.isEmpty { startReleaseWatch() }
     }
 
     /// Taps `.keyDown` at the HID level so the ring's navigation keys can
@@ -226,7 +245,7 @@ final class AppSwitcherPanelManager {
     /// Swallows the ring's own navigation keys; everything else passes
     /// through unmodified.
     private func handleTappedKeyDown(_ cgEvent: CGEvent) -> Unmanaged<CGEvent>? {
-        guard panel != nil, let nsEvent = NSEvent(cgEvent: cgEvent) else {
+        guard panel != nil, canUsePanel, let nsEvent = NSEvent(cgEvent: cgEvent) else {
             return Unmanaged.passUnretained(cgEvent)
         }
         if nsEvent.keyCode == 51 {
@@ -274,10 +293,10 @@ final class AppSwitcherPanelManager {
     /// moment the ring closes.
     private func startReleaseWatch() {
         releaseWatch?.invalidate()
+        let session = session
         let timer = Timer(timeInterval: 0.02, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated {
-                guard let self else { return }
-                guard self.panel != nil else { return }
+                guard let self, self.session == session, self.panel != nil else { return }
 
                 let required = self.invocationModifiers
                 // No modifier to release: the ring waits for Return or Escape.
@@ -292,20 +311,6 @@ final class AppSwitcherPanelManager {
         }
         RunLoop.main.add(timer, forMode: .common)
         releaseWatch = timer
-    }
-
-    /// The modifiers whose release commits the ring.
-    ///
-    /// Shift is deliberately excluded. It is the *direction* modifier — held
-    /// to step backwards and let go to step forwards again, exactly as ⌘⇧Tab
-    /// works — so treating it as a hold modifier would commit the ring the
-    /// instant the user let go of Shift while still holding Option, halfway
-    /// through cycling backwards.
-    private static func configuredHoldModifiers() -> NSEvent.ModifierFlags {
-        let shortcut = KeyboardShortcuts.getShortcut(for: .appSwitcher)
-            ?? KeyboardShortcuts.getShortcut(for: .appSwitcherReverse)
-        guard let shortcut else { return [] }
-        return shortcut.modifiers.intersection([.command, .option, .control])
     }
 
     private func removeMonitors() {

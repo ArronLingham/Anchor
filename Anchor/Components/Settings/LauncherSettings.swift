@@ -75,7 +75,9 @@ struct LauncherSettings: View {
                 .settingsHighlight(id: highlightID("Show Apple Shortcuts"))
                 .settingsInfo("Find and run your saved Apple Shortcuts by name. Launchpad loads the list when it opens and searches it as you type.")
 
-                KeyboardShortcuts.Recorder("Open launcher:", name: .toggleLauncher)
+                KeyboardShortcuts.Recorder("Open launcher:", name: .toggleLauncher) { _ in
+                    navigationShortcuts.recordedShortcutsChanged()
+                }
                     .disabled(!enableLauncher)
                     .settingsHighlight(id: highlightID("Open launcher"))
 
@@ -113,11 +115,15 @@ struct LauncherSettings: View {
                 .settingsHighlight(id: highlightID("Use ⌘Tab for Anchor’s app switcher"))
                 shortcutAvailabilityHint(requested: enableAppSwitcher && useCommandTab)
 
-                KeyboardShortcuts.Recorder("Open switcher:", name: .appSwitcher)
+                KeyboardShortcuts.Recorder("Open switcher:", name: .appSwitcher) { _ in
+                    navigationShortcuts.recordedShortcutsChanged()
+                }
                     .disabled(!enableAppSwitcher)
                     .settingsHighlight(id: highlightID("Open switcher"))
 
-                KeyboardShortcuts.Recorder("Open switcher backwards:", name: .appSwitcherReverse)
+                KeyboardShortcuts.Recorder("Open switcher backwards:", name: .appSwitcherReverse) { _ in
+                    navigationShortcuts.recordedShortcutsChanged()
+                }
                     .disabled(!enableAppSwitcher)
                     .settingsHighlight(id: highlightID("Open switcher backwards"))
                     .settingsInfo("Steps backwards through the ring, the way ⌘⇧Tab does. Defaults to ⌥⇧Tab.")

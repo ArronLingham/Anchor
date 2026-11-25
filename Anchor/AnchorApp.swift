@@ -283,6 +283,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         PrivacyIndicatorManager.shared.stopMonitoring()
         UtilityIntegration.shared.stop()
         SystemNavigationShortcutManager.shared.stop()
+        LauncherHotCornerMonitor.shared.stop()
         // Guarantee the native OSD is usable after we exit: if we were
         // suppressing it, OSDUIHelper is SIGSTOP-frozen and the async restore in
         // enableSystemHUD() would not finish before the process dies. Resume it
@@ -1005,11 +1006,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             // Arms the daily-commit schedule and catches up if today's is
             // still outstanding. Does nothing at all while disabled.
             GitCommitManager.shared.start()
-            // One NSWorkspace notification, so the ring can open in
-            // most-recently-used order. Nothing else runs until it is opened.
-            if Defaults[.enableAppSwitcher] {
-                AppSwitcherManager.shared.startTracking()
-            }
             // Creates its divider only when the feature is on; the observer
             // itself costs nothing.
             // Registers sleep/lock observers only when auto-clear is on;
@@ -1224,8 +1220,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         KeyboardShortcuts.onKeyDown(for: .toggleLauncher) {
-            guard Defaults[.enableShortcuts], Defaults[.enableLauncher] else { return }
-            LauncherPanelManager.shared.toggle()
+            SystemNavigationShortcutManager.shared.invokeRecorded(.toggleLauncher)
         }
 
         KeyboardShortcuts.onKeyUp(for: .toggleExternalMonitors) {
@@ -1686,11 +1681,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         KeyboardShortcuts.onKeyDown(for: .appSwitcher) {
-            AppSwitcherPanelManager.shared.invoke()
+            SystemNavigationShortcutManager.shared.invokeRecorded(.appSwitcher)
         }
 
         KeyboardShortcuts.onKeyDown(for: .appSwitcherReverse) {
-            AppSwitcherPanelManager.shared.invoke(reverse: true)
+            SystemNavigationShortcutManager.shared.invokeRecorded(.appSwitcherReverse)
         }
 
         KeyboardShortcuts.onKeyDown(for: .toggleMenuBarSection) {
