@@ -25,10 +25,9 @@ import AVFoundation
 import AnchorUtilities
 
 final class SystemChangesObserver: MediaKeyInterceptorDelegate {
-    private weak var coordinator: AnchorViewCoordinator?
-    private let volumeController = SystemVolumeController.shared
-    private let brightnessController = SystemBrightnessController.shared
-    private let keyboardBacklightController = SystemKeyboardBacklightController.shared
+    private var volumeController: SystemVolumeController { .shared }
+    private var brightnessController: SystemBrightnessController { .shared }
+    private var keyboardBacklightController: SystemKeyboardBacklightController { .shared }
     private let mediaKeyInterceptor = MediaKeyInterceptor.shared
     private let volumeFeedbackPlayer = VolumeFeedbackPlayer.shared
 
@@ -53,129 +52,87 @@ final class SystemChangesObserver: MediaKeyInterceptorDelegate {
         Float(Defaults[.brightnessFineStepPercent]) / 100.0
     }
 
-    private var volumeEnabled = false
-    private var brightnessEnabled = false
-    private var keyboardBacklightEnabled = false
-    private var requestedControls = (volume: false, brightness: false, keyboard: false)
-    private var observing = false
-    private var utilityOwnershipObserver: NSObjectProtocol?
+    private var controls: HUDControls = []
+    private var deliveriesValid = false
+    private var volumeEnabled: Bool { deliveriesValid && controls.contains(.volume) }
+    private var brightnessEnabled: Bool { deliveriesValid && controls.contains(.brightness) }
+    private var keyboardBacklightEnabled: Bool { deliveriesValid && controls.contains(.backlight) }
 
-    init(coordinator: AnchorViewCoordinator) {
-        self.coordinator = coordinator
-        utilityOwnershipObserver = NotificationCenter.default.addObserver(
-            forName: .utilityControlOwnershipChanged, object: nil, queue: .main
-        ) { [weak self] _ in
-            guard let self, self.observing else { return }
-            self.update(volumeEnabled: self.requestedControls.volume,
-                        brightnessEnabled: self.requestedControls.brightness,
-                        keyboardBacklightEnabled: self.requestedControls.keyboard)
-        }
+    var isInterceptionAvailable: Bool { mediaKeyInterceptor.isInterceptionAvailable }
+
+    func invalidatePendingDeliveries() {
+        deliveriesValid = false
+        mediaKeyInterceptor.invalidatePendingCommands()
     }
 
-    deinit {
-        if let utilityOwnershipObserver { NotificationCenter.default.removeObserver(utilityOwnershipObserver) }
-    }
+    func update(controls: HUDControls) {
+        let oldControls = self.controls
+        self.controls = controls
+        deliveriesValid = true
 
-    func startObserving(volumeEnabled: Bool, brightnessEnabled: Bool, keyboardBacklightEnabled: Bool) {
-        observing = true
-        requestedControls = (volumeEnabled, brightnessEnabled, keyboardBacklightEnabled)
-        let owners = UtilityWorkspace.shared.controlOwners
-        let volumeEnabled = volumeEnabled && !owners.contains("volumeKeys") && !owners.contains("notch")
-        let brightnessEnabled = brightnessEnabled && !owners.contains("brightness") && !owners.contains("notch")
-        let keyboardBacklightEnabled = keyboardBacklightEnabled && !owners.contains("brightness") && !owners.contains("notch")
-        self.volumeEnabled = volumeEnabled
-        self.brightnessEnabled = brightnessEnabled
-        self.keyboardBacklightEnabled = keyboardBacklightEnabled
-
-        volumeController.onVolumeChange = { [weak self] volume, muted in
-            guard let self, self.volumeEnabled else { return }
-            let value = muted ? 0 : volume
-            Task { @MainActor in
-                self.sendVolumeNotification(value: value, isMuted: muted)
+        if oldControls.contains(.volume) != controls.contains(.volume) {
+            if controls.contains(.volume) {
+                volumeController.onVolumeChange = { [weak self] volume, muted in
+                    self?.sendVolumeNotification(value: muted ? 0 : volume, isMuted: muted)
+                }
+                volumeController.onRouteChange = { [weak self] in
+                    guard let self, self.volumeEnabled else { return }
+                    let muted = self.volumeController.isMuted
+                    self.sendVolumeNotification(value: muted ? 0 : self.volumeController.currentVolume, isMuted: muted)
+                }
+                volumeController.start()
+            } else {
+                volumeController.onVolumeChange = nil
+                volumeController.onRouteChange = nil
             }
         }
-        volumeController.onRouteChange = { [weak self] in
-            guard let self, self.volumeEnabled else { return }
-            let muted = self.volumeController.isMuted
-            Task { @MainActor in
-                self.sendVolumeNotification(value: muted ? 0 : self.volumeController.currentVolume, isMuted: muted)
+
+        if oldControls.contains(.brightness) != controls.contains(.brightness) {
+            if controls.contains(.brightness) {
+                brightnessController.onBrightnessChange = { [weak self] value in
+                    guard let self, self.brightnessEnabled else { return }
+                    MainActor.assumeIsolated { SystemHUDManager.shared.present(type: .brightness, value: CGFloat(value)) }
+                }
+                brightnessController.start()
+            } else {
+                // Accepted brightness changes and independent Dashboard/preview
+                // users still own their own controller work.
+                brightnessController.onBrightnessChange = nil
             }
         }
-        volumeController.start()
 
-        brightnessController.onBrightnessChange = { [weak self] brightness in
-            guard let self, self.brightnessEnabled else { return }
-            self.sendBrightnessNotification(value: brightness)
-        }
-        brightnessController.start()
-
-        configureKeyboardBacklightCallback()
-        if keyboardBacklightEnabled {
-            keyboardBacklightController.start()
-        }
-
-        mediaKeyInterceptor.delegate = self
-        let tapStarted = mediaKeyInterceptor.start()
-        if !tapStarted {
-            NSLog("⚠️ Media key interception unavailable; system HUD will remain visible")
-        }
-        mediaKeyInterceptor.configuration = MediaKeyConfiguration(
-            interceptVolume: volumeEnabled,
-            interceptBrightness: brightnessEnabled,
-            interceptCommandModifiedBrightness: keyboardBacklightEnabled,
-            interceptFunctionKeysAsBrightness: Defaults[.treatFunctionKeysAsBrightness],
-            interceptFunctionKeysAsVolume: Defaults[.treatFunctionKeysAsVolume]
-        )
-    }
-
-    func update(volumeEnabled: Bool, brightnessEnabled: Bool, keyboardBacklightEnabled: Bool) {
-        requestedControls = (volumeEnabled, brightnessEnabled, keyboardBacklightEnabled)
-        let owners = UtilityWorkspace.shared.controlOwners
-        let volumeEnabled = volumeEnabled && !owners.contains("volumeKeys") && !owners.contains("notch")
-        let brightnessEnabled = brightnessEnabled && !owners.contains("brightness") && !owners.contains("notch")
-        let keyboardBacklightEnabled = keyboardBacklightEnabled && !owners.contains("brightness") && !owners.contains("notch")
-        self.volumeEnabled = volumeEnabled
-        self.brightnessEnabled = brightnessEnabled
-        let backlightStateChanged = self.keyboardBacklightEnabled != keyboardBacklightEnabled
-        self.keyboardBacklightEnabled = keyboardBacklightEnabled
-
-        if keyboardBacklightEnabled {
-            configureKeyboardBacklightCallback()
-        } else {
-            keyboardBacklightController.onBacklightChange = nil
-        }
-
-        if backlightStateChanged {
-            if keyboardBacklightEnabled {
+        if oldControls.contains(.backlight) != controls.contains(.backlight) {
+            if controls.contains(.backlight) {
+                keyboardBacklightController.onBacklightChange = { [weak self] value in
+                    guard let self, self.keyboardBacklightEnabled else { return }
+                    MainActor.assumeIsolated { SystemHUDManager.shared.present(type: .backlight, value: CGFloat(value)) }
+                }
                 keyboardBacklightController.start()
             } else {
-                keyboardBacklightController.stop()
+                keyboardBacklightController.onBacklightChange = nil
             }
         }
 
-        mediaKeyInterceptor.configuration = MediaKeyConfiguration(
-            interceptVolume: volumeEnabled,
-            interceptBrightness: brightnessEnabled,
-            interceptCommandModifiedBrightness: keyboardBacklightEnabled,
-            interceptFunctionKeysAsBrightness: Defaults[.treatFunctionKeysAsBrightness],
-            interceptFunctionKeysAsVolume: Defaults[.treatFunctionKeysAsVolume]
-        )
+        if controls.isEmpty {
+            mediaKeyInterceptor.delegate = nil
+            mediaKeyInterceptor.configuration = .disabled
+            mediaKeyInterceptor.stop()
+        } else {
+            mediaKeyInterceptor.delegate = self
+            mediaKeyInterceptor.configuration = MediaKeyConfiguration(
+                interceptVolume: controls.contains(.volume),
+                interceptBrightness: controls.contains(.brightness),
+                interceptCommandModifiedBrightness: controls.contains(.backlight),
+                interceptFunctionKeysAsBrightness: Defaults[.treatFunctionKeysAsBrightness],
+                interceptFunctionKeysAsVolume: Defaults[.treatFunctionKeysAsVolume]
+            )
+            if oldControls.isEmpty { mediaKeyInterceptor.start() }
+        }
     }
 
     func stopObserving() {
-        observing = false
-        mediaKeyInterceptor.stop()
-        mediaKeyInterceptor.delegate = nil
-
-        volumeController.stop()
-        volumeController.onVolumeChange = nil
-        volumeController.onRouteChange = nil
-
-        brightnessController.stop()
-        brightnessController.onBrightnessChange = nil
-
-        keyboardBacklightController.stop()
-        keyboardBacklightController.onBacklightChange = nil
+        invalidatePendingDeliveries()
+        update(controls: [])
     }
 
     // MARK: - MediaKeyInterceptorDelegate
@@ -191,12 +148,12 @@ final class SystemChangesObserver: MediaKeyInterceptorDelegate {
         SystemOSDManager.suppressNativeOSDNow()
         
         // Elastic Limit Detection (Vertical HUD)
-        if Defaults[.enableVerticalHUD] {
+        if HUDControlPlan.Presentation.current == .vertical {
             let volume = volumeController.currentVolume
             if direction == .up && volume >= 0.99 {
-                Task { @MainActor in VerticalHUDWindowManager.shared.triggerBump(direction: 1) }
+                MainActor.assumeIsolated { VerticalHUDWindowManager.shared.triggerBump(direction: 1) }
             } else if direction == .down && volume <= 0.01 {
-                Task { @MainActor in VerticalHUDWindowManager.shared.triggerBump(direction: -1) }
+                MainActor.assumeIsolated { VerticalHUDWindowManager.shared.triggerBump(direction: -1) }
             }
         }
         
@@ -224,20 +181,20 @@ final class SystemChangesObserver: MediaKeyInterceptorDelegate {
         SystemOSDManager.suppressNativeOSDNow()
 
         // Elastic Limit Detection (Vertical HUD)
-        if Defaults[.enableVerticalHUD] {
+        if HUDControlPlan.Presentation.current == .vertical {
             if isBacklight {
                 let brightness = keyboardBacklightController.currentLevel
                 if direction == .up && brightness >= 0.99 {
-                    Task { @MainActor in VerticalHUDWindowManager.shared.triggerBump(direction: 1) }
+                    MainActor.assumeIsolated { VerticalHUDWindowManager.shared.triggerBump(direction: 1) }
                 } else if direction == .down && brightness <= 0.01 {
-                    Task { @MainActor in VerticalHUDWindowManager.shared.triggerBump(direction: -1) }
+                    MainActor.assumeIsolated { VerticalHUDWindowManager.shared.triggerBump(direction: -1) }
                 }
             } else {
                 let brightness = brightnessController.currentBrightness
                 if direction == .up && brightness >= 0.99 {
-                    Task { @MainActor in VerticalHUDWindowManager.shared.triggerBump(direction: 1) }
+                    MainActor.assumeIsolated { VerticalHUDWindowManager.shared.triggerBump(direction: 1) }
                 } else if direction == .down && brightness <= 0.01 {
-                    Task { @MainActor in VerticalHUDWindowManager.shared.triggerBump(direction: -1) }
+                    MainActor.assumeIsolated { VerticalHUDWindowManager.shared.triggerBump(direction: -1) }
                 }
             }
         }
@@ -253,49 +210,11 @@ final class SystemChangesObserver: MediaKeyInterceptorDelegate {
 
     // MARK: - HUD Dispatch
 
-    @MainActor
     private func sendVolumeNotification(value: Float, isMuted: Bool) {
-        // The CoreAudio volume write wakes the native OSD; suppress it immediately
-        // so only our notch HUD shows (parity with brightness). No-op unless active.
-        SystemOSDManager.suppressNativeOSDNow()
-
-        if HUDSuppressionCoordinator.shared.shouldSuppressVolumeHUD {
-            return
-        }
-
-        // Send to Circular HUD if enabled
-        if Defaults[.enableCircularHUD] && Defaults[.enableVolumeHUD] {
-            Task { @MainActor in
-                CircularHUDWindowManager.shared.show(type: .volume, value: CGFloat(value))
-            }
-            return
-        }
-        
-        // Send to Vertical HUD if enabled
-        if Defaults[.enableVerticalHUD] && Defaults[.enableVolumeHUD] {
-            let icon = resolvedVolumeIcon(isMuted: isMuted)
-            VerticalHUDWindowManager.shared.show(type: .volume, value: CGFloat(value), icon: icon)
-            return
-        }
-        
-        // Send to custom OSD if enabled
-        if Defaults[.enableCustomOSD] && Defaults[.enableOSDVolume] {
-            Task { @MainActor in
-                CustomOSDWindowManager.shared.showVolume(value: CGFloat(value))
-            }
-        }
-        
-        // Send to notch HUD if enabled and OSD/Vertical/Circular is not enabled
-        if Defaults[.enableSystemHUD] && !Defaults[.enableCustomOSD] && !Defaults[.enableVerticalHUD] && !Defaults[.enableCircularHUD] && Defaults[.enableVolumeHUD] {
-            Task { @MainActor in
-                guard let coordinator else { return }
-                coordinator.toggleSneakPeek(
-                    status: true,
-                    type: .volume,
-                    value: CGFloat(value),
-                    icon: ""
-                )
-            }
+        guard volumeEnabled, !HUDSuppressionCoordinator.shared.shouldSuppressVolumeHUD else { return }
+        MainActor.assumeIsolated {
+            let icon = HUDControlPlan.Presentation.current == .vertical ? resolvedVolumeIcon(isMuted: isMuted) : ""
+            SystemHUDManager.shared.present(type: .volume, value: CGFloat(value), icon: icon)
         }
     }
 
@@ -308,98 +227,7 @@ final class SystemChangesObserver: MediaKeyInterceptorDelegate {
         return icon
     }
 
-    private func sendBrightnessNotification(value: Float) {
-        // Suppress the native OSD immediately when brightness changes
-        SystemOSDManager.suppressNativeOSDNow()
 
-        // Send to Circular HUD if enabled
-        if Defaults[.enableCircularHUD] && Defaults[.enableBrightnessHUD] {
-            Task { @MainActor in
-                CircularHUDWindowManager.shared.show(type: .brightness, value: CGFloat(value))
-            }
-            return
-        }
-        
-        // Send to Vertical HUD if enabled
-        if Defaults[.enableVerticalHUD] && Defaults[.enableBrightnessHUD] {
-            Task { @MainActor in
-                VerticalHUDWindowManager.shared.show(type: .brightness, value: CGFloat(value))
-            }
-            return
-        }
-
-        // Send to custom OSD if enabled
-        if Defaults[.enableCustomOSD] && Defaults[.enableOSDBrightness] {
-            Task { @MainActor in
-                CustomOSDWindowManager.shared.showBrightness(value: CGFloat(value))
-            }
-        }
-        
-        // Send to notch HUD if enabled and OSD/Vertical/Circular is not enabled
-        if Defaults[.enableSystemHUD] && !Defaults[.enableCustomOSD] && !Defaults[.enableVerticalHUD] && !Defaults[.enableCircularHUD] && Defaults[.enableBrightnessHUD] {
-            Task { @MainActor in
-                guard let coordinator else { return }
-                coordinator.toggleSneakPeek(
-                    status: true,
-                    type: .brightness,
-                    value: CGFloat(value),
-                    icon: ""
-                )
-            }
-        }
-    }
-
-    private func sendKeyboardBacklightNotification(value: Float) {
-        // Suppress the native OSD immediately when keyboard backlight changes
-        SystemOSDManager.suppressNativeOSDNow()
-
-        // Send to Circular HUD if enabled
-        if Defaults[.enableCircularHUD] && Defaults[.enableKeyboardBacklightHUD] {
-            Task { @MainActor in
-                CircularHUDWindowManager.shared.show(type: .backlight, value: CGFloat(value))
-            }
-            return
-        }
-        
-        // Send to Vertical HUD if enabled
-        if Defaults[.enableVerticalHUD] && Defaults[.enableKeyboardBacklightHUD] {
-            Task { @MainActor in
-                VerticalHUDWindowManager.shared.show(type: .backlight, value: CGFloat(value))
-            }
-            return
-        }
-
-        // Send to custom OSD if enabled
-        if Defaults[.enableCustomOSD] && Defaults[.enableOSDKeyboardBacklight] {
-            Task { @MainActor in
-                CustomOSDWindowManager.shared.showBacklight(value: CGFloat(value))
-            }
-        }
-        
-        // Send to notch HUD if enabled and OSD/Vertical/Circular is not enabled
-        if Defaults[.enableSystemHUD] && !Defaults[.enableCustomOSD] && !Defaults[.enableVerticalHUD] && !Defaults[.enableCircularHUD] && Defaults[.enableKeyboardBacklightHUD] {
-            Task { @MainActor in
-                guard let coordinator else { return }
-                coordinator.toggleSneakPeek(
-                    status: true,
-                    type: .backlight,
-                    value: CGFloat(value),
-                    icon: ""
-                )
-            }
-        }
-    }
-
-    private func configureKeyboardBacklightCallback() {
-        if keyboardBacklightEnabled {
-            keyboardBacklightController.onBacklightChange = { [weak self] value in
-                guard let self, self.keyboardBacklightEnabled else { return }
-                self.sendKeyboardBacklightNotification(value: value)
-            }
-        } else {
-            keyboardBacklightController.onBacklightChange = nil
-        }
-    }
 }
 
 private extension SystemChangesObserver {

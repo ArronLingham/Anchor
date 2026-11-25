@@ -17,395 +17,221 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-import Foundation
-import Defaults
+import AnchorUtilities
+import AppKit
 import Combine
+import Defaults
 
-class SystemHUDManager {
+struct HUDControls: OptionSet {
+    let rawValue: Int
+    static let volume = Self(rawValue: 1 << 0)
+    static let brightness = Self(rawValue: 1 << 1)
+    static let backlight = Self(rawValue: 1 << 2)
+    static let all: Self = [.volume, .brightness, .backlight]
+}
+
+struct HUDControlPlan: Equatable {
+    enum Presentation: Equatable {
+        case notch, floating, vertical, circular
+
+        static var current: Self? {
+            if Defaults[.enableCircularHUD] { return .circular }
+            if Defaults[.enableVerticalHUD] { return .vertical }
+            if Defaults[.enableCustomOSD] { return .floating }
+            if Defaults[.enableSystemHUD] { return .notch }
+            return nil
+        }
+
+        var controls: HUDControls {
+            let floating = self == .floating
+            var controls: HUDControls = []
+            if floating ? Defaults[.enableOSDVolume] : Defaults[.enableVolumeHUD] {
+                controls.insert(.volume)
+            }
+            if floating ? Defaults[.enableOSDBrightness] : Defaults[.enableBrightnessHUD] {
+                controls.insert(.brightness)
+            }
+            if floating ? Defaults[.enableOSDKeyboardBacklight] : Defaults[.enableKeyboardBacklightHUD] {
+                controls.insert(.backlight)
+            }
+            return controls
+        }
+    }
+
+    let presentation: Presentation?
+    let displayed: HUDControls
+    let local: HUDControls
+
+    init(presentation: Presentation?, displayed: HUDControls, externalDisplay: Bool,
+         externalVolume: Bool, utilityOwners: Set<String>) {
+        self.presentation = presentation
+        self.displayed = presentation == nil ? [] : displayed
+        var local = self.displayed
+        if externalDisplay || utilityOwners.contains("brightness") { local.remove([.brightness, .backlight]) }
+        if externalVolume || utilityOwners.contains("volumeKeys") { local.remove(.volume) }
+        if utilityOwners.contains("notch") { local = [] }
+        self.local = local
+    }
+
+    func suppressesNativeOSD(tapAvailable: Bool) -> Bool {
+        // OSDUIHelper services all three controls. A partial replacement must
+        // leave it running so every control outside Anchor can still show feedback.
+        tapAvailable && local == .all
+    }
+}
+
+@MainActor
+final class SystemHUDManager {
     static let shared = SystemHUDManager()
-    
+
     private var changesObserver: SystemChangesObserver?
     private weak var coordinator: AnchorViewCoordinator?
-    private var isSetupComplete = false
-    private var isSystemOperationInProgress = false
-    
-    private init() {
-        // Set up observer for settings changes
-        setupSettingsObserver()
-    }
-    
-    private func setupSettingsObserver() {
-        // Observe Vertical HUD toggle
-        Defaults.publisher(.enableVerticalHUD, options: []).sink { [weak self] change in
-            guard let self = self, self.isSetupComplete else {
-                return
-            }
-            Task { @MainActor in
-                if change.newValue {
-                    // Always restart to ensure correct flags are applied
-                    await self.startSystemObserver()
-                } else if Defaults[.enableSystemHUD] || Defaults[.enableCustomOSD] || Defaults[.enableCircularHUD] {
-                    // Restart to apply flags for the remaining active HUD
-                    await self.startSystemObserver()
-                } else {
-                    await self.stopSystemObserver()
-                }
-            }
-        }.store(in: &cancellables)
-        
-        // Observe master HUD toggle
-        Defaults.publisher(.enableSystemHUD, options: []).sink { [weak self] change in
-            guard let self = self, self.isSetupComplete else {
-                return
-            }
-            Task { @MainActor in
-                if change.newValue && !Defaults[.enableCustomOSD] && !Defaults[.enableVerticalHUD] && !Defaults[.enableCircularHUD] {
-                     // Always restart to ensure correct flags are applied
-                    await self.startSystemObserver()
-                } else if !Defaults[.enableCustomOSD] && !Defaults[.enableVerticalHUD] && !Defaults[.enableCircularHUD] {
-                    // Only stop if others are also disabled
-                    await self.stopSystemObserver()
-                } else if change.newValue == false && (Defaults[.enableCustomOSD] || Defaults[.enableVerticalHUD] || Defaults[.enableCircularHUD]) {
-                     // If disabling system HUD but others are active, restart to update flags
-                     await self.startSystemObserver()
-                }
-            }
-        }.store(in: &cancellables)
-        
-        // Observe OSD toggle
-        Defaults.publisher(.enableCustomOSD, options: []).sink { [weak self] change in
-            guard let self = self, self.isSetupComplete else {
-                return
-            }
-            Task { @MainActor in
-                if change.newValue {
-                     // Always restart to ensure correct flags are applied
-                    await self.startSystemObserver()
-                } else if Defaults[.enableSystemHUD] || Defaults[.enableVerticalHUD] || Defaults[.enableCircularHUD] {
-                    // Restart to apply flags for the remaining active HUD
-                    await self.startSystemObserver()
-                } else {
-                    await self.stopSystemObserver()
-                }
-            }
-        }.store(in: &cancellables)
-        
-        // Observe Circular HUD toggle
-        Defaults.publisher(.enableCircularHUD, options: []).sink { [weak self] change in
-            guard let self = self, self.isSetupComplete else {
-                return
-            }
-            Task { @MainActor in
-                if change.newValue {
-                     // Always restart to ensure correct flags are applied
-                    await self.startSystemObserver()
-                } else if Defaults[.enableSystemHUD] || Defaults[.enableCustomOSD] || Defaults[.enableVerticalHUD] {
-                    // Restart to apply flags for the remaining active HUD
-                    await self.startSystemObserver()
-                } else {
-                    await self.stopSystemObserver()
-                }
-            }
-        }.store(in: &cancellables)
-        
-        // Observe individual HUD toggles
-        Defaults.publisher(.enableVolumeHUD, options: []).sink { [weak self] _ in
-            guard let self = self, self.isSetupComplete, self.requiresSystemToggleHandling else {
-                return
-            }
-            let flags = self.resolvedControlFlags()
-            self.changesObserver?.update(
-                volumeEnabled: flags.volume,
-                brightnessEnabled: flags.brightness,
-                keyboardBacklightEnabled: flags.backlight
-            )
-            self.applyOSDSuppression(flags)
-        }.store(in: &cancellables)
-        
-        Defaults.publisher(.treatFunctionKeysAsBrightness, options: []).sink { [weak self] _ in
-            guard let self = self, self.isSetupComplete else { return }
-            let flags = self.resolvedControlFlags()
-            self.changesObserver?.update(
-                volumeEnabled: flags.volume,
-                brightnessEnabled: flags.brightness,
-                keyboardBacklightEnabled: flags.backlight
-            )
-            self.applyOSDSuppression(flags)
-        }.store(in: &cancellables)
-        
-                Defaults.publisher(.treatFunctionKeysAsVolume, options: []).sink { [weak self] _ in
-            guard let self = self, self.isSetupComplete else { return }
-            let flags = self.resolvedControlFlags()
-            self.changesObserver?.update(
-                volumeEnabled: flags.volume,
-                brightnessEnabled: flags.brightness,
-                keyboardBacklightEnabled: flags.backlight
-            )
-            self.applyOSDSuppression(flags)
-        }.store(in: &cancellables)
-
-        Defaults.publisher(.enableBrightnessHUD, options: []).sink { [weak self] _ in
-            guard let self = self, self.isSetupComplete, self.requiresSystemToggleHandling else {
-                return
-            }
-            let flags = self.resolvedControlFlags()
-            self.changesObserver?.update(
-                volumeEnabled: flags.volume,
-                brightnessEnabled: flags.brightness,
-                keyboardBacklightEnabled: flags.backlight
-            )
-            self.applyOSDSuppression(flags)
-        }.store(in: &cancellables)
-
-        Defaults.publisher(.enableKeyboardBacklightHUD, options: []).sink { [weak self] _ in
-            guard let self = self, self.isSetupComplete, self.requiresSystemToggleHandling else {
-                return
-            }
-            let flags = self.resolvedControlFlags()
-            self.changesObserver?.update(
-                volumeEnabled: flags.volume,
-                brightnessEnabled: flags.brightness,
-                keyboardBacklightEnabled: flags.backlight
-            )
-            self.applyOSDSuppression(flags)
-        }.store(in: &cancellables)
-        
-        // Observe individual OSD toggles
-        Defaults.publisher(.enableOSDVolume, options: []).sink { [weak self] _ in
-            guard let self = self, self.isSetupComplete, Defaults[.enableCustomOSD] else {
-                return
-            }
-            let flags = self.resolvedControlFlags()
-            self.changesObserver?.update(
-                volumeEnabled: flags.volume,
-                brightnessEnabled: flags.brightness,
-                keyboardBacklightEnabled: flags.backlight
-            )
-            self.applyOSDSuppression(flags)
-        }.store(in: &cancellables)
-        
-        Defaults.publisher(.enableOSDBrightness, options: []).sink { [weak self] _ in
-            guard let self = self, self.isSetupComplete, Defaults[.enableCustomOSD] else {
-                return
-            }
-            let flags = self.resolvedControlFlags()
-            self.changesObserver?.update(
-                volumeEnabled: flags.volume,
-                brightnessEnabled: flags.brightness,
-                keyboardBacklightEnabled: flags.backlight
-            )
-            self.applyOSDSuppression(flags)
-        }.store(in: &cancellables)
-        
-        Defaults.publisher(.enableOSDKeyboardBacklight, options: []).sink { [weak self] _ in
-            guard let self = self, self.isSetupComplete, Defaults[.enableCustomOSD] else {
-                return
-            }
-            let flags = self.resolvedControlFlags()
-            self.changesObserver?.update(
-                volumeEnabled: flags.volume,
-                brightnessEnabled: flags.brightness,
-                keyboardBacklightEnabled: flags.backlight
-            )
-            self.applyOSDSuppression(flags)
-        }.store(in: &cancellables)
-
-        // Restart observer when third-party DDC integration state changes.
-        Defaults.publisher(.enableThirdPartyDDCIntegration, options: []).sink { [weak self] _ in
-            guard let self = self, self.isSetupComplete else { return }
-            Task { @MainActor in
-                await self.startSystemObserver()
-            }
-        }.store(in: &cancellables)
-
-        Defaults.publisher(.thirdPartyDDCProvider, options: []).sink { [weak self] _ in
-            guard let self = self, self.isSetupComplete else { return }
-            Task { @MainActor in
-                await self.startSystemObserver()
-            }
-        }.store(in: &cancellables)
-
-        Defaults.publisher(.enableExternalVolumeControlListener, options: []).sink { [weak self] _ in
-            guard let self = self, self.isSetupComplete else { return }
-            Task { @MainActor in
-                await self.startSystemObserver()
-            }
-        }.store(in: &cancellables)
-    }
-    
+    private var appliedPlan: HUDControlPlan?
+    private var suppressionEnabled: Bool?
+    private var presentationGeneration = UUID()
+    private var reconciliation: Task<Void, Never>?
     private var cancellables = Set<AnyCancellable>()
 
-    private var requiresSystemToggleHandling: Bool {
-        Defaults[.enableSystemHUD] || Defaults[.enableVerticalHUD] || Defaults[.enableCircularHUD]
-    }
-    
-    /// Public property to check if system operations are in progress
-    var isOperationInProgress: Bool {
-        return isSystemOperationInProgress
-    }
-    
+    private init() {}
+
     func setup(coordinator: AnchorViewCoordinator) {
         self.coordinator = coordinator
+        guard cancellables.isEmpty else { return }
 
-        // Initialize OSD manager
-        Task { @MainActor in
-            CustomOSDWindowManager.shared.initialize()
+        let keys: [Defaults.Key<Bool>] = [
+            .enableSystemHUD, .enableCustomOSD, .enableVerticalHUD, .enableCircularHUD,
+            .enableVolumeHUD, .enableBrightnessHUD, .enableKeyboardBacklightHUD,
+            .enableOSDVolume, .enableOSDBrightness, .enableOSDKeyboardBacklight,
+            .treatFunctionKeysAsVolume, .treatFunctionKeysAsBrightness,
+            .enableThirdPartyDDCIntegration, .enableExternalVolumeControlListener
+        ]
+        for key in keys {
+            Defaults.publisher(key, options: []).sink { [weak self] _ in self?.requestReconciliation() }
+                .store(in: &cancellables)
         }
-
-        // Re-resolve flags when a DDC helper starts/stops so brightness handling
-        // recovers if the helper is quit while integration stays enabled.
-        Task { @MainActor in
-            Publishers.Merge(
-                BetterDisplayManager.shared.$isRunning.removeDuplicates().map { _ in () },
-                LunarManager.shared.$isRunning.removeDuplicates().map { _ in () }
-            )
-            .sink { [weak self] in
-                guard let self, self.isSetupComplete,
-                      Defaults[.enableThirdPartyDDCIntegration] else { return }
-                Task { @MainActor in
-                    await self.startSystemObserver()
-                }
-            }
-            .store(in: &self.cancellables)
-        }
-        
-        // Start observer if any HUD/OSD is enabled
-        if Defaults[.enableSystemHUD] || Defaults[.enableCustomOSD] || Defaults[.enableVerticalHUD] || Defaults[.enableCircularHUD] {
-            Task { @MainActor in
-                await startSystemObserver()
-                self.isSetupComplete = true
-            }
-        } else {
-            isSetupComplete = true
-        }
-    }
-    
-    /// Resolves the effective control flags, applying third-party DDC overrides.
-    /// Suppresses the native OSD only while Anchor is actually drawing a
-    /// replacement for it.
-    ///
-    /// Called from every path that resolves the control flags, so the two can
-    /// never disagree. The failure this prevents is silent and total: an app
-    /// that suppresses the system HUD and then declines to draw its own leaves
-    /// the machine with no volume or brightness feedback whatsoever.
-    private func applyOSDSuppression(_ flags: (volume: Bool, brightness: Bool, backlight: Bool)) {
-        if flags.volume || flags.brightness || flags.backlight {
-            SystemOSDManager.disableSystemHUD()
-        } else {
-            SystemOSDManager.enableSystemHUD()
-        }
-    }
-
-    private func resolvedControlFlags() -> (volume: Bool, brightness: Bool, backlight: Bool) {
-        var volumeEnabled: Bool
-        var brightnessEnabled: Bool
-        var keyboardBacklightEnabled: Bool
-
-        if Defaults[.enableCircularHUD] || Defaults[.enableVerticalHUD] {
-            volumeEnabled = Defaults[.enableVolumeHUD]
-            brightnessEnabled = Defaults[.enableBrightnessHUD]
-            keyboardBacklightEnabled = Defaults[.enableKeyboardBacklightHUD]
-        } else if Defaults[.enableCustomOSD] {
-            volumeEnabled = Defaults[.enableOSDVolume]
-            brightnessEnabled = Defaults[.enableOSDBrightness]
-            keyboardBacklightEnabled = Defaults[.enableOSDKeyboardBacklight]
-        } else {
-            volumeEnabled = Defaults[.enableVolumeHUD]
-            brightnessEnabled = Defaults[.enableBrightnessHUD]
-            keyboardBacklightEnabled = Defaults[.enableKeyboardBacklightHUD]
-        }
-
-        // Surrender brightness to the DDC helper only when it is actually running;
-        // otherwise keep handling it ourselves so HUDs still show (and the native
-        // OSD isn't left permanently suppressed) when the helper has been quit.
-        let ddcProviderRunning: Bool = {
-            switch Defaults[.thirdPartyDDCProvider] {
-            case .betterDisplay: return BetterDisplayManager.checkRunning()
-            case .lunar: return LunarManager.checkRunning()
-            }
-        }()
-
-        if Defaults[.enableThirdPartyDDCIntegration] && ddcProviderRunning {
-            brightnessEnabled = false
-            keyboardBacklightEnabled = false
-
-            // Optional: route volume exclusively from the selected external provider.
-            if Defaults[.enableExternalVolumeControlListener] {
-                volumeEnabled = false
-            }
-        }
-
-        return (volumeEnabled, brightnessEnabled, keyboardBacklightEnabled)
-    }
-
-    @MainActor
-    private func startSystemObserver() async {
-        guard let coordinator = coordinator, !isSystemOperationInProgress else { return }
-        
-        isSystemOperationInProgress = true
-
-        // Stop any existing observer directly (cannot call stopSystemObserver()
-        // because isSystemOperationInProgress is already true).
-        changesObserver?.stopObserving()
-        changesObserver = nil
-        
-        changesObserver = SystemChangesObserver(coordinator: coordinator)
-
-        let flags = resolvedControlFlags()
-        changesObserver?.startObserving(
-            volumeEnabled: flags.volume,
-            brightnessEnabled: flags.brightness,
-            keyboardBacklightEnabled: flags.backlight
+        Defaults.publisher(.thirdPartyDDCProvider, options: [])
+            .sink { [weak self] _ in self?.requestReconciliation() }.store(in: &cancellables)
+        Publishers.Merge(
+            BetterDisplayManager.shared.$isRunning.removeDuplicates().dropFirst(),
+            LunarManager.shared.$isRunning.removeDuplicates().dropFirst()
         )
-        
-        // Derive suppression from the resolved flags rather than forcing it on.
-        //
-        // This used to be an unconditional `disableSystemHUD()`, and it is why
-        // turning the HUDs off in Settings did nothing: the per-control
-        // publishers below only ever called `changesObserver?.update(...)`, so
-        // nothing re-derived suppression. Switch all three off and Anchor
-        // stopped drawing a HUD while OSDUIHelper stayed suspended — leaving no
-        // HUD at all, which reads as "the setting is ignored".
-        //
-        // Suppression is only ever correct when Anchor is actually replacing
-        // something, so it is now a function of that.
-        applyOSDSuppression(flags)
-        
-        print("System observer started (HUD: \(Defaults[.enableSystemHUD]), OSD: \(Defaults[.enableCustomOSD]), Vertical: \(Defaults[.enableVerticalHUD]), ThirdPartyDDC: \(Defaults[.enableThirdPartyDDCIntegration]), Provider: \(Defaults[.thirdPartyDDCProvider].displayName), ExternalVolumeListener: \(Defaults[.enableExternalVolumeControlListener]))")
-        isSystemOperationInProgress = false
+        .sink { [weak self] _ in
+            guard Defaults[.enableThirdPartyDDCIntegration] else { return }
+            self?.requestReconciliation()
+        }
+        .store(in: &cancellables)
+        NotificationCenter.default.publisher(for: .utilityControlOwnershipChanged)
+            .sink { [weak self] _ in self?.requestReconciliation() }.store(in: &cancellables)
+        NotificationCenter.default.publisher(for: .mediaKeyInterceptionAvailabilityDidChange)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in self?.reconcileSuppression() }.store(in: &cancellables)
+        reconcile()
     }
-    
-    @MainActor
-    private func stopSystemObserver() async {
-        guard !isSystemOperationInProgress else { return }
-        
-        isSystemOperationInProgress = true
-        changesObserver?.stopObserving()
-        changesObserver = nil
-        
-        // Re-enable system HUD when we stop observing
-        SystemOSDManager.enableSystemHUD()
-        
-        print("System observer stopped")
-        isSystemOperationInProgress = false
+
+    nonisolated private func requestReconciliation() {
+        if Thread.isMainThread {
+            MainActor.assumeIsolated { scheduleReconciliation() }
+        } else {
+            DispatchQueue.main.async { [weak self] in self?.scheduleReconciliation() }
+        }
     }
-    
-    deinit {
-        cancellables.removeAll()
-        // A Task spawned here outlives `deinit`, so calling an instance method
-        // from it references an object that is already gone. Capture the
-        // observer by value instead and make the static call directly — what
-        // actually matters is that enableSystemHUD() runs, because leaving
-        // OSDUIHelper SIGSTOP'd kills the volume and brightness HUD
-        // system-wide until the next launch.
-        //
-        // applicationWillTerminate does this synchronously on a graceful quit;
-        // this is the safety net for any other teardown.
-        let observer = changesObserver
-        changesObserver = nil
-        Task { @MainActor in
-            observer?.stopObserving()
-            SystemOSDManager.enableSystemHUD()
+
+    private func scheduleReconciliation() {
+        presentationGeneration = UUID()
+        changesObserver?.invalidatePendingDeliveries()
+        guard reconciliation == nil else { return }
+        reconciliation = Task { [weak self] in
+            guard let self else { return }
+            self.reconciliation = nil
+            self.reconcile()
+        }
+    }
+
+    private func reconcile() {
+        guard let coordinator else { return }
+        let presentation = HUDControlPlan.Presentation.current
+        let displayed = presentation?.controls ?? []
+        let externalDisplay: Bool
+        if !displayed.isEmpty, Defaults[.enableThirdPartyDDCIntegration] {
+            switch Defaults[.thirdPartyDDCProvider] {
+            case .betterDisplay: externalDisplay = BetterDisplayManager.checkRunning()
+            case .lunar: externalDisplay = LunarManager.checkRunning()
+            }
+        } else {
+            externalDisplay = false
+        }
+        let plan = HUDControlPlan(presentation: presentation, displayed: displayed,
+                                  externalDisplay: externalDisplay,
+                                  externalVolume: externalDisplay && Defaults[.enableExternalVolumeControlListener],
+                                  utilityOwners: UtilityWorkspace.shared.controlOwners)
+        if let previous = appliedPlan, let style = previous.presentation {
+            let retired = previous.presentation == plan.presentation
+                ? previous.displayed.subtracting(plan.displayed) : previous.displayed
+            if !retired.isEmpty { dismiss(retired, style: style, coordinator: coordinator) }
+        }
+        appliedPlan = plan
+
+        if plan.local.isEmpty {
+            changesObserver?.stopObserving()
+            changesObserver = nil
+        } else {
+            if changesObserver == nil {
+                changesObserver = SystemChangesObserver()
+            }
+            changesObserver?.update(controls: plan.local)
+        }
+        reconcileSuppression()
+    }
+
+    private func reconcileSuppression() {
+        let wanted = appliedPlan?.suppressesNativeOSD(
+            tapAvailable: changesObserver?.isInterceptionAvailable ?? false) ?? false
+        guard wanted != suppressionEnabled else { return }
+        suppressionEnabled = wanted
+        if wanted { SystemOSDManager.disableSystemHUD() }
+        else { SystemOSDManager.enableSystemHUD() }
+    }
+
+    private func dismiss(_ controls: HUDControls, style: HUDControlPlan.Presentation, coordinator: AnchorViewCoordinator) {
+        switch style {
+        case .notch:
+            guard coordinator.sneakPeek.show, !controls.intersection(Self.control(for: coordinator.sneakPeek.type)).isEmpty else { return }
+            let type = coordinator.sneakPeek.type
+            coordinator.toggleSneakPeek(status: false, type: type) { [weak coordinator] in
+                coordinator?.sneakPeek.type == type
+            }
+        case .floating: CustomOSDWindowManager.shared.dismiss(controls)
+        case .vertical: VerticalHUDWindowManager.shared.dismiss(controls)
+        case .circular: CircularHUDWindowManager.shared.dismiss(controls)
+        }
+    }
+
+    static func control(for type: SneakContentType) -> HUDControls {
+        switch type {
+        case .volume: return .volume
+        case .brightness, .contrast: return .brightness
+        case .backlight: return .backlight
+        default: return []
+        }
+    }
+
+    func present(type: SneakContentType, value: CGFloat, icon: String = "", onScreen screen: NSScreen? = nil) {
+        let control = Self.control(for: type)
+        guard !control.isEmpty, let style = HUDControlPlan.Presentation.current, style.controls.contains(control)
+        else { return }
+        if type == .volume, HUDSuppressionCoordinator.shared.shouldSuppressVolumeHUD { return }
+        switch style {
+        case .notch:
+            let generation = presentationGeneration
+            coordinator?.toggleSneakPeek(status: true, type: type, value: value, icon: icon, onScreen: screen) { [weak self] in
+                self?.presentationGeneration == generation
+            }
+        case .floating:
+            CustomOSDWindowManager.shared.show(type: type, value: value, icon: icon, onScreen: screen)
+        case .vertical:
+            VerticalHUDWindowManager.shared.show(type: type, value: value, icon: icon, onScreen: screen)
+        case .circular:
+            CircularHUDWindowManager.shared.show(type: type, value: value, icon: icon, onScreen: screen)
         }
     }
 }

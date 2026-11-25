@@ -261,7 +261,8 @@ class AnchorViewCoordinator: ObservableObject {
         subtitle: String = "",
         accentColor: Color? = nil,
         styleOverride: SneakPeekStyle? = nil,
-        onScreen targetScreen: NSScreen? = nil
+        onScreen targetScreen: NSScreen? = nil,
+        shouldDeliver: (() -> Bool)? = nil
     ) {
         var resolvedDuration: TimeInterval
         switch type {
@@ -298,6 +299,7 @@ class AnchorViewCoordinator: ObservableObject {
             return
         }
         DispatchQueue.main.async {
+            guard shouldDeliver?() != false else { return }
             // Single write so `sneakPeek.didSet` (which schedules the auto-hide)
             // fires once, not once per field — the per-field writes raced the hide
             // Task and could wedge `show == true` with no pending hide.

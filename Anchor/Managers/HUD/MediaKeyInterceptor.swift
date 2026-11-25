@@ -162,6 +162,7 @@ final class MediaKeyInterceptor {
         }
     }
 
+    private var commandGeneration = UUID()
     private var eventTap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
     private var isTapEnabled = false
@@ -190,6 +191,7 @@ final class MediaKeyInterceptor {
     /// moment after this ran.
     @discardableResult
     func start() -> Bool {
+        guard shouldEnableTap else { return false }
         guard eventTap == nil else {
             updateTapState()
             return true
@@ -210,6 +212,12 @@ final class MediaKeyInterceptor {
     @discardableResult
     private func installTap() -> Bool {
         guard eventTap == nil else { return true }
+
+        // An installed tap can be non-nil and still receive no hardware keys.
+        guard hasInputMonitoringAccess else { return false }
+#if canImport(ApplicationServices)
+        guard AXIsProcessTrusted() else { return false }
+#endif
 
         guard let systemDefinedType = systemDefinedEventType else {
             NSLog("❌ Unable to resolve system-defined event type")
@@ -334,7 +342,12 @@ final class MediaKeyInterceptor {
         retryAttempts = 0
     }
 
+    func invalidatePendingCommands() {
+        commandGeneration = UUID()
+    }
+
     func stop() {
+        invalidatePendingCommands()
         cancelTapRetry()
         isInterceptionAvailable = false
         if let tap = eventTap {
@@ -434,8 +447,9 @@ final class MediaKeyInterceptor {
         isRepeat: Bool,
         modifiers: NSEvent.ModifierFlags
     ) {
+        let generation = commandGeneration
         DispatchQueue.main.async { [weak self] in
-            guard let self else { return }
+            guard let self, self.commandGeneration == generation else { return }
             self.delegate?.mediaKeyInterceptor(
                 self,
                 didReceiveVolumeCommand: direction,
@@ -452,8 +466,9 @@ final class MediaKeyInterceptor {
         isRepeat: Bool,
         modifiers: NSEvent.ModifierFlags
     ) {
+        let generation = commandGeneration
         DispatchQueue.main.async { [weak self] in
-            guard let self else { return }
+            guard let self, self.commandGeneration == generation else { return }
             self.delegate?.mediaKeyInterceptor(
                 self,
                 didReceiveBrightnessCommand: direction,
@@ -465,8 +480,9 @@ final class MediaKeyInterceptor {
     }
 
     private func dispatchMuteCommand() {
+        let generation = commandGeneration
         DispatchQueue.main.async { [weak self] in
-            guard let self else { return }
+            guard let self, self.commandGeneration == generation else { return }
             self.delegate?.mediaKeyInterceptorDidToggleMute(self)
         }
     }

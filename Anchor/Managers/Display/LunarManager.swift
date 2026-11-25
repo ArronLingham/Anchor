@@ -493,51 +493,11 @@ final class LunarManager: ObservableObject {
     // MARK: - HUD Dispatch (mirrors BetterDisplayManager / SystemChangesObserver logic)
 
     private func dispatchVolumeHUD(value: CGFloat, isMuted: Bool, onScreen targetScreen: NSScreen? = nil) {
-        if HUDSuppressionCoordinator.shared.shouldSuppressVolumeHUD { return }
-
-        if Defaults[.enableCircularHUD] {
-            CircularHUDWindowManager.shared.show(type: .volume, value: value, onScreen: targetScreen)
-            return
-        }
-        if Defaults[.enableVerticalHUD] {
-            VerticalHUDWindowManager.shared.show(type: .volume, value: value, icon: "", onScreen: targetScreen)
-            return
-        }
-        if Defaults[.enableCustomOSD] && Defaults[.enableOSDVolume] {
-            CustomOSDWindowManager.shared.showVolume(value: value, onScreen: targetScreen)
-        }
-        if Defaults[.enableSystemHUD] && !Defaults[.enableCustomOSD] && !Defaults[.enableVerticalHUD] && !Defaults[.enableCircularHUD] {
-            coordinator?.toggleSneakPeek(
-                status: true,
-                type: .volume,
-                value: value,
-                icon: "",
-                onScreen: targetScreen
-            )
-        }
+        SystemHUDManager.shared.present(type: .volume, value: value, onScreen: targetScreen)
     }
 
     private func dispatchBrightnessHUD(value: CGFloat, icon: String = "", onScreen targetScreen: NSScreen? = nil) {
-        if Defaults[.enableCircularHUD] {
-            CircularHUDWindowManager.shared.show(type: .brightness, value: value, icon: icon, onScreen: targetScreen)
-            return
-        }
-        if Defaults[.enableVerticalHUD] {
-            VerticalHUDWindowManager.shared.show(type: .brightness, value: value, icon: icon, onScreen: targetScreen)
-            return
-        }
-        if Defaults[.enableCustomOSD] && Defaults[.enableOSDBrightness] {
-            CustomOSDWindowManager.shared.showBrightness(value: value, icon: icon, onScreen: targetScreen)
-        }
-        if Defaults[.enableSystemHUD] && !Defaults[.enableCustomOSD] && !Defaults[.enableVerticalHUD] && !Defaults[.enableCircularHUD] {
-            coordinator?.toggleSneakPeek(
-                status: true,
-                type: .brightness,
-                value: value,
-                icon: icon,
-                onScreen: targetScreen
-            )
-        }
+        SystemHUDManager.shared.present(type: .brightness, value: value, icon: icon, onScreen: targetScreen)
     }
 
     // MARK: - Helpers

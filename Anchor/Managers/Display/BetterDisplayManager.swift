@@ -291,76 +291,15 @@ final class BetterDisplayManager: ObservableObject {
     // MARK: - HUD Dispatch (mirrors SystemChangesObserver logic)
 
     private func dispatchVolumeHUD(value: CGFloat, isMuted: Bool, onScreen targetScreen: NSScreen? = nil) {
-        if HUDSuppressionCoordinator.shared.shouldSuppressVolumeHUD { return }
-
-        if Defaults[.enableCircularHUD] {
-            CircularHUDWindowManager.shared.show(type: .volume, value: value, onScreen: targetScreen)
-            return
-        }
-        if Defaults[.enableVerticalHUD] {
-            VerticalHUDWindowManager.shared.show(type: .volume, value: value, icon: "", onScreen: targetScreen)
-            return
-        }
-        if Defaults[.enableCustomOSD] && Defaults[.enableOSDVolume] {
-            CustomOSDWindowManager.shared.showVolume(value: value, onScreen: targetScreen)
-        }
-        if Defaults[.enableSystemHUD] && !Defaults[.enableCustomOSD] && !Defaults[.enableVerticalHUD] && !Defaults[.enableCircularHUD] {
-            coordinator?.toggleSneakPeek(
-                status: true,
-                type: .volume,
-                value: value,
-                icon: "",
-                onScreen: targetScreen
-            )
-        }
+        SystemHUDManager.shared.present(type: .volume, value: value, onScreen: targetScreen)
     }
 
     private func dispatchBrightnessHUD(value: CGFloat, customSymbol: String? = nil, onScreen targetScreen: NSScreen? = nil) {
-        let icon = customSymbol ?? ""
-        if Defaults[.enableCircularHUD] {
-            CircularHUDWindowManager.shared.show(type: .brightness, value: value, icon: icon, onScreen: targetScreen)
-            return
-        }
-        if Defaults[.enableVerticalHUD] {
-            VerticalHUDWindowManager.shared.show(type: .brightness, value: value, icon: icon, onScreen: targetScreen)
-            return
-        }
-        if Defaults[.enableCustomOSD] && Defaults[.enableOSDBrightness] {
-            CustomOSDWindowManager.shared.showBrightness(value: value, icon: icon, onScreen: targetScreen)
-        }
-        if Defaults[.enableSystemHUD] && !Defaults[.enableCustomOSD] && !Defaults[.enableVerticalHUD] && !Defaults[.enableCircularHUD] {
-            coordinator?.toggleSneakPeek(
-                status: true,
-                type: .brightness,
-                value: value,
-                icon: icon,
-                onScreen: targetScreen
-            )
-        }
+        SystemHUDManager.shared.present(type: .brightness, value: value, icon: customSymbol ?? "", onScreen: targetScreen)
     }
 
     private func dispatchContrastHUD(value: CGFloat, customSymbol: String? = nil, onScreen targetScreen: NSScreen? = nil) {
-        let icon = customSymbol ?? "circle.lefthalf.filled"
-        if Defaults[.enableCircularHUD] {
-            CircularHUDWindowManager.shared.show(type: .contrast, value: value, icon: icon, onScreen: targetScreen)
-            return
-        }
-        if Defaults[.enableVerticalHUD] {
-            VerticalHUDWindowManager.shared.show(type: .contrast, value: value, icon: icon, onScreen: targetScreen)
-            return
-        }
-        if Defaults[.enableCustomOSD] && Defaults[.enableOSDBrightness] {
-            CustomOSDWindowManager.shared.show(type: .contrast, value: value, icon: icon, onScreen: targetScreen)
-        }
-        if Defaults[.enableSystemHUD] && !Defaults[.enableCustomOSD] && !Defaults[.enableVerticalHUD] && !Defaults[.enableCircularHUD] {
-            coordinator?.toggleSneakPeek(
-                status: true,
-                type: .contrast,
-                value: value,
-                icon: icon,
-                onScreen: targetScreen
-            )
-        }
+        SystemHUDManager.shared.present(type: .contrast, value: value, icon: customSymbol ?? "circle.lefthalf.filled", onScreen: targetScreen)
     }
 
     // MARK: - Helpers

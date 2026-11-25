@@ -137,6 +137,19 @@ final class VerticalHUDWindowManager {
         windows.removeAll()
     }
     
+    func dismiss(_ controls: HUDControls) {
+        for (screen, window) in windows
+            where !controls.intersection(SystemHUDManager.control(for: window.state.type)).isEmpty {
+            window.nsWindow.ignoresMouseEvents = true
+            window.nsWindow.orderOut(nil)
+            windows.removeValue(forKey: screen)
+        }
+        if windows.isEmpty {
+            hideWorkItem?.cancel()
+            hideWorkItem = nil
+        }
+    }
+
     func show(type: SneakContentType, value: CGFloat, icon: String = "", onScreen targetScreen: NSScreen? = nil) {
         guard Defaults[.enableVerticalHUD] else { return }
         

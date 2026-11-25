@@ -36,9 +36,9 @@ final class CustomOSDWindowManager {
     private var backlightWindows: [NSScreen: OSDWindow] = [:]
     
     private var hideWorkItem: DispatchWorkItem?
+    private var hideGeneration = UUID()
     private let displayDuration: TimeInterval = 2.0
     private let animationDuration: TimeInterval = 0.3
-    private var isInitialized = false
     
     // Standard macOS OSD dimensions (approximate)
     private let osdWidth: CGFloat = 200
@@ -48,30 +48,11 @@ final class CustomOSDWindowManager {
     
     // MARK: - Public API
     
-    func showVolume(value: CGFloat, isMuted: Bool = false, icon: String = "", onScreen targetScreen: NSScreen? = nil) {
-        guard Defaults[.enableCustomOSD], isInitialized else { return }
-        show(type: .volume, value: value, icon: icon, onScreen: targetScreen)
-    }
-    
-    func showBrightness(value: CGFloat, icon: String = "", onScreen targetScreen: NSScreen? = nil) {
-        guard Defaults[.enableCustomOSD], isInitialized else { return }
-        show(type: .brightness, value: value, icon: icon, onScreen: targetScreen)
-    }
-    
     func show(type: SneakContentType, value: CGFloat, icon: String = "", onScreen targetScreen: NSScreen? = nil) {
-        guard Defaults[.enableCustomOSD], isInitialized else { return }
+        guard Defaults[.enableCustomOSD] else { return }
         performShow(type: type, value: value, icon: icon, onScreen: targetScreen)
     }
-    
-    func showBacklight(value: CGFloat) {
-        guard Defaults[.enableCustomOSD], isInitialized else { return }
-        show(type: .backlight, value: value, icon: "")
-    }
-    
-    func initialize() {
-        isInitialized = true
-    }
-    
+
     // MARK: - Private Implementation
     
     private func performShow(type: SneakContentType, value: CGFloat, icon: String, onScreen targetScreen: NSScreen? = nil) {
@@ -223,10 +204,12 @@ final class CustomOSDWindowManager {
     
     private func scheduleHide(for type: SneakContentType) {
         hideWorkItem?.cancel()
-        
+        let generation = UUID()
+        hideGeneration = generation
+
         let workItem = DispatchWorkItem { [weak self] in
-            guard let self else { return }
-            Task { @MainActor in
+            Task { @MainActor [weak self] in
+                guard let self, self.hideGeneration == generation else { return }
                 self.hideWindow(for: type)
             }
         }
@@ -262,30 +245,34 @@ final class CustomOSDWindowManager {
             window.nsWindow.animator().setFrame(hideFrame, display: true)
             window.nsWindow.animator().alphaValue = 0
         } completionHandler: {
-            window.nsWindow.orderOut(nil)
+            // A newer show may reuse this window while the old fade finishes.
+            if window.nsWindow.alphaValue == 0 { window.nsWindow.orderOut(nil) }
         }
         }
     }
     
     // MARK: - Cleanup
     
-    func tearDown() {
-        hideWorkItem?.cancel()
-        hideWorkItem = nil
-        
-        for window in volumeWindows.values {
-            window.nsWindow.orderOut(nil)
+    func dismiss(_ controls: HUDControls) {
+        if controls.contains(.volume) {
+            volumeWindows.values.forEach { $0.nsWindow.orderOut(nil) }
+            volumeWindows.removeAll()
         }
-        for window in brightnessWindows.values {
-            window.nsWindow.orderOut(nil)
+        if controls.contains(.brightness) {
+            brightnessWindows.values.forEach { $0.nsWindow.orderOut(nil) }
+            contrastWindows.values.forEach { $0.nsWindow.orderOut(nil) }
+            brightnessWindows.removeAll()
+            contrastWindows.removeAll()
         }
-        for window in backlightWindows.values {
-            window.nsWindow.orderOut(nil)
+        if controls.contains(.backlight) {
+            backlightWindows.values.forEach { $0.nsWindow.orderOut(nil) }
+            backlightWindows.removeAll()
         }
-        
-        volumeWindows.removeAll()
-        brightnessWindows.removeAll()
-        backlightWindows.removeAll()
+        if volumeWindows.isEmpty, brightnessWindows.isEmpty, contrastWindows.isEmpty, backlightWindows.isEmpty {
+            hideGeneration = UUID()
+            hideWorkItem?.cancel()
+            hideWorkItem = nil
+        }
     }
 }
 

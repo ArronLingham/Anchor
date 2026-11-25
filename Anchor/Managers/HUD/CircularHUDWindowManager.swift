@@ -42,11 +42,15 @@ final class CircularHUDWindowManager {
     
     private init() {
         setupSizeObserver()
+    }
+
+    private func observeScreenChanges() {
+        guard screenObserver == nil else { return }
         screenObserver = NotificationCenter.default.addObserver(forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main) { [weak self] _ in
             Task { @MainActor in self?.reconcileScreens() }
         }
     }
-    
+
     private func setupSizeObserver() {
         Defaults.publisher(.circularHUDSize, options: []).sink { [weak self] _ in
             guard let self = self else { return }
@@ -81,6 +85,7 @@ final class CircularHUDWindowManager {
         let resolved = targetScreen ?? Defaults[.hudDisplayPlacement].resolvedScreen
         let screens = resolved.map { [$0] } ?? NSScreen.screens
         guard !screens.isEmpty else { return }
+        observeScreenChanges()
         
         visibilityGeneration = UUID()
         // A change of the active display must not leave the previous HUD visible.
@@ -157,6 +162,20 @@ final class CircularHUDWindowManager {
         DispatchQueue.main.asyncAfter(deadline: .now() + displayDuration, execute: workItem)
     }
     
+    func dismiss(_ controls: HUDControls) {
+        for (screen, window) in windows where !controls.intersection(SystemHUDManager.control(for: window.type)).isEmpty {
+            window.nsWindow.orderOut(nil)
+            windows.removeValue(forKey: screen)
+        }
+        if windows.isEmpty {
+            visibilityGeneration = UUID()
+            hideWorkItem?.cancel()
+            hideWorkItem = nil
+            if let screenObserver { NotificationCenter.default.removeObserver(screenObserver) }
+            screenObserver = nil
+        }
+    }
+
     private func hideWindow() {
         for window in windows.values {
             window.nsWindow.alphaValue = 0
