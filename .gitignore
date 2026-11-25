@@ -221,3 +221,5 @@ __pycache__/
 !/tests/run_clipboard_clear_lifecycle_tests.sh
 !/tests/MenuBarShrinkLifecycleTests.swift
 !/tests/run_menu_bar_shrink_lifecycle_tests.sh
+!/tests/UtilityClipboardAutoClearLifecycleTests.swift
+!/tests/run_utility_clipboard_auto_clear_lifecycle_tests.sh
