@@ -23,6 +23,7 @@
 import AppKit
 import AudioToolbox
 import CoreAudio
+import Defaults
 import QuartzCore
 import simd
 import os.log
@@ -126,7 +127,7 @@ class AudioTap: NSObject {
     private var consumerCount = 0
     /// Set when the user turns the feature off, so a late `release()` cannot
     /// resurrect capture.
-    private var isSuspended = false
+    private var isSuspended = !Defaults[.enableRealTimeWaveform]
 
     // CoreAudio stuff
     private var tapID: AudioObjectID = kAudioObjectUnknown
@@ -137,7 +138,9 @@ class AudioTap: NSObject {
     // Serial queue to prevent race conditions
     private let audioQueue = DispatchQueue(label: "com.anchor.audiotap", qos: .userInitiated)
     
-    // Debounce restart requests
+    // These are owned by audioQueue along with the visible consumer count.
+    private var targetAppObservers: [NSObjectProtocol] = []
+    private var observationGeneration = UUID()
     private var pendingRestartWorkItem: DispatchWorkItem?
 
     private let targetBundleIDs = [
@@ -153,11 +156,6 @@ class AudioTap: NSObject {
         "com.vox.vox",
         "com.coppertino.Vox",
     ]
-
-    private override init() {
-        super.init()
-        observeTargetAppLaunches()
-    }
 
     /// Advances the smoothing toward the latest analyser output.
     ///
@@ -192,86 +190,96 @@ class AudioTap: NSObject {
         return displayMagnitudes
     }
 
-    /// Registers a visible consumer, starting capture if this is the first.
-    ///
-    /// Balance every call with `release()`. Safe to call from `onAppear`.
+    /// Registers a visible consumer. Balance each call with release().
     func acquire() {
         audioQueue.async { [weak self] in
             guard let self else { return }
             self.consumerCount += 1
-            guard !self.isSuspended, self.consumerCount == 1 else { return }
-            self.startCaptureSync()
-        }
-    }
-
-    /// Retry when a target app appears.
-    ///
-    /// `startCaptureSync` returns early — correctly — when none of the target
-    /// apps are running, and nothing ever tried again. `getSmoothedMagnitudes`
-    /// then returns the same never-updated array forever, so the bars sat
-    /// perfectly still and looked broken rather than idle. Anything placed
-    /// before Spotify was launched stayed dead for the whole session.
-    ///
-    /// This is an observer, not a poll: the rule here is schedule, don't poll.
-    private func observeTargetAppLaunches() {
-        NSWorkspace.shared.notificationCenter.addObserver(
-            forName: NSWorkspace.didLaunchApplicationNotification,
-            object: nil, queue: .main
-        ) { [weak self] note in
-            guard let self,
-                let app = note.userInfo?[NSWorkspace.applicationUserInfoKey]
-                    as? NSRunningApplication,
-                let bundleID = app.bundleIdentifier,
-                self.targetBundleIDs.contains(bundleID)
-            else { return }
-            self.audioQueue.async {
-                guard !self.isSuspended, self.consumerCount > 0, !self.captureIsRunning
-                else { return }
-                self.startCaptureSync()
+            if self.consumerCount == 1 {
+                self.syncCaptureDemand()
             }
         }
     }
 
-    /// Drops a consumer, tearing capture down when the last one goes away.
     func release() {
         audioQueue.async { [weak self] in
-            guard let self else { return }
-            self.consumerCount = max(0, self.consumerCount - 1)
-            guard self.consumerCount == 0 else { return }
-            self.stopCaptureSync()
-        }
-    }
-
-    /// Turns the feature off wholesale (the user unticked it, or the app is
-    /// quitting). Overrides the consumer count until `resume()`.
-    func suspend() {
-        audioQueue.async { [weak self] in
-            guard let self else { return }
-            self.isSuspended = true
-            self.stopCaptureSync()
-        }
-    }
-
-    /// Re-enables capture, honouring whatever consumers are currently on screen.
-    func resume() {
-        audioQueue.async { [weak self] in
-            guard let self else { return }
-            self.isSuspended = false
-            guard self.consumerCount > 0 else { return }
-            self.startCaptureSync()
-        }
-    }
-
-    func startCapture() async {
-        await withCheckedContinuation { continuation in
-            audioQueue.async { [weak self] in
-                self?.startCaptureSync()
-                continuation.resume()
+            guard let self, self.consumerCount > 0 else { return }
+            self.consumerCount -= 1
+            if self.consumerCount == 0 {
+                self.syncCaptureDemand()
             }
         }
+    }
+
+    func setEnabled(_ enabled: Bool) {
+        audioQueue.async { [weak self] in
+            guard let self, self.isSuspended == enabled else { return }
+            self.isSuspended = !enabled
+            self.syncCaptureDemand()
+        }
+    }
+
+    private var needsCapture: Bool {
+        !isSuspended && consumerCount > 0 && Defaults[.enableRealTimeWaveform]
+    }
+
+    private func syncCaptureDemand() {
+        guard needsCapture else {
+            stopObservingTargetApps()
+            stopCaptureSync()
+            return
+        }
+        guard targetAppObservers.isEmpty else { return }
+
+        let center = NSWorkspace.shared.notificationCenter
+        let generation = observationGeneration
+        let changes: [(Notification.Name, TimeInterval)] = [
+            (NSWorkspace.didLaunchApplicationNotification, 2.0),
+            (NSWorkspace.didTerminateApplicationNotification, 0.5)
+        ]
+        targetAppObservers = changes.map { name, delay in
+            center.addObserver(forName: name, object: nil, queue: nil) { [weak self] notification in
+                guard let self,
+                      let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
+                      let bundleID = app.bundleIdentifier,
+                      self.targetBundleIDs.contains(bundleID)
+                else { return }
+                self.audioQueue.async {
+                    guard self.observationGeneration == generation, self.needsCapture else { return }
+                    self.scheduleRestart(after: delay, generation: generation)
+                }
+            }
+        }
+
+        // Keep observing even when no target exists yet. A launch can then
+        // retry CoreAudio setup while the waveform is still on screen.
+        startCaptureSync()
+    }
+
+    private func stopObservingTargetApps() {
+        observationGeneration = UUID()
+        pendingRestartWorkItem?.cancel()
+        pendingRestartWorkItem = nil
+
+        let center = NSWorkspace.shared.notificationCenter
+        targetAppObservers.forEach { center.removeObserver($0) }
+        targetAppObservers.removeAll()
+    }
+
+    private func scheduleRestart(after delay: TimeInterval, generation: UUID) {
+        pendingRestartWorkItem?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            guard let self, self.observationGeneration == generation, self.needsCapture else { return }
+            self.pendingRestartWorkItem = nil
+            self.stopCaptureSync()
+            self.startCaptureSync()
+        }
+        pendingRestartWorkItem = work
+        audioQueue.asyncAfter(deadline: .now() + delay, execute: work)
     }
 
     private func startCaptureSync() {
+        guard needsCapture else { return }
         guard !captureIsRunning else {
             print("⚠️ [AudioTap] Capture already running, skipping start")
             return
@@ -391,38 +399,14 @@ class AudioTap: NSObject {
         ioProcID = nil
     }
 
-    func restartCapture() {
-        // Cancel any pending restart
-        pendingRestartWorkItem?.cancel()
-        
-        // Debounce: wait 500ms before actually restarting
-        let workItem = DispatchWorkItem { [weak self] in
-            self?.audioQueue.async {
-                guard let self else { return }
-                // Gate on consumers, not on `captureIsRunning`. This path fires
-                // when a music app launches, and the common case is that a
-                // visualiser was already on screen while `startCaptureSync()`
-                // had nothing to tap — it bails when no target app is running,
-                // leaving `captureIsRunning` false. Checking it here would mean
-                // the waveform never starts for an app opened after the notch.
-                guard !self.isSuspended, self.consumerCount > 0 else { return }
-                print("🔄 [AudioTap] Restarting capture...")
-                self.stopCaptureSync()
-                // Small delay to let CoreAudio fully release resources
-                Thread.sleep(forTimeInterval: 0.1)
-                self.startCaptureSync()
-            }
+    func stopCapture() {
+        audioQueue.sync {
+            isSuspended = true
+            stopObservingTargetApps()
+            stopCaptureSync()
         }
-        pendingRestartWorkItem = workItem
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: workItem)
     }
 
-    func stopCapture() {
-        audioQueue.sync { [weak self] in
-            self?.stopCaptureSync()
-        }
-    }
-    
     private func stopCaptureSync() {
         guard captureIsRunning else { return }
 

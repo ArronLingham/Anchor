@@ -211,3 +211,5 @@ __pycache__/
 !/tests/audio_diagnostics/run_audio_continuity_probe.sh
 !/tests/BluetoothAudioDemandTests.swift
 !/tests/run_bluetooth_audio_demand_tests.sh
+!/tests/WaveformCaptureLifecycleTests.swift
+!/tests/run_waveform_capture_lifecycle_tests.sh

@@ -223,60 +223,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         return true
     }
     
-    /// Setup observers for music player state changes to restart AudioTap capture
-    private func setupAudioTapMusicObservers() {
-        // Listen for app launches to restart capture when music apps are opened
-        let targetBundleIDs = [
-            "com.apple.Music",
-            "com.spotify.client",
-            "com.amazon.music",
-            "sh.cider.genten.mac",
-            "com.apple.Safari",
-            "com.tidal.desktop",
-            "tv.plex.plexamp",
-            "com.roon.Roon",
-            "com.audirvana.Audirvana-Studio",
-            "com.vox.vox",
-            "com.coppertino.Vox",
-        ]
-        
-        NSWorkspace.shared.notificationCenter.addObserver(
-            forName: NSWorkspace.didLaunchApplicationNotification,
-            object: nil,
-            queue: .main
-        ) { notification in
-            guard let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
-                  let bundleID = app.bundleIdentifier,
-                  targetBundleIDs.contains(bundleID) else { return }
-            
-            // A target music app was launched, restart capture to include it
-            if Defaults[.enableRealTimeWaveform] {
-                print("🎵 [AudioTap] Music app launched: \(bundleID), restarting capture...")
-                // Give the app a moment to fully launch
-                DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
-                    AudioTap.shared.restartCapture()
-                }
-            }
-        }
-        
-        // Also observe app terminations to restart capture
-        NSWorkspace.shared.notificationCenter.addObserver(
-            forName: NSWorkspace.didTerminateApplicationNotification,
-            object: nil,
-            queue: .main
-        ) { notification in
-            guard let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
-                  let bundleID = app.bundleIdentifier,
-                  targetBundleIDs.contains(bundleID) else { return }
-            
-            // A target music app was terminated, restart capture to update the list
-            if Defaults[.enableRealTimeWaveform] {
-                print("🎵 [AudioTap] Music app terminated: \(bundleID), restarting capture...")
-                AudioTap.shared.restartCapture()
-            }
-        }
-    }
-    
     func applicationWillTerminate(_ notification: Notification) {
         bluetoothAudioManager?.stopMonitoring()
         DesktopWorkspaceManager.shared.stop()
@@ -904,30 +850,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             PrivacyIndicatorManager.shared.startMonitoring()
         }
         
-        // Real-time waveform. Capture is NOT started here: the CoreAudio process
-        // tap runs a real-time IO thread that keeps the audio HAL awake for as
-        // long as it exists, and starting it at launch meant it ran for the whole
-        // session to feed a view that is only on screen while the notch is open
-        // and music is playing. Measured cost of the old behaviour on a machine
-        // with this setting on: 0.90% median idle CPU. The visualiser views now
-        // acquire/release the tap themselves as they appear and disappear.
-        if Defaults[.enableRealTimeWaveform] {
-            setupAudioTapMusicObservers()
-        }
-
-        // Observe enableRealTimeWaveform changes
+        // AudioTap owns capture and workspace observers only for visible consumers.
         Defaults.publisher(.enableRealTimeWaveform, options: [])
-            .sink { [weak self] change in
-                if change.newValue {
-                    // Honours whatever visualisers are already on screen.
-                    AudioTap.shared.resume()
-                    self?.setupAudioTapMusicObservers()
-                } else {
-                    AudioTap.shared.suspend()
-                }
-            }
+            .sink { change in AudioTap.shared.setEnabled(change.newValue) }
             .store(in: &cancellables)
-        
+
         // Observe tab changes - use immediate resize to keep the notch pinned
         // Deferred to next run loop tick because @Published fires on willSet,
         // so coordinator.currentView still holds the OLD value at emission time.
