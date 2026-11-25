@@ -215,3 +215,5 @@ __pycache__/
 !/tests/run_waveform_capture_lifecycle_tests.sh
 !/tests/DownloadWatchLifecycleTests.swift
 !/tests/run_download_watch_lifecycle_tests.sh
+!/tests/NotchHoverLifecycleTests.swift
+!/tests/run_notch_hover_lifecycle_tests.sh

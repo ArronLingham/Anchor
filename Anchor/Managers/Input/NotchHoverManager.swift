@@ -23,6 +23,8 @@ final class NotchHoverManager: ObservableObject {
     private var flagsMonitor: Any?
     private var cancellables = Set<AnyCancellable>()
     private var started = false
+    private var islandVisible = false
+    private var monitorGeneration = UUID()
 
     private var currentModifiers: NSEvent.ModifierFlags = []
 
@@ -41,45 +43,80 @@ final class NotchHoverManager: ObservableObject {
         guard !started else { return }
         started = true
 
-        Defaults.publisher(.openNotchOnHover)
-            .sink { [weak self] _ in
-                Task { @MainActor in self?.sync() }
-            }
-            .store(in: &cancellables)
-
-        Defaults.publisher(.extendHoverArea)
-            .sink { [weak self] _ in
-                Task { @MainActor in self?.sync() }
-            }
-            .store(in: &cancellables)
+        let keys: [Defaults.Key<Bool>] = [.openNotchOnHover, .extendHoverArea, .enableDynamicIsland]
+        for key in keys {
+            Defaults.publisher(key, options: [])
+                .receive(on: DispatchQueue.main)
+                .sink { [weak self] change in
+                    guard let self, self.started else { return }
+                    if !change.newValue { self.remove() }
+                    self.sync()
+                }
+                .store(in: &cancellables)
+        }
 
         sync()
     }
 
+    func setIslandVisible(_ visible: Bool) {
+        guard islandVisible != visible else { return }
+        islandVisible = visible
+        sync()
+    }
+
+    func stop() {
+        started = false
+        cancellables.removeAll()
+        remove()
+    }
+
+    private var shouldMonitor: Bool {
+        started && islandVisible && Defaults[.enableDynamicIsland]
+            && Defaults[.openNotchOnHover] && Defaults[.extendHoverArea]
+    }
+
     private func sync() {
-        (Defaults[.openNotchOnHover] && Defaults[.extendHoverArea]) ? install() : remove()
+        if shouldMonitor {
+            install()
+        } else {
+            remove()
+        }
     }
 
     private func install() {
-        guard moveMonitor == nil else { return }
-
-        moveMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.mouseMoved]) { [weak self] _ in
-            MainActor.assumeIsolated { self?.pointerMoved(to: NSEvent.mouseLocation) }
+        let generation = monitorGeneration
+        if moveMonitor == nil {
+            currentModifiers = NSEvent.modifierFlags
+            moveMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.mouseMoved]) { [weak self] _ in
+                MainActor.assumeIsolated {
+                    guard let self, self.accepts(generation) else { return }
+                    self.pointerMoved(to: NSEvent.mouseLocation)
+                }
+            }
         }
 
-        flagsMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.flagsChanged]) { [weak self] event in
-            MainActor.assumeIsolated {
-                self?.currentModifiers = event.modifierFlags
+        if flagsMonitor == nil {
+            flagsMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.flagsChanged]) { [weak self] event in
+                MainActor.assumeIsolated {
+                    guard let self, self.accepts(generation) else { return }
+                    self.currentModifiers = event.modifierFlags
+                }
             }
         }
     }
 
+    private func accepts(_ generation: UUID) -> Bool {
+        monitorGeneration == generation && shouldMonitor
+    }
+
     private func remove() {
+        monitorGeneration = UUID()
         if let moveMonitor { NSEvent.removeMonitor(moveMonitor) }
         if let flagsMonitor { NSEvent.removeMonitor(flagsMonitor) }
         moveMonitor = nil
         flagsMonitor = nil
-        hoveredScreenNames = []
+        currentModifiers = []
+        publish([])
     }
 
     private func pointerMoved(to point: NSPoint) {

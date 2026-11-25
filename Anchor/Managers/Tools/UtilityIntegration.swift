@@ -79,8 +79,11 @@ final class UtilityIntegration: ObservableObject {
                 highlightID: SettingsTab.general.highlightID(for: "Dynamic Island"))
         }
         islandSubscription = Defaults.publisher(.enableDynamicIsland, options: [])
-            .sink { [weak delegate] _ in
-                Task { @MainActor in delegate?.setUtilityIslandActive(false) }
+            .sink { [weak delegate, weak workspace] _ in
+                Task { @MainActor in
+                    guard let workspace else { return }
+                    delegate?.setUtilityIslandActive(workspace.controlOwners.contains("notch"))
+                }
             }
         workspace.onOpenFeatureLibrary = { SettingsWindowController.shared.showWindow(tab: .features) }
         workspace.onWindowActivityChange = { active in
@@ -128,6 +131,7 @@ final class UtilityIntegration: ObservableObject {
         guard started else { return }
         started = false
         subscription = nil
+        islandSubscription = nil
         UtilityWorkspace.shared.stop()
     }
 

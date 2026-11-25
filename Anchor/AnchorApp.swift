@@ -166,6 +166,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var onboardingWindowController: NSWindowController?
     private var cancellables = Set<AnyCancellable>()
     private var windowsHiddenForLock = false
+    private var islandLockGeneration = UUID()
     private var optionalShortcutHandlersRegistered = false
     private weak var focusWithoutDevToolsMenuItem: NSMenuItem?
     private weak var focusUseDevToolsMenuItem: NSMenuItem?
@@ -225,6 +226,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     
     func applicationWillTerminate(_ notification: Notification) {
         bluetoothAudioManager?.stopMonitoring()
+        NotchHoverManager.shared.stop()
         DesktopWorkspaceManager.shared.stop()
         PrivacyIndicatorManager.shared.stopMonitoring()
         UtilityIntegration.shared.stop()
@@ -257,6 +259,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     
     @objc func onScreenLocked(_: Notification) {
         print("Screen locked")
+        islandLockGeneration = UUID()
         // Walking away has to re-arm the prompt, or a five-minute grace period
         // outlives the reason for having one.
         BiometricAuthManager.shared.relock()
@@ -265,8 +268,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc func onScreenUnlocked(_: Notification) {
         print("Screen unlocked")
+        let generation = islandLockGeneration
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
-            guard let self = self else { return }
+            guard let self, self.islandLockGeneration == generation,
+                  SystemActivityGate.sessionLockStatus() != true else { return }
             self.restoreWindowsAfterLock()
             self.adjustWindowPosition(changeAlpha: true)
         }
@@ -275,6 +280,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private func hideWindowsForLock() {
         guard !windowsHiddenForLock else { return }
         windowsHiddenForLock = true
+        NotchHoverManager.shared.setIslandVisible(false)
+        syncNotchSpaceMembership()
 
         if shouldUseMultiWindow {
             for window in windows.values {
@@ -288,23 +295,22 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func restoreWindowsAfterLock() {
-        guard !utilityIslandActive else { return }
         guard windowsHiddenForLock else { return }
         windowsHiddenForLock = false
+        guard !utilityIslandActive else { return }
+        NotchHoverManager.shared.setIslandVisible(true)
 
-        if shouldUseMultiWindow {
-            for window in windows.values {
-                window.orderFrontRegardless()
-                window.alphaValue = 1
-            }
-        } else if let window = window {
-            window.orderFrontRegardless()
-            window.alphaValue = 1
+        for panel in Array(windows.values) + (window.map { [$0] } ?? []) {
+            panel.alphaValue = 1
+            panel.orderFrontRegardless()
+            (panel as? AnchorWindow)?.refreshMouseInteractivity()
         }
+        syncNotchSpaceMembership()
     }
 
     func setUtilityIslandActive(_ active: Bool) {
         let suppressed = active || !Defaults[.enableDynamicIsland]
+        NotchHoverManager.shared.setIslandVisible(!suppressed && !windowsHiddenForLock)
         guard utilityIslandActive != suppressed else { return }
         utilityIslandActive = suppressed
         if suppressed {
@@ -317,7 +323,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 panel.orderOut(nil)
             }
             NotchSpaceManager.shared.notchSpace.windows = []
-        } else {
+        } else if !windowsHiddenForLock {
             adjustWindowPosition(changeAlpha: true)
             for panel in Array(windows.values) + (window.map { [$0] } ?? []) {
                 panel.orderFrontRegardless()
@@ -413,7 +419,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     /// CGSSpace diff additions/removals, so this is safe to call on any change.
     @MainActor
     private func syncNotchSpaceMembership() {
-        guard !utilityIslandActive else {
+        guard !utilityIslandActive, !windowsHiddenForLock else {
             NotchSpaceManager.shared.notchSpace.windows = []
             return
         }
@@ -473,11 +479,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         window.contentView = hostingView
         window.takeOwnershipOfSize()
         
-        if !utilityIslandActive { window.orderFrontRegardless() }
+        if !utilityIslandActive && !windowsHiddenForLock { window.orderFrontRegardless() }
         // Pin above every space (fullscreen included) only for "Never hide"; the
         // hide options leave the window on the collectionBehavior path so
         // FullscreenMediaDetector can hide it. See NotchSpaceManager.
-        if !utilityIslandActive && Defaults[.hideNotchOption] == .never {
+        if !utilityIslandActive && !windowsHiddenForLock && Defaults[.hideNotchOption] == .never {
             NotchSpaceManager.shared.notchSpace.windows.insert(window)
         }
         //SkyLightOperator.shared.delegateWindow(window)
@@ -486,7 +492,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func positionWindow(_ window: NSWindow, on screen: NSScreen, changeAlpha: Bool = false)
     {
-        guard !utilityIslandActive else {
+        guard !utilityIslandActive, !windowsHiddenForLock else {
             window.ignoresMouseEvents = true
             window.alphaValue = 0
             window.orderOut(nil)
@@ -739,12 +745,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.appearance = NSAppearance(named: .darkAqua)
-        NotchHoverManager.shared.start()
         installSettingsShortcut()
         
         // Before anything reads Defaults: the bundle identifier changed with the
         // rename, which starts UserDefaults from empty unless we carry it over.
         PreferencesMigration.runIfNeeded()
+        if SystemActivityGate.sessionLockStatus() == true { hideWindowsForLock() }
         if UserDefaults.standard.integer(forKey: "Anchor.darkMaterialDesignVersion") < 2 {
             Defaults[.accentColor] = .white
             Defaults[.sliderColor] = .white
@@ -775,6 +781,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         if !AppRuntimeEnvironment.isUITesting {
             bluetoothAudioManager = BluetoothAudioManager.shared
             UtilityIntegration.shared.start(delegate: self)
+            NotchHoverManager.shared.start()
             DesktopWorkspaceManager.shared.start()
         }
         if CommandLine.arguments.contains("--features") {
