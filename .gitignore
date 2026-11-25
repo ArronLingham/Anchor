@@ -217,3 +217,5 @@ __pycache__/
 !/tests/run_download_watch_lifecycle_tests.sh
 !/tests/NotchHoverLifecycleTests.swift
 !/tests/run_notch_hover_lifecycle_tests.sh
+!/tests/ClipboardClearLifecycleTests.swift
+!/tests/run_clipboard_clear_lifecycle_tests.sh

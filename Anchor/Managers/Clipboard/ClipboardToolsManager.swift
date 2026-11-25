@@ -21,6 +21,7 @@ import AppKit
 import Combine
 import Defaults
 import Foundation
+import os
 
 /// Three small clipboard tools that share one owner because they all key off
 /// the same pasteboard and would otherwise each need their own observer.
@@ -43,9 +44,12 @@ final class ClipboardToolsManager: ObservableObject {
     static let shared = ClipboardToolsManager()
 
     private var clearTimer: Timer?
-    private var observers: [NSObjectProtocol] = []
+    private let delayEpoch = OSAllocatedUnfairLock(initialState: UUID())
+    private let triggerEpoch = OSAllocatedUnfairLock(initialState: UUID())
+    private var observers: [SystemClearTrigger: SystemClearObservation] = [:]
     private var cancellables = Set<AnyCancellable>()
     private var started = false
+    private weak var watchedClipboard: ClipboardManager?
 
     private init() {}
 
@@ -55,9 +59,21 @@ final class ClipboardToolsManager: ObservableObject {
         guard !started else { return }
         started = true
 
-        Defaults.publisher(.autoClearClipboardOnLock)
-            .sink { [weak self] _ in
-                Task { @MainActor in self?.syncSystemTriggers() }
+        Defaults.publisher(.autoClearClipboardOnLock, options: [])
+            .map(\.newValue)
+            .removeDuplicates()
+            .sink { [weak self, triggerEpoch] _ in
+                triggerEpoch.withLock { $0 = UUID() }
+                DispatchQueue.main.async { self?.syncSystemTriggers() }
+            }
+            .store(in: &cancellables)
+
+        Defaults.publisher(.autoClearClipboardEnabled, options: [])
+            .map(\.newValue)
+            .removeDuplicates()
+            .sink { [weak self, delayEpoch] _ in
+                delayEpoch.withLock { $0 = UUID() }
+                DispatchQueue.main.async { self?.syncPasteboardWatch() }
             }
             .store(in: &cancellables)
 
@@ -73,7 +89,6 @@ final class ClipboardToolsManager: ObservableObject {
         for publisher in [
             Defaults.publisher(.enableClipboardManager).map { _ in () }.eraseToAnyPublisher(),
             Defaults.publisher(.autoCleanCopiedURLs).map { _ in () }.eraseToAnyPublisher(),
-            Defaults.publisher(.autoClearClipboardEnabled).map { _ in () }.eraseToAnyPublisher(),
         ] {
             publisher
                 .sink { [weak self] in
@@ -89,17 +104,21 @@ final class ClipboardToolsManager: ObservableObject {
     /// History and the clipboard tools share one watcher. Turning off one
     /// consumer must not stop the others, or keep collecting history for them.
     func syncPasteboardWatch() {
-        if !Defaults[.autoClearClipboardEnabled] {
+        if !usesNativeDelay || timerEpoch != delayEpoch.withLock({ $0 }) {
             clearTimer?.invalidate()
             clearTimer = nil
+            timerEpoch = nil
         }
         let needsWatch = ClipboardCapturePolicy.needsWatcher(
             history: Defaults[.enableClipboardManager], cleanURLs: Defaults[.autoCleanCopiedURLs],
-            autoClear: Defaults[.autoClearClipboardEnabled])
+            autoClear: usesNativeDelay)
         if needsWatch {
-            ClipboardManager.shared.startMonitoring()
+            let clipboard = ClipboardManager.shared
+            watchedClipboard = clipboard
+            clipboard.startMonitoring()
         } else {
-            ClipboardManager.shared.stopMonitoring()
+            watchedClipboard?.stopMonitoring()
+            watchedClipboard = nil
         }
     }
 
@@ -231,58 +250,90 @@ final class ClipboardToolsManager: ObservableObject {
 
     // MARK: - Auto clear
 
+    private enum SystemClearTrigger: String, CaseIterable {
+        case sleep = "clipboardAutoClearSleep"
+        case displaySleep = "clipboardAutoClearDisplaySleep"
+        case lock = "clipboardAutoClearLock"
+
+        var name: Notification.Name {
+            switch self {
+            case .sleep: NSWorkspace.willSleepNotification
+            case .displaySleep: NSWorkspace.screensDidSleepNotification
+            case .lock: Notification.Name("com.apple.screenIsLocked")
+            }
+        }
+
+        var center: NotificationCenter {
+            self == .lock ? DistributedNotificationCenter.default() : NSWorkspace.shared.notificationCenter
+        }
+    }
+
+    private struct SystemClearObservation {
+        let token: NSObjectProtocol
+        let id: UUID
+        let epoch: UUID
+    }
+
+    private var usesNativeDelay: Bool {
+        Defaults[.autoClearClipboardEnabled] && !UtilityIntegration.shared.owners.contains("clipboardAutoClearDelay")
+    }
+
+    private var timerEpoch: UUID?
+
     /// Arms the delay-based clear. Called by `ClipboardManager` on every copy.
     func noteClipboardChanged() {
         clearTimer?.invalidate()
         clearTimer = nil
+        timerEpoch = nil
 
-        guard Defaults[.autoClearClipboardEnabled] else { return }
+        guard usesNativeDelay else { return }
+        let epoch = delayEpoch.withLock { $0 }
         let delay = max(5, Defaults[.autoClearClipboardSeconds])
         let expectedChangeCount = NSPasteboard.general.changeCount
-        let timer = Timer(timeInterval: TimeInterval(delay), repeats: false) { [weak self] _ in
+        let timer = Timer(timeInterval: TimeInterval(delay), repeats: false) { [weak self] timer in
             MainActor.assumeIsolated {
-                guard Defaults[.autoClearClipboardEnabled] else { return }
-                self?.clearPasteboard(reason: "timer", expectedChangeCount: expectedChangeCount)
+                guard let self, self.clearTimer === timer else { return }
+                self.clearTimer = nil
+                self.timerEpoch = nil
+                self.clearPasteboard(expectedChangeCount: expectedChangeCount) {
+                    self.usesNativeDelay && self.delayEpoch.withLock { $0 == epoch }
+                }
             }
         }
         RunLoop.main.add(timer, forMode: .common)
         clearTimer = timer
+        timerEpoch = epoch
+    }
+
+    private func usesNativeTrigger(_ trigger: SystemClearTrigger) -> Bool {
+        Defaults[.autoClearClipboardOnLock] && !UtilityIntegration.shared.owners.contains(trigger.rawValue)
     }
 
     /// Registers or tears down the sleep and lock triggers to match the
     /// setting, so nothing is observed while the feature is off.
     func syncSystemTriggers() {
-        for observer in observers {
-            NSWorkspace.shared.notificationCenter.removeObserver(observer)
-            DistributedNotificationCenter.default().removeObserver(observer)
-        }
-        observers.removeAll()
-
-        guard Defaults[.autoClearClipboardOnLock] else { return }
-
-        let workspace = NSWorkspace.shared.notificationCenter
-        let utilityOwners = UtilityIntegration.shared.owners
-        let triggers: [(Notification.Name, String)] = [
-            (NSWorkspace.willSleepNotification, "clipboardAutoClearSleep"),
-            (NSWorkspace.screensDidSleepNotification, "clipboardAutoClearDisplaySleep")
-        ]
-        for (name, owner) in triggers where !utilityOwners.contains(owner) {
-            let token = workspace.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
-                MainActor.assumeIsolated { self?.clearPasteboard(reason: "sleep") }
+        let epoch = triggerEpoch.withLock { $0 }
+        for trigger in SystemClearTrigger.allCases {
+            let wanted = usesNativeTrigger(trigger)
+            if let observer = observers[trigger] {
+                if wanted && observer.epoch == epoch { continue }
+                trigger.center.removeObserver(observer.token)
+                observers[trigger] = nil
             }
-            observers.append(token)
-        }
-
-        // Screen lock has no AppKit notification; the distributed one is what
-        // the rest of the app already uses for lock state.
-        if !utilityOwners.contains("clipboardAutoClearLock") {
-            let lockToken = DistributedNotificationCenter.default().addObserver(
-                forName: NSNotification.Name("com.apple.screenIsLocked"),
-                object: nil, queue: .main
+            guard wanted else { continue }
+            let id = UUID()
+            let token = trigger.center.addObserver(
+                forName: trigger.name, object: nil, queue: .main
             ) { [weak self] _ in
-                MainActor.assumeIsolated { self?.clearPasteboard(reason: "lock") }
+                MainActor.assumeIsolated {
+                    guard let self else { return }
+                    self.clearPasteboard {
+                        self.observers[trigger]?.id == id && self.usesNativeTrigger(trigger)
+                            && self.triggerEpoch.withLock { $0 == epoch }
+                    }
+                }
             }
-            observers.append(lockToken)
+            observers[trigger] = SystemClearObservation(token: token, id: id, epoch: epoch)
         }
     }
 
@@ -292,17 +343,20 @@ final class ClipboardToolsManager: ObservableObject {
     /// pasteboard stops holding a password or token, not that the user loses
     /// what they deliberately kept. The change count is suppressed so clearing
     /// does not itself get filed as a new clipboard entry.
-    private func clearPasteboard(reason: String, expectedChangeCount: Int? = nil) {
+    private func clearPasteboard(expectedChangeCount: Int? = nil, whileAllowed: () -> Bool) {
+        guard whileAllowed() else { return }
         let pasteboard = NSPasteboard.general
         let currentChangeCount = pasteboard.changeCount
         guard ClipboardCapturePolicy.shouldClear(expectedChangeCount: expectedChangeCount,
                                                   currentChangeCount: currentChangeCount),
-              currentChangeCount != lastClearedChangeCount else { return }
+              currentChangeCount != lastClearedChangeCount,
+              whileAllowed() else { return }
         pasteboard.clearContents()
         lastClearedChangeCount = pasteboard.changeCount
-        ClipboardManager.shared.ignoreChangeCount(pasteboard.changeCount)
+        watchedClipboard?.ignoreChangeCount(pasteboard.changeCount)
         clearTimer?.invalidate()
         clearTimer = nil
+        timerEpoch = nil
     }
 
     private var lastClearedChangeCount: Int = -1
