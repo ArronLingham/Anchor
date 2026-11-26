@@ -22,13 +22,10 @@ import SwiftUI
 
 struct VinylSettings: View {
     @Default(.enableVinylWidget) private var enabled
-    @Default(.vinylWidgetSize) private var size
-    @Default(.vinylOrientation) private var orientation
     @Default(.vinylWindowLevel) private var level
     @Default(.vinylShowStylus) private var showStylus
     @Default(.vinylShowProgress) private var showProgress
     @Default(.vinylProgressStyle) private var progressStyle
-    @Default(.vinylShowTitle) private var showTitle
     @Default(.vinylUseAlbumColor) private var useAlbumColor
     @Default(.vinylBackgroundOpacity) private var backgroundOpacity
 
@@ -44,36 +41,13 @@ struct VinylSettings: View {
                 }
                 .settingsHighlight(id: highlightID("Show the vinyl widget"))
             } footer: {
-                Text(
-                    "A record on the desktop that turns while music plays, with "
-                    + "the album art as its label. Drag it anywhere; it comes back "
-                    + "where you left it.\n\n"
-                    + "The rotation is a Core Animation handed to the render "
-                    + "server, not a per-frame redraw, so a spinning record costs "
-                    + "Anchor nothing while it turns. It stops entirely when "
-                    + "playback pauses and the window is torn down while the "
-                    + "display sleeps.")
+                Text("Drag the widget to move it. Drag an edge or corner to resize it. The layout follows the window’s shape and hides track details when space is tight.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
             }
 
             if enabled {
                 Section("Placement") {
-                    Picker("Size", selection: $size) {
-                        ForEach(VinylWidgetSize.allCases, id: \.self) { option in
-                            Text(option.label).tag(option)
-                        }
-                    }
-                    .settingsHighlight(id: highlightID("Size"))
-
-                    Picker("Shape", selection: $orientation) {
-                        ForEach(VinylOrientation.allCases, id: \.self) { option in
-                            Text(option.label).tag(option)
-                        }
-                    }
-                    .settingsHighlight(id: highlightID("Shape"))
-                    .settingsInfo("Vertical puts the record above the title and transport; horizontal puts it beside them, which is shorter and suits sitting along the bottom of a screen. Every one of these is also on the widget's own right-click menu.")
-
                     Picker("Layer", selection: $level) {
                         ForEach(VinylWindowLevel.allCases, id: \.self) { option in
                             Text(option.label).tag(option)
@@ -88,25 +62,30 @@ struct VinylSettings: View {
                         .settingsHighlight(id: highlightID("Show the tonearm"))
                         .settingsInfo("Swings onto the record while playing and lifts when it stops.")
 
-                    Toggle("Show progress", isOn: $showProgress)
-                        .settingsHighlight(id: highlightID("Show progress"))
+                    LabeledContent("Show progress") {
+                        HStack(spacing: 12) {
+                            Picker("Progress style", selection: $progressStyle) {
+                                ForEach(VinylProgressStyle.allCases, id: \.self) { style in
+                                    Text(style.label).tag(style)
+                                }
+                            }
+                            .labelsHidden()
+                            .fixedSize()
+                            .disabled(!showProgress)
+                            .settingsHighlight(id: highlightID("Progress style"))
 
-                    Picker("Progress style", selection: $progressStyle) {
-                        ForEach(VinylProgressStyle.allCases, id: \.self) { style in
-                            Text(style.label).tag(style)
+                            Toggle("Show progress", isOn: $showProgress)
+                                .labelsHidden()
+                                .toggleStyle(.switch)
                         }
                     }
-                    .disabled(!showProgress)
-                    .settingsHighlight(id: highlightID("Progress style"))
-                    .settingsInfo("The ring hugs the record and covers nothing. The bar sits under the transport with elapsed and remaining times, and can be clicked to seek.")
-
-                    Toggle("Show title and artist", isOn: $showTitle)
-                        .settingsHighlight(id: highlightID("Show title and artist"))
+                    .settingsHighlight(id: highlightID("Show progress"))
+                    .settingsInfo("Ring goes around the record. Bar shows elapsed and remaining time and lets you click to seek.")
 
                     Toggle("Tint with the album colour", isOn: $useAlbumColor)
                         .settingsHighlight(id: highlightID("Tint with the album colour"))
 
-                    Slider(value: $backgroundOpacity, in: 0...0.85) {
+                    Slider(value: $backgroundOpacity, in: 0...1) {
                         Text("Backing")
                     } minimumValueLabel: {
                         Text("None").font(.caption)
@@ -114,7 +93,7 @@ struct VinylSettings: View {
                         Text("Solid").font(.caption)
                     }
                     .settingsHighlight(id: highlightID("Backing"))
-                    .settingsInfo("A panel behind the record, for wallpapers it would otherwise disappear into.")
+                    .settingsInfo("Sets the opacity of the panel behind the record and controls. At None, your wallpaper shows through.")
                 }
             }
         }

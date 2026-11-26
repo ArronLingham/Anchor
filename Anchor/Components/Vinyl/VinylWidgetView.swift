@@ -66,18 +66,17 @@ struct VinylRecordRepresentable: NSViewRepresentable {
 /// and playback position.
 struct VinylWidgetView: View {
     @ObservedObject private var music = MusicManager.shared
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    @Default(.vinylWidgetSize) private var size
-    @Default(.vinylOrientation) private var orientation
     @Default(.vinylWindowLevel) private var windowLevel
     @Default(.vinylShowStylus) private var showStylus
     @Default(.vinylProgressStyle) private var progressStyle
     @Default(.vinylShowProgress) private var showProgress
-    @Default(.vinylShowTitle) private var showTitle
     @Default(.vinylUseAlbumColor) private var useAlbumColor
     @Default(.vinylBackgroundOpacity) private var backgroundOpacity
 
     @State private var isHovering = false
+    @State private var axis: VinylLayout.Axis?
 
     // MARK: - Colour
     //
@@ -93,7 +92,7 @@ struct VinylWidgetView: View {
     }
 
     private var inkColor: Color {
-        guard useAlbumColor else { return .white }
+        guard useAlbumColor, backgroundOpacity >= 0.78 else { return .white }
         return Self.isLight(Self.muted(music.avgColor)) ? .black.opacity(0.82) : .white.opacity(0.92)
     }
 
@@ -123,66 +122,52 @@ struct VinylWidgetView: View {
     // MARK: - Body
 
     var body: some View {
-        Group {
         GeometryReader { geometry in
-            // Portrait sizes everything from the card width; landscape sizes it
-            // from the height, since there the record is what sets the height
-            // and the text column sits beside it.
-            let width = orientation == .portrait
-                ? geometry.size.width
-                : geometry.size.height / 0.52
-            let recordSide = orientation == .portrait
-                ? width * 0.72
-                : geometry.size.height * 0.78
+            let size = geometry.size
+            let direction = axis ?? VinylLayout.Axis.choose(for: size, retaining: nil)
+            let layout = VinylLayout(size: size, axis: direction, showsBar: showProgress && progressStyle == .bar)
 
-            Group {
-                if orientation == .portrait {
-                    VStack(spacing: 0) {
-                        turntable(width: width, recordSide: recordSide)
-                        stack(width: width)
-                        Spacer(minLength: 0)
-                    }
-                } else {
-                    HStack(spacing: width * 0.05) {
-                        turntable(width: width, recordSide: recordSide)
-                        VStack(alignment: .leading, spacing: 0) {
-                            Spacer(minLength: 0)
-                            stack(width: width)
-                            Spacer(minLength: 0)
-                        }
-                    }
-                }
+            ZStack(alignment: .topLeading) {
+                turntable(recordSide: layout.recordSide)
+                    .position(layout.recordCenter)
+                details(layout)
+                    .frame(width: layout.controlsFrame.width, height: layout.controlsFrame.height)
+                    .position(x: layout.controlsFrame.midX, y: layout.controlsFrame.midY)
             }
-            .padding(width * 0.075)
-            .frame(width: geometry.size.width, height: geometry.size.height,
-                   alignment: orientation == .portrait ? .top : .leading)
+            .frame(width: size.width, height: size.height)
             .background(card)
-            // Every setting, on the widget itself — the point of a desktop
-            // widget is not having to go and find a settings window for it.
+            .contentShape(Rectangle())
             .contextMenu { settingsMenu }
             .overlay(alignment: .topTrailing) { closeButton }
+            // Keep the same record, controls and progress views through a pivot.
+            // Their frames animate once as the aspect ratio crosses the threshold.
+            .animation(reduceMotion ? nil : .smooth(duration: 0.27), value: direction)
+            .animation(reduceMotion ? nil : .easeInOut(duration: 0.18), value: layout.showsMetadata)
+            .onChange(of: size, initial: true) { _, newSize in
+                let next = VinylLayout.Axis.choose(for: newSize, retaining: axis)
+                if axis != next { axis = next }
+            }
         }
         .onHover { isHovering = $0 }
         .animation(.easeInOut(duration: 0.35), value: music.avgColor)
-        .animation(.easeInOut(duration: 0.25), value: orientation)
-            }
         .anchorTheme()
     }
 
-    /// Title, transport and progress — the same stack either way round.
-    @ViewBuilder
-    private func stack(width: CGFloat) -> some View {
-        if showTitle {
-            trackLabels(width: width)
-                .padding(.top, orientation == .portrait ? width * 0.055 : 0)
-        }
+    private func details(_ layout: VinylLayout) -> some View {
+        VStack(spacing: 5) {
+            if layout.showsMetadata {
+                trackLabels(width: layout.scale)
+                    .frame(height: layout.metadataHeight)
+                    .transition(.opacity)
+            }
 
-        transport(width: width)
-            .padding(.top, showTitle ? width * 0.05 : (orientation == .portrait ? width * 0.07 : 0))
+            transport(width: layout.scale)
+                .frame(height: layout.transportHeight)
 
-        if showProgress && progressStyle == .bar {
-            progressBar(width: width)
-                .padding(.top, width * 0.045)
+            if layout.showsBar {
+                progressBar(width: layout.scale)
+                    .frame(height: layout.barHeight)
+            }
         }
     }
 
@@ -213,18 +198,11 @@ struct VinylWidgetView: View {
 
     @ViewBuilder
     private var settingsMenu: some View {
-        Picker("Size", selection: $size) {
-            ForEach(VinylWidgetSize.allCases, id: \.self) { Text($0.label).tag($0) }
-        }
-        Picker("Shape", selection: $orientation) {
-            ForEach(VinylOrientation.allCases, id: \.self) { Text($0.label).tag($0) }
-        }
         Picker("Layer", selection: $windowLevel) {
             ForEach(VinylWindowLevel.allCases, id: \.self) { Text($0.label).tag($0) }
         }
         Divider()
-        Toggle("Show the title", isOn: $showTitle)
-        Toggle("Show the progress bar", isOn: $showProgress)
+        Toggle("Show progress", isOn: $showProgress)
         Toggle("Show the tonearm", isOn: $showStylus)
         Toggle("Tint from the album art", isOn: $useAlbumColor)
         Divider()
@@ -241,17 +219,21 @@ struct VinylWidgetView: View {
 
     private var card: some View {
         AnchorCorners.rectangle(cornerRadius: 18)
-            .fill(cardColor.opacity(max(backgroundOpacity, 0.001) > 0.001 ? 1 : 1))
+            .fill(cardColor)
             .overlay(
                 AnchorCorners.rectangle(cornerRadius: 18)
                     .anchorStrokeBorder(.white.opacity(0.08), lineWidth: 1))
-            .shadow(color: .black.opacity(0.28), radius: 18, y: 6)
+            .opacity(backgroundOpacity)
+            // A nearly clear hit surface keeps the grab area available even
+            // when artwork and controls leave the edge visually transparent.
+            .background(Color.black.opacity(0.015))
     }
 
     // MARK: - Turntable
 
-    private func turntable(width: CGFloat, recordSide: CGFloat) -> some View {
-        ZStack {
+    private func turntable(recordSide: CGFloat) -> some View {
+        let width = recordSide / 0.72
+        return ZStack {
             if showProgress && progressStyle == .ring {
                 progressRing(side: recordSide + width * 0.045)
             }
@@ -331,13 +313,13 @@ struct VinylWidgetView: View {
     private func trackLabels(width: CGFloat) -> some View {
         VStack(spacing: 2) {
             Text(music.songTitle)
-                .font(.system(size: width * 0.062, weight: .semibold))
+                .font(.system(size: max(13, width * 0.062), weight: .semibold))
                 .foregroundStyle(inkColor)
                 .lineLimit(1)
                 .truncationMode(.tail)
 
             Text(subtitle)
-                .font(.system(size: width * 0.048))
+                .font(.system(size: max(10, width * 0.048)))
                 .foregroundStyle(subtleInk)
                 .lineLimit(1)
                 .truncationMode(.tail)
@@ -353,7 +335,7 @@ struct VinylWidgetView: View {
     }
 
     private func transport(width: CGFloat) -> some View {
-        HStack(spacing: width * 0.10) {
+        HStack(spacing: min(24, width * 0.10)) {
             control("backward.end.fill", size: width * 0.062) { music.previousTrack() }
             control(music.isPlaying ? "pause.fill" : "play.fill", size: width * 0.082) {
                 music.playPause()
@@ -366,7 +348,7 @@ struct VinylWidgetView: View {
     private func control(_ symbol: String, size: CGFloat, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: symbol)
-                .font(.system(size: size, weight: .medium))
+                .font(.system(size: max(11, size), weight: .medium))
                 .foregroundStyle(inkColor.opacity(isHovering ? 1 : 0.85))
                 .contentShape(Rectangle())
         }
@@ -406,7 +388,7 @@ struct VinylWidgetView: View {
                 Spacer()
                 Text("-" + timestamp(max(0, music.songDuration - music.elapsedTime)))
             }
-            .font(.system(size: width * 0.036, weight: .medium))
+            .font(.system(size: max(9, width * 0.036), weight: .medium))
             .monospacedDigit()
             .foregroundStyle(subtleInk)
         }

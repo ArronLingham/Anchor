@@ -51,8 +51,7 @@ enum VinylWindowLevel: String, Codable, CaseIterable, Defaults.Serializable {
     }
 }
 
-/// Size presets, matching VinylPod's own four.
-/// Which way round the card is laid out.
+/// Legacy presets seed the first frame when no saved window frame exists.
 enum VinylOrientation: String, Codable, CaseIterable, Defaults.Serializable {
     /// Record on top, text and transport beneath.
     case portrait
@@ -60,26 +59,10 @@ enum VinylOrientation: String, Codable, CaseIterable, Defaults.Serializable {
     /// along the bottom of a screen.
     case landscape
 
-    var label: String {
-        switch self {
-        case .portrait: return String(localized: "Vertical")
-        case .landscape: return String(localized: "Horizontal")
-        }
-    }
 }
 
 enum VinylWidgetSize: String, Codable, CaseIterable, Defaults.Serializable {
     case small, medium, regular, large, desktop
-
-    var label: String {
-        switch self {
-        case .small: return String(localized: "Small")
-        case .medium: return String(localized: "Medium")
-        case .regular: return String(localized: "Regular")
-        case .large: return String(localized: "Large")
-        case .desktop: return String(localized: "Desktop")
-        }
-    }
 
     var width: CGFloat {
         switch self {
@@ -89,20 +72,6 @@ enum VinylWidgetSize: String, Codable, CaseIterable, Defaults.Serializable {
         case .large: return 420
         case .desktop: return 560
         }
-    }
-
-    /// Height for what is actually being drawn.
-    ///
-    /// This was a fixed 1.36 ratio, so turning the progress bar off left an
-    /// empty strip at the bottom of the card rather than making it shorter.
-    /// Each optional row is now worth its own share of the width, matching the
-    /// proportional padding the view lays out with.
-    var height: CGFloat {
-        Self.height(
-            width: width,
-            orientation: Defaults[.vinylOrientation],
-            showsTitle: Defaults[.vinylShowTitle],
-            showsProgress: Defaults[.vinylShowProgress] && Defaults[.vinylProgressStyle] == .bar)
     }
 
     static func height(
@@ -123,7 +92,7 @@ enum VinylWidgetSize: String, Codable, CaseIterable, Defaults.Serializable {
         }
     }
 
-    /// Landscape needs more width for the text to sit beside the record.
+    /// Fallback for installations that have the old presets but no window frame.
     var size: CGSize {
         let w = Defaults[.vinylOrientation] == .landscape ? width * 1.5 : width
         return CGSize(
@@ -141,6 +110,9 @@ enum VinylWidgetSize: String, Codable, CaseIterable, Defaults.Serializable {
 /// Borderless and non-activating: clicking the widget must not pull Anchor
 /// forward and push the user's actual work behind it.
 final class VinylWidgetPanel: NSPanel {
+    private var resizeDrag: (edges: VinylResizeEdges, start: NSRect, pointer: NSPoint)?
+    var onResizeEnded: (() -> Void)?
+
     /// The content view is handed to `init` rather than assigned afterwards,
     /// matching `LauncherPanel`. A borderless panel given its content later can
     /// end up with no backing store and never reach the window server — it
@@ -154,6 +126,7 @@ final class VinylWidgetPanel: NSPanel {
 
         self.contentView = contentView
 
+        title = "Vinyl"
         isOpaque = false
         backgroundColor = .clear
         hasShadow = false
@@ -162,10 +135,51 @@ final class VinylWidgetPanel: NSPanel {
         isFloatingPanel = false
         animationBehavior = .none
         collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle]
+        acceptsMouseMovedEvents = true
+        contentView.addTrackingArea(NSTrackingArea(
+            rect: .zero, options: [.inVisibleRect, .activeAlways, .mouseEnteredAndExited, .mouseMoved],
+            owner: self, userInfo: nil))
     }
 
     override var canBecomeKey: Bool { false }
     override var canBecomeMain: Bool { false }
+
+    override func mouseExited(with event: NSEvent) {
+        if resizeDrag == nil { NSCursor.arrow.set() }
+    }
+
+    override func sendEvent(_ event: NSEvent) {
+        let edges = VinylResizeEdges(at: event.locationInWindow, in: contentView?.bounds ?? .zero)
+        switch event.type {
+        case .mouseMoved:
+            if resizeDrag == nil {
+                if edges.contains(.left) || edges.contains(.right) {
+                    NSCursor.resizeLeftRight.set()
+                } else if !edges.isEmpty {
+                    NSCursor.resizeUpDown.set()
+                } else {
+                    NSCursor.arrow.set()
+                }
+            }
+        case .leftMouseDown where !edges.isEmpty:
+            resizeDrag = (edges, frame, NSEvent.mouseLocation)
+            return
+        case .leftMouseDragged:
+            if let drag = resizeDrag {
+                let pointer = NSEvent.mouseLocation
+                let delta = CGPoint(x: pointer.x - drag.pointer.x, y: pointer.y - drag.pointer.y)
+                setFrame(drag.edges.frame(from: drag.start, delta: delta), display: true)
+                return
+            }
+        case .leftMouseUp where resizeDrag != nil:
+            resizeDrag = nil
+            onResizeEnded?()
+            return
+        default:
+            break
+        }
+        super.sendEvent(event)
+    }
 }
 
 /// Owns the vinyl widget window.
@@ -198,9 +212,7 @@ final class VinylWidgetWindowManager: ObservableObject {
         guard !started else { return }
         started = true
 
-        Defaults.publisher(
-            keys: .enableVinylWidget, .vinylWidgetSize, .vinylWindowLevel,
-            .vinylOrientation, .vinylShowTitle, .vinylShowProgress, .vinylProgressStyle)
+        Defaults.publisher(keys: .enableVinylWidget, .vinylWindowLevel)
             .sink { [weak self] _ in
                 Task { @MainActor in self?.sync() }
             }
@@ -216,13 +228,7 @@ final class VinylWidgetWindowManager: ObservableObject {
         sync()
     }
 
-    /// Keeps a resized widget inside the display it is on.
-    ///
-    /// Resizing keeps the origin, so growing the card pushes its right and top
-    /// edges outward — and every size and shape is now on the widget's own
-    /// right-click menu, so going from Small to Desktop (190pt to 560) or
-    /// portrait to horizontal (1.5x wider) near an edge slid it off screen.
-    /// A borderless panel you cannot see is one you cannot drag back.
+    /// Keeps a saved frame accessible when the display arrangement changes.
     private static func keptOnScreen(_ frame: NSRect, near panel: NSPanel) -> NSRect {
         let screen = panel.screen
             ?? NSScreen.screens.first { $0.frame.intersects(frame) }
@@ -230,6 +236,8 @@ final class VinylWidgetWindowManager: ObservableObject {
         guard let visible = screen?.visibleFrame else { return frame }
 
         var f = frame
+        f.size.width = min(visible.width, max(VinylLayout.minimumSize.width, f.width))
+        f.size.height = min(visible.height, max(VinylLayout.minimumSize.height, f.height))
         // Only ever pull it back in; a widget smaller than the screen keeps
         // wherever the user put it.
         f.origin.x = min(f.origin.x, visible.maxX - f.width)
@@ -239,7 +247,7 @@ final class VinylWidgetWindowManager: ObservableObject {
         return f
     }
 
-    /// Creates, resizes or removes the window to match the settings.
+    /// Creates or removes the window and updates its stacking level.
     func sync() {
         let wanted = Defaults[.enableVinylWidget]
             && !SystemActivityGate.shared.shouldSuspendBackgroundWork
@@ -249,26 +257,24 @@ final class VinylWidgetWindowManager: ObservableObject {
             return
         }
 
-        let size = Defaults[.vinylWidgetSize].size
         let level = Defaults[.vinylWindowLevel].windowLevel
 
         if let panel {
-            if panel.frame.size != size {
-                var frame = panel.frame
-                frame.size = size
-                panel.setFrame(Self.keptOnScreen(frame, near: panel), display: true)
-            }
             panel.level = level
             return
         }
 
+        let size = Defaults[.vinylWidgetSize].size
         let host = NSHostingView(rootView: VinylWidgetView())
+        host.sizingOptions = []
         host.frame = NSRect(origin: .zero, size: size)
 
         let panel = VinylWidgetPanel(contentView: host, size: size)
         panel.level = level
+        if !panel.setFrameUsingName(Self.frameAutosaveName) { positionDefault(panel, size: size) }
+        panel.setFrame(Self.keptOnScreen(panel.frame, near: panel), display: false)
         panel.setFrameAutosaveName(Self.frameAutosaveName)
-        if panel.frame.origin == .zero { positionDefault(panel, size: size) }
+        panel.onResizeEnded = { [weak panel] in panel?.saveFrame(usingName: Self.frameAutosaveName) }
         panel.setIsVisible(true)
         panel.orderFrontRegardless()
         panel.displayIfNeeded()

@@ -64,7 +64,7 @@ enum SettingsSectionIndex {
         .terminal: [.init(title: "General", anchor: "Enable terminal"), .init(title: "Shell", anchor: "Shell path"), .init(title: "Appearance", anchor: "Font family"), .init(title: "Colors", anchor: "Background color"), .init(title: "Cursor", anchor: "Cursor style"), .init(title: "Scrollback", anchor: "Scrollback lines"), .init(title: "Input", anchor: "Option as Meta")],
         .timer: [.init(title: "Focus sessions", anchor: "Focus duration"), .init(title: "Timer Feature", anchor: "Enable timer feature"), .init(title: "Lock Screen Integration", anchor: "Customize the lock screen timer"), .init(title: "Appearance", anchor: "Timer tint")],
         .todo: [.init(title: "List", anchor: "Sort by"), .init(title: "Stored", anchor: "Clear Completed"), .init(title: "iPhone Access", anchor: "Sync with Reminders")],
-        .vinyl: [.init(title: "Placement", anchor: "Size"), .init(title: "Look", anchor: "Show the tonearm")],
+        .vinyl: [.init(title: "Placement", anchor: "Layer"), .init(title: "Look", anchor: "Show the tonearm")],
         .workspaceModes: [.init(title: "Automation", anchor: "Automatically switch modes"), .init(title: "Workspace modes", anchor: "Choose a mode")],
     ]
 
