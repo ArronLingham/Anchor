@@ -62,22 +62,16 @@ struct VinylSettings: View {
                         .settingsHighlight(id: highlightID("Show the tonearm"))
                         .settingsInfo("Swings onto the record while playing and lifts when it stops.")
 
-                    LabeledContent("Show progress") {
-                        HStack(spacing: 12) {
-                            Picker("Progress style", selection: $progressStyle) {
-                                ForEach(VinylProgressStyle.allCases, id: \.self) { style in
-                                    Text(style.label).tag(style)
-                                }
-                            }
-                            .labelsHidden()
-                            .fixedSize()
-                            .disabled(!showProgress)
-                            .settingsHighlight(id: highlightID("Progress style"))
-
-                            Toggle("Show progress", isOn: $showProgress)
-                                .labelsHidden()
-                                .toggleStyle(.switch)
+                    Picker("Show progress", selection: Binding<VinylProgressStyle?>(
+                        get: { showProgress ? progressStyle : nil },
+                        set: { style in
+                            if let style { progressStyle = style }
+                            showProgress = style != nil
                         }
+                    )) {
+                        Text("Off").tag(nil as VinylProgressStyle?)
+                        Text("Bar").tag(Optional(VinylProgressStyle.bar))
+                        Text("Ring").tag(Optional(VinylProgressStyle.ring))
                     }
                     .settingsHighlight(id: highlightID("Show progress"))
                     .settingsInfo("Ring goes around the record. Bar shows elapsed and remaining time and lets you click to seek.")

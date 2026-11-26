@@ -227,6 +227,7 @@ struct VinylWidgetView: View {
             // A nearly clear hit surface keeps the grab area available even
             // when artwork and controls leave the edge visually transparent.
             .background(Color.black.opacity(0.015))
+            .overlay(Rectangle().strokeBorder(.black.opacity(0.06 * (1 - backgroundOpacity)), lineWidth: 10).allowsHitTesting(false))
     }
 
     // MARK: - Turntable

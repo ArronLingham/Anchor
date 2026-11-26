@@ -25,6 +25,10 @@ enum VinylLayoutTests {
             }
         }
         precondition(VinylResizeEdges(at: CGPoint(x: 150, y: 90), in: bounds).isEmpty)
+        let bottomRight: VinylResizeEdges = [.bottom, .right]
+        precondition(bottomRight.frame(from: start, delta: CGPoint(x: 12, y: -18))
+                     == CGRect(x: 40, y: 52, width: 312, height: 208))
+        precondition(bottomRight.frame(from: start, delta: .zero) == start)
         let middle = CGSize(width: 226, height: 200)
         precondition(VinylLayout.Axis.choose(for: middle, retaining: .vertical) == .vertical)
         precondition(VinylLayout.Axis.choose(for: middle, retaining: .horizontal) == .horizontal)

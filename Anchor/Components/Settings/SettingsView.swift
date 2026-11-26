@@ -1112,7 +1112,6 @@ struct SettingsView: View {
             SettingsSearchEntry(tab: .todo, title: "Storage & Backup", keywords: ["backup", "restore", "export", "persistence", "todo", "file"], highlightID: SettingsTab.todo.highlightID(for: "Storage & Backup")),
             SettingsSearchEntry(tab: .vinyl, title: "Backing", keywords: ["backing", "vinyl"], highlightID: SettingsTab.vinyl.highlightID(for: "Backing")),
             SettingsSearchEntry(tab: .vinyl, title: "Layer", keywords: ["layer", "vinyl"], highlightID: SettingsTab.vinyl.highlightID(for: "Layer")),
-            SettingsSearchEntry(tab: .vinyl, title: "Progress style", keywords: ["progress", "style", "vinyl"], highlightID: SettingsTab.vinyl.highlightID(for: "Progress style")),
             SettingsSearchEntry(tab: .vinyl, title: "Show progress", keywords: ["progress", "vinyl"], highlightID: SettingsTab.vinyl.highlightID(for: "Show progress")),
             SettingsSearchEntry(tab: .vinyl, title: "Show the tonearm", keywords: ["tonearm", "vinyl"], highlightID: SettingsTab.vinyl.highlightID(for: "Show the tonearm")),
             SettingsSearchEntry(tab: .vinyl, title: "Tint with the album colour", keywords: ["tint", "album", "colour", "vinyl"], highlightID: SettingsTab.vinyl.highlightID(for: "Tint with the album colour")),

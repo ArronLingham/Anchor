@@ -110,8 +110,8 @@ enum VinylWidgetSize: String, Codable, CaseIterable, Defaults.Serializable {
 /// Borderless and non-activating: clicking the widget must not pull Anchor
 /// forward and push the user's actual work behind it.
 final class VinylWidgetPanel: NSPanel {
-    private var resizeDrag: (edges: VinylResizeEdges, start: NSRect, pointer: NSPoint)?
-    var onResizeEnded: (() -> Void)?
+    private var drag: (edges: VinylResizeEdges, start: NSRect, pointer: NSPoint)?
+    var onDragEnded: (() -> Void)?
 
     /// The content view is handed to `init` rather than assigned afterwards,
     /// matching `LauncherPanel`. A borderless panel given its content later can
@@ -130,56 +130,91 @@ final class VinylWidgetPanel: NSPanel {
         isOpaque = false
         backgroundColor = .clear
         hasShadow = false
-        isMovableByWindowBackground = true
+        isMovableByWindowBackground = false
         hidesOnDeactivate = false
         isFloatingPanel = false
         animationBehavior = .none
         collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle]
         acceptsMouseMovedEvents = true
         contentView.addTrackingArea(NSTrackingArea(
-            rect: .zero, options: [.inVisibleRect, .activeAlways, .mouseEnteredAndExited, .mouseMoved],
+            rect: .zero, options: [.inVisibleRect, .activeAlways, .mouseEnteredAndExited, .mouseMoved, .cursorUpdate],
             owner: self, userInfo: nil))
     }
 
     override var canBecomeKey: Bool { false }
     override var canBecomeMain: Bool { false }
 
+    private func cursor(for edges: VinylResizeEdges) -> NSCursor {
+        let position: NSCursor.FrameResizePosition
+        switch edges {
+        case [.left, .top]: position = .topLeft
+        case [.right, .top]: position = .topRight
+        case [.left, .bottom]: position = .bottomLeft
+        case [.right, .bottom]: position = .bottomRight
+        case .left: position = .left
+        case .right: position = .right
+        case .top: position = .top
+        case .bottom: position = .bottom
+        default: return .arrow
+        }
+        return .frameResize(position: position, directions: .all)
+    }
+
+    private func edges(at point: NSPoint) -> VinylResizeEdges {
+        VinylResizeEdges(at: point, in: contentView?.bounds ?? .zero)
+    }
+
+    override func cursorUpdate(with event: NSEvent) {
+        cursor(for: drag?.edges ?? edges(at: event.locationInWindow)).set()
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        cursorUpdate(with: event)
+    }
+
     override func mouseExited(with event: NSEvent) {
-        if resizeDrag == nil { NSCursor.arrow.set() }
+        if drag == nil { NSCursor.arrow.set() }
     }
 
     override func sendEvent(_ event: NSEvent) {
-        let edges = VinylResizeEdges(at: event.locationInWindow, in: contentView?.bounds ?? .zero)
         switch event.type {
-        case .mouseMoved:
-            if resizeDrag == nil {
-                if edges.contains(.left) || edges.contains(.right) {
-                    NSCursor.resizeLeftRight.set()
-                } else if !edges.isEmpty {
-                    NSCursor.resizeUpDown.set()
-                } else {
-                    NSCursor.arrow.set()
-                }
-            }
-        case .leftMouseDown where !edges.isEmpty:
-            resizeDrag = (edges, frame, NSEvent.mouseLocation)
-            return
-        case .leftMouseDragged:
-            if let drag = resizeDrag {
-                let pointer = NSEvent.mouseLocation
-                let delta = CGPoint(x: pointer.x - drag.pointer.x, y: pointer.y - drag.pointer.y)
-                setFrame(drag.edges.frame(from: drag.start, delta: delta), display: true)
+        case .leftMouseDown:
+            let edge = edges(at: event.locationInWindow)
+            drag = (edge, frame, NSEvent.mouseLocation)
+            if !edge.isEmpty {
+                cursor(for: edge).set()
                 return
             }
-        case .leftMouseUp where resizeDrag != nil:
-            resizeDrag = nil
-            onResizeEnded?()
-            return
+        case .leftMouseDragged:
+            if let drag {
+                let pointer = NSEvent.mouseLocation
+                let delta = CGPoint(x: pointer.x - drag.pointer.x, y: pointer.y - drag.pointer.y)
+                if drag.edges.isEmpty {
+                    // Let SwiftUI cancel any tap while the window follows the drag.
+                    super.sendEvent(event)
+                    guard abs(delta.x) >= 3 || abs(delta.y) >= 3 else { return }
+                    setFrameOrigin(NSPoint(x: drag.start.minX + delta.x, y: drag.start.minY + delta.y))
+                } else {
+                    cursor(for: drag.edges).set()
+                    let resized = drag.edges.frame(from: drag.start, delta: delta)
+                    if resized != frame { setFrame(resized, display: true) }
+                }
+                return
+            }
+        case .leftMouseUp:
+            if let drag {
+                self.drag = nil
+                onDragEnded?()
+                cursorUpdate(with: event)
+                if !drag.edges.isEmpty { return }
+            }
         default:
             break
         }
         super.sendEvent(event)
+        if event.type == .mouseMoved { cursorUpdate(with: event) }
     }
+
 }
 
 /// Owns the vinyl widget window.
@@ -274,7 +309,7 @@ final class VinylWidgetWindowManager: ObservableObject {
         if !panel.setFrameUsingName(Self.frameAutosaveName) { positionDefault(panel, size: size) }
         panel.setFrame(Self.keptOnScreen(panel.frame, near: panel), display: false)
         panel.setFrameAutosaveName(Self.frameAutosaveName)
-        panel.onResizeEnded = { [weak panel] in panel?.saveFrame(usingName: Self.frameAutosaveName) }
+        panel.onDragEnded = { [weak panel] in panel?.saveFrame(usingName: Self.frameAutosaveName) }
         panel.setIsVisible(true)
         panel.orderFrontRegardless()
         panel.displayIfNeeded()
