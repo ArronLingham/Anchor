@@ -231,4 +231,6 @@ __pycache__/
 !/tests/run_terminal_disable_lifecycle_tests.sh
 !/tests/VinylLayoutTests.swift
 !/tests/run_vinyl_layout_tests.sh
+!/tests/ClaudeUsageDisableLifecycleTests.swift
+!/tests/run_claude_usage_disable_lifecycle_tests.sh
 !/scripts/test-utility-quick-launcher-lifecycle.sh

@@ -121,9 +121,39 @@ final class ClaudeUsageManager: ObservableObject {
     private var seenKeySet: Set<String> = []
 
     private var watcher: ClaudeTranscriptWatcher?
+    private var watchSession: UUID?
+    private var wakeObserver: NSObjectProtocol?
     private var resetTimer: DispatchSourceTimer?
+    private var resetGeneration: UInt = 0
     private var tickTimer: DispatchSourceTimer?
     private var lingerTask: Task<Void, Never>?
+
+    /// A resume crosses onto a background queue for filesystem/process work.
+    /// Cancelling the reset timer cannot recall work already submitted there,
+    /// so each attempt carries a small thread-safe lease. Turning either
+    /// controlling setting off retires the lease before that work can launch,
+    /// and an old completion cannot publish into a later off/on generation.
+    private final class ResumeLease: @unchecked Sendable {
+        private let lock = NSLock()
+        private var active = true
+
+        func retire() {
+            lock.withLock { active = false }
+        }
+
+        var isActive: Bool {
+            lock.withLock { active }
+        }
+
+        func performIfActive<T>(_ work: () -> T?) -> T? {
+            lock.withLock {
+                guard active else { return nil }
+                return work()
+            }
+        }
+    }
+
+    private var activeResumeLease: ResumeLease?
 
     /// Guards the reset handler. A `DispatchSourceTimer` does not fire reliably
     /// across system sleep, so the wake notification also calls in — without
@@ -151,9 +181,8 @@ final class ClaudeUsageManager: ObservableObject {
         didStart = true
 
         Defaults.publisher(.claudeUsageWatchEnabled)
-            .sink { [weak self] change in
-                Task { @MainActor in self?.applyWatchEnabled(change.newValue) }
-            }
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] change in self?.applyWatchEnabled(change.newValue) }
             .store(in: &cancellables)
 
         // Visibility is derived from this key, so without a subscription turning
@@ -169,6 +198,11 @@ final class ClaudeUsageManager: ObservableObject {
             }
             .store(in: &cancellables)
 
+        Defaults.publisher(.claudeUsageAutoResume)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] change in self?.applyAutoResumeEnabled(change.newValue) }
+            .store(in: &cancellables)
+
         SystemActivityGate.shared.$shouldSuspendBackgroundWork
             .removeDuplicates()
             .sink { [weak self] suspend in
@@ -180,15 +214,6 @@ final class ClaudeUsageManager: ObservableObject {
             }
             .store(in: &cancellables)
 
-        // A timer set for hours out does not survive a sleep reliably; the wake
-        // notification is what actually catches a reset that passed while the
-        // Mac was asleep.
-        NSWorkspace.shared.notificationCenter.addObserver(
-            forName: NSWorkspace.didWakeNotification, object: nil, queue: .main
-        ) { [weak self] _ in
-            Task { @MainActor in self?.handleWake() }
-        }
-
         applyWatchEnabled(Defaults[.claudeUsageWatchEnabled])
     }
 
@@ -197,6 +222,15 @@ final class ClaudeUsageManager: ObservableObject {
             startWatching()
         } else {
             stopWatching()
+        }
+    }
+
+    private func applyAutoResumeEnabled(_ enabled: Bool) {
+        guard !enabled else { return }
+        retireActiveResume()
+        if live.phase == .resuming {
+            setPhase(.resumed)
+            scheduleLinger()
         }
     }
 
@@ -232,16 +266,36 @@ final class ClaudeUsageManager: ObservableObject {
             return
         }
 
+        let session = UUID()
+        watchSession = session
         let watcher = ClaudeTranscriptWatcher(root: root) { [weak self] hit in
-            // Arrives on the watcher's own background queue.
-            Task { @MainActor in self?.handle(hit) }
+            Task { @MainActor in
+                guard let self, self.watchSession == session else { return }
+                self.handle(hit)
+            }
         }
-        watcher.start()
         self.watcher = watcher
+        watcher.start()
+
+        // A timer set for hours out may miss a reset while the Mac sleeps.
+        wakeObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didWakeNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                guard let self, self.watchSession == session else { return }
+                self.handleWake()
+            }
+        }
         Logger.log("Claude usage: watching \(root.path)", category: .lifecycle)
     }
 
     private func stopWatching() {
+        retireActiveResume()
+        watchSession = nil
+        if let wakeObserver { NSWorkspace.shared.notificationCenter.removeObserver(wakeObserver) }
+        wakeObserver = nil
+        lingerTask?.cancel()
+        lingerTask = nil
         watcher?.stop()
         watcher = nil
         cancelResetTimer()
@@ -250,6 +304,11 @@ final class ClaudeUsageManager: ObservableObject {
         live.resetDate = nil
         live.remaining = 0
         setPhase(.idle)
+    }
+
+    private func retireActiveResume() {
+        activeResumeLease?.retire()
+        activeResumeLease = nil
     }
 
     // MARK: - Hits
@@ -329,6 +388,7 @@ final class ClaudeUsageManager: ObservableObject {
     private func scheduleReset(at date: Date) {
         cancelResetTimer()
         hasHandledReset = false
+        let generation = resetGeneration
 
         let delay = max(0, date.timeIntervalSinceNow)
         let timer = DispatchSource.makeTimerSource(queue: .main)
@@ -336,7 +396,7 @@ final class ClaudeUsageManager: ObservableObject {
         timer.schedule(deadline: .now() + delay, leeway: .seconds(2))
         timer.setEventHandler {
             MainActor.assumeIsolated {
-                ClaudeUsageManager.shared.handleReset()
+                ClaudeUsageManager.shared.handleReset(generation: generation)
             }
         }
         timer.resume()
@@ -346,19 +406,23 @@ final class ClaudeUsageManager: ObservableObject {
     private func cancelResetTimer() {
         resetTimer?.cancel()
         resetTimer = nil
+        resetGeneration &+= 1
     }
 
     private func handleWake() {
         guard !hasHandledReset, let resetDate = live.resetDate else { return }
         guard Date() >= resetDate else { return }
         Logger.log("Claude usage: reset passed during sleep; handling on wake", category: .lifecycle)
-        handleReset()
+        handleReset(generation: resetGeneration)
     }
 
-    private func handleReset() {
+    private func handleReset(generation: UInt) {
+        guard generation == resetGeneration else { return }
         guard !hasHandledReset else { return }
         hasHandledReset = true
         cancelResetTimer()
+
+        guard Defaults[.claudeUsageWatchEnabled] else { return }
 
         live.remaining = 0
         setPhase(.resumed)
@@ -430,12 +494,16 @@ final class ClaudeUsageManager: ObservableObject {
 
         let transcriptPath = session.transcriptPath
         let sizeAtBanner = session.transcriptSize
+        retireActiveResume()
+        let lease = ResumeLease()
+        activeResumeLease = lease
 
         DispatchQueue.global(qos: .utility).async {
             // Cheap, but it stats a directory — keep it off main.
             if ClaudeSessionRegistry.isAlive(sessionId: sessionId) {
                 Task { @MainActor in
-                    ClaudeUsageManager.shared.finishResume(
+                    ClaudeUsageManager.shared.finishResumeIfCurrent(
+                        lease: lease,
                         sessionId: sessionId,
                         others: others,
                         outcome: .alreadyRunning)
@@ -449,7 +517,8 @@ final class ClaudeUsageManager: ObservableObject {
             // cannot tell them apart, because by now neither is running.
             if !transcriptPath.isEmpty, Self.fileSize(transcriptPath) > sizeAtBanner {
                 Task { @MainActor in
-                    ClaudeUsageManager.shared.finishResume(
+                    ClaudeUsageManager.shared.finishResumeIfCurrent(
+                        lease: lease,
                         sessionId: sessionId,
                         others: others,
                         outcome: .keptWorking)
@@ -457,14 +526,28 @@ final class ClaudeUsageManager: ObservableObject {
                 return
             }
 
-            let outcome = Self.launchClaude(sessionId: sessionId, cwd: cwd, prompt: prompt)
+            guard let outcome = Self.launchClaude(sessionId: sessionId, cwd: cwd, prompt: prompt,
+                                                  lease: lease) else { return }
             Task { @MainActor in
-                ClaudeUsageManager.shared.finishResume(
+                ClaudeUsageManager.shared.finishResumeIfCurrent(
+                    lease: lease,
                     sessionId: sessionId,
                     others: others,
                     outcome: outcome)
             }
         }
+    }
+
+    private func finishResumeIfCurrent(
+        lease: ResumeLease,
+        sessionId: String,
+        others: [String],
+        outcome: ResumeOutcome
+    ) {
+        guard activeResumeLease === lease, lease.isActive,
+              Defaults[.claudeUsageWatchEnabled], Defaults[.claudeUsageAutoResume] else { return }
+        activeResumeLease = nil
+        finishResume(sessionId: sessionId, others: others, outcome: outcome)
     }
 
     private enum ResumeOutcome {
@@ -492,7 +575,8 @@ final class ClaudeUsageManager: ObservableObject {
     /// Runs off the main thread. Detached: nothing waits for the process, and
     /// both output streams go to `/dev/null` — an undrained `Pipe` deadlocks a
     /// `Process` the moment the child fills the buffer.
-    private nonisolated static func launchClaude(sessionId: String, cwd: String, prompt: String) -> ResumeOutcome {
+    private nonisolated static func launchClaude(sessionId: String, cwd: String, prompt: String,
+                                                lease: ResumeLease) -> ResumeOutcome? {
         let process = Process()
 
         let arguments = ["-r", sessionId, "-p", prompt]
@@ -521,15 +605,18 @@ final class ClaudeUsageManager: ObservableObject {
         process.standardOutput = FileHandle.nullDevice
         process.standardError = FileHandle.nullDevice
 
-        do {
-            try process.run()
-            return .launched
-        } catch {
-            let posix = error as NSError
-            if posix.domain == NSCocoaErrorDomain, posix.code == NSFileNoSuchFileError {
-                return .binaryMissing
+        return lease.performIfActive { () -> ResumeOutcome? in
+            guard Defaults[.claudeUsageWatchEnabled], Defaults[.claudeUsageAutoResume] else { return nil }
+            do {
+                try process.run()
+                return .launched
+            } catch {
+                let posix = error as NSError
+                if posix.domain == NSCocoaErrorDomain, posix.code == NSFileNoSuchFileError {
+                    return .binaryMissing
+                }
+                return .failed(error.localizedDescription)
             }
-            return .failed(error.localizedDescription)
         }
     }
 
