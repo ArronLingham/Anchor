@@ -8,6 +8,7 @@ cat > "$work/Defaults.swift" <<'SWIFT'
 import Foundation
 public protocol DefaultsAnyKey { var name: String { get } }
 public enum Defaults {
+    public struct Change<Value> { public let newValue: Value }
     public struct Key<Value>: DefaultsAnyKey {
         public let name: String
         public let defaultValue: Value
@@ -15,11 +16,18 @@ public enum Defaults {
     }
     private static var values: [String: Any] = [:]
     private static let lock = NSRecursiveLock()
+    private static let booleanChanges = PassthroughSubject<(String, Bool), Never>()
     public static subscript<Value>(key: Key<Value>) -> Value {
         get { lock.lock(); defer { lock.unlock() }; return values[key.name] as? Value ?? key.defaultValue }
-        set { lock.lock(); defer { lock.unlock() }; values[key.name] = newValue as Any }
+        set {
+            lock.lock(); values[key.name] = newValue as Any; lock.unlock()
+            if let value = newValue as? Bool { booleanChanges.send((key.name, value)) }
+        }
     }
-    public static func publisher(keys: Key<Bool>, _ hour: Key<Int>, _ minute: Key<Int>,
+    public static func publisher(_ key: Key<Bool>, options: [Int]) -> AnyPublisher<Change<Bool>, Never> {
+        booleanChanges.filter { $0.0 == key.name }.map { Change(newValue: $0.1) }.eraseToAnyPublisher()
+    }
+    public static func publisher(keys hour: Key<Int>, _ minute: Key<Int>,
                                  _ count: Key<Int>, _ random: Key<Bool>, _ minimum: Key<Int>,
                                  _ maximum: Key<Int>, _ randomTime: Key<Bool>,
                                  _ start: Key<Int>, _ end: Key<Int>, _ repos: Key<[String]>) -> AnyPublisher<Void, Never> {

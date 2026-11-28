@@ -48,6 +48,17 @@ enum DailyCommitCountPolicy {
 final class DailyCommitRunGate {
     private let lock = NSLock()
     private var active = false
+    private var generation = UUID()
+
+    var automaticTicket: UUID { lock.withLock { generation } }
+
+    func retireAutomaticRuns() {
+        lock.withLock { generation = UUID() }
+    }
+
+    func accepts(_ ticket: UUID) -> Bool {
+        lock.withLock { generation == ticket }
+    }
 
     func begin() -> Bool {
         lock.lock(); defer { lock.unlock() }

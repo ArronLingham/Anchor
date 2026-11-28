@@ -90,11 +90,11 @@ struct DailyCommitScheduleTests {
         defer { try? FileManager.default.removeItem(at: temporaryRepo) }
         setenv("GIT_CONFIG_GLOBAL", "/dev/null", 1)
         setenv("GIT_CONFIG_SYSTEM", "/dev/null", 1)
-        func git(_ args: [String]) throws -> String {
+        func git(_ args: [String], in directory: URL? = nil) throws -> String {
             let process = Process()
             process.executableURL = URL(fileURLWithPath: "/usr/bin/git")
             process.arguments = args
-            process.currentDirectoryURL = temporaryRepo
+            process.currentDirectoryURL = directory ?? temporaryRepo
             let output = Pipe()
             process.standardOutput = output
             process.standardError = Pipe()
@@ -127,6 +127,49 @@ struct DailyCommitScheduleTests {
         let commitCount = try git(["rev-list", "--count", "HEAD"])
         check(commitCount == "1", "overlapping callbacks create only one commit in an isolated repository")
         check(Defaults[.gitDailyCommitDoneToday] == 1, "the daily count increments once")
+
+        let other = temporaryRepo.appendingPathComponent("another")
+        try FileManager.default.createDirectory(at: other, withIntermediateDirectories: true)
+        _ = try git(["init", "-q"], in: other)
+        _ = try git(["config", "user.name", "Anchor Test"], in: other)
+        _ = try git(["config", "user.email", "anchor-test@example.invalid"], in: other)
+        _ = try git(["config", "commit.gpgsign", "false"], in: other)
+        let hook = temporaryRepo.appendingPathComponent(".git/hooks/pre-commit")
+        let entered = temporaryRepo.appendingPathComponent(".git/anchor-entered")
+        let release = temporaryRepo.appendingPathComponent(".git/anchor-release")
+        try """
+        #!/bin/sh
+        touch .git/anchor-entered
+        remaining=100
+        while [ ! -f .git/anchor-release ] && [ "$remaining" -gt 0 ]; do
+            sleep 0.05
+            remaining=$((remaining - 1))
+        done
+        test -f .git/anchor-release
+        """.write(to: hook, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: hook.path)
+        Defaults[.gitDailyCommitEnabled] = false
+        manager.start()
+        defer { manager.stop() }
+        Defaults[.gitDailyCommitRepos] = [temporaryRepo.path, other.path]
+        Defaults[.gitDailyCommitLastRun] = nil
+        Defaults[.gitDailyCommitDoneToday] = 0
+        Defaults[.gitDailyCommitEnabled] = true
+        let automatic = Task { await manager.performRun(trigger: "disablement-test") }
+        for _ in 0..<160 {
+            if FileManager.default.fileExists(atPath: entered.path) { break }
+            try await Task.sleep(for: .milliseconds(25))
+        }
+        check(FileManager.default.fileExists(atPath: entered.path), "the first repository reached the transaction hook")
+        Defaults[.gitDailyCommitEnabled] = false
+        Defaults[.gitDailyCommitEnabled] = true
+        try Data().write(to: release)
+        await automatic.value
+        let acceptedCount = try git(["rev-list", "--count", "HEAD"])
+        let untouchedCount = try git(["rev-list", "--count", "--all"], in: other)
+        check(acceptedCount == "2", "the accepted repository finishes after disablement")
+        check(untouchedCount == "0", "rapid re-enable cannot launch a second repository from the old run")
+        check(Defaults[.gitDailyCommitDoneToday] == 1, "the accepted run retains its quota bookkeeping")
         print("Daily Commit scheduling: \(failures == 0 ? "passed" : "failed")")
         if failures != 0 { exit(1) }
     }

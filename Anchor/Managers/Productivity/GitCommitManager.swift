@@ -66,6 +66,7 @@ final class GitCommitManager: ObservableObject {
     @Published private(set) var isRunning = false
 
     private var timer: DispatchSourceTimer?
+    private var wakeObserver: NSObjectProtocol?
     private var cancellables = Set<AnyCancellable>()
     private var started = false
     nonisolated private static let runGate = DailyCommitRunGate()
@@ -82,8 +83,15 @@ final class GitCommitManager: ObservableObject {
         guard !started else { return }
         started = true
 
+        Defaults.publisher(.gitDailyCommitEnabled, options: [])
+            .sink { [weak self] change in
+                if !change.newValue { Self.runGate.retireAutomaticRuns() }
+                Task { @MainActor in self?.reschedule() }
+            }
+            .store(in: &cancellables)
+
         Defaults.publisher(
-            keys: .gitDailyCommitEnabled, .gitDailyCommitHour, .gitDailyCommitMinute,
+            keys: .gitDailyCommitHour, .gitDailyCommitMinute,
             .gitDailyCommitCount, .gitDailyCommitRandomCount, .gitDailyCommitMinimumCount,
             .gitDailyCommitMaximumCount, .gitDailyCommitRandomTime,
             .gitDailyCommitWindowStartHour, .gitDailyCommitWindowEndHour, .gitDailyCommitRepos
@@ -94,7 +102,7 @@ final class GitCommitManager: ObservableObject {
         .store(in: &cancellables)
 
         // A Mac that was asleep at the scheduled minute never got the fire.
-        NSWorkspace.shared.notificationCenter.addObserver(
+        wakeObserver = NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.didWakeNotification, object: nil, queue: .main
         ) { [weak self] _ in
             MainActor.assumeIsolated { self?.catchUpIfNeeded() }
@@ -105,6 +113,13 @@ final class GitCommitManager: ObservableObject {
     }
 
     func stop() {
+        started = false
+        Self.runGate.retireAutomaticRuns()
+        cancellables.removeAll()
+        if let wakeObserver {
+            NSWorkspace.shared.notificationCenter.removeObserver(wakeObserver)
+            self.wakeObserver = nil
+        }
         timer?.cancel()
         timer = nil
         nextRunAt = nil
@@ -117,7 +132,8 @@ final class GitCommitManager: ObservableObject {
         timer = nil
         nextRunAt = nil
 
-        guard Defaults[.gitDailyCommitEnabled], !Defaults[.gitDailyCommitRepos].isEmpty,
+        let ticket = Self.runGate.automaticTicket
+        guard started, Defaults[.gitDailyCommitEnabled], !Defaults[.gitDailyCommitRepos].isEmpty,
               !Self.runGate.isActive else { return }
         guard let next = nextFireDate(after: Date()) else { return }
 
@@ -134,7 +150,7 @@ final class GitCommitManager: ObservableObject {
         source.schedule(deadline: .now() + delay, leeway: .seconds(60))
         source.setEventHandler { [weak self] in
             Task.detached { [weak self] in
-                await self?.performRun(trigger: "schedule")
+                await self?.performRun(trigger: "schedule", automaticTicket: ticket)
                 // Fire-and-forget for the same reason as the spinner: the next
                 // day's schedule must not hinge on the UI being free right now.
                 Task { @MainActor in self?.reschedule() }
@@ -273,7 +289,8 @@ final class GitCommitManager: ObservableObject {
     /// so a randomised or multi-commit day catches up correctly after the Mac
     /// has been asleep or the app was not running.
     func catchUpIfNeeded() {
-        guard Defaults[.gitDailyCommitEnabled], !Defaults[.gitDailyCommitRepos].isEmpty else { return }
+        let ticket = Self.runGate.automaticTicket
+        guard started, Defaults[.gitDailyCommitEnabled], !Defaults[.gitDailyCommitRepos].isEmpty else { return }
         guard !Self.quotaUsedForToday() else { return }
 
         let now = Date()
@@ -281,7 +298,7 @@ final class GitCommitManager: ObservableObject {
 
         Task.detached { [weak self] in
             guard let self else { return }
-            await self.performRun(trigger: "catch-up")
+            await self.performRun(trigger: "catch-up", automaticTicket: ticket)
             await self.reschedule()
         }
     }
@@ -338,12 +355,17 @@ final class GitCommitManager: ObservableObject {
     /// `Defaults` (which is `UserDefaults`, safe from any thread) and only hops
     /// to the main actor to publish what happened. The commit itself therefore
     /// does not depend on the main actor being free.
-    nonisolated func performRun(trigger: String, force: Bool = false) async {
+    nonisolated func performRun(trigger: String, force: Bool = false, automaticTicket: UUID? = nil) async {
+        let ticket = automaticTicket ?? Self.runGate.automaticTicket
+        func canStartRepository() -> Bool {
+            force || (Defaults[.gitDailyCommitEnabled] && Self.runGate.accepts(ticket))
+        }
+
         // Serialize automatic and manual requests before checking the quota;
         // multiple queued callbacks must not run the same slot concurrently.
         guard Self.runGate.begin() else { return }
         defer { Self.runGate.end() }
-        guard force || Defaults[.gitDailyCommitEnabled] else { return }
+        guard canStartRepository() else { return }
         if !force, Self.quotaUsedForToday() { return }
 
         let repos = Defaults[.gitDailyCommitRepos]
@@ -366,7 +388,14 @@ final class GitCommitManager: ObservableObject {
 
         var records: [RunRecord] = []
         for path in repos {
+            // A repository admitted here owns its complete Git transaction,
+            // including any configured push and its result.
+            guard canStartRepository() else { break }
             records.append(await commit(in: path))
+        }
+        guard !records.isEmpty else {
+            Task { @MainActor in self.isRunning = false }
+            return
         }
 
         // Stamp the day *before* publishing, and straight into Defaults, so a
