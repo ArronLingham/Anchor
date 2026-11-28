@@ -51,6 +51,22 @@ final class QuickLauncherService: ObservableObject {
     static var shared: QuickLauncherService { serviceSlot.value }
     static var existing: QuickLauncherService? { serviceSlot.existing }
 
+    private static let presentationGate = ClipboardPresentationGate()
+
+    static func syncAvailability() {
+        let available = AppFeature.quickLauncher.isAvailable
+        presentationGate.update(available: available)
+        if available { shared.syncWithPreferences() }
+        else { existing?.syncWithPreferences() }
+    }
+
+    static func presentationRequest() -> (() -> Void)? {
+        guard let ticket = presentationGate.capture(currentlyAvailable: AppFeature.quickLauncher.isAvailable) else { return nil }
+        return {
+            guard presentationGate.accepts(ticket, currentlyAvailable: AppFeature.quickLauncher.isAvailable) else { return }
+            shared.show()
+        }
+    }
     @discardableResult
     func releaseResources() -> Bool {
         suspend()
@@ -82,6 +98,7 @@ final class QuickLauncherService: ObservableObject {
         forKey: DefaultsKey.quickLauncherHiddenItems) ?? ""
 
     private let hotkey = QuickToolHotkey(id: 14)
+    private let shortcutGate = ClipboardPresentationGate()
     private var panel: NSPanel?
     private var keyMonitor: Any?
     private var localClickMonitor: Any?
@@ -89,15 +106,27 @@ final class QuickLauncherService: ObservableObject {
     private var activationObserver: NSObjectProtocol?
 
     private init() {
-        hotkey.onPress = { [weak self] in self?.toggle() }
+        hotkey.capturePress = { [weak self] in
+            guard let self, let ticket = self.shortcutGate.capture(currentlyAvailable: Self.shortcutIsEnabled) else { return nil }
+            return { [weak self] in
+                guard let self, self.shortcutGate.accepts(ticket, currentlyAvailable: Self.shortcutIsEnabled) else { return }
+                self.toggle()
+            }
+        }
+    }
+
+    private static var shortcutIsEnabled: Bool {
+        AppFeature.quickLauncher.isAvailable
+            && UtilityPreferences.standard.bool(forKey: DefaultsKey.quickLauncherShortcutEnabled)
     }
 
     func syncWithPreferences() {
         UtilityWorkspace.shared.prepareOwnership()
         let available = AppFeature.quickLauncher.isAvailable
+        Self.presentationGate.update(available: available)
         if !available { _ = releaseResources(); return }
-        let enabled = available
-            && UtilityPreferences.standard.bool(forKey: DefaultsKey.quickLauncherShortcutEnabled)
+        let enabled = Self.shortcutIsEnabled
+        shortcutGate.update(available: enabled)
         let shortcut = GlobalShortcut.saved(for: DefaultsKey.quickLauncherShortcut,
                                             fallback: .quickLauncherDefault)
         shortcutRegistrationFailed = !hotkey.sync(enabled: enabled, shortcut: shortcut,
@@ -105,6 +134,7 @@ final class QuickLauncherService: ObservableObject {
     }
 
     func suspend() {
+        shortcutGate.update(available: false)
         hotkey.unregister()
         hide()
     }
@@ -157,6 +187,7 @@ final class QuickLauncherService: ObservableObject {
     // MARK: - Presentation
 
     func toggle() {
+        guard AppFeature.quickLauncher.isAvailable else { return }
         if NotchService.shared.openQuickPanel(toggle: true) { return }
         if isVisible {
             hide()
@@ -166,6 +197,7 @@ final class QuickLauncherService: ObservableObject {
     }
 
     func show() {
+        guard AppFeature.quickLauncher.isAvailable else { return }
         if NotchService.shared.openQuickPanel() { return }
         let panel = ensurePanel()
         prepareForPresentation()

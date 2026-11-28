@@ -808,6 +808,14 @@ final class RadialMenuService: ObservableObject {
             }
             return
         }
+        if tool == .quickLauncher {
+            guard let request = QuickLauncherService.presentationRequest() else { return }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
+                guard let self, self.actionAllowed(ticket), tool.isRunnable() else { return }
+                request()
+            }
+            return
+        }
         if tool == .micMute {
             guard let request = MicMuteService.toggleRequest() else { return }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
@@ -835,7 +843,7 @@ final class RadialMenuService: ObservableObject {
             case .screenOCR: ScreenTextService.shared.capture()
             case .micMute: break // handled before the delay
             case .clipboardHistory: break // handled before the delay
-            case .quickLauncher: QuickLauncherService.shared.show()
+            case .quickLauncher: break // handled before the delay
             case .cameraPreview: CameraPreviewService.shared.show()
             case .scratchpad: ScratchpadService.shared.show()
             case .shelf: ShelfService.shared.summon()

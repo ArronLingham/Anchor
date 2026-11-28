@@ -1019,10 +1019,9 @@ struct UtilitiesSection: View {
                                 visibility: $showQuickLauncher,
                                 shortcutHint: shortcutHint(.quickLauncher),
                                 action: {
+                                    guard let request = QuickLauncherService.presentationRequest() else { return }
                                     appDelegate()?.closePopover()
-                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                                        QuickLauncherService.shared.show()
-                                    }
+                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { request() }
                                 })
         case .commandBar:
             UtilityActionButton(title: FeatureStrings.commandBar(l10n.language).pageTitle,
