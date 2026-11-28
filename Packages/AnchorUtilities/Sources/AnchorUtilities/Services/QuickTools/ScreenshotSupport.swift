@@ -163,6 +163,19 @@ enum ScreenshotSupport {
         activeTools != availableTools
     }
 
+    /// An explicit tool request belongs to that feature and must not turn into
+    /// a different capture when its availability changes before dispatch.
+    /// Unscoped entry points still use Screenshot (or the first installed
+    /// tool) as their chooser default.
+    static func initialCaptureTool(preferred: ScreenCaptureTool?,
+                                   availableTools: [ScreenCaptureTool]) -> ScreenCaptureTool? {
+        guard !availableTools.isEmpty else { return nil }
+        if let preferred {
+            return availableTools.contains(preferred) ? preferred : nil
+        }
+        return availableTools.contains(.screenshot) ? .screenshot : availableTools[0]
+    }
+
     static func captureRouteIsAuthorized(
         selected: ScreenCaptureTool,
         isAvailable: (AppFeature) -> Bool = { $0.isAvailable }

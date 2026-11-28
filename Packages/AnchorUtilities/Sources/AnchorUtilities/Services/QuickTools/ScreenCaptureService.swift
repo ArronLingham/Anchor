@@ -124,8 +124,13 @@ final class ScreenCaptureService: ObservableObject {
     /// button merely picks the initial mode; the person can switch before
     /// selecting anything.
     func capture(initial preferred: ScreenCaptureTool? = nil, fromShortcut: Bool = false) {
+        let available = ScreenCaptureTool.available()
+        guard let selected = ScreenshotSupport.initialCaptureTool(
+            preferred: preferred,
+            availableTools: available) else { return }
+
         let recorder = ScreenRecorderService.shared
-        if preferred == .recording, AppFeature.screenRecorder.isAvailable,
+        if preferred == .recording,
            recorder.stopOrCancelActiveCapture() {
             return
         }
@@ -139,11 +144,6 @@ final class ScreenCaptureService: ObservableObject {
         }
         guard selection == nil, !ScreenshotSelectionController.isSessionOnScreen else { return }
 
-        let available = ScreenCaptureTool.available()
-        guard !available.isEmpty else { return }
-        let selected = preferred.flatMap { available.contains($0) ? $0 : nil }
-            ?? (available.contains(.screenshot) ? .screenshot : available[0])
-        if duringRecording, selected != preferred { return }
         // The digit keys switch tools even with the menu hidden, so a
         // selection that runs over a recording offers only its own tool.
         let tools = duringRecording ? [selected] : available

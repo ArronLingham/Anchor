@@ -1848,6 +1848,18 @@ extension FeatureResourceTests {
                                                         sharedCapture: ScreenCaptureService.hasCommittedCapture(controller)))
     }
 
+    func testExplicitCaptureDoesNotFallBackAfterItsToolIsDisabled() {
+        XCTAssertNil(ScreenshotSupport.initialCaptureTool(
+            preferred: .recording,
+            availableTools: [.screenshot, .text]))
+        XCTAssertEqual(ScreenshotSupport.initialCaptureTool(
+            preferred: nil,
+            availableTools: [.text, .screenshot]), .screenshot)
+        XCTAssertEqual(ScreenshotSupport.initialCaptureTool(
+            preferred: nil,
+            availableTools: [.text, .color]), .text)
+    }
+
     func testClipboardSettingsOnlyLoadsHistoryWhileAvailable() throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
