@@ -916,9 +916,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }.store(in: &cancellables)
 
         // Observe terminal settings changes
-        Defaults.publisher(.enableTerminalFeature, options: []).sink { [weak self] _ in
-            self?.debouncedUpdateWindowSize()
-        }.store(in: &cancellables)
+        Defaults.publisher(.enableTerminalFeature, options: [])
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                guard let self else { return }
+                if !Defaults[.enableTerminalFeature], self.coordinator.currentView == .terminal {
+                    self.coordinator.currentView = .home
+                }
+                self.updateFeatureShortcutAvailability()
+                self.debouncedUpdateWindowSize()
+            }
+            .store(in: &cancellables)
 
         Defaults.publisher(.terminalMaxHeightFraction, options: []).sink { [weak self] _ in
             self?.debouncedUpdateWindowSize()

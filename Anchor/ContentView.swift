@@ -81,6 +81,7 @@ struct ContentView: View {
     @Default(.hideNonNotchUntilHover) var hideNonNotchUntilHover
     @Default(.alwaysShowOnExternalDisplays) var alwaysShowOnExternalDisplays
     @Default(.terminalStickyMode) var terminalStickyMode
+    @Default(.enableTerminalFeature) private var terminalFeatureEnabled
     
     // Battery settings reactivity
     @Default(.showPowerStatusNotifications) var showPowerStatusNotifications
@@ -180,6 +181,7 @@ struct ContentView: View {
     @State private var hoverClickMonitor: Any?
     @State private var hoverClickLocalMonitor: Any?
     @State private var stickyTerminalClickMonitor: Any?
+    @State private var stickyTerminalClickGeneration = UUID()
     @State private var hiddenEdgeHoverPollingTask: Task<Void, Never>?
     @State private var isHoveringClosedMusicWaveformControl: Bool = false
 
@@ -741,6 +743,9 @@ struct ContentView: View {
                 vm.onViewTeardown = { performViewTeardown() }
             }
             .onChange(of: terminalStickyMode) { _, _ in
+                syncStickyTerminalOutsideClickMonitor()
+            }
+            .onChange(of: terminalFeatureEnabled) { _, _ in
                 syncStickyTerminalOutsideClickMonitor()
             }
             .onChange(of: vm.notchState) { _, state in
@@ -1717,7 +1722,7 @@ struct ContentView: View {
     /// While the cursor is hovering inside the notch, hover handling owns close
     /// behavior, so the monitor is not installed; it is re-synced on hover-out.
     private func syncStickyTerminalOutsideClickMonitor() {
-        guard vm.notchState == .open, coordinator.currentView == .terminal, !isHovering else {
+        guard terminalFeatureEnabled, vm.notchState == .open, coordinator.currentView == .terminal, !isHovering else {
             removeStickyTerminalClickMonitor()
             return
         }
@@ -1726,9 +1731,11 @@ struct ContentView: View {
 
     private func installStickyTerminalClickMonitor() {
         guard stickyTerminalClickMonitor == nil else { return }
+        let generation = stickyTerminalClickGeneration
         stickyTerminalClickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown]) { [weak vm] _ in
             Task { @MainActor in
-                guard let vm, vm.notchState == .open else { return }
+                guard let vm, vm.notchState == .open, self.coordinator.currentView == .terminal,
+                      self.stickyTerminalClickGeneration == generation, Defaults[.enableTerminalFeature] else { return }
                 let clickLocation = NSEvent.mouseLocation
                 if self.isPointInsideNotchWindow(clickLocation) {
                     return
@@ -1740,6 +1747,7 @@ struct ContentView: View {
 
     private func removeStickyTerminalClickMonitor() {
         if let stickyTerminalClickMonitor {
+            stickyTerminalClickGeneration = UUID()
             NSEvent.removeMonitor(stickyTerminalClickMonitor)
             self.stickyTerminalClickMonitor = nil
         }
@@ -1873,7 +1881,7 @@ struct ContentView: View {
     }
 
     private func shouldPreventAutoClose() -> Bool {
-        coordinator.firstLaunch || hasAnyActivePopovers() || vm.isAutoCloseSuppressed || SharingStateManager.shared.preventNotchClose || (Defaults[.terminalStickyMode] && coordinator.currentView == .terminal)
+        coordinator.firstLaunch || hasAnyActivePopovers() || vm.isAutoCloseSuppressed || SharingStateManager.shared.preventNotchClose || (terminalFeatureEnabled && terminalStickyMode && coordinator.currentView == .terminal)
     }
     
     // Helper to prevent rapid haptic feedback

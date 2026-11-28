@@ -225,5 +225,8 @@ __pycache__/
 !/tests/run_utility_clipboard_auto_clear_lifecycle_tests.sh
 !/tests/UtilityClipboardPasteLifecycleTests.swift
 !/tests/run_utility_clipboard_paste_lifecycle_tests.sh
+!/tests/TerminalDisableLifecycleTests.swift
+!/tests/TerminalPTYTests.swift
+!/tests/run_terminal_disable_lifecycle_tests.sh
 !/tests/VinylLayoutTests.swift
 !/tests/run_vinyl_layout_tests.sh

@@ -36,6 +36,7 @@ import UniformTypeIdentifiers
 struct TerminalSettings: View {
     @ObservedObject var terminalManager = TerminalManager.shared
     @Default(.enableTerminalFeature) var enableTerminalFeature
+    @State private var sessionToEnd: UUID?
     @Default(.terminalShellPath) var terminalShellPath
     @Default(.terminalFontFamily) var terminalFontFamily
     @Default(.terminalFontSize) var terminalFontSize
@@ -80,13 +81,21 @@ struct TerminalSettings: View {
         )
     }
 
+    private var terminalEnabledBinding: Binding<Bool> {
+        Binding(get: { enableTerminalFeature }, set: { enabled in
+            if !enabled, let session = terminalManager.runningSession {
+                sessionToEnd = session
+            } else {
+                enableTerminalFeature = enabled
+            }
+        })
+    }
+
     var body: some View {
         Form {
             Section {
-                Defaults.Toggle(key: .enableTerminalFeature) {
-                    Text("Enable terminal")
-                }
-                .settingsHighlight(id: highlightID("Enable terminal"))
+                Toggle("Enable terminal", isOn: terminalEnabledBinding)
+                    .settingsHighlight(id: highlightID("Enable terminal"))
 
                 if enableTerminalFeature {
                     Defaults.Toggle(key: .terminalStickyMode) {
@@ -304,6 +313,19 @@ struct TerminalSettings: View {
                         .foregroundStyle(.secondary)
                 }
             }
+        }
+        .alert("End the terminal session?", isPresented: Binding(
+            get: { sessionToEnd != nil },
+            set: { if !$0 { sessionToEnd = nil } }
+        ), presenting: sessionToEnd) { session in
+            Button("Keep Terminal On", role: .cancel) {}
+            Button("End Session and Disable", role: .destructive) {
+                let running = terminalManager.runningSession
+                guard running == nil || running == session else { return }
+                enableTerminalFeature = false
+            }
+        } message: { _ in
+            Text("Turning off Terminal ends the shell and may interrupt running commands. Shell and appearance settings are saved.")
         }
         .navigationTitle("Terminal")
     }

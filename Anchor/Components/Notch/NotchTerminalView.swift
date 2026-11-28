@@ -54,7 +54,7 @@ struct TerminalNSViewRepresentable: NSViewRepresentable {
     }
 
     class Coordinator: NSObject, LocalProcessTerminalViewDelegate {
-        var terminalManager: TerminalManager?
+        weak var terminalManager: TerminalManager?
 
         func sizeChanged(source: LocalProcessTerminalView, newCols: Int, newRows: Int) {
             // Terminal resized — no action needed; SwiftTerm handles reflow.
@@ -62,7 +62,7 @@ struct TerminalNSViewRepresentable: NSViewRepresentable {
 
         func setTerminalTitle(source: LocalProcessTerminalView, title: String) {
             Task { @MainActor in
-                terminalManager?.updateTitle(title)
+                terminalManager?.updateTitle(title, from: source)
             }
         }
 
@@ -72,7 +72,7 @@ struct TerminalNSViewRepresentable: NSViewRepresentable {
 
         func processTerminated(source: TerminalView, exitCode: Int32?) {
             Task { @MainActor in
-                terminalManager?.processDidTerminate(exitCode: exitCode)
+                terminalManager?.processDidTerminate(from: source)
             }
         }
     }
@@ -194,6 +194,7 @@ struct NotchTerminalView: View {
             }
         }
         .onDisappear {
+            terminalManager.cancelFocusRequest()
             updateSuppression(for: false)
         }
         .onAppear {

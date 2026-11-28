@@ -19,10 +19,13 @@
  */
 
 import AppKit
+import Combine
+import Darwin
 import Foundation
 import SwiftUI
 import SwiftTerm
 import Defaults
+import os
 
 // MARK: - Stable Container
 
@@ -123,6 +126,37 @@ final class TerminalScrollKnobView: NSView {
 
 // MARK: - Terminal Manager
 
+private enum TerminalShellReaper {
+    private static let queue = DispatchQueue(label: "com.anchor.terminal.reap", qos: .utility)
+
+    static func reapOnExit(_ pid: pid_t) {
+        guard pid > 0 else { return }
+        queue.async {
+            // SwiftTerm cancels its own exit observer when terminating a shell.
+            // Keep a separate observer long enough to collect the exited child.
+            let source = DispatchSource.makeProcessSource(identifier: pid, eventMask: .exit, queue: queue)
+            @Sendable func collect(options: Int32) {
+                var result: pid_t
+                repeat {
+                    result = waitpid(pid, nil, options)
+                } while result < 0 && errno == EINTR
+                if result != 0 {
+                    source.cancel()
+                    source.setEventHandler(handler: nil)
+                }
+            }
+            source.setEventHandler {
+                // Darwin can deliver the exit notification before the child
+                // becomes waitable. Wait for that exit on the utility queue.
+                collect(options: 0)
+            }
+            source.activate()
+            // The child may have exited before the observer was installed.
+            collect(options: WNOHANG)
+        }
+    }
+}
+
 /// Manages the Guake-style dropdown terminal session lifecycle.
 /// The terminal is lazily created when the user first switches to the terminal tab,
 /// and the process is kept alive across notch open/close cycles.
@@ -136,7 +170,7 @@ class TerminalManager: ObservableObject {
     static let shared = TerminalManager()
 
     /// Whether a shell process is currently running.
-    @Published var isProcessRunning: Bool = false
+    @Published private(set) var isProcessRunning: Bool = false
 
     /// The current terminal title reported by the shell.
     @Published var terminalTitle: String = "Terminal"
@@ -154,6 +188,20 @@ class TerminalManager: ObservableObject {
 
     /// The actual terminal view (child of `containerView`).
     private(set) var terminalView: LocalProcessTerminalView?
+    private let preferenceEpoch = OSAllocatedUnfairLock(initialState: UUID())
+    private var mountedEpoch: UUID?
+    private var preferenceSubscription: AnyCancellable?
+    private var shellSessionID: UUID?
+    private var focusRequestID = UUID()
+
+    var runningSession: UUID? {
+        guard acceptsTerminalWork, terminalView?.process.running == true else { return nil }
+        return shellSessionID
+    }
+
+    private var acceptsTerminalWork: Bool {
+        Defaults[.enableTerminalFeature] && mountedEpoch == preferenceEpoch.withLock { $0 }
+    }
 
     /// SwiftTerm's built-in scroller (kept as the data source for our custom knob).
     private weak var terminalScroller: NSScroller?
@@ -200,13 +248,29 @@ class TerminalManager: ObservableObject {
         return v
     }()
 
-    private init() {}
+    private init() {
+        preferenceSubscription = Defaults.publisher(.enableTerminalFeature, options: [])
+            .map(\.newValue)
+            .removeDuplicates()
+            .sink { [weak self, preferenceEpoch] enabled in
+                guard !enabled else { return }
+                preferenceEpoch.withLock { $0 = UUID() }
+                DispatchQueue.main.async { [weak self] in self?.releaseRetiredTerminal() }
+            }
+    }
+
+    private func releaseRetiredTerminal() {
+        guard terminalView != nil, !acceptsTerminalWork else { return }
+        releaseTerminal()
+    }
 
     // MARK: - Lifecycle
 
     /// Ensures the terminal view exists inside the container and returns the container.
     /// Call this from the `NSViewRepresentable` wrapper.
     func ensureTerminalView(delegate: LocalProcessTerminalViewDelegate) {
+        guard Defaults[.enableTerminalFeature] else { return }
+        releaseRetiredTerminal()
         if let existing = terminalView, existing.superview === containerView {
             // Already mounted — just re-wire the delegate in case the coordinator changed.
             existing.processDelegate = delegate
@@ -246,6 +310,7 @@ class TerminalManager: ObservableObject {
         }
         updateGutterTintColor()
         containerView.addSubview(view)
+        mountedEpoch = preferenceEpoch.withLock { $0 }
         terminalView = view
 
         // Keep the custom scroll knob above the terminal (re-add to bring to front).
@@ -280,14 +345,15 @@ class TerminalManager: ObservableObject {
         // changes can otherwise be lost on first open.
         refreshTerminalOpacityAndTranslucency(for: view)
         DispatchQueue.main.async { [weak self, weak view] in
-            guard let self, let view, self.terminalView === view else { return }
+            guard let self, let view, self.acceptsTerminalWork, self.terminalView === view else { return }
             self.refreshTerminalOpacityAndTranslucency(for: view)
         }
     }
 
     /// Starts the shell process if not already running.
     func startShellProcess() {
-        guard let view = terminalView, !isProcessRunning else { return }
+        guard acceptsTerminalWork, let view = terminalView,
+              !isProcessRunning, !view.process.running else { return }
 
         let shell = Defaults[.terminalShellPath]
         let execName = "-" + (shell as NSString).lastPathComponent  // login shell convention
@@ -298,11 +364,14 @@ class TerminalManager: ObservableObject {
             environment: buildEnvironment(),
             execName: execName
         )
-        isProcessRunning = true
+        isProcessRunning = view.process.running
+        shellSessionID = isProcessRunning ? UUID() : nil
     }
 
     /// Called when the shell process terminates.
-    func processDidTerminate(exitCode: Int32?) {
+    func processDidTerminate(from source: TerminalView) {
+        guard acceptsTerminalWork, terminalView === source else { return }
+        shellSessionID = nil
         isProcessRunning = false
     }
 
@@ -314,17 +383,34 @@ class TerminalManager: ObservableObject {
     /// and change `@Published` state.  SwiftUI's `updateNSView` will fire,
     /// see the nil terminal, and call `ensureTerminalView` to mount a new one.
     func restartShell() {
-        // Terminate the running process gracefully
-        terminalView?.terminate()
-        // Remove old terminal from container
-        terminalView?.removeFromSuperview()
+        guard acceptsTerminalWork else { return }
+        releaseTerminal()
+    }
+
+    private func releaseTerminal() {
+        cancelFocusRequest()
+        resignTerminalFirstResponderIfNeeded()
+        let previous = terminalView
         terminalView = nil
+        mountedEpoch = nil
+        shellSessionID = nil
+        scrollerObservations.forEach { $0.invalidate() }
+        scrollerObservations.removeAll()
+        terminalScroller = nil
+        previous?.processDelegate = nil
+        if let previous, previous.process.running {
+            let pid = previous.process.shellPid
+            previous.terminate()
+            TerminalShellReaper.reapOnExit(pid)
+        }
+        for child in containerView.subviews { child.removeFromSuperview() }
         isProcessRunning = false
         terminalTitle = "Terminal"
     }
 
     /// Updates the terminal title from the shell escape sequence.
-    func updateTitle(_ title: String) {
+    func updateTitle(_ title: String, from source: LocalProcessTerminalView) {
+        guard acceptsTerminalWork, terminalView === source else { return }
         terminalTitle = title
     }
 
@@ -438,9 +524,10 @@ class TerminalManager: ObservableObject {
 
         scrollerObservations.forEach { $0.invalidate() }
         scrollerObservations = []
-        let onChange: (NSScroller) -> Void = { scroller in
+        let onChange: (NSScroller) -> Void = { [weak self] scroller in
             MainActor.assumeIsolated {
-                TerminalManager.shared.updateScrollKnob(from: scroller)
+                guard let self, self.acceptsTerminalWork, self.terminalScroller === scroller else { return }
+                self.updateScrollKnob(from: scroller)
             }
         }
         scrollerObservations = [
@@ -567,22 +654,27 @@ class TerminalManager: ObservableObject {
 
     /// Called by UI lifecycle hooks after tab re-appearance to keep opacity stable.
     func refreshTerminalAppearanceIfNeeded() {
-        guard let view = terminalView else { return }
+        guard acceptsTerminalWork, let view = terminalView else { return }
         refreshTerminalOpacityAndTranslucency(for: view)
     }
 
     /// Makes terminal view first responder when terminal tab opens.
     /// Retries a few times to cover mount/animation timing so typing works immediately.
     func focusTerminalIfPossible() {
-        focusTerminalIfPossible(attemptsRemaining: 3)
+        cancelFocusRequest()
+        focusTerminalIfPossible(attemptsRemaining: 3, request: focusRequestID)
     }
 
-    private func focusTerminalIfPossible(attemptsRemaining: Int) {
-        guard let view = terminalView else { return }
+    func cancelFocusRequest() {
+        focusRequestID = UUID()
+    }
+
+    private func focusTerminalIfPossible(attemptsRemaining: Int, request: UUID) {
+        guard request == focusRequestID, acceptsTerminalWork, let view = terminalView else { return }
         guard let window = containerView.window ?? view.window else {
             guard attemptsRemaining > 0 else { return }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
-                self?.focusTerminalIfPossible(attemptsRemaining: attemptsRemaining - 1)
+                self?.focusTerminalIfPossible(attemptsRemaining: attemptsRemaining - 1, request: request)
             }
             return
         }
@@ -597,7 +689,7 @@ class TerminalManager: ObservableObject {
         guard window.firstResponder !== view else { return }
         if !window.makeFirstResponder(view), attemptsRemaining > 0 {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
-                self?.focusTerminalIfPossible(attemptsRemaining: attemptsRemaining - 1)
+                self?.focusTerminalIfPossible(attemptsRemaining: attemptsRemaining - 1, request: request)
             }
         }
     }
