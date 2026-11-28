@@ -6,6 +6,23 @@ import XCTest
 @testable import AnchorUtilities
 
 final class FeatureResourceTests: XCTestCase {
+    func testCommandBarScriptDisablementCancelsOldExecutionsAndBlocksReplacementUntilExit() throws {
+        let registry = CommandBarScriptExecutionRegistry()
+        let old = try XCTUnwrap(registry.begin(key: "script|argument"))
+
+        // Ordinary presentation teardown does not touch the registry, so an
+        // execution that outlives a hidden bar remains available to disablement.
+        registry.cancelAll()
+        XCTAssertTrue(old.cancellation.isCancelled)
+        XCTAssertNil(registry.begin(key: "script|argument"),
+                     "Re-enabling must not overlap the child still being cancelled")
+
+        XCTAssertTrue(registry.finish(old, key: "script|argument"))
+        let fresh = try XCTUnwrap(registry.begin(key: "script|argument"))
+        XCTAssertFalse(fresh.cancellation.isCancelled)
+        XCTAssertFalse(registry.finish(fresh, key: "script|argument"))
+    }
+
     func testSnippetRestartIsInvalidatedByLaterStop() {
         var gate = SnippetTapRestartGate()
         let queued = gate.ticket

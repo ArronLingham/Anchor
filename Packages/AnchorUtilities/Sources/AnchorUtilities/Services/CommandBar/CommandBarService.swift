@@ -255,7 +255,10 @@ final class CommandBarService: ObservableObject {
     private init() {
         queryHabitStore.reload(UtilityPreferences.standard.string(forKey: DefaultsKey.commandBarQueryHabits))
         hotkey.onPress = { [weak self] in self?.toggle() }
-        scriptRunner.onResult = { [weak self] in self?.refreshResults() }
+        scriptRunner.onResult = { [weak self] in
+            guard let self, self.isVisible, AppFeature.commandBar.isAvailable else { return }
+            self.refreshResults()
+        }
         fileSearch.onResult = { [weak self] in self?.refreshResults() }
     }
 
@@ -289,6 +292,7 @@ final class CommandBarService: ObservableObject {
         }
         if !available {
             hide()
+            scriptRunner.cancelForFeatureDisable()
             panel = nil
             // Uninstalled means uninstalled: the catalog, the app scan and the
             // window list all go, not just the window.
