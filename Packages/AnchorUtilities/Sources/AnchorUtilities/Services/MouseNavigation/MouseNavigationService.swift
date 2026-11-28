@@ -24,11 +24,13 @@ final class MouseNavigationService: ObservableObject {
 
     private var tap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
-    /// Buttons whose current press started over a pass-through app. The Up
-    /// and Drag of a gesture must follow its Down: splitting the pair would
-    /// leave the target app with an unmatched mouse event. Only touched from
-    /// the tap callback, which runs on the main run loop.
-    private var passThroughButtons: Set<Int64> = []
+    /// Buttons whose Down was replaced with navigation. Keep the tap alive
+    /// after disable until their Up arrives, so an unmatched release cannot
+    /// leak to the app underneath.
+    private var consumedButtons: Set<Int64> = []
+    private var isDraining = false
+    /// Revokes accessibility work queued by an earlier tap lifetime.
+    private var actionGeneration: UInt = 0
     /// Alive only while the tap is, like every other resource here.
     private var keyboardObserver: NSObjectProtocol?
     /// Registered web handlers that should keep their native side-button events.
@@ -51,20 +53,26 @@ final class MouseNavigationService: ObservableObject {
         UtilityWorkspace.shared.prepareOwnership()
         let wanted = AppFeature.mouseNavigation.isAvailable
             && UtilityPreferences.standard.bool(forKey: DefaultsKey.mouseNavigationEnabled)
-        if SessionActivitySupport.tapShouldRun(
+        let shouldRun = SessionActivitySupport.tapShouldRun(
             featureWanted: wanted,
             accessibilityGranted: AXIsProcessTrusted(),
             sessionIsActive: SessionActivity.shared.isActive
-        ) {
+        )
+        if shouldRun {
             start()
-        } else {
+        } else if SessionActivity.shared.isActive, AXIsProcessTrusted() {
             stop()
+        } else {
+            // A switched-away or untrusted session cannot retain an input tap
+            // indefinitely to drain a release it may never receive.
+            tearDownTap()
         }
     }
 
-    func suspend() { stop() }
+    func suspend() { tearDownTap() }
 
     private func start() {
+        guard !isDraining else { return }
         guard tap == nil else {
             isRunning = true
             return
@@ -109,6 +117,17 @@ final class MouseNavigationService: ObservableObject {
     }
 
     private func stop() {
+        actionGeneration &+= 1
+        if !consumedButtons.isEmpty, tap != nil {
+            isDraining = true
+            isRunning = false
+            return
+        }
+        tearDownTap()
+    }
+
+    private func tearDownTap() {
+        actionGeneration &+= 1
         if let tap { CGEvent.tapEnable(tap: tap, enable: false) }
         if let runLoopSource {
             CFRunLoopRemoveSource(CFRunLoopGetMain(), runLoopSource, .commonModes)
@@ -130,7 +149,8 @@ final class MouseNavigationService: ObservableObject {
         webURLHandlers.removeAll()
         tap = nil
         runLoopSource = nil
-        passThroughButtons.removeAll()
+        consumedButtons.removeAll()
+        isDraining = false
         isRunning = false
     }
 
@@ -181,20 +201,25 @@ final class MouseNavigationService: ObservableObject {
 
     private func handle(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
         if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
+            actionGeneration &+= 1
             let wanted = AppFeature.mouseNavigation.isAvailable
                 && UtilityPreferences.standard.bool(forKey: DefaultsKey.mouseNavigationEnabled)
             let shouldRearm = SessionActivitySupport.tapShouldRun(
-                featureWanted: wanted,
+                featureWanted: wanted || !consumedButtons.isEmpty,
                 accessibilityGranted: AXIsProcessTrusted(),
                 sessionIsActive: SessionActivity.shared.isActive
             )
             if shouldRearm, let tap {
+                if !wanted {
+                    isDraining = true
+                    isRunning = false
+                }
                 CGEvent.tapEnable(tap: tap, enable: true)
             } else {
                 // Invalidating the port from its own callback stack is unsafe;
                 // finish this callback fail-open, then release the tap.
                 DispatchQueue.main.async { [weak self] in
-                    self?.stop()
+                    self?.tearDownTap()
                     self?.syncWithPreferences()
                 }
             }
@@ -213,15 +238,18 @@ final class MouseNavigationService: ObservableObject {
         // other side button keeps navigating. While the shortcut capture row
         // is listening, every press belongs to it, including a button with no
         // mapping yet, or the capture could never see the button it is asked
-        // to watch for. Both claims are asked again on every Drag of a held
-        // side button, so both have to stay cheap.
-        if RadialMenuSupport.claimsMouseButton(buttonNumber)
+        // to watch for. Record the decision on Down so the rest of that
+        // gesture follows it even if another feature's preferences change.
+        if type == .otherMouseDown && (RadialMenuSupport.claimsMouseButton(buttonNumber)
             || MouseButtonShortcutSupport.claimsButton(buttonNumber)
-            || MouseButtonShortcutService.isCaptureActive {
+            || MouseButtonShortcutService.isCaptureActive) {
             return Unmanaged.passUnretained(event)
         }
 
         if type == .otherMouseDown {
+            if isDraining {
+                return Unmanaged.passUnretained(event)
+            }
             // Apps that consume the side buttons themselves keep the raw
             // event; replacing it would drop navigation the user already had,
             // and none of them has a menu command the AX path could press.
@@ -236,25 +264,37 @@ final class MouseNavigationService: ObservableObject {
                 bundleIdentifier: NSWorkspace.shared.frontmostApplication?.bundleIdentifier,
                 webURLHandlers: webURLHandlers)
                 || MouseAppExceptions.shared.excludesActionTarget(.navigation, at: event.location) {
-                passThroughButtons.insert(buttonNumber)
                 return Unmanaged.passUnretained(event)
             }
-            passThroughButtons.remove(buttonNumber)
+            consumedButtons.insert(buttonNumber)
             // Leave the event-tap callback immediately; AX menu traversal can
             // take a few milliseconds and must never let the tap time out.
+            let generation = actionGeneration
             DispatchQueue.main.async { [weak self] in
-                self?.perform(direction)
+                guard let self, !self.isDraining, self.tap != nil,
+                      self.actionGeneration == generation,
+                      AppFeature.mouseNavigation.isAvailable,
+                      UtilityPreferences.standard.bool(forKey: DefaultsKey.mouseNavigationEnabled) else { return }
+                self.perform(direction)
             }
             return nil
         }
 
-        if passThroughButtons.contains(buttonNumber) {
-            if type == .otherMouseUp { passThroughButtons.remove(buttonNumber) }
-            return Unmanaged.passUnretained(event)
+        if consumedButtons.contains(buttonNumber) {
+            if type == .otherMouseUp {
+                consumedButtons.remove(buttonNumber)
+                if isDraining, consumedButtons.isEmpty {
+                    DispatchQueue.main.async { [weak self] in
+                        guard let self, self.isDraining,
+                              self.consumedButtons.isEmpty else { return }
+                        self.tearDownTap()
+                        self.syncWithPreferences()
+                    }
+                }
+            }
+            return nil
         }
-        // Swallow the full side-button gesture. Letting its Up or Drag through
-        // after replacing the Down leaves apps with an unmatched mouse event.
-        return nil
+        return Unmanaged.passUnretained(event)
     }
 
     private static func registeredWebURLHandlers() -> Set<String> {
