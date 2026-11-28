@@ -28,13 +28,14 @@ final class ColorSamplerService: ObservableObject {
     }
 
     func pickNative() {
-        guard activeSampler == nil else { return }
+        guard AppFeature.colorPicker.isAvailable, activeSampler == nil else { return }
         let sampler = NSColorSampler()
         activeSampler = sampler
-        sampler.show { [weak self] color in
+        sampler.show { [weak self, weak sampler] color in
             DispatchQueue.main.async {
-                self?.activeSampler = nil
-                guard AppFeature.colorPicker.isAvailable, let self, let color else { return }
+                guard let self, let sampler, self.activeSampler === sampler else { return }
+                self.activeSampler = nil
+                guard AppFeature.colorPicker.isAvailable, let color else { return }
                 self.copy(color)
             }
         }
