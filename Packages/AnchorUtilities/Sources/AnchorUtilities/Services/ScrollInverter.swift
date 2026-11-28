@@ -41,14 +41,16 @@ final class ScrollInverter: ObservableObject {
     /// only touch devices emit those. Read/written solely on the tap callback,
     /// which is the pointer thread and nothing else.
     private var lastGesturePhaseTimestamp: UInt64?
-    /// Fractions of a line linear scrolling has yet to deliver, one per axis.
-    /// Tap callback only, like the timestamp above.
-    private var linearCarryVertical: Double = 0
-    private var linearCarryHorizontal: Double = 0
+    private let linearCarry = LinearScrollCarry()
+    private var linearPreferenceObserver: LinearScrollPreferenceObserver?
     private var tapCreationRetryUsed = false
     private var tapCreationRetryWork: DispatchWorkItem?
 
     private init() {
+        linearPreferenceObserver = LinearScrollPreferenceObserver(
+            defaults: UtilityPreferences.standard, key: DefaultsKey.linearScrollEnabled
+        ) { [linearCarry] in linearCarry.reset() }
+
         // Fast user switching: the tap goes back while this session is off
         // screen and is built again from the preferences on the way in.
         SessionActivity.shared.onChange { [weak self] _ in
@@ -60,7 +62,9 @@ final class ScrollInverter: ObservableObject {
     func syncWithPreferences() {
         UtilityWorkspace.shared.prepareOwnership()
         let direction = ScrollDirectionPreferences()
-        if SessionActivitySupport.tapShouldRun(featureWanted: direction.isEnabled || Self.linearScrollWanted,
+        let linearWanted = Self.linearScrollWanted
+        if !linearWanted { linearCarry.reset() }
+        if SessionActivitySupport.tapShouldRun(featureWanted: direction.isEnabled || linearWanted,
                                                accessibilityGranted: Permissions.shared.accessibility,
                                                sessionIsActive: SessionActivity.shared.isActive) {
             ScrollWheelTarget.shared.setEnabled(direction.horizontalModifier != nil)
@@ -162,8 +166,7 @@ final class ScrollInverter: ObservableObject {
         if let source {
             PointerTapRunLoop.remove(source, invalidating: port)
         }
-        linearCarryVertical = 0
-        linearCarryHorizontal = 0
+        linearCarry.reset()
         isRunning = false
     }
 
@@ -221,6 +224,7 @@ final class ScrollInverter: ObservableObject {
             && ScrollWheelSupport.isVerticalOnly(event)
             && !ScrollWheelTarget.shared.contains(event.location)
         let nativeZoom = event.flags.contains(.maskControl) && !controlRedirects
+        let generation = linearCarry.generation
         if let linesPerNotch = nativeZoom ? nil : ScrollWheelSupport.linearLinesPerNotch(
             defaults: defaults,
             isAvailable: AppFeature.linearScroll.isAvailable,
@@ -240,33 +244,30 @@ final class ScrollInverter: ObservableObject {
                 line: event.getIntegerValueField(.scrollWheelEventDeltaAxis2),
                 point: event.getIntegerValueField(.scrollWheelEventPointDeltaAxis2),
                 fixedPoint: event.getDoubleValueField(.scrollWheelEventFixedPtDeltaAxis2))
-            let linearVertical = ScrollWheelSupport.linearDelta(
-                rawVertical, isContinuous: traits.isContinuous,
-                linesPerNotch: linesPerNotch, carry: linearCarryVertical)
-            let linearHorizontal = ScrollWheelSupport.linearDelta(
-                rawHorizontal, isContinuous: traits.isContinuous,
-                linesPerNotch: linesPerNotch, carry: linearCarryHorizontal)
-            linearCarryVertical = linearVertical.carry
-            linearCarryHorizontal = linearHorizontal.carry
-            // A fraction of a notch is carried into the next event rather
-            // than delivered as an event that moves nothing.
-            if rawVertical.hasMovement || rawHorizontal.hasMovement,
-               !linearVertical.delta.hasMovement, !linearHorizontal.delta.hasMovement {
-                return nil
+            if let (linearVertical, linearHorizontal) = linearCarry.reduce(
+                vertical: rawVertical, horizontal: rawHorizontal,
+                isContinuous: traits.isContinuous, linesPerNotch: linesPerNotch,
+                generation: generation
+            ) {
+                // A fraction of a notch is carried into the next event rather
+                // than delivered as an event that moves nothing.
+                if rawVertical.hasMovement || rawHorizontal.hasMovement,
+                   !linearVertical.hasMovement, !linearHorizontal.hasMovement {
+                    return nil
+                }
+                // Every axis that moves is written back, even when the capped line
+                // matches the one already there: a discrete event's line is what
+                // the system rederives the other fields from, so writing it is
+                // what takes a high-resolution wheel's leftover fraction out.
+                ScrollWheelSupport.writeLinear(
+                    vertical: rawVertical.hasMovement ? linearVertical : nil,
+                    horizontal: rawHorizontal.hasMovement ? linearHorizontal : nil,
+                    to: event, isContinuous: traits.isContinuous)
             }
-            // Every axis that moves is written back, even when the capped line
-            // matches the one already there: a discrete event's line is what
-            // the system rederives the other fields from, so writing it is
-            // what takes a high-resolution wheel's leftover fraction out.
-            ScrollWheelSupport.writeLinear(
-                vertical: rawVertical.hasMovement ? linearVertical.delta : nil,
-                horizontal: rawHorizontal.hasMovement ? linearHorizontal.delta : nil,
-                to: event, isContinuous: traits.isContinuous)
         } else {
             // A fraction belongs to the active linear stream. Do not let it
             // reappear after an excepted app or an off/uninstalled interval.
-            linearCarryVertical = 0
-            linearCarryHorizontal = 0
+            linearCarry.reset()
         }
 
         // The direction features read their own availability here: linear
