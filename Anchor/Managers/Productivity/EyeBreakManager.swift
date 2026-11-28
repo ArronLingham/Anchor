@@ -21,6 +21,7 @@ import AppKit
 import Combine
 import Defaults
 import Foundation
+import SwiftUI
 
 /// The 20-20-20 rule: every twenty minutes, look twenty feet away for twenty
 /// seconds. Category 20.
@@ -53,6 +54,7 @@ final class EyeBreakManager: ObservableObject {
     @Published private(set) var skippedToday = 0
 
     private var timer: DispatchSourceTimer?
+    private var timerRequest: UUID?
     private var cancellables = Set<AnyCancellable>()
     private var dayStamp = Calendar.current.startOfDay(for: Date())
 
@@ -88,7 +90,9 @@ final class EyeBreakManager: ObservableObject {
     private func observeSettings() {
         Defaults.publisher(.eyeBreakEnabled)
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in self?.syncToSettings() }
+            .sink { [weak self] change in
+                if change.newValue { self?.syncToSettings() } else { self?.suspendSchedule() }
+            }
             .store(in: &cancellables)
 
         Defaults.publisher(.eyeBreakWorkMinutes)
@@ -103,8 +107,7 @@ final class EyeBreakManager: ObservableObject {
             .sink { [weak self] suspended in
                 guard let self, Defaults[.eyeBreakEnabled] else { return }
                 if suspended {
-                    self.cancelTimer()
-                    self.phase = .idle
+                    self.suspendSchedule()
                 } else {
                     // Fresh interval on return: the time spent away was not
                     // screen time, and a reminder that fires immediately is one
@@ -116,11 +119,24 @@ final class EyeBreakManager: ObservableObject {
     }
 
     private func syncToSettings() {
-        if Defaults[.eyeBreakEnabled], !SystemActivityGate.shared.shouldSuspendBackgroundWork {
+        if canSchedule {
             beginWorking()
         } else {
-            cancelTimer()
-            phase = .idle
+            suspendSchedule()
+        }
+    }
+
+    private var canSchedule: Bool {
+        Defaults[.eyeBreakEnabled] && !SystemActivityGate.shared.shouldSuspendBackgroundWork
+    }
+
+    private func suspendSchedule() {
+        cancelTimer()
+        guard isActive else { return }
+        phase = .idle
+        let coordinator = AnchorViewCoordinator.shared
+        if coordinator.expandingView.show, coordinator.expandingView.type == .eyeBreak {
+            withAnimation(.smooth) { coordinator.expandingView.show = false }
         }
     }
 
@@ -131,6 +147,7 @@ final class EyeBreakManager: ObservableObject {
     // MARK: - Phases
 
     private func beginWorking() {
+        guard canSchedule else { return }
         rolloverDayIfNeeded()
         let minutes = max(1, Defaults[.eyeBreakWorkMinutes])
         let until = Date().addingTimeInterval(TimeInterval(minutes) * 60)
@@ -142,7 +159,9 @@ final class EyeBreakManager: ObservableObject {
         let seconds = max(5, Defaults[.eyeBreakRestSeconds])
         let until = Date().addingTimeInterval(TimeInterval(seconds))
         phase = .resting(until: until)
-        AnchorViewCoordinator.shared.toggleExpandingView(status: true, type: .eyeBreak)
+        withAnimation(.smooth) {
+            AnchorViewCoordinator.shared.expandingView = ExpandedItem(show: true, type: .eyeBreak)
+        }
         schedule(at: until) { [weak self] in
             guard let self else { return }
             self.completedToday += 1
@@ -152,7 +171,7 @@ final class EyeBreakManager: ObservableObject {
 
     /// Dismiss the break early. Counted, so the compliance figure means something.
     func skipRest() {
-        guard case .resting = phase else { return }
+        guard canSchedule, case .resting = phase else { return }
         skippedToday += 1
         beginWorking()
     }
@@ -171,15 +190,21 @@ final class EyeBreakManager: ObservableObject {
     /// other wakeups — nothing here needs to be accurate to the second.
     private func schedule(at date: Date, _ body: @escaping () -> Void) {
         cancelTimer()
+        let request = UUID()
+        timerRequest = request
         let interval = max(0, date.timeIntervalSinceNow)
         let t = DispatchSource.makeTimerSource(queue: .main)
         t.schedule(deadline: .now() + interval, leeway: .seconds(5))
-        t.setEventHandler(handler: body)
+        t.setEventHandler { [weak self] in
+            guard let self, self.timerRequest == request, self.canSchedule else { return }
+            body()
+        }
         t.resume()
         timer = t
     }
 
     private func cancelTimer() {
+        timerRequest = nil
         timer?.cancel()
         timer = nil
     }
