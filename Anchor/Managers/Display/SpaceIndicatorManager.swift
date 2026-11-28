@@ -77,6 +77,7 @@ final class SpaceIndicatorManager: ObservableObject {
     }
 
     private var observer: Any?
+    private var observationSession: UUID?
     private var cancellables = Set<AnyCancellable>()
 
     private init() {
@@ -84,7 +85,9 @@ final class SpaceIndicatorManager: ObservableObject {
             guard let self else { return }
             Defaults.publisher(.showSpaceIndicator)
                 .receive(on: DispatchQueue.main)
-                .sink { [weak self] _ in self?.syncToSettings() }
+                .sink { [weak self] change in
+                    if change.newValue { self?.syncToSettings() } else { self?.stop() }
+                }
                 .store(in: &self.cancellables)
             // Without this the fullscreen setting would be a dead switch: the
             // count is only ever recomputed on a Space change, so flipping it
@@ -106,16 +109,22 @@ final class SpaceIndicatorManager: ObservableObject {
 
     private func start() {
         guard observer == nil else { return }
+        let session = UUID()
+        observationSession = session
         observer = NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.activeSpaceDidChangeNotification,
             object: nil, queue: .main
         ) { [weak self] _ in
-            Task { @MainActor in self?.refresh() }
+            Task { @MainActor in
+                guard let self, self.observationSession == session else { return }
+                self.refresh()
+            }
         }
         refresh()
     }
 
     private func stop() {
+        observationSession = nil
         if let observer {
             NSWorkspace.shared.notificationCenter.removeObserver(observer)
         }
@@ -138,7 +147,8 @@ final class SpaceIndicatorManager: ObservableObject {
     ///    when the active space was fullscreen nothing matched and the badge
     ///    vanished entirely rather than holding its last value.
     private func refresh() {
-        guard let displays = CGSCopyManagedDisplaySpaces(CGSMainConnectionID()) as? [[String: Any]]
+        guard observationSession != nil, Defaults[.showSpaceIndicator],
+              let displays = CGSCopyManagedDisplaySpaces(CGSMainConnectionID()) as? [[String: Any]]
         else { return }
 
         let countFullscreen = Defaults[.countFullscreenSpaces]
