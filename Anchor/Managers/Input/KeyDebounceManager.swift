@@ -125,9 +125,8 @@ final class KeyDebounceManager {
         started = true
 
         Defaults.publisher(.enableKeyDebounce)
-            .sink { [weak self] _ in
-                Task { @MainActor in self?.syncTap() }
-            }
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] change in self?.syncTap(enabled: change.newValue) }
             .store(in: &cancellables)
 
         Defaults.publisher(.keyDebounceMilliseconds)
@@ -139,11 +138,11 @@ final class KeyDebounceManager {
             .store(in: &cancellables)
 
         filter.thresholdSeconds = Double(Defaults[.keyDebounceMilliseconds]) / 1000
-        syncTap()
+        syncTap(enabled: Defaults[.enableKeyDebounce])
     }
 
-    private func syncTap() {
-        Defaults[.enableKeyDebounce] ? installTap() : removeTap()
+    private func syncTap(enabled: Bool) {
+        enabled ? installTap() : removeTap()
     }
 
     private func installTap() {
@@ -191,8 +190,15 @@ final class KeyDebounceManager {
     }
 
     private func handle(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
+        // Preference delivery and tap teardown are asynchronous. Once the user
+        // switches the feature off, an already-delivered callback must become
+        // pass-through immediately rather than filtering one last real press.
+        guard Defaults[.enableKeyDebounce] else {
+            return Unmanaged.passUnretained(event)
+        }
+
         if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
-            if let eventTap, Defaults[.enableKeyDebounce] {
+            if let eventTap {
                 CGEvent.tapEnable(tap: eventTap, enable: true)
             }
             return Unmanaged.passUnretained(event)

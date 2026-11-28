@@ -88,6 +88,7 @@ final class FocusFollowsMouseManager {
     private var moveMonitor: Any?
     private var dragMonitor: Any?
     private var dwellTimer: Timer?
+    private var monitoringSession: UUID?
     private var cancellables = Set<AnyCancellable>()
     private var started = false
 
@@ -103,9 +104,8 @@ final class FocusFollowsMouseManager {
         started = true
 
         Defaults.publisher(.enableFocusFollowsMouse)
-            .sink { [weak self] _ in
-                Task { @MainActor in self?.sync() }
-            }
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] change in self?.sync(enabled: change.newValue) }
             .store(in: &cancellables)
 
         Defaults.publisher(.focusFollowsMouseDelayMs)
@@ -117,29 +117,37 @@ final class FocusFollowsMouseManager {
             .store(in: &cancellables)
 
         decision.dwellSeconds = Double(Defaults[.focusFollowsMouseDelayMs]) / 1000
-        sync()
+        sync(enabled: Defaults[.enableFocusFollowsMouse])
     }
 
-    private func sync() {
-        Defaults[.enableFocusFollowsMouse] ? install() : remove()
+    private func sync(enabled: Bool) {
+        enabled ? install() : remove()
     }
 
     private func install() {
         guard moveMonitor == nil else { return }
 
-        moveMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.mouseMoved]) { [weak self] event in
-            MainActor.assumeIsolated { self?.pointerMoved(to: NSEvent.mouseLocation) }
+        let session = UUID()
+        monitoringSession = session
+        isDragging = NSEvent.pressedMouseButtons & 1 != 0
+
+        moveMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.mouseMoved]) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.pointerMoved(to: NSEvent.mouseLocation, session: session)
+            }
         }
         dragMonitor = NSEvent.addGlobalMonitorForEvents(
             matching: [.leftMouseDown, .leftMouseUp, .leftMouseDragged]
         ) { [weak self] event in
             MainActor.assumeIsolated {
+                guard self?.monitoringSession == session else { return }
                 self?.isDragging = (event.type == .leftMouseDown || event.type == .leftMouseDragged)
             }
         }
     }
 
     private func remove() {
+        monitoringSession = nil
         if let moveMonitor { NSEvent.removeMonitor(moveMonitor) }
         if let dragMonitor { NSEvent.removeMonitor(dragMonitor) }
         moveMonitor = nil
@@ -149,7 +157,8 @@ final class FocusFollowsMouseManager {
     }
 
     /// Restarts the dwell timer. The expensive work happens only when it fires.
-    private func pointerMoved(to point: NSPoint) {
+    private func pointerMoved(to point: NSPoint, session: UUID) {
+        guard Defaults[.enableFocusFollowsMouse], monitoringSession == session else { return }
         // Ignore sub-pixel jitter, which otherwise resets the dwell forever and
         // means the feature never fires on a slightly unsteady hand.
         if abs(point.x - lastPoint.x) < 2, abs(point.y - lastPoint.y) < 2 { return }
@@ -157,13 +166,14 @@ final class FocusFollowsMouseManager {
 
         dwellTimer?.invalidate()
         let timer = Timer(timeInterval: decision.dwellSeconds, repeats: false) { [weak self] _ in
-            MainActor.assumeIsolated { self?.dwellElapsed(at: point) }
+            MainActor.assumeIsolated { self?.dwellElapsed(at: point, session: session) }
         }
         RunLoop.main.add(timer, forMode: .common)
         dwellTimer = timer
     }
 
-    private func dwellElapsed(at point: NSPoint) {
+    private func dwellElapsed(at point: NSPoint, session: UUID) {
+        guard Defaults[.enableFocusFollowsMouse], monitoringSession == session else { return }
         guard AXIsProcessTrusted() else { return }
         guard let target = appUnderPointer(at: point) else { return }
 
