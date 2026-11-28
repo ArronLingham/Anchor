@@ -19,6 +19,7 @@ final class MusicLaunchBlocker: ObservableObject {
     private var observers: [NSObjectProtocol] = []
     private var mediaKeyTap: CFMachPort?
     private var mediaKeyTapSource: CFRunLoopSource?
+    private let playbackAdmission = MusicReplacementPlaybackAdmission()
     /// One media key press produces both a will-launch and a did-launch
     /// notification; the replacement should open once, not twice.
     private var lastReplacementLaunch: TimeInterval = 0
@@ -67,6 +68,7 @@ final class MusicLaunchBlocker: ObservableObject {
 
     func stop() {
         isMonitoring = false
+        playbackAdmission.invalidate()
         removeMediaKeyTap()
         lastMediaKeyAt = nil
         judgedLaunchPID = nil
@@ -133,12 +135,15 @@ final class MusicLaunchBlocker: ObservableObject {
         guard let replacementID = Bundle(url: url)?.bundleIdentifier,
               !Self.blockedBundleIDs.contains(replacementID),
               FileManager.default.fileExists(atPath: url.path) else { return }
+        let playbackTicket = playbackAdmission.begin()
         NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration()) { app, _ in
             // Play/Pause asked for music, not just a window.
-            guard startingPlayback, self.isEnabled,
+            guard startingPlayback, self.playbackAdmission.accepts(playbackTicket), self.isEnabled,
                   UtilityPreferences.standard.bool(forKey: DefaultsKey.musicBlockPlayReplacement),
                   let app else { return }
-            MusicReplacementPlayback.start(app)
+            MusicReplacementPlayback.start(app) { [weak self] in
+                self?.playbackAdmission.accepts(playbackTicket) == true
+            }
         }
     }
 
@@ -224,38 +229,48 @@ private enum MusicReplacementPlayback {
     private static let queue = DispatchQueue(label: "com.vorssaint.music-block.playback",
                                              qos: .userInitiated)
 
-    static func start(_ app: NSRunningApplication) {
+    static func start(_ app: NSRunningApplication, admitted: @escaping @Sendable () -> Bool) {
+        guard admitted() else { return }
         guard let url = app.bundleURL,
               let command = NotchMusicAutomationCapabilities.load(bundleURL: url)?.playCommand else { return }
         let launching = !app.isFinishedLaunching
         let deadline = ProcessInfo.processInfo.systemUptime + MusicLaunchSupport.replacementLaunchTimeout
-        queue.async { waitForLaunch(app, command: command, launching: launching, deadline: deadline) }
+        queue.async {
+            waitForLaunch(app, command: command, launching: launching, deadline: deadline,
+                          admitted: admitted)
+        }
     }
 
     private static func waitForLaunch(_ app: NSRunningApplication,
                                       command: NotchMusicAutomationCapabilities.Event,
-                                      launching: Bool, deadline: TimeInterval) {
-        guard !app.isTerminated, ProcessInfo.processInfo.systemUptime < deadline else { return }
+                                      launching: Bool, deadline: TimeInterval,
+                                      admitted: @escaping @Sendable () -> Bool) {
+        guard admitted(), !app.isTerminated,
+              ProcessInfo.processInfo.systemUptime < deadline else { return }
         guard app.isFinishedLaunching else {
             queue.asyncAfter(deadline: .now() + 0.1) {
-                waitForLaunch(app, command: command, launching: launching, deadline: deadline)
+                waitForLaunch(app, command: command, launching: launching, deadline: deadline,
+                              admitted: admitted)
             }
             return
         }
         // A player that just started may not take commands the moment it is up.
         let settle = launching ? MusicLaunchSupport.replacementSettleDelay : 0
         queue.asyncAfter(deadline: .now() + settle) {
-            send(command, to: app, attemptsLeft: MusicLaunchSupport.playbackAttempts)
+            send(command, to: app, attemptsLeft: MusicLaunchSupport.playbackAttempts,
+                 admitted: admitted)
         }
     }
 
     private static func send(_ command: NotchMusicAutomationCapabilities.Event,
-                             to app: NSRunningApplication, attemptsLeft: Int) {
-        guard !app.isTerminated else { return }
+                             to app: NSRunningApplication, attemptsLeft: Int,
+                             admitted: @escaping @Sendable () -> Bool) {
+        guard admitted(), !app.isTerminated else { return }
         let target = NSAppleEventDescriptor(processIdentifier: app.processIdentifier)
         // Consent is asked once per app, right after the key that needs it;
         // a refusal leaves the app opened, as before.
         var status = Int(AEDeterminePermissionToAutomateTarget(target.aeDesc, typeWildCard, typeWildCard, true))
+        guard admitted(), !app.isTerminated else { return }
         if status == Int(noErr) {
             let event = NSAppleEventDescriptor(eventClass: command.eventClass, eventID: command.eventID,
                                                targetDescriptor: target,
@@ -270,7 +285,7 @@ private enum MusicReplacementPlayback {
         }
         guard attemptsLeft > 1, MusicLaunchSupport.playbackNeverArrived(status) else { return }
         queue.asyncAfter(deadline: .now() + 0.5) {
-            send(command, to: app, attemptsLeft: attemptsLeft - 1)
+            send(command, to: app, attemptsLeft: attemptsLeft - 1, admitted: admitted)
         }
     }
 }

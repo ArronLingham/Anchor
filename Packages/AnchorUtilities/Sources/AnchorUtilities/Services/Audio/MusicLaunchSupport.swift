@@ -3,6 +3,28 @@
 
 import Foundation
 
+/// Thread-safe authority for one replacement-playback lifecycle. Disabling
+/// the blocker invalidates every ticket already held by launch waits, settle
+/// delays and Apple-event retries; enabling it again does not revive them.
+final class MusicReplacementPlaybackAdmission: @unchecked Sendable {
+    typealias Ticket = UInt64
+
+    private let lock = NSLock()
+    private var generation: Ticket = 0
+
+    func begin() -> Ticket {
+        lock.withLock { generation }
+    }
+
+    func invalidate() {
+        lock.withLock { generation &+= 1 }
+    }
+
+    func accepts(_ ticket: Ticket) -> Bool {
+        lock.withLock { generation == ticket }
+    }
+}
+
 /// Only an observed media key can explain an automatic music-app launch.
 /// Absence of a click is not evidence: voice, automation and login can all
 /// open an app intentionally without a keyboard or pointer gesture.
